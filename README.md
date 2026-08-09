@@ -10,6 +10,14 @@ Next.js storefront and, later, a Medusa backend.
   builds the application.
 - `backend/` — Medusa backend, added by a later PR unit.
 
+Two directories are not workspaces but are consumed by the storefront:
+
+- `design/` — `tokens.css` and the design system's record, including the
+  measured contrast ratios and the webfont licence obligations.
+- `content/` — the site's copy as typed TypeScript, with the editorial content
+  document beside it. See [`content/README.md`](./content/README.md) for why it
+  is TypeScript rather than MDX, and what that makes impossible.
+
 ## Development
 
 ```bash
@@ -22,8 +30,9 @@ validation runs do not reinstall packages. `scripts/validate` runs lint
 (`eslint`, over the whole repository), a type-check (`tsc --noEmit`), and the
 unit test suite (`vitest run`).
 
-The type-check only covers `scripts/**/*.ts` and `vitest.config.ts` today —
-`tsconfig.json`'s `include` is scoped there deliberately, because Next.js
+The type-check covers `content/**/*.ts`, `scripts/**/*.ts` and
+`vitest.config.ts` today — `tsconfig.json`'s `include` is scoped there
+deliberately, and `storefront/` is absent on purpose, because Next.js
 scaffolds its own `tsconfig.json` and the storefront workspace will realistically
 get its own project reference rather than being folded into this one. A type
 error inside `storefront/` will not fail `npm run typecheck` until that
