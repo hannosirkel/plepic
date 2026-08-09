@@ -1,0 +1,228 @@
+.page {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-space);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 28rem);
+  gap: var(--space-xl);
+  align-items: center;
+  /*
+   * The scrim is `--surface` mixed toward transparent, not a literal
+   * `rgb(8 12 35 / …)` — tokens.css's rule is that components consume tokens,
+   * and the literal was the resolved value of --lunar-void, so a change to
+   * the layer's surface would have left this gradient behind.
+   *
+   * Two image-set candidates, not one: the 960px derivative is committed and
+   * this is its only consumer, so a single-candidate set made it unreachable
+   * dead weight. 1x takes the 960, 2x the 1920.
+   */
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 0%, transparent), color-mix(in srgb, var(--surface) 85%, transparent)),
+    image-set("/images/hero/lunar-hero-960.webp" 1x, "/images/hero/lunar-hero-1920.webp" 2x);
+  background-size: cover;
+  background-position: center;
+  border-radius: var(--radius-xl);
+  padding: var(--space-2xl) var(--space-xl);
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: var(--space-xl) var(--space-md);
+  }
+}
+
+.heroCopy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pitch {
+  font-size: var(--step-5);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-display);
+  margin: 0;
+  color: var(--text);
+}
+
+.differentiator {
+  font-size: var(--step-2);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.heroFacts {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: var(--space-2xs) 0 0;
+  padding: 0;
+  font-size: var(--step-0);
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.heroImage {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(var(--shadow-lg));
+}
+
+.specSection {
+  margin-top: calc(var(--space-xl) * -1);
+}
+
+.divider {
+  width: 15rem;
+  height: 1rem;
+  color: var(--border);
+  align-self: center;
+  margin-inline: auto;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.heading {
+  font-size: var(--step-4);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+  margin: 0;
+  color: var(--text);
+}
+
+.body {
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.note {
+  font-size: var(--step--1);
+  color: var(--text-subtle);
+  margin: 0;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-left: var(--space-md);
+  color: var(--text);
+}
+
+.victoryList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.victoryItem {
+  background: var(--card-bg);
+  border: var(--card-border-width) solid var(--card-border-color);
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+}
+
+.victoryItem dt {
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+.victoryItem dd {
+  margin: var(--space-3xs) 0 0;
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+
+.boxList {
+  color: var(--text-muted);
+  line-height: var(--line-height-body);
+}
+
+.componentGallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.componentGallery img {
+  max-width: 20rem;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+.factions summary {
+  cursor: pointer;
+  font-weight: var(--font-weight-medium);
+  color: var(--accent);
+}
+
+.travelsSection {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.headingOnDark {
+  margin: 0;
+  font-size: var(--step-3);
+  color: var(--text-on-surface-sunken);
+}
+
+.bodyOnDark {
+  margin: 0;
+  color: var(--text-on-surface-sunken);
+  opacity: 0.85;
+  line-height: var(--line-height-body);
+}
+
+.pendingLink {
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.faq details {
+  border-bottom: var(--border-width) solid var(--border);
+  padding-block: var(--space-sm);
+}
+
+.faq summary {
+  cursor: pointer;
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+.faq p {
+  margin: var(--space-2xs) 0 0;
+  color: var(--text-muted);
+}
+
+.buySection {
+  display: flex;
+  justify-content: center;
+}
