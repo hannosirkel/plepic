@@ -1,0 +1,175 @@
+/*
+ * Shared form primitives for `NewsletterForm` and `ContactForm` — the two
+ * forms this unit mounts `TurnstileWidget` and `HoneypotField` into. Kept in
+ * one file because the two forms share the same field, label and button
+ * shapes; a form-specific detail (the newsletter's single-row layout, the
+ * contact form's stacked fields) stays local to each component's own
+ * classes below.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.fieldLabel {
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+.required {
+  color: var(--text-subtle);
+  font-weight: var(--font-weight-regular);
+}
+
+/*
+ * The newsletter's single-row email-and-button layout. `flex-wrap` lets the
+ * row drop to a stacked layout on a narrow viewport rather than force an
+ * overflow, and `min-width: 0` on `.field` is load-bearing: a flex item's
+ * default `min-width: auto` floors it at its own min-content width (an
+ * `<input>`'s `size` attribute), which is exactly how a previous revision of
+ * this page pushed its Subscribe button off a 390px screen. See
+ * `tests/mockup-layout.test.ts`.
+ */
+.fieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.field {
+  /*
+   * `box-sizing: border-box` is load-bearing, the same way
+   * `site-header.module.css` already documents for its own sheet: there is
+   * no global reset in this repository, so the default `content-box` would
+   * add the two `padding-inline` values and the border *on top of* the
+   * flex-resolved width. `.stackedField` below shipped exactly that defect —
+   * `width: 100%` plus `content-box` padding measured 306px inside a 272px
+   * container.
+   */
+  box-sizing: border-box;
+  flex: 1 1 12rem;
+  min-width: 0;
+  min-height: var(--button-min-height);
+  padding-inline: var(--space-sm);
+  border: var(--border-width) solid var(--border-interactive);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.field:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/*
+ * Every field in a stacked (non-row) layout — the contact form's shape.
+ *
+ * `box-sizing: border-box` here is the actual fix for a defect this unit's
+ * own rendering check caught: `width: 100%` under the default `content-box`
+ * adds `padding-inline` (2 x --space-sm) and the border *on top of* that
+ * 100%, so the contact form's name field measured 306px wide inside a 272px
+ * container at a 320px viewport — 34px past its own card's edge. Because
+ * `src/styles/global.css` already sets `overflow-x: hidden` on `html`/`body`
+ * (added for the mobile nav sheet, see that file), the page's own
+ * `scrollWidth` stayed exactly 320 throughout — this defect was invisible to
+ * every automated check in this repository and was only found by rendering
+ * the page and looking at it, which is exactly why the packet demanded that
+ * evidence rather than accepting a green suite.
+ */
+.stackedField {
+  box-sizing: border-box;
+  min-height: var(--button-min-height);
+  padding-inline: var(--space-sm);
+  border: var(--border-width) solid var(--border-interactive);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+}
+
+.stackedField:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+textarea.stackedField {
+  min-height: 8rem;
+  padding-block: var(--space-2xs);
+  resize: vertical;
+}
+
+.submit {
+  min-height: var(--button-min-height);
+  padding-inline: var(--button-padding-inline);
+  border-radius: var(--button-radius);
+  border: var(--button-border-width) solid var(--button-primary-border);
+  background: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+  font-weight: var(--button-font-weight);
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.submit:hover {
+  background: var(--button-primary-bg-hover);
+  color: var(--button-primary-fg-hover);
+}
+
+.submit:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.consentNote {
+  margin: 0;
+  font-size: var(--step--2);
+  color: var(--text-subtle);
+}
+
+/*
+ * A field's error text. Tied to its input with `aria-describedby` and the
+ * input additionally carries `aria-invalid="true"` while an error is shown —
+ * WCAG 3.3.1 (Error Identification). Not `display: none` when absent; the
+ * component only renders the element at all once there is something to say,
+ * so there is nothing to toggle the visibility of.
+ */
+.fieldError {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--accent-fill);
+  font-weight: var(--font-weight-medium);
+}
+
+.status {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--accent-positive);
+  font-weight: var(--font-weight-medium);
+}
+
+/*
+ * `max-width: 100%` plus `overflow: hidden` is a safety net underneath
+ * `TurnstileWidget`'s own `data-size="flexible"` default (see that
+ * component's doc comment): flexible mode fills this element's width, but
+ * should Cloudflare ever change flexible mode's own minimum width, this
+ * still stops the widget's iframe breaking out of its card at a narrow
+ * viewport the way the fixed-size default measurably did.
+ */
+.turnstile {
+  margin-top: var(--space-2xs);
+  max-width: 100%;
+  overflow: hidden;
+}

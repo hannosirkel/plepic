@@ -1,0 +1,59 @@
+.page {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space);
+}
+
+.intro {
+  max-width: var(--content-measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--step-6);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-display);
+}
+
+.lede {
+  margin: 0;
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.viewer {
+  /* border-box: width: 100% plus a border under the default content-box
+     would add the border on top of it — see forms.module.css's .stackedField
+     doc comment for the concrete defect this pattern already produced once. */
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 80vh;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-decor);
+}
+
+.fallback {
+  margin: 0;
+  color: var(--text-muted);
+}

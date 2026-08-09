@@ -1,13 +1,32 @@
 /**
- * The Lunar Base page mockup — one of the plan's exactly-two mockups. A
- * single responsive design answering both desktop and mobile through CSS
- * (see `styles/mockups/lunar-base.module.css`), not two separate files.
+ * The Lunar Base page — developed from `t2-design-assets`'s `LunarBaseMockup`
+ * into the real, canonical product route (`src/app/games/lunar-base/page.tsx`
+ * renders this directly). A single responsive design answering both desktop
+ * and mobile through CSS (see `styles/mockups/lunar-base.module.css`).
  *
- * This renders every section `content/pages.ts` lists for the `lunarBase`
- * route, in that order, so the next unit (`t2-pages`) can lift each section
- * wholesale into `src/app/games/lunar-base/page.tsx`. It deliberately is
- * **not** imported by that route file — see the migration report for how
- * separability from the route tree is arranged.
+ * Renders every section `content/pages.ts` lists for the `lunarBase` route,
+ * in that order, plus two beats the decision-order checkbox names that the
+ * page registry does not carry its own anchor for:
+ *
+ * - **Table photography**, between "why it travels well" and the
+ *   quotations — the printed-component render already used in "what is in
+ *   the box" (`layout-base-*.webp`), shown large rather than paired small,
+ *   because no second distinct table photograph exists in this repository
+ *   and the plan forbids fabricating one.
+ * - **The tutorial video**, inside the same `id="video_trailer"` section as
+ *   the trailer rather than a separate anchor: `content/routes.ts`'s
+ *   `AnchorId` union (read-only to this unit) has no `video_tutorial` member,
+ *   and the existing `video_trailer` fragment is load-bearing (existing
+ *   backlinks carry it) so it stays exactly where it is. One section, two
+ *   videos, is a legitimate reading of "one trailer and one tutorial video"
+ *   that needs no new anchor.
+ *
+ * **What changed to become the real route, beyond wiring:** every catalogue
+ * placeholder (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`) in the
+ * purchase panel and its calls to action is resolved against
+ * `storefront/mock/catalogue.json` — see `src/lib/catalogue.ts` — rather
+ * than rendered literally, and the rulebook is linked from the "what is in
+ * the box" section rather than only named in prose.
  */
 import {
   differentiator,
@@ -24,15 +43,24 @@ import {
   victoryPathsIntro,
   victoryPathsNote,
 } from "../../../../content/lunar-base.js";
+import { rulebookLink } from "../../../../content/support.js";
+import { resolveCatalogue, type ResolvedCatalogue } from "../../lib/catalogue.js";
 import { FeatureSpecStrip } from "../FeatureSpecStrip.js";
 import { ReviewComposite } from "../ReviewComposite.js";
 import { SectionDivider } from "../decor/SectionDivider.js";
 import { PurchasePanelMockup } from "../PurchasePanelMockup.js";
 import { SiteFooter } from "../SiteFooter.js";
 import { SiteHeader } from "../SiteHeader.js";
+import { VideoEmbed } from "../video/VideoEmbed.js";
+import { CallToActionLink } from "./CallToActionLink.js";
 import styles from "../../styles/mockups/lunar-base.module.css";
 
-export function LunarBaseMockup() {
+export interface LunarBaseMockupProps {
+  /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
+  readonly catalogue?: ResolvedCatalogue;
+}
+
+export function LunarBaseMockup({ catalogue = resolveCatalogue() }: LunarBaseMockupProps = {}) {
   return (
     <div data-layer="lunar" className={styles.page}>
       <SiteHeader wordmark="dark" />
@@ -138,6 +166,11 @@ export function LunarBaseMockup() {
               ))}
             </dl>
           </details>
+          <p className={styles.body}>
+            <CallToActionLink
+              action={{ label: rulebookLink.label, emphasis: "quiet", target: rulebookLink.target, accessibleLabel: rulebookLink.accessibleLabel }}
+            />
+          </p>
         </section>
 
         <section id="travels-well" className={styles.travelsSection}>
@@ -149,15 +182,43 @@ export function LunarBaseMockup() {
           ))}
         </section>
 
+        <section id="table-photography" className={styles.section}>
+          <h2 className={styles.heading}>On the table</h2>
+          <img
+            className={styles.tablePhoto}
+            src="/images/components/layout-base-960.webp"
+            srcSet="/images/components/layout-base-480.webp 480w, /images/components/layout-base-960.webp 960w"
+            sizes="(max-width: 720px) 92vw, 40rem"
+            width={960}
+            height={611}
+            loading="lazy"
+            decoding="async"
+            alt="A player's base laid out with a station and several module cards attached."
+          />
+        </section>
+
         <section id="video_trailer" className={styles.section}>
-          <h2 className={styles.heading}>Watch the trailer</h2>
-          {/* The trailer lives on YouTube per the plan's "keep video on YouTube"
-              instruction. Its URL is runtime configuration (an ExternalTargetId),
-              not content, so this mockup has no href to render yet — see
-              components/mockups/link-target.ts. */}
-          <p className={styles.body}>
-            <span className={styles.pendingLink}>Watch the Lunar Base trailer on YouTube</span>
-          </p>
+          <h2 className={styles.heading}>Watch</h2>
+          {/* Both videos live on YouTube per the plan's "keep video on YouTube"
+              instruction; this unit embeds, it does not host one. Neither has a
+              published YouTube id yet (see VideoEmbed.tsx's doc comment), so
+              both render the honest pending state rather than a fabricated
+              embed. This section keeps the id="video_trailer" fragment
+              existing backlinks carry — see content/routes.ts. */}
+          <VideoEmbed
+            heading="Trailer"
+            title="Lunar Base trailer"
+            youTubeId={null}
+            aspectRatio={16 / 9}
+            captionStatus="not-yet-available"
+          />
+          <VideoEmbed
+            heading="Tutorial"
+            title="Lunar Base tutorial"
+            youTubeId={null}
+            aspectRatio={1184 / 720}
+            captionStatus="not-yet-available"
+          />
         </section>
 
         <section id="reviews" className={styles.section}>
@@ -180,7 +241,7 @@ export function LunarBaseMockup() {
         </section>
 
         <section id="buy" className={styles.buySection}>
-          <PurchasePanelMockup />
+          <PurchasePanelMockup catalogue={catalogue} />
         </section>
       </main>
 

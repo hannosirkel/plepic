@@ -1,0 +1,44 @@
+/*
+ * Visually hides the honeypot the way `HoneypotField.tsx` used to with an
+ * inline `style` attribute — off-screen via `position: absolute` and
+ * `clip`, not `display: none`, so a screen reader user is not confused and a
+ * bot that only checks computed visibility is not tipped off.
+ *
+ * It has to be a class in a stylesheet, not an inline `style` prop.
+ * `src/lib/csp.ts` emits a `style-src` with no `'unsafe-inline'`, and a
+ * nonce only authorises a nonced `<style>` element or stylesheet `<link>` —
+ * CSP has no mechanism for authorising an inline `style="…"` *attribute* at
+ * all (CSP3's narrow `'unsafe-hashes'` escape hatch is not in this policy
+ * either). So a browser enforcing this policy drops the inline `style` the
+ * previous version rendered and the input paints with its normal box:
+ * visible, in normal flow, in the tab order, labelled "Leave this field
+ * empty" — for every visitor, not just a bot. Mounting it inside a form for
+ * the first time is what turned an untested prop into an observable defect.
+ */
+.field {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/*
+ * The `<input>` itself, not only its wrapper. A default `<input type="text">`
+ * has an intrinsic layout width from its `size` attribute (20 characters,
+ * ~185px) — `overflow: hidden` on `.field` clips it from paint, but measured
+ * in a real browser its full-sized *layout box* still widened
+ * `document.documentElement.scrollWidth` past the viewport at a narrow width,
+ * because `.field` is `position: absolute` with no `top`/`left` (so it keeps
+ * its static-position placement) and at least one browser engine still folds
+ * an absolutely positioned, overflow-clipped descendant's own unclipped
+ * layout size into the document's scrollable overflow region. Constraining
+ * the input's own box removes the ambiguity rather than relying on the
+ * parent's clip alone.
+ */
+.field input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+}

@@ -16,6 +16,7 @@
 import type { ReactNode } from "react";
 
 import "../../../design/tokens.css";
+import "../styles/global.css";
 
 import { ConsentManager } from "../components/analytics/ConsentManager.js";
 import { RuntimeConfigScript } from "../components/RuntimeConfigScript.js";

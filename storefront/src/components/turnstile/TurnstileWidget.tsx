@@ -25,9 +25,20 @@ export interface TurnstileWidgetProps {
   readonly nonce: string | undefined;
   /** Distinguishes multiple widgets on one page, e.g. contact vs. newsletter. */
   readonly formName: string;
+  /**
+   * Turnstile's own `data-size`. Defaults to `"flexible"` — Cloudflare's own
+   * answer to a widget that has to sit inside a narrow, responsive card:
+   * the fixed `"normal"` size renders at 300x65 regardless of its
+   * container, which is wider than this site's newsletter and contact
+   * cards at a 320px viewport (measured: the card's content box is ~192px
+   * there) and overflowed its own card, cut off at the edge, when this
+   * unit rendered it for the first time. `"flexible"` fills the available
+   * container width instead.
+   */
+  readonly size?: "normal" | "compact" | "flexible";
 }
 
-export function TurnstileWidget({ siteKey, nonce, formName }: TurnstileWidgetProps) {
+export function TurnstileWidget({ siteKey, nonce, formName, size = "flexible" }: TurnstileWidgetProps) {
   if (siteKey === null) return null;
 
   return (
@@ -43,6 +54,7 @@ export function TurnstileWidget({ siteKey, nonce, formName }: TurnstileWidgetPro
       <div
         className="cf-turnstile"
         data-sitekey={siteKey}
+        data-size={size}
         data-testid={`turnstile-${formName}`}
         aria-label="Verification challenge"
       />

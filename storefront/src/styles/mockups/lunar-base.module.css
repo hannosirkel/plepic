@@ -170,6 +170,7 @@
   max-width: 20rem;
   width: 100%;
   height: auto;
+  min-width: 0;
   border-radius: var(--radius-md);
 }
 
@@ -201,9 +202,12 @@
   line-height: var(--line-height-body);
 }
 
-.pendingLink {
-  color: var(--accent);
-  font-weight: var(--font-weight-medium);
+.tablePhoto {
+  width: 100%;
+  max-width: 40rem;
+  height: auto;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
 
 .faq details {

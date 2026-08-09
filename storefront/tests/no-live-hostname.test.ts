@@ -79,6 +79,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { basename, dirname, extname, join } from "node:path";
@@ -119,6 +120,17 @@ const ALLOWED_DOMAINS: readonly string[] = [
   "google-analytics.com",
   "googletagmanager.com",
   "schema.org",
+  // `VideoEmbed.tsx` embeds from `youtube-nocookie.com`, and every call site
+  // in this unit passes `youTubeId={null}` (no real YouTube video id exists
+  // yet — see that component's doc comment), so nothing actually loads it
+  // today. It is allowlisted here as the genuine future endpoint rather than
+  // routed around, but `src/lib/csp.ts` does not yet permit it in
+  // `frame-src`/`script-src` — this unit's authority to touch that file is
+  // scoped to two carried findings and catalogue-placeholder resolution, not
+  // video CSP, so a future unit supplying a real id must update the CSP too.
+  // Recorded in the migration report as a follow-up dependency.
+  "youtube-nocookie.com",
+  "youtube.com",
   // 3. Vendor documentation.
   "nextjs.org",
 ];
@@ -473,6 +485,7 @@ function metadataChunks(file: ScannedBinaryFile): readonly string[] {
 
 const textFiles: ScannedTextFile[] = [];
 const binaryFiles: ScannedBinaryFile[] = [];
+const pdfFiles: ScannedBinaryFile[] = [];
 const unknownExtensionFiles: string[] = [];
 
 for (const relativePath of trackedPaths) {
@@ -482,6 +495,12 @@ for (const relativePath of trackedPaths) {
     textFiles.push({ name: relativePath, source: readFileSync(absolutePath, "utf8") });
   } else if (BINARY_EXTENSIONS.includes(ext)) {
     binaryFiles.push({
+      name: relativePath,
+      bytes: statSync(absolutePath).size,
+      bytesRead: readFileSync(absolutePath),
+    });
+  } else if (ext === ".pdf") {
+    pdfFiles.push({
       name: relativePath,
       bytes: statSync(absolutePath).size,
       bytesRead: readFileSync(absolutePath),
@@ -606,6 +625,63 @@ describe("binary assets are derivatives, not masters", () => {
           "private archival storage, never in this repository; if this is a legitimate large derivative, " +
           "confirm that first and raise MAX_BINARY_ASSET_BYTES deliberately rather than routing around it",
       ).toBeLessThan(MAX_BINARY_ASSET_BYTES);
+    });
+  }
+});
+
+/**
+ * The rulebook PDF — `t2-pages`'s one committed PDF, and the first this guard
+ * has ever had to handle. It does not fit either existing category:
+ *
+ * - **Not text.** A PDF's content streams are `FlateDecode`-compressed
+ *   binary, so reading it as UTF-8 and running the hostname/IP regex over it
+ *   (`TEXT_EXTENSIONS`'s treatment) would scan compressed bytes, not
+ *   characters — meaningless, and liable to false-positive on incidental
+ *   byte sequences the way `SVG_PATH_DATA` already has to guard against for
+ *   coordinate data.
+ * - **Not held to `MAX_BINARY_ASSET_BYTES`.** That ceiling (800 KB) is
+ *   calibrated for image derivatives; a 25-page rulebook with real
+ *   typesetting and diagrams is legitimately larger, and the migration
+ *   report states the actual trade-off: recompressing this exact file with
+ *   Ghostscript (`gs -dPDFSETTINGS=/ebook`) was tried and measured — it cuts
+ *   8,898,253 bytes to 3,210,697, and it also flips `pdfinfo`'s `Tagged:` from
+ *   `yes` to `no`, which fails this checkbox's own "tagged and selectable
+ *   rather than a scan" requirement outright. Shipping the verified master
+ *   byte-for-byte is the correct trade, not a shortcut.
+ *
+ * So this file gets its own, narrower guarantee: it is a real PDF (the
+ * `%PDF-` magic bytes), it is under a ceiling that is generous for a rulebook
+ * but would still catch an accidentally-committed multi-file archive, and —
+ * in place of a text scan this format cannot support — its exact bytes match
+ * the sha256 the migration report records for the operator's verified master,
+ * `Tagged: yes`, not encrypted, 25 pages, real extractable text confirmed
+ * with `pdfinfo`/`pdftotext` at the moment this hash was pinned. A future
+ * accidental substitution (a different file at the same path) fails this
+ * hash check immediately, rather than silently shipping something nobody
+ * re-verified as tagged and selectable.
+ */
+const RULEBOOK_MASTER_SHA256 = "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee";
+const MAX_PDF_ASSET_BYTES = 10_000_000;
+
+describe("the committed rulebook PDF is the exact, verified master", () => {
+  it("found the rulebook to hold to the policy", () => {
+    expect(pdfFiles.length).toBeGreaterThan(0);
+  });
+
+  for (const file of pdfFiles) {
+    it(`${file.name} is a real PDF, non-empty, and under ${MAX_PDF_ASSET_BYTES.toLocaleString()} bytes`, () => {
+      expect(file.bytes, `${file.name} is empty`).toBeGreaterThan(0);
+      expect(file.bytesRead.toString("ascii", 0, 5)).toBe("%PDF-");
+      expect(file.bytes).toBeLessThan(MAX_PDF_ASSET_BYTES);
+    });
+
+    it(`${file.name} matches the sha256 of the verified tagged-and-selectable master`, () => {
+      const actual = createHash("sha256").update(file.bytesRead).digest("hex");
+      expect(
+        actual,
+        `${file.name} does not match the master this guard pinned — re-verify it with pdfinfo/pdftotext ` +
+          "(Tagged: yes, not encrypted, real extractable text) before updating RULEBOOK_MASTER_SHA256",
+      ).toBe(RULEBOOK_MASTER_SHA256);
     });
   }
 });

@@ -15,8 +15,66 @@ Next.js storefront and, later, a Medusa backend.
   browser — never a `NEXT_PUBLIC_*` variable. See
   [`storefront/src/config/runtime-config.ts`](./storefront/src/config/runtime-config.ts)
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
-  for the redirect map's documented shape. Page composition, the cart, and
-  checkout are later PR units.
+  for the redirect map's documented shape. The cart and checkout flows are a
+  later PR unit; every other route is real.
+
+  **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
+  `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and
+  `src/app/support/lunar-base/rulebook/page.tsx` render genuine page
+  composition, not the `RoutePlaceholder` every route used to. The homepage
+  and the Lunar Base page are `HomepageMockup` and `LunarBaseMockup`
+  (`src/components/mockups/`) developed into routes in place, rather than
+  copied elsewhere — both now take an optional `catalogue` prop so the same
+  component renders identically in a unit test (the default, `storefront/mock/catalogue.json`)
+  and in the real route (the same default, threaded explicitly). About and
+  Support are new, purpose-built page components under
+  `src/components/pages/`.
+
+  **The mock catalogue is a contract, not a fixture.**
+  [`storefront/mock/catalogue.json`](./storefront/mock/catalogue.json) mirrors
+  the values Task 5's live Medusa catalogue will be seeded with — one
+  product, EUR 25.00 VAT included, in stock, 2–6 players, ~30 minutes, 90
+  cards. `src/lib/catalogue.ts` resolves `content/`'s catalogue placeholders
+  (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`) against it at
+  render time — the two previous units correctly left those placeholders
+  literal, because `content/` was not theirs to resolve against a catalogue
+  that did not exist yet. `tests/no-hardcoded-price.test.ts` fails the build
+  if a price literal appears anywhere outside that one file.
+
+  **The newsletter and contact forms mount `TurnstileWidget` and
+  `HoneypotField`** (`src/components/forms/`), both built in an earlier unit
+  and mounted nowhere until now. `HoneypotField` is fixed in the process: it
+  used to hide itself with an inline `style` attribute, which this
+  application's CSP (no `'unsafe-inline'` in `style-src`) does not permit, so
+  it rendered as a visible input the moment it was actually mounted in a
+  page. It now hides via a stylesheet class
+  (`src/components/turnstile/HoneypotField.module.css`). Server-side
+  Turnstile verification is a later unit's; these forms render the widget,
+  validate their own fields with tied, announced errors, and submit to
+  nothing yet.
+
+  **Video stays on YouTube.** `src/components/video/VideoEmbed.tsx` embeds a
+  `youtube-nocookie.com` iframe sized from a real, measured aspect ratio
+  (never assumed 16:9) when a video id is configured, and renders an honest
+  pending state when it is not — every call site in this unit passes
+  `youTubeId={null}`, because no real YouTube id exists yet for any of the
+  three local masters. A future unit that supplies one must also add
+  `youtube-nocookie.com` to `src/lib/csp.ts`'s `frame-src`/`script-src`; this
+  unit's authority to touch that file is scoped to two carried redirect
+  findings and catalogue-placeholder resolution, not video CSP.
+
+  **The rulebook stops living in Google Drive.**
+  `storefront/public/documents/lunar-base-rulebook.pdf` is a byte-identical
+  copy of the operator's verified master (25 pages, tagged, not encrypted,
+  real extractable text — `pdfinfo`/`pdftotext` verified), served from
+  `/support/lunar-base/rulebook`. `tests/no-live-hostname.test.ts` pins its
+  sha256 rather than scanning it as text (a PDF's content streams are
+  compressed binary) or holding it to the image byte ceiling (it is a
+  document, not a web derivative). It is committed as-is rather than
+  recompressed: Ghostscript's `pdfwrite` device cuts it from 8,898,253 bytes
+  to 3,210,697 but strips the tag structure entirely (`pdfinfo`'s `Tagged:`
+  flips from `yes` to `no`), which fails the "tagged and selectable rather
+  than a scan" requirement outright.
 
   `storefront/public/` carries the committed web derivatives — the publisher
   and Lunar Base brand marks, favicons, product and component photography,
@@ -65,21 +123,65 @@ Next.js storefront and, later, a Medusa backend.
   rebuilt from what used to be baked raster images (`FeatureSpecStrip`,
   `TeamPhotoSection`, `ReviewComposite`) and two full-page mockups under
   `components/mockups/` (`HomepageMockup`, `LunarBaseMockup`) built from
-  `design/tokens.css` and `content/`, not from an image. Neither mockup is
-  imported by `src/app/` — they are markup a later unit lifts into the real
-  routes, not routes themselves. `tests/mockup-layout.test.ts` and
-  `tests/site-chrome.test.tsx` hold them to the properties rendered markup
-  cannot show, each added after a review found a page visibly broken while
-  the suite was green: that no two grid items are placed in one named grid
-  area (four items in one named area occupy one cell and overlap; they do
-  not stack); that every growable flex item bounds its own minimum size,
-  rather than being floored at its content's min-content width and pushing
-  its siblings off the screen; that the footer wordmark measurably contrasts
-  with the footer surface on both token layers; and that nothing off-screen
-  or inert is left in the keyboard tab order. All four are decided from the
-  stylesheet, because this suite has no layout engine — the trade-off, and
-  what a browser-driven harness would add on top, is argued at the head of
-  `tests/mockup-layout.test.ts`.
+  `design/tokens.css` and `content/`, not from an image. Both mockups are now
+  rendered directly by `src/app/page.tsx` and
+  `src/app/games/lunar-base/page.tsx` — see "The real routes" above.
+  `tests/mockup-layout.test.ts` and `tests/site-chrome.test.tsx` hold them to
+  the properties rendered markup cannot show, each added after a review found
+  a page visibly broken while the suite was green: that no two grid items are
+  placed in one named grid area (four items in one named area occupy one cell
+  and overlap; they do not stack); that every growable flex item bounds its
+  own minimum size, rather than being floored at its content's min-content
+  width and pushing its siblings off the screen; that the footer wordmark
+  measurably contrasts with the footer surface on both token layers; and that
+  nothing off-screen or inert is left in the keyboard tab order. All four are
+  decided from the stylesheet, because this suite has no layout engine — the
+  trade-off, and what a browser-driven harness would add on top, is argued at
+  the head of `tests/mockup-layout.test.ts`.
+
+  **The flex/grid check widened.** It used to scan `src/styles` only and only
+  a rule that itself declared `flex`/`flex-grow`. It now walks all of `src/`
+  (a stylesheet co-located beside its component, e.g.
+  `src/components/video/video-embed.module.css`, is covered exactly like one
+  under `src/styles`), also treats a rule as an at-risk flex item when a
+  sibling rule makes its *parent* a flex container (catching
+  `purchase-panel.module.css`'s `.metaRow dt`/`dd`, which are flex items
+  purely by inheriting `display: flex` from `.metaRow` and declare no `flex`
+  property of their own), and flags a bare `<number>fr` grid track sharing a
+  row with another track — the grid equivalent of the same defect. Fixing
+  what it found was not always `min-width: 0` on both sides: `.metaRow dt`
+  (a short label) shrinking to fit its detail's long prose wrapped the label
+  itself into illegibility, so the actual fix keeps the label at
+  `flex-shrink: 0` and lets only the detail grow, shrink and wrap — recorded
+  in the test as `hasZeroFlexShrink`, an exemption from the check that is
+  correct by the CSS Flexbox spec rather than a hole in it (a `flex-shrink:
+  0` item cannot exhibit the automatic-minimum-size defect at all, because
+  that defect is specifically a floor on how far an item may shrink).
+
+  A rendering pass with a real, headless browser at 1280, 390 and 320 CSS
+  pixels — the check this repository's test suite cannot perform itself —
+  additionally found and fixed two defects invisible to every automated
+  check here: `.stackedField` and `.viewer` used `width: 100%` (or
+  `max-width: 100%`) together with `padding`/`border` under the default
+  `content-box` sizing, which adds padding and border *on top of* that
+  percentage rather than inside it, so the contact form's fields and the
+  rulebook's `<object>` measured wider than their own containers. There is no
+  global CSS reset in this repository (`site-header.module.css`'s own doc
+  comment already says so), so every element like this now sets `box-sizing:
+  border-box` explicitly rather than relying on one existing.
+
+  That same rendering pass found a third defect, in `SiteHeader`'s own
+  mobile navigation sheet (inherited, not introduced by this unit): at a
+  320px viewport, the closed sheet — `position: fixed`, translated off-screen
+  by its own width — measurably widened `document.documentElement.scrollWidth`
+  past the viewport in a real Chromium build, even though it never paints and
+  cannot be reached by keyboard while closed (`tests/site-chrome.test.tsx`
+  already holds it to that). `src/styles/global.css` — the one global,
+  non-module stylesheet in this repository, imported once from
+  `src/app/layout.tsx` — sets `overflow-x: hidden` on `html`/`body` for
+  exactly this: it does not move or resize the sheet, only stops the
+  phantom width from being reachable, and this repository introduces nothing
+  that is ever meant to be reached by horizontal scrolling.
 
   `sharp` is a direct dependency of the storefront for one documented
   reason. Next.js declares it an `optionalDependency` of its own, and its

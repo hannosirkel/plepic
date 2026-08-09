@@ -5,7 +5,17 @@
  *    and its `www` variant (see `config/redirect-map.ts`) each resolve to
  *    exactly one destination on the canonical host and answer a single 301.
  *    A request to the canonical host itself never matches an entry in the
- *    map, so there is no second hop and no loop.
+ *    map, so there is no second hop and no loop — and that is now an
+ *    **enforced** guard, not just a fact about the maps this file has been
+ *    tested against so far: `isCanonicalHost` gates the whole redirect branch
+ *    below with an early return, so a typo that adds the apex to the
+ *    operator map at Task 5 cannot turn into an infinite redirect on the live
+ *    site. The redirect also forwards the inbound query string
+ *    (`request.nextUrl.search`) onto the single resolved target path —
+ *    dropping it would discard `utm_*` campaign attribution on exactly the
+ *    migration traffic the plan keeps analytics running to measure, and
+ *    appending it before the one `absoluteUrl` call keeps the redirect a
+ *    single hop rather than a second one that re-attaches it.
  * 2. **CSP nonce and the test-host `X-Robots-Tag`.** A fresh nonce is minted
  *    per request and the resulting policy is set in **three** places, all
  *    with the identical nonce:
@@ -41,7 +51,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { isTestHost, loadSiteHostConfig } from "./config/hosts.js";
+import { isCanonicalHost, isTestHost, loadSiteHostConfig } from "./config/hosts.js";
 import { loadRedirectMap, resolveRedirect } from "./config/redirect-map.js";
 import { buildContentSecurityPolicy } from "./lib/csp.js";
 import { absoluteUrl } from "./lib/urls.js";
@@ -49,11 +59,17 @@ import { absoluteUrl } from "./lib/urls.js";
 export function proxy(request: NextRequest): NextResponse {
   const host = request.headers.get("host") ?? "";
   const hostConfig = loadSiteHostConfig();
-  const redirectMap = loadRedirectMap();
 
-  const redirect = resolveRedirect(host, request.nextUrl.pathname, redirectMap);
-  if (redirect !== null) {
-    return NextResponse.redirect(absoluteUrl(hostConfig.baseUrl, redirect.targetPath), 301);
+  // Enforced, not assumed: the canonical host must never be redirected by
+  // this mechanism, on pain of a self-redirect loop. See this module's doc
+  // comment.
+  if (!isCanonicalHost(host, hostConfig)) {
+    const redirectMap = loadRedirectMap();
+    const redirect = resolveRedirect(host, request.nextUrl.pathname, redirectMap);
+    if (redirect !== null) {
+      const target = `${redirect.targetPath}${request.nextUrl.search}`;
+      return NextResponse.redirect(absoluteUrl(hostConfig.baseUrl, target), 301);
+    }
   }
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");

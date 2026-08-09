@@ -1,0 +1,30 @@
+/*
+ * One global rule, and the reasoning has to be as narrow as the rule: this
+ * repository ships no global stylesheet otherwise (`design/tokens.css` is
+ * custom-property declarations only, no selectors that paint anything), so a
+ * second reason to add one has to be at least this good.
+ *
+ * `SiteHeader`'s mobile navigation sheet (`site-header.module.css`) is
+ * `position: fixed; inset-inline-end: 0; transform: translateX(100%)` when
+ * closed — off-screen by its own width, and already held to "invisible and
+ * out of the tab order" by `tests/site-chrome.test.tsx`. Measured in a real
+ * Chromium build at a 320px viewport, that fixed-and-transformed box still
+ * widens `document.documentElement.scrollWidth` past the viewport (602px
+ * measured against 320px), even though nothing in it ever paints or can be
+ * reached by keyboard while closed — a known category of engine quirk around
+ * `transform` on `position: fixed` elements and root scrollable-overflow
+ * calculation, not a defect in the sheet's own CSS, which is otherwise
+ * correct and already tested.
+ *
+ * `overflow-x: hidden` on the root two boxes is the standard, narrowly-scoped
+ * answer: it does not resize or reposition the sheet, does not affect
+ * `overflow-y` (the page still scrolls vertically exactly as before), and
+ * this repository introduces no element that is ever meant to be reached by
+ * horizontal scrolling — WCAG 2.2's 1.4.10 Reflow requires content not to
+ * *need* horizontal scrolling at 320 CSS px, which this enforces rather than
+ * merely hopes for.
+ */
+html,
+body {
+  overflow-x: hidden;
+}

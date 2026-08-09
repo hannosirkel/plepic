@@ -56,6 +56,28 @@
  * right move is to add the `scrollWidth <= clientWidth` assertion there at
  * 320, 390 and 1280 and keep this one, because a static check that names the
  * offending selector localises a fault a screenshot only detects.
+ *
+ * Widened for t2-pages, which carried three gaps in this file forward from
+ * review, all the same shape as the overflow this file already catches (an
+ * item floored at a size nobody chose), just missed by scope:
+ *
+ * 1. The scan covered src/styles only. A stylesheet co-located beside its
+ *    component escaped every check here entirely. cssFilesUnder now walks
+ *    the whole of src/, not one directory under it.
+ * 2. The flex check only looked at a rule that itself declared flex or
+ *    flex-grow. purchase-panel.module.css's .metaRow dt / .metaRow dd are
+ *    flex items purely by inheritance from their parent's display: flex,
+ *    and CSS Flexbox's automatic minimum size applies to every flex item
+ *    regardless of its own flex-grow/flex-shrink, not only the ones a rule
+ *    happens to say so about. itemsFlooredAtTheirContent now also treats a
+ *    rule as an at-risk flex item when a sibling rule in the same file
+ *    declares its immediate ancestor selector display: flex (or
+ *    inline-flex), whether or not this rule mentions flex at all.
+ * 3. Grid items were missed entirely. A bare 1fr grid-template-columns track
+ *    (as opposed to minmax(0, 1fr) or minmax(<length>, 1fr)) implicitly
+ *    floors at minmax(auto, 1fr) - the same automatic-minimum-size defect
+ *    under a different property name. bareFrGridTracks flags a
+ *    grid-template-columns value carrying an un-minmax'd <number>fr token.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -63,7 +85,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const stylesDir = join(storefrontDir, "src", "styles");
+/**
+ * Everything under src/, not just src/styles: a .module.css co-located
+ * beside its component (src/components/cart/Cart.module.css, say) is just as
+ * capable of shipping the overflow this file exists to catch, and a scan
+ * scoped to one directory is exactly the kind of guard a new location
+ * disappears from silently.
+ */
+const scanDir = join(storefrontDir, "src");
 
 /**
  * Deliberate overlaps. A design *may* legitimately stack two items in one
@@ -193,6 +222,136 @@ function boundsItsOwnMinimumSize(body: string): boolean {
   return overflow !== undefined && overflow !== "visible";
 }
 
+/**
+ * True when the rule sets `flex-shrink: 0` (longhand, or the `flex`
+ * shorthand's second number, or `flex: none`).
+ *
+ * The automatic minimum size (CSS Flexbox §4.5) is specifically the floor on
+ * how far an item may *shrink* — it plays no part at all in an item that
+ * never shrinks. So a `flex-shrink: 0` item cannot exhibit this file's
+ * overflow defect regardless of its `min-width`, and flagging one anyway
+ * would be exactly the wrong kind of strictness: it would push authors to
+ * add a meaningless `min-width: 0` to satisfy the check rather than to fix
+ * anything, and `purchase-panel.module.css`'s `.metaRow dt` is the concrete
+ * case that found this — the *label* half of a term/detail row must never
+ * shrink (or it wraps into illegibility, a real and worse defect this
+ * widened check caused while chasing the overflow one), while the *detail*
+ * half is exactly the one that should grow, shrink and wrap.
+ */
+function hasZeroFlexShrink(body: string): boolean {
+  const longhand = declaration(body, "flex-shrink");
+  if (longhand !== undefined) return Number.parseFloat(longhand) === 0;
+
+  const shorthand = declaration(body, "flex");
+  if (shorthand === undefined) return false;
+  if (shorthand.trim() === "none") return true;
+
+  const parts = shorthand.split(/\s+/);
+  // `flex: <grow> <shrink> ...` — shrink is the second token only when the
+  // first token was itself the grow factor (a bare number), not a basis.
+  if (parts.length >= 2 && /^\d+(\.\d+)?$/.test(parts[0] ?? "") && /^\d+(\.\d+)?$/.test(parts[1] ?? "")) {
+    return Number.parseFloat(parts[1] ?? "") === 0;
+  }
+  return false;
+}
+
+/** True when this rule's own body makes it a flex container. */
+function isFlexContainer(body: string): boolean {
+  const display = declaration(body, "display");
+  return display === "flex" || display === "inline-flex";
+}
+
+/**
+ * The immediate ancestor selector text for a descendant-combinator selector
+ * such as `.metaRow dt` (→ `.metaRow`), or `undefined` for a selector with no
+ * ancestor (`.metaRow` itself). A trailing child/sibling combinator
+ * (`.metaRow > dt`) is stripped from the ancestor half so it still matches
+ * `.metaRow`'s own rule.
+ */
+function immediateAncestorSelector(selector: string): string | undefined {
+  const tokens = selector.trim().split(/\s+/);
+  if (tokens.length < 2) return undefined;
+  return tokens
+    .slice(0, -1)
+    .join(" ")
+    .replace(/[>~+]\s*$/, "")
+    .trim();
+}
+
+/**
+ * True when a sibling rule in `sheetRules` declares `selector` (or names it
+ * among a comma-separated selector list) as a flex container. This is how
+ * `.metaRow dt` is recognised as a flex item even though it declares no
+ * `flex` property of its own — its parent, `.metaRow`, is `display: flex`,
+ * and CSS Flexbox's automatic minimum size applies to every flex item, not
+ * only the ones that opted into growing or shrinking explicitly.
+ */
+function hasFlexContainerAncestor(selector: string, sheetRules: readonly Rule[]): boolean {
+  const ancestor = immediateAncestorSelector(selector);
+  if (ancestor === undefined || ancestor.length === 0) return false;
+  return sheetRules.some(
+    (candidate) =>
+      isFlexContainer(candidate.body) &&
+      candidate.selector
+        .split(",")
+        .map((part) => part.trim())
+        .includes(ancestor),
+  );
+}
+
+/**
+ * Splits a declaration value into its top-level, whitespace-separated
+ * tokens, respecting parenthesis nesting — so `minmax(14rem, 1fr)` and
+ * `repeat(auto-fit, minmax(14rem, 1fr))` are each read as one token, not
+ * split on the comma or space inside them.
+ */
+function topLevelTokens(value: string): readonly string[] {
+  const tokens: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of value) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (/\s/.test(char) && depth === 0) {
+      if (current.length > 0) tokens.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) tokens.push(current);
+  return tokens;
+}
+
+/**
+ * Bare `<number>fr` tracks in a `grid-template-columns` declaration that
+ * carries **more than one track** — the grid equivalent of the flex-sibling
+ * squeeze this file already catches. A track written as plain `1fr` is
+ * shorthand for `minmax(auto, 1fr)`, so it floors at its content's
+ * min-content size exactly like an unbounded flex item; wrapping it as
+ * `minmax(0, 1fr)` (or any explicit `minmax(<length>, 1fr)`) chooses the
+ * floor instead of inheriting one. Because `topLevelTokens` treats a whole
+ * `minmax(...)` or `repeat(...)` call as one token, a bare `fr` token can
+ * only survive here when it was never wrapped at all.
+ *
+ * **Single-track `grid-template-columns: 1fr` is deliberately not flagged.**
+ * With exactly one track there is no sibling for it to be squeezed against —
+ * the track simply fills the row, the same as `width: 100%` — which is
+ * exactly the shape both mockups' narrow-breakpoint `.hero` collapses to and
+ * `TeamPhotoSection`'s stacked layout uses. Flagging that would be a false
+ * positive for the single commonest responsive pattern in this codebase, for
+ * a class of overflow (a track wider than its content demands) this
+ * automatic-minimum-size check is not about. The risk this function exists
+ * for only exists once two or more tracks are sharing a row.
+ */
+function bareFrTracks(body: string): readonly string[] {
+  const value = declaration(body, "grid-template-columns");
+  if (value === undefined) return [];
+  const tracks = topLevelTokens(value);
+  if (tracks.length < 2) return [];
+  return tracks.filter((token) => /^\d*\.?\d+fr$/.test(token));
+}
+
 /** Every distinct name appearing in a `grid-template-areas` value. */
 function templateAreaNames(body: string): readonly string[] {
   const names = new Set<string>();
@@ -206,17 +365,32 @@ function templateAreaNames(body: string): readonly string[] {
   return [...names];
 }
 
-const stylesheets = cssFilesUnder(stylesDir).map((path) => ({
+const stylesheets = cssFilesUnder(scanDir).map((path) => ({
   name: relative(storefrontDir, path),
   rules: parseRules(stripComments(readFileSync(path, "utf8"))),
 }));
 
 describe("the stylesheet reader found something to check", () => {
-  it("read every CSS module under src/styles, including the mockups", () => {
+  it("read every CSS module under src/, including the mockups", () => {
     const names = stylesheets.map((sheet) => sheet.name);
     expect(names).toContain(join("src", "styles", "mockups", "homepage.module.css"));
     expect(names).toContain(join("src", "styles", "mockups", "lunar-base.module.css"));
     expect(names.length).toBeGreaterThan(5);
+  });
+
+  it("would find a .module.css co-located beside a component, not only one under src/styles", () => {
+    // cssFilesUnder walks scanDir (src/) recursively with no directory
+    // filter, so a stylesheet co-located next to its component is picked up
+    // exactly like one under src/styles — proven here against the real
+    // directory tree rather than a synthetic fixture, since the whole point
+    // is that no directory is special-cased.
+    const underStyles = stylesheets.filter((sheet) => sheet.name.split(/[/\\]/).includes("styles"));
+    expect(underStyles.length, "expected at least one stylesheet under src/styles").toBeGreaterThan(0);
+    expect(
+      stylesheets.length,
+      "cssFilesUnder(scanDir) found nothing outside src/styles to prove the widened scan against — " +
+        "add or keep a component-co-located .module.css (e.g. src/components/turnstile/HoneypotField.module.css)",
+    ).toBeGreaterThan(underStyles.length);
   });
 
   it("parses rules out of an at-rule as well as out of the top level", () => {
@@ -302,7 +476,19 @@ function itemsFlooredAtTheirContent(
   return sheets
     .flatMap((sheet) =>
       sheet.rules
-        .filter((rule) => flexGrow(rule.body) > 0 && !boundsItsOwnMinimumSize(rule.body))
+        .filter(
+          (rule) =>
+            // At risk either because the rule itself opts into growing, or
+            // because a sibling rule makes its parent a flex container — see
+            // this file's "Widened for t2-pages" note. Either way, CSS
+            // Flexbox's automatic minimum size floors the item unless it
+            // bounds its own minimum — unless the item never shrinks at all
+            // (`flex-shrink: 0`), in which case the floor never applies. See
+            // hasZeroFlexShrink's doc comment.
+            (flexGrow(rule.body) > 0 || hasFlexContainerAncestor(rule.selector, sheet.rules)) &&
+            !boundsItsOwnMinimumSize(rule.body) &&
+            !hasZeroFlexShrink(rule.body),
+        )
         .filter(
           (rule) =>
             !ITEMS_ALLOWED_TO_FLOOR_AT_THEIR_CONTENT.some(
@@ -361,6 +547,100 @@ describe("the minimum-size check has teeth", () => {
     expect(boundsItsOwnMinimumSize("min-width: auto;")).toBe(false);
     expect(boundsItsOwnMinimumSize("overflow: hidden;")).toBe(true);
     expect(boundsItsOwnMinimumSize("overflow: visible;")).toBe(false);
+  });
+
+  it("flags a flex child that inherits its flex-item-ness from its parent's display: flex and declares no flex property of its own — the exact shape .metaRow dt/dd shipped in", () => {
+    const shipped = `.metaRow { display: flex; justify-content: space-between; } .metaRow dt { font-weight: 500; } .metaRow dd { margin: 0; }`;
+    expect(check(shipped)).toEqual(["probe.module.css .metaRow dd", "probe.module.css .metaRow dt"]);
+  });
+
+  it("accepts the same shape once each child bounds its own minimum", () => {
+    const fixed = `.metaRow { display: flex; justify-content: space-between; } .metaRow dt { font-weight: 500; min-width: 0; } .metaRow dd { margin: 0; min-width: 0; }`;
+    expect(check(fixed)).toEqual([]);
+  });
+
+  it("also accepts the label/detail shape purchase-panel.module.css actually ships: the label never shrinks, only the detail does", () => {
+    // The shape min-width: 0 alone produced: .metaRow dt squeezed to a
+    // handful of pixels and wrapping "Availability" into "Availab"/"ility"
+    // on two lines, colliding with .metaRow dd's own first line — legible
+    // boxes that don't overlap by rect, illegible text that does. A label
+    // that never shrinks (flex-shrink: 0) keeps its own content width
+    // instead, and only the detail — ordinary prose, meant to wrap — grows
+    // and shrinks.
+    const shipped = `.metaRow { display: flex; justify-content: space-between; gap: 1rem; } .metaRow dt { flex: 0 0 auto; } .metaRow dd { flex: 1 1 auto; min-width: 0; text-align: right; }`;
+    expect(check(shipped)).toEqual([]);
+  });
+
+  it("hasZeroFlexShrink reads the longhand, the flex shorthand's second number, and flex: none", () => {
+    expect(hasZeroFlexShrink("flex-shrink: 0;")).toBe(true);
+    expect(hasZeroFlexShrink("flex-shrink: 1;")).toBe(false);
+    expect(hasZeroFlexShrink("flex: 0 0 auto;")).toBe(true);
+    expect(hasZeroFlexShrink("flex: 1 1 auto;")).toBe(false);
+    expect(hasZeroFlexShrink("flex: none;")).toBe(true);
+    expect(hasZeroFlexShrink("flex: 1 1 12rem;")).toBe(false);
+    // A basis-only shorthand's first token is a length/percentage, not the
+    // grow factor — must not be misread as "shrink is the second token".
+    expect(hasZeroFlexShrink("flex: 12rem;")).toBe(false);
+    expect(hasZeroFlexShrink("color: red;")).toBe(false);
+  });
+
+  it("does not flag a plain descendant selector whose ancestor is not a flex container", () => {
+    expect(check(`.list { display: block; } .list li { margin: 0; }`)).toEqual([]);
+  });
+
+  it("reads the immediate ancestor selector, combinators included", () => {
+    expect(immediateAncestorSelector(".metaRow dt")).toBe(".metaRow");
+    expect(immediateAncestorSelector(".metaRow > dt")).toBe(".metaRow");
+    expect(immediateAncestorSelector(".metaRow")).toBeUndefined();
+  });
+});
+
+describe("no bare <number>fr grid-template-columns track — the grid equivalent of an unbounded flex item", () => {
+  function bareFrOffenders(
+    sheets: readonly { readonly name: string; readonly rules: readonly Rule[] }[],
+  ): readonly string[] {
+    return sheets
+      .flatMap((sheet) =>
+        sheet.rules
+          .filter((rule) => bareFrTracks(rule.body).length > 0)
+          .map((rule) => `${sheet.name} ${rule.selector}: ${bareFrTracks(rule.body).join(", ")}`),
+      )
+      .toSorted();
+  }
+
+  it("every grid-template-columns declaration under src/ wraps its fr tracks in minmax()", () => {
+    expect(
+      bareFrOffenders(stylesheets),
+      "a bare `1fr` track is shorthand for `minmax(auto, 1fr)`, which floors the track at its content's " +
+        "min-content size exactly like an unbounded flex item — wrap it as `minmax(0, 1fr)` (or an " +
+        "explicit `minmax(<length>, 1fr)`) so the floor is chosen rather than inherited",
+    ).toEqual([]);
+  });
+
+  it("has teeth: flags a bare fr track", () => {
+    const shipped = `.grid { display: grid; grid-template-columns: 1fr 1fr; }`;
+    expect(bareFrOffenders([{ name: "probe.module.css", rules: parseRules(stripComments(shipped)) }])).toEqual([
+      "probe.module.css .grid: 1fr, 1fr",
+    ]);
+  });
+
+  it("accepts a track wrapped in minmax(), with a zero or a length floor", () => {
+    const fixed = `.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, 1fr); }`;
+    expect(bareFrOffenders([{ name: "probe.module.css", rules: parseRules(stripComments(fixed)) }])).toEqual([]);
+  });
+
+  it("accepts a track wrapped in repeat(), which nests its own minmax()", () => {
+    const fixed = `.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }`;
+    expect(bareFrOffenders([{ name: "probe.module.css", rules: parseRules(stripComments(fixed)) }])).toEqual([]);
+  });
+
+  it("tokenises grid-template-columns at the top level only, treating a minmax()/repeat() call as one token", () => {
+    expect(topLevelTokens("minmax(0, 1fr) minmax(14rem, 1fr)")).toEqual([
+      "minmax(0, 1fr)",
+      "minmax(14rem, 1fr)",
+    ]);
+    expect(topLevelTokens("1fr 1fr").length).toBe(2);
+    expect(topLevelTokens("repeat(auto-fit, minmax(14rem, 1fr))").length).toBe(1);
   });
 });
 

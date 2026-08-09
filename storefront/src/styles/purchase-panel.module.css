@@ -55,11 +55,32 @@
 
 .metaRow dt {
   font-weight: var(--font-weight-medium);
+  /*
+   * `.metaRow` is `display: flex; justify-content: space-between;`, so `dt`
+   * and `dd` are flex items purely by inheriting that from their parent —
+   * neither declares a `flex` property of its own. A flex item's default
+   * `min-width: auto` floors it at its own min-content width, so a long
+   * term/detail pair can force this row wider than the purchase panel —
+   * exactly as it did for the newsletter field (see
+   * `tests/mockup-layout.test.ts`).
+   *
+   * The fix is not `min-width: 0` on both: that was tried first, and it
+   * squeezed the *label* ("Availability") down to a handful of pixels,
+   * wrapping it "Availab"/"ility" across two lines that collided with
+   * `dd`'s own first line — legible boxes, illegible text. A label is a
+   * short, fixed phrase that should never wrap; the detail beside it is
+   * ordinary prose that safely can. So the label opts out of shrinking
+   * altogether (kept at its own content width) and the detail is the one
+   * that grows, shrinks and wraps.
+   */
+  flex: 0 0 auto;
 }
 
 .metaRow dd {
   margin: 0;
   text-align: right;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .actions {
