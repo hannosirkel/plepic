@@ -19,8 +19,16 @@ bash scripts/validate
 
 Dependency installation is intentionally separate from validation so repeated
 validation runs do not reinstall packages. `scripts/validate` runs lint
-(`eslint`), a type-check (`tsc --noEmit`), and the unit test suite (`vitest
-run`).
+(`eslint`, over the whole repository), a type-check (`tsc --noEmit`), and the
+unit test suite (`vitest run`).
+
+The type-check only covers `scripts/**/*.ts` and `vitest.config.ts` today —
+`tsconfig.json`'s `include` is scoped there deliberately, because Next.js
+scaffolds its own `tsconfig.json` and the storefront workspace will realistically
+get its own project reference rather than being folded into this one. A type
+error inside `storefront/` will not fail `npm run typecheck` until that
+workspace wires up its own type-check (see `AGENTS.md` for the same note next
+to the TypeScript version pin).
 
 ## Enabling the pre-commit hook
 

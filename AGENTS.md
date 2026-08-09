@@ -23,6 +23,20 @@ the canonical validation command before handoff.
 - Review the complete diff and outgoing history before push. Never bypass the
   pre-commit secret scan.
 
+## Toolchain
+
+The root `typescript` devDependency is pinned to `^5.9.3`, not the newer `^7.x`
+line Servitium uses. `typescript-eslint` declares
+`peerDependencies.typescript: ">=4.8.4 <6.1.0"`, and no published
+`typescript-eslint` release accepts TypeScript 7 yet. Servitium gets away with
+`^7.0.2` only because it has no ESLint config at all. Bumping this repository's
+root `typescript` to match Servitium's version will break `npm run lint` with a
+peer-dependency error until `typescript-eslint` catches up — check its
+supported range before bumping. This pin is scoped to the root tooling only;
+the storefront workspace chooses its own TypeScript version when it lands (see
+`README.md` for why its type-check is not yet covered by the root
+`tsconfig.json`).
+
 ## Architecture
 
 `plepic` is an npm workspace root for the Plepic Games storefront:
