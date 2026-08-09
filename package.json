@@ -1,0 +1,26 @@
+{
+  "name": "plepic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plepic Games storefront and backend monorepo",
+  "type": "module",
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "workspaces": [
+    "storefront"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "eslint": "^10.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  }
+}
