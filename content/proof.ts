@@ -17,17 +17,28 @@ import type { ProofStrip, Quotation } from "./schema.js";
  * real, will the components be cheap, and how is this different from the small
  * boxes I already own. The strip answers them in that order and then stops.
  *
- * What is deliberately absent: the funding percentage and the funding duration
- * the plan suggested as candidates. Neither is in the evidence manifest, so
- * neither ships. They are recorded in `NOT_PUBLISHABLE` in `evidence.ts` and
- * the test suite fails the build if either appears in a content file.
+ * The Kickstarter figures — funded in two hours, 4,606% of goal — sit in the
+ * *detail* of the first item, never in a headline. That is the operator's
+ * instruction and it is also the right reading of them: their provenance is
+ * thinner than the rest, and a percentage that size invites the reader to
+ * suspect the arithmetic rather than the game. What they are genuinely good for
+ * is that a visitor can go and look. So the item carries a link to the campaign,
+ * and the model refuses to let it not: E14 and E15 are `supportingOnly`, and a
+ * source with `checkableAt` obliges the item that cites it to link there.
  */
 export const proofStrip: ProofStrip = {
   items: [
     {
       source: "E5",
+      supporting: ["E14", "E15"],
       headline: "Funded by over 2,000 backers",
-      detail: "The campaign funded, the game was printed, and the backers got their copies.",
+      detail:
+        "It hit its target in two hours and closed at 4,606% of it. Then the game was printed, boxed and posted, and the backers got their copies.",
+      link: {
+        label: "See the campaign",
+        target: { kind: "external", to: "kickstarter-campaign" },
+        accessibleLabel: "See the Lunar Base Kickstarter campaign",
+      },
     },
     {
       source: "E6",

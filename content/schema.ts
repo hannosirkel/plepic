@@ -41,7 +41,7 @@ import type { AnchorId, ExternalTargetId, RouteId } from "./routes.js";
 /**
  * Identifiers of entries in the operator's ignored evidence manifest.
  *
- * `E1`–`E13` key one-to-one to numbered entries there. `official-wording`,
+ * `E1`–`E15` key one-to-one to numbered entries there. `official-wording`,
  * `rulebook-victory-conditions`, `components` and `rulebook` key to its
  * verbatim sections. **Every member of this union has an entry behind it.** An
  * id with nothing behind it falsifies the model's entire guarantee, which is
@@ -63,6 +63,8 @@ export type SourceId =
   | "E11"
   | "E12"
   | "E13"
+  | "E14"
+  | "E15"
   | "official-wording"
   | "rulebook-victory-conditions"
   | "components"
@@ -89,8 +91,7 @@ export type CommercialTermId =
   | "shipping-charge"
   | "duties-outside-eu"
   | "withdrawal-terms"
-  | "return-postage"
-  | "packaged-dimensions";
+  | "return-postage";
 
 /** What body copy may cite: evidence, or a commitment we are making. */
 export type Attribution = SourceId | CommercialTermId;
@@ -127,6 +128,19 @@ export interface Source {
    * headline figure — it stands on the operator's word alone.
    */
   readonly unverifiableByVisitor?: boolean;
+  /**
+   * Where a visitor can check the claim. When a proof item cites a source that
+   * carries this, the item must link there — a checkable claim that is not
+   * linked has thrown away the only thing that makes it better than an
+   * assertion.
+   */
+  readonly checkableAt?: ExternalTargetId;
+  /**
+   * True when the source may support a claim but never head one. Enforced: no
+   * `ProofItem.source` may name a supporting-only source, so the restriction
+   * survives whoever edits the strip next.
+   */
+  readonly supportingOnly?: boolean;
   /** Anything a writer must not do with this source. */
   readonly caution?: string;
 }
@@ -313,11 +327,19 @@ export interface Quotation {
 }
 
 export interface ProofItem {
+  /** The evidence behind the headline. Never a supporting-only source. */
   readonly source: SourceId;
   /** The short claim a visitor reads first. */
   readonly headline: string;
   /** One line of substance under it. */
   readonly detail: string;
+  /**
+   * Evidence used inside `detail` and never in the headline. This is how a
+   * figure supports a claim without leading it.
+   */
+  readonly supporting?: readonly SourceId[];
+  /** Where the visitor goes to check it. Required when a cited source is checkable. */
+  readonly link?: Link;
 }
 
 export interface RejectedProof {

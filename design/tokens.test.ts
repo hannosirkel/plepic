@@ -145,24 +145,98 @@ function contrast(foreground: string, background: string): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-describe("layer switching", () => {
-  it("declares the component layer on every layer selector, not only :root", () => {
-    const layerSelectors = new Set<string>();
+/** Every `[data-layer="…"]` selector the file uses. */
+const layerSelectors = [
+  ...new Set(
+    blocks.flatMap((block) =>
+      block.selectors.filter((selector) => selector.startsWith("[data-layer=")),
+    ),
+  ),
+].toSorted();
+
+/** The blocks that define a palette: exactly one layer selector, nothing else. */
+const paletteBlocks = blocks.filter(
+  (block) => block.selectors.length === 1 && block.selectors[0]?.startsWith("[data-layer=") === true,
+);
+
+function referencedTokens(value: string): readonly string[] {
+  return [...value.matchAll(/var\((--[\w-]+)\)/g)].map((match) => match[1] ?? "");
+}
+
+/**
+ * Every token whose value differs between layers.
+ *
+ * Seeded from the palette blocks — the tokens a layer actually redeclares — and
+ * closed transitively: a token that resolves through a layer-dependent token is
+ * itself layer-dependent, however many hops away. `--card-shadow` counts even
+ * though no palette block mentions it, because it reaches `--shadow-sm`.
+ */
+const layerDependent = (() => {
+  const dependent = new Set<string>();
+  for (const block of paletteBlocks) {
+    for (const name of block.declarations.keys()) dependent.add(name);
+  }
+
+  for (let pass = 0; pass < 32; pass += 1) {
+    let changed = false;
     for (const block of blocks) {
-      for (const selector of block.selectors) {
-        if (selector.startsWith("[data-layer=")) layerSelectors.add(selector);
+      for (const [name, value] of block.declarations) {
+        if (dependent.has(name)) continue;
+        if (referencedTokens(value).some((token) => dependent.has(token))) {
+          dependent.add(name);
+          changed = true;
+        }
       }
     }
+    if (!changed) break;
+  }
 
-    const componentBlock = blocks.find((block) => block.declarations.has("--card-bg"));
-    expect(componentBlock, "no block declares --card-bg").toBeDefined();
+  return dependent;
+})();
 
-    for (const selector of layerSelectors) {
-      expect(
-        componentBlock?.selectors,
-        `${selector} is missing from the component-token block, so its components will render in the publisher palette`,
-      ).toContain(selector);
+describe("layer switching", () => {
+  it("finds the layers it is meant to check", () => {
+    expect(layerSelectors).toEqual(['[data-layer="lunar"]', '[data-layer="publisher"]']);
+    expect(paletteBlocks).toHaveLength(2);
+    expect(layerDependent.has("--card-bg")).toBe(true);
+    expect(layerDependent.has("--radius-md")).toBe(false);
+  });
+
+  /**
+   * The guard that matters, and the one the first version of this file got
+   * wrong by anchoring on whichever block happened to declare `--card-bg`. A
+   * *new* component block declared on `:root` alone was checked by nothing, so
+   * a tooltip added the way a future author would add one reintroduced the
+   * original bug with the suite green.
+   *
+   * The rule is now about the declarations, not about a named block: if a block
+   * resolves anything through a token that differs between layers, that block
+   * must be declared on every layer, or its output is frozen at whatever the
+   * root resolved to.
+   */
+  it("declares every layer-dependent block on every layer selector", () => {
+    const offenders: string[] = [];
+
+    for (const block of blocks) {
+      const dependentDeclarations = [...block.declarations].filter(([, value]) =>
+        referencedTokens(value).some((token) => layerDependent.has(token)),
+      );
+      if (dependentDeclarations.length === 0) continue;
+
+      const missing = layerSelectors.filter((selector) => !block.selectors.includes(selector));
+      if (missing.length === 0) continue;
+
+      offenders.push(
+        `{ ${block.selectors.join(", ")} } declares ${dependentDeclarations
+          .map(([name]) => name)
+          .join(", ")} but is missing ${missing.join(", ")}`,
+      );
     }
+
+    expect(
+      offenders,
+      "a block that resolves through a layer-dependent token must be declared on every layer, or it inherits the root's already-resolved value",
+    ).toEqual([]);
   });
 
   it("gives the two layers genuinely different component surfaces", () => {
@@ -188,16 +262,28 @@ describe("layer switching", () => {
   });
 });
 
-describe("the component layer holds no literal colour", () => {
-  it("expresses every component colour through a layer-1 token", () => {
-    const componentBlock = blocks.find((block) => block.declarations.has("--card-bg"));
-    const literals: string[] = [];
+describe("literal colours stay in the palette blocks", () => {
+  /**
+   * A palette block is allowed a raw colour — that is what a palette is. Every
+   * other block must express colour through a token, so that adding a layer
+   * cannot leave a hardcoded value behind. Identified by whether the block
+   * declares `--surface`, rather than by name, so a new component block gets
+   * checked without anyone remembering to list it.
+   */
+  it("allows a raw colour only where a palette is defined", () => {
+    const offenders: string[] = [];
 
-    for (const [name, value] of componentBlock?.declarations ?? new Map<string, string>()) {
-      if (/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i.test(value)) literals.push(`${name}: ${value}`);
+    for (const block of blocks) {
+      if (block.declarations.has("--surface")) continue;
+
+      for (const [name, value] of block.declarations) {
+        if (/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i.test(value)) {
+          offenders.push(`{ ${block.selectors.join(", ")} } ${name}: ${value}`);
+        }
+      }
     }
 
-    expect(literals).toEqual([]);
+    expect(offenders).toEqual([]);
   });
 });
 
@@ -245,6 +331,8 @@ const PAIRS: readonly {
   { label: "secondary button", foreground: "--button-secondary-fg", background: "--surface", minimum: 4.5 },
   { label: "secondary button hover", foreground: "--button-secondary-fg-hover", background: "--button-secondary-bg-hover", minimum: 4.5 },
   { label: "quiet button", foreground: "--button-quiet-fg", background: "--card-bg", minimum: 4.5 },
+  { label: "quiet button hover", foreground: "--button-quiet-fg-hover", background: "--card-bg", minimum: 4.5 },
+  { label: "selected text", foreground: "--selection-fg", background: "--selection-bg", minimum: 4.5 },
   { label: "disabled button (SC 1.4.3 exempt)", foreground: "--button-disabled-fg", background: "--button-disabled-bg", minimum: 3 },
   { label: "secondary button edge", foreground: "--button-secondary-border", background: "--surface", minimum: 3 },
   { label: "control edge", foreground: "--border-interactive", background: "--surface", minimum: 3 },
@@ -265,6 +353,26 @@ describe("contrast, on both layers", () => {
       });
     }
   }
+
+  /**
+   * Keeps the pair list honest as the system grows. A future `--tooltip-fg`
+   * that nobody added a row for would otherwise switch layers correctly and
+   * still be unreadable, because nothing would ever measure it.
+   */
+  it("measures every foreground token the file declares", () => {
+    const declared = new Set<string>();
+    for (const block of blocks) {
+      for (const name of block.declarations.keys()) declared.add(name);
+    }
+
+    const foregrounds = [...declared].filter(
+      (name) => /-fg(-[a-z]+)*$/.test(name) || (name.endsWith("-color") && !name.includes("border")),
+    );
+    const measured = new Set(PAIRS.map((pair) => pair.foreground));
+    const unmeasured = foregrounds.filter((name) => !measured.has(name)).toSorted();
+
+    expect(unmeasured, "add a row to PAIRS, and to design/README.md's table").toEqual([]);
+  });
 
   it("binds no text token to a colour the record restricts to non-text use", () => {
     const restricted: Record<Layer, readonly string[]> = {

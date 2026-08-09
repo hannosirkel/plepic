@@ -19,7 +19,10 @@ test makes the rest **loud**.
 | A hostname | Nothing accepts a host. The canonical host, the base URL and every external URL come from configuration. `content.test.ts` additionally fails on any hostname-shaped string a content module *exports*, and on one in its source text. |
 | A price | There is no amount field, no currency field and no numeric price anywhere. Copy that must state a price writes `{price}`, `{priceLine}` or `{taxNote}`, all declared as resolving from the **catalogue**. The scan fails on a currency symbol, a currency code, the word *euro*, or a decimal money amount. |
 | An unkeyed proof claim | `Quotation` and `ProofItem` both require a `SourceId`, and `SourceId` is a closed union of ids that exist in the evidence manifest. A claim with no source does not compile. |
-| Our own commitments passed off as proof | The dispatch window, delivery estimates and return terms are `CommercialTermId`s, a **separate union**. `ProofItem` and `Quotation` take a `SourceId`, so "dispatched within 3 business days" cannot enter the proof strip at all. |
+| Our own commitments passed off as proof | The dispatch window, delivery estimates and return terms are `CommercialTermId`s, a **separate union**. `ProofItem` and `Quotation` take a `SourceId`, so "dispatched within 3 business days" cannot enter the proof strip at all. A test also fails on a commercial term nothing cites — an uncited promise is one the site does not actually make. |
+| A weakly-provenanced figure leading the page | A `Source` may be marked `supportingOnly`. `ProofItem.source` may not name one, so it can appear in a detail line and nowhere else. |
+| A checkable claim shipped without the link | A `Source` may carry `checkableAt`. Any proof item citing one must link there, and the test checks the link points at that target. |
+| A string hidden from the scan | The value walk uses `Reflect.ownKeys` and handles `Map` and `Set`, and content modules may export **no functions at all** — the one place a computed string could hide. `schema.ts` is the sole exception and holds no copy. |
 | An award | `SourcePresentation` has no `"award"` member. The one review mention the site carries is a pick in a video, and the model gives nobody a way to promote it. |
 | More than three proof items | `ProofStripItems` is a tuple type: exactly two or exactly three. A fourth is a compile error, not a review comment. |
 | Campaign-state language | `CAMPAIGN_STATE_PHRASES` in `evidence.ts` is checked against every content file. |
@@ -44,11 +47,18 @@ file type nobody anticipated fails the build instead of skipping the scan
 silently. A source-text pass is kept as a second line, because a hostname in a
 comment still leaks and comments are not values.
 
-The guards are exercised, not assumed. Dropping the reviewer's own probes into a
-clean checkout — `content/promo.json`, `content/blocks/Hero.tsx`,
-`content/blocks/Sneak.ts` with concatenated and character-code literals, and a
-`.yaml` nobody planned for — produces **26 failures** across the value scan, the
-source scan and the file-coverage guard.
+The walk itself is written not to be dodged: `Reflect.ownKeys` rather than
+`Object.values`, so symbol-keyed and non-enumerable properties are seen; `Map`
+and `Set` walked explicitly, since neither exposes its contents as own
+properties; a throwing getter skipped rather than allowed to abort the walk; and
+functions collected rather than called, because **a content package exports
+none**, which is a better rule than trying to invoke them safely.
+
+The guards are exercised, not assumed. A `.json`, a `.tsx`, a `.yaml` nobody
+planned for, and a module hiding a character-code-built URL behind a function, a
+`Map`, a `Set`, a symbol key, a non-enumerable property and a getter that throws
+all fail the build — the last of those on six tests at once, one of which is
+simply that it exported a function.
 
 ### The one gap, stated honestly
 
@@ -66,6 +76,7 @@ carries the load alone.
 | `routes.ts` | Every route, anchor and named external target. The single source of truth for paths |
 | `schema.ts` | The content model and the placeholder registry |
 | `evidence.ts` | The evidence registry, the commercial-commitment registry, and the two blocklists. **Not re-exported from `index.ts`** — the blocklists contain the strings the site must never show, and they have no business in a bundle |
+| `schema.ts` | The model. The only content module permitted to export a function, and it holds no copy |
 | `publisher.ts` | Publisher sentence, story, timeline, team, newsletter |
 | `lunar-base.ts` | The one canonical set of product copy |
 | `proof.ts` | The proof strip, its rejections, and the quotations |

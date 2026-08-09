@@ -102,24 +102,79 @@ function listContentFiles(): readonly ContentFile[] {
 
 const files = listContentFiles();
 
-/** Every string reachable from `value`, however deeply nested. */
-function stringsIn(value: unknown, seen = new Set<object>()): readonly string[] {
-  if (typeof value === "string") return [value];
-  if (typeof value !== "object" || value === null) return [];
-  if (seen.has(value)) return [];
+interface Walked {
+  readonly strings: string[];
+  /** Where a function was found, so a failure names the export. */
+  readonly functions: string[];
+}
+
+/**
+ * Every string reachable from `value`, and every function on the way.
+ *
+ * `Reflect.ownKeys` rather than `Object.values` so symbol-keyed and
+ * non-enumerable properties are seen, and `Map`/`Set` are walked explicitly
+ * because neither exposes its contents as own properties. A getter that throws
+ * is skipped rather than allowed to abort the walk.
+ *
+ * Functions are collected rather than called. A content package should not
+ * export any, which is both simpler to assert and a better rule than trying to
+ * invoke them safely.
+ */
+function walk(value: unknown, path: string, seen: Set<object>, out: Walked): void {
+  if (typeof value === "string") {
+    out.strings.push(value);
+    return;
+  }
+  if (typeof value === "function") {
+    out.functions.push(path);
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  if (seen.has(value)) return;
   seen.add(value);
 
-  const found: string[] = [];
-  for (const nested of Object.values(value as Record<string, unknown>)) {
-    found.push(...stringsIn(nested, seen));
+  if (value instanceof Map) {
+    let index = 0;
+    for (const [key, nested] of value) {
+      walk(key, `${path}.<mapKey ${index}>`, seen, out);
+      walk(nested, `${path}.<mapValue ${index}>`, seen, out);
+      index += 1;
+    }
+    return;
   }
-  return found;
+
+  if (value instanceof Set) {
+    let index = 0;
+    for (const nested of value) {
+      walk(nested, `${path}.<setValue ${index}>`, seen, out);
+      index += 1;
+    }
+    return;
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    let nested: unknown;
+    try {
+      nested = (value as Record<PropertyKey, unknown>)[key];
+    } catch {
+      continue;
+    }
+    walk(nested, `${path}.${String(key)}`, seen, out);
+  }
+}
+
+function walkModule(value: unknown): Walked {
+  const out: Walked = { strings: [], functions: [] };
+  walk(value, "", new Set<object>(), out);
+  return out;
 }
 
 interface ScannedFile {
   readonly name: string;
   /** Strings the module or data file actually exports. */
   readonly values: readonly string[];
+  /** Function exports found on the way, by path. */
+  readonly functions: readonly string[];
   /** Raw file text, comments included. */
   readonly source: string;
 }
@@ -130,12 +185,13 @@ for (const file of files) {
   const source = readFileSync(file.path, "utf8");
 
   if (file.kind === "module") {
-    const module: unknown = await import(pathToFileURL(file.path).href);
-    scanned.push({ name: file.name, values: stringsIn(module), source });
+    const walked = walkModule(await import(pathToFileURL(file.path).href));
+    scanned.push({ name: file.name, values: walked.strings, functions: walked.functions, source });
   } else if (file.kind === "data") {
-    scanned.push({ name: file.name, values: stringsIn(JSON.parse(source)), source });
+    const walked = walkModule(JSON.parse(source));
+    scanned.push({ name: file.name, values: walked.strings, functions: walked.functions, source });
   } else if (file.kind === "document") {
-    scanned.push({ name: file.name, values: [], source });
+    scanned.push({ name: file.name, values: [], functions: [], source });
   }
 }
 
@@ -199,6 +255,40 @@ describe("file coverage", () => {
 
   it("renders no MDX", () => {
     expect(files.filter((file) => file.name.endsWith(".mdx"))).toEqual([]);
+  });
+
+  /**
+   * A content package exports data. A function is a place a string can hide
+   * from the walk above, and there is no honest reason for copy to be computed,
+   * so the rule is simply that content exports none.
+   *
+   * `schema.ts` is the one exception: it holds the model's placeholder helpers
+   * and no copy. `index.ts` inherits them by re-export, and is held to
+   * introducing none of its own.
+   */
+  it("exports no functions outside the model", () => {
+    const offenders = scanned
+      .filter((file) => file.name !== "schema.ts" && file.name !== "index.ts")
+      .flatMap((file) => file.functions.map((path) => `${file.name}${path}`));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("lets the barrel re-export the model's helpers and add none of its own", () => {
+    const names = (file: string) =>
+      new Set(
+        (scanned.find((candidate) => candidate.name === file)?.functions ?? []).map(
+          (path) => path.split(".").pop() ?? path,
+        ),
+      );
+
+    const model = names("schema.ts");
+    expect(model.size).toBeGreaterThan(0);
+    for (const exported of names("index.ts")) {
+      expect(model.has(exported), `index.ts exports ${exported}, which schema.ts does not`).toBe(
+        true,
+      );
+    }
   });
 });
 
@@ -299,6 +389,19 @@ describe("evidence", () => {
     }
   });
 
+  it("cites every commercial term somewhere in the copy", () => {
+    const corpus = scanned
+      .filter((file) => file.name !== "evidence.ts")
+      .flatMap((file) => file.values);
+    const cited = new Set(corpus);
+
+    const uncited = Object.keys(COMMERCIAL_TERMS).filter((term) => !cited.has(term)).toSorted();
+    expect(
+      uncited,
+      "an uncited commercial term is a promise nothing on the site makes — delete it or cite it",
+    ).toEqual([]);
+  });
+
   it("no source may be presented as an award, because that value does not exist", () => {
     for (const source of Object.values(SOURCES)) {
       expect(source.presentation).not.toContain("award");
@@ -356,6 +459,43 @@ describe("the proof strip is chosen, not accumulated", () => {
     const commitments = new Set<string>(Object.keys(COMMERCIAL_TERMS));
     for (const item of proofStrip.items) {
       expect(commitments.has(item.source), `${item.source} is a commitment`).toBe(false);
+    }
+  });
+
+  it("never heads an item with a source that may only support one", () => {
+    for (const item of proofStrip.items) {
+      expect(
+        SOURCES[item.source].supportingOnly ?? false,
+        `${item.source} may support a claim but not head one`,
+      ).toBe(false);
+    }
+  });
+
+  it("keys every supporting figure to the registry", () => {
+    for (const item of proofStrip.items) {
+      for (const support of item.supporting ?? []) {
+        expect(SOURCES[support], `unknown supporting source ${support}`).toBeDefined();
+      }
+    }
+  });
+
+  /**
+   * A claim a visitor can go and check is worth more than the figure in it.
+   * Throwing that away by not linking is the failure this prevents.
+   */
+  it("links any item whose evidence a visitor could check", () => {
+    for (const item of proofStrip.items) {
+      const ids: readonly SourceId[] = [item.source, ...(item.supporting ?? [])];
+      const checkable = ids
+        .map((id) => SOURCES[id].checkableAt)
+        .filter((target): target is NonNullable<typeof target> => target !== undefined);
+
+      if (checkable.length === 0) continue;
+
+      expect(item.link, `${item.source} cites checkable evidence but offers no link`).toBeDefined();
+      expect(item.link?.target.kind).toBe("external");
+      const target = item.link?.target;
+      expect(target?.kind === "external" ? target.to : undefined).toBe(checkable[0]);
     }
   });
 

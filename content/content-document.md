@@ -62,9 +62,13 @@ That string never appears in a content file — the figure is **E13**, and E13's
 own manifest entry records that it is delivered from configuration rather than
 written down. Price in copy is a `{priceLine}` placeholder resolved from the
 catalogue, and the homepage's *Buy for {price}* call to action resolves the same
-way. Stock is unlimited and unmanaged, so
-availability is the phrase **In stock** and never a count; a number would be a
-fabrication and a low-stock nudge would be a lie.
+way.
+
+Stock is unlimited and unmanaged, so availability is the phrase **In stock** and
+never a count; a number would be a fabrication and a low-stock nudge would be a
+lie. The purchase panel says so outright — *"we do not run a stock counter, so
+nothing on this page will ever tell you to hurry"* — because refusing the
+false-scarcity pattern in public is worth more than quietly not using it.
 
 ## Player count, playtime, age
 

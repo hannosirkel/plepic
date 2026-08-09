@@ -16,22 +16,44 @@ import type {
   Statement,
 } from "./schema.js";
 
-/** Official wording, verbatim. The one-sentence pitch. */
+/**
+ * The hero, in three lines, in this order. The order is the decision; the
+ * wording follows from it.
+ *
+ * 1. {@link pitch} — what the thing is. Official wording, first sentence,
+ *    verbatim. A visitor cannot be told why something is good before being told
+ *    what it is, and nothing is gained by rewriting a sentence this clear.
+ * 2. {@link differentiator} — why it is not the other ten small boxes. This is
+ *    the objection that stops the purchase, so it goes where a visitor actually
+ *    reaches it rather than into a feature list further down.
+ * 3. {@link heroFacts} — two figures.
+ *
+ * The official wording's second sentence is deliberately **not** used. "It's
+ * fast paced, medium-light weight, portable and easy to set up" is four
+ * adjectives where facts belong: "medium-light weight" is jargon a general
+ * buyer cannot parse, and "fast paced" is a vaguer version of a number we have.
+ * Line 3 states the figures those adjectives were gesturing at. "Portable" is
+ * not lost either — it becomes {@link travelsWell}, with the measurements.
+ */
 export const pitch: Statement = {
-  text: "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base. It's fast paced, medium-light weight, portable and easy to set up.",
+  text: "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base.",
   source: "official-wording",
 };
 
-/**
- * The line that answers "how is this different from the ten small boxes I
- * already own?" It sits directly under the pitch, high on the page, because
- * that objection is the one that stops the purchase and a features list is too
- * late to answer it.
- */
 export const differentiator: Statement = {
   text: "Four ways to win, all live at once — and agents you can send into someone else's base to slow them down.",
   source: "official-wording",
 };
+
+/**
+ * Two figures, each keyed separately, because they come from different manifest
+ * entries and a single sentence carrying both would have to cite one and mean
+ * two.
+ */
+export const heroFacts: readonly Statement[] = [
+  { text: "About a minute to set up.", source: "E11" },
+  { text: "About 30 minutes to play.", source: "E10" },
+];
 
 /** Official wording, verbatim. Replayability. */
 export const replayability: Statement = {
@@ -210,9 +232,21 @@ export const purchase = {
   priceLine: "{priceLine}",
   taxNote: "{taxNote}",
   availability: "In stock",
-  dispatchNote: "Dispatched within 3 business days.",
-  dutiesNote:
-    "Orders outside the EU may attract import duties and handling fees on arrival, which are payable by the recipient.",
+  notes: [
+    {
+      term: "Availability",
+      detail:
+        "In stock, and staying that way. We do not run a stock counter, so nothing on this page will ever tell you to hurry.",
+      source: "stock-policy",
+    },
+    { term: "Dispatch", detail: "Dispatched within 3 business days.", source: "dispatch-window" },
+    {
+      term: "Duties",
+      detail:
+        "Outside the EU, import duties and handling are charged on arrival by the destination country and are payable by the recipient.",
+      source: "duties-outside-eu",
+    },
+  ] satisfies readonly ListItem[],
   callsToAction: [
     { label: "Add to basket", emphasis: "primary", target: { kind: "route", to: "cart" } },
     {
@@ -256,8 +290,9 @@ export const productFaq: readonly FaqEntry[] = [
   {
     question: "Does it work at two players? At six?",
     answer: [
-      "Both, and six is where it earns its place. Tabletop Games Blog: \"It's one of the few games I own that plays up to 6 players as well, so it's great for when you have a get together with friends or family, while not being a party game.\"",
+      "Both, and they are noticeably different games. At two, the supply holds five cards and there is one base across the table: it plays like a duel, and you can usually see what your opponent is reaching for.",
+      "At six, the supply holds nine and there are five other bases to build against, so the agent cards have far more to aim at. Six is the top of the range it was designed for, not the edge of it.",
     ],
-    source: "E4",
+    source: "rulebook",
   },
 ];

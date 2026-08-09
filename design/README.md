@@ -103,11 +103,12 @@ page is legible, and roughly the right shape, with no webfont at all.
 WCAG 2.2 AA is a build requirement: 4.5:1 for normal text, 3:1 for large text
 and for the boundaries of user-interface components and the focus indicator.
 
-Every ratio below was taken from the values **headless Chromium actually
-computes** for an element inside `<section data-layer="…">`, over this file —
-not from reading the token graph. `tokens.test.ts` re-derives the same pairs on
-every run with a resolver that models per-element custom-property substitution,
-and its output was checked against that browser: all 36 pairs match exactly.
+Every colour below is a value **headless Chromium actually computes** for an
+element inside `<section data-layer="…">`, over this file — not a value read off
+the token graph. `tokens.test.ts` re-derives them on every run with a resolver
+that models per-element custom-property substitution, and its output was
+cross-checked against that browser pair for pair. The test holds 32 pairs on
+each layer, 64 in all.
 
 ### Layer-1 text
 
@@ -150,6 +151,8 @@ component written as `color: var(--text)` on a card actually does.
 | secondary label on `--surface` | `#151B46` on `#F7F4EC` | 14.96 | `#D6D7E3` on `#080C23` | 13.51 |
 | secondary hover | `#151B46` on `#D9D4C6` | 11.11 | `#D6D7E3` on `#1B2256` | 10.42 |
 | quiet label on a card | `#186E82` on `#FFFFFF` | 5.85 | `#25A8C5` on `#111732` | 6.28 |
+| quiet label hover | `#151B46` on `#FFFFFF` | 16.44 | `#F2B63D` on `#111732` | 9.67 |
+| selected text | `#151B46` on `#F2B63D` | 9.03 | `#080C23` on `#25A8C5` | 6.89 |
 | **disabled label on disabled fill** | `#5A6084` on `#D9D4C6` | **4.12** | `#858AA2` on `#1B2256` | **4.37** |
 
 The primary call to action is orange with a navy label on **both** layers, so
@@ -222,14 +225,28 @@ are listed here so a reviewer can see exactly what was invented and why:
 `design/tokens.test.ts` runs under `bash scripts/validate` and:
 
 - parses `tokens.css`, resolves custom properties the way a browser does, and
-  asserts the component layer is declared on every layer selector;
-- checks all 36 foreground/background pairs above against their WCAG minimum,
-  on both layers;
-- rejects a literal colour in the layer-2 block;
+  asserts that **every block resolving through a layer-dependent token is
+  declared on every layer selector**;
+- checks all 32 foreground/background pairs against their WCAG minimum, on both
+  layers;
+- fails if a foreground token exists that no pair measures;
+- allows a raw colour only in a block that defines a palette;
 - rejects a text token bound to any value in the restricted table;
-- fails if any component token resolves to an unsubstituted `var()` on either
-  layer.
+- fails if any token resolves to an unsubstituted `var()` on either layer.
 
-Narrowing the layer-2 selector list back to `:root` reproduces nine failures,
-including the three mixed pairs that fall to 1.43:1. Anyone changing a colour
-updates the tables here in the same commit; the test catches it if they do not.
+The first of those is deliberately a rule about declarations rather than about a
+named block. An earlier version of this test looked up "the block that declares
+`--card-bg`" and checked its selector list, which meant a **new** component
+block added on `:root` alone was checked by nothing — a tooltip written the way
+a future author would write one reintroduced the original bug with the suite
+green. The set of layer-dependent tokens is now computed from the palette blocks
+and closed transitively, so any block that reaches one of them, however
+indirectly, must carry every layer selector.
+
+Adding that tooltip block now fails two tests; hardcoding a hex in it fails
+three. Narrowing the layer-2 selector list back to `:root` fails nine, including
+the three mixed pairs that drop to 1.43:1.
+
+Anyone changing a colour updates the tables here in the same commit. Anyone
+adding a foreground token is forced to add a pair, because the test fails until
+they do.

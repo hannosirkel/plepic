@@ -118,6 +118,26 @@ export const SOURCES: Readonly<Record<SourceId, Source>> = {
       "The authoritative public rulebook, verified byte-identical to the operator's master and served from this site.",
     presentation: ["statement"],
   },
+  E14: {
+    id: "E14",
+    kind: "commercial-fact",
+    summary: "The campaign funded in two hours.",
+    presentation: ["figure", "statement"],
+    supportingOnly: true,
+    checkableAt: "kickstarter-campaign",
+    caution:
+      "Provenance is thinner than the other commercial facts and the manifest says so: the figure appears in the plan's own text, not in the pitch deck, the retail letter, the origin story or the campaign-era copy, and the operator confirmed it against the Kickstarter page. That page refuses automated fetches, so nobody here has machine-verified it. Support a claim with it; never head one with it, and never state it without the campaign link beside it.",
+  },
+  E15: {
+    id: "E15",
+    kind: "commercial-fact",
+    summary: "The campaign reached 4,606% of its goal.",
+    presentation: ["figure", "statement"],
+    supportingOnly: true,
+    checkableAt: "kickstarter-campaign",
+    caution:
+      "Same provenance and the same restriction as E14. A percentage is the easiest number on this site to mistake for a headline; it is not one.",
+  },
   E9: {
     id: "E9",
     kind: "official-wording",
@@ -204,31 +224,23 @@ export const COMMERCIAL_TERMS: Readonly<
     summary: "The buyer bears the cost of returning the goods.",
     decidedIn: "Statutory default, pending operator confirmation",
   },
-  "packaged-dimensions": {
-    summary: "12 by 12 by 4 centimetres, 200 grams packaged.",
-    decidedIn: "Task 1, frozen commercial model",
-  },
 };
 
 /**
  * Claims that are **not** evidenced and therefore may never appear.
  *
- * The first two are the sharp ones. The plan itself suggests a funding
- * percentage and a funding duration as proof-strip candidates, and instructs
- * that every such figure is a candidate pending verification against the
- * manifest. This is that verification, and they fail it for different reasons:
- * the manifest's exclusion list names "the percentage of funding goal reached"
- * outright, while the duration is simply not in the manifest at all — and the
- * governing rule is that nothing may appear on the site that is not in it.
+ * The funding duration and the percentage of goal used to be on this list. They
+ * came off it when the manifest gained E14 and E15: the first revision refused
+ * them correctly against the manifest as it then stood, and the manifest was
+ * what changed. What stays barred is what the manifest still bars — the exact
+ * funding total in any currency, and any backer count tighter than "over 2000".
+ * Neither has a number to match on, so neither appears below; the list holds
+ * only phrases a writer might actually type.
  *
  * `content.test.ts` fails the build if any of these strings appears in a
  * content file.
  */
 export const NOT_PUBLISHABLE = [
-  "4,606",
-  "4606",
-  "funded in two hours",
-  "two hours",
   "out of 10",
   "score of",
   "award",
