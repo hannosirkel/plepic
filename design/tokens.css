@@ -1,0 +1,405 @@
+/*
+ * Plepic Games — design tokens.
+ *
+ * Three layers, and only one of them is allowed to appear in a component:
+ *
+ *   Layer 0  brand ramps      raw brand values. Never consumed by a component.
+ *   Layer 1  semantic tokens  --surface, --text, --accent, ... Re-declared per
+ *                             visual layer. THIS is what components consume.
+ *   Layer 2  component tokens buttons, cards, navigation, purchase panel.
+ *                             Expressed only in terms of layer 1.
+ *
+ * The publisher layer is the document default. A section switches to the
+ * Lunar Base layer by carrying `data-layer="lunar"`, which redeclares layer 1
+ * and nothing else — no component is forked, no class is swapped, no colour is
+ * passed as a prop:
+ *
+ *   <section data-layer="lunar"> ... </section>
+ *
+ * Contrast: every foreground/background pair intended for text meets WCAG 2.2
+ * AA. The measured ratios, and the pairs deliberately restricted to non-text
+ * use, are recorded in design/README.md. Do not introduce a colour here that
+ * is not recorded there.
+ */
+
+:root {
+  /* ---------------------------------------------------------------------
+   * Layer 0 — brand ramps
+   * ------------------------------------------------------------------ */
+
+  /* Publisher brand, from the Plepic Games brand colour file. */
+  --plepic-navy: #151b46;
+  --plepic-cyan: #25a8c5;
+  --plepic-orange: #f06432;
+  --plepic-gold: #f2b63d;
+  --plepic-offwhite: #f7f4ec;
+
+  /* Derived publisher shades. The three accent hues above are readable as
+   * fills but not as text on a light surface, so text-weight variants are
+   * derived here rather than improvised at the call site. */
+  --plepic-cyan-deep: #186e82;
+  --plepic-orange-deep: #b0431c;
+  --plepic-navy-70: #454b70;
+  --plepic-navy-55: #5a6084;
+  --plepic-sand: #d9d4c6;
+  --plepic-white: #ffffff;
+
+  /* Lunar Base brand, measured from the game site's compiled stylesheet. */
+  --lunar-void: #080c23;
+  --lunar-ink: #0d0d3b;
+  --lunar-deep: #0f1439;
+  --lunar-slate: #111732;
+  --lunar-nebula: #1b2256;
+  --lunar-accent: #386693;
+  --lunar-text: #d6d7e3;
+  --lunar-text-muted: #b8bad1;
+  --lunar-text-subtle: #858aa2;
+  --lunar-line-strong: #585c77;
+  --lunar-line: #2e3041;
+
+  /* ---------------------------------------------------------------------
+   * Typography
+   * ------------------------------------------------------------------ */
+
+  /* MADE Evolve Sans is licensed under a Fontspring webfont EULA. The
+   * @font-face declarations, the woff/woff2 files and the Fontspring
+   * commented header live with the storefront, not here — see design/README.md
+   * for the obligations. The fallback stack must stand on its own: if the
+   * face fails to load the page is still legible and still geometric. */
+  --font-sans:
+    "MADE Evolve Sans", "Avenir Next", "Century Gothic", "URW Gothic",
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    monospace;
+
+  /* Five weights ship. Nothing else may be requested; a browser asked for an
+   * absent weight will synthesise one, which the licence does not permit. */
+  --font-weight-thin: 100;
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+
+  /* Modular scale, 1.25 at the small end and fluid above --step-4 so a
+   * display heading does not need a media query. */
+  --step--2: 0.75rem;
+  --step--1: 0.875rem;
+  --step-0: 1rem;
+  --step-1: 1.125rem;
+  --step-2: 1.25rem;
+  --step-3: clamp(1.375rem, 1.25rem + 0.6vw, 1.5rem);
+  --step-4: clamp(1.625rem, 1.4rem + 1.1vw, 2rem);
+  --step-5: clamp(2rem, 1.6rem + 2vw, 2.75rem);
+  --step-6: clamp(2.5rem, 1.85rem + 3.2vw, 4rem);
+  --step-7: clamp(3rem, 2rem + 5vw, 5.5rem);
+
+  --line-height-tight: 1.1;
+  --line-height-heading: 1.2;
+  --line-height-body: 1.6;
+  --line-height-loose: 1.75;
+
+  --letter-spacing-display: -0.02em;
+  --letter-spacing-heading: -0.01em;
+  --letter-spacing-body: 0;
+  --letter-spacing-caps: 0.08em;
+
+  /* ---------------------------------------------------------------------
+   * Spacing, radii, shadow, motion
+   * ------------------------------------------------------------------ */
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+  --space-4xl: 8rem;
+
+  /* Vertical rhythm between full-width page sections. */
+  --section-space: clamp(var(--space-2xl), 6vw, var(--space-4xl));
+  --section-space-tight: clamp(var(--space-xl), 4vw, var(--space-2xl));
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  --border-width: 1px;
+  --border-width-thick: 2px;
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 360ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---------------------------------------------------------------------
+   * Content width
+   * ------------------------------------------------------------------ */
+
+  --content-measure: 38rem; /* prose column, ~70 characters */
+  --content-max: 72rem; /* default page column */
+  --content-wide: 84rem; /* hero and immersive sections */
+  --gutter: clamp(var(--space-sm), 4vw, var(--space-xl));
+
+  /* ---------------------------------------------------------------------
+   * Layer 1 — semantic tokens, publisher layer (the document default)
+   * ------------------------------------------------------------------ */
+
+  --surface: var(--plepic-offwhite);
+  --surface-raised: var(--plepic-white);
+  --surface-sunken: var(--plepic-navy);
+  --surface-decor: var(--plepic-sand);
+
+  --text: var(--plepic-navy);
+  --text-muted: var(--plepic-navy-70);
+  --text-subtle: var(--plepic-navy-55);
+  --text-on-surface-sunken: var(--plepic-offwhite);
+
+  /* Interactive text and icons. Distinct from --accent-fill, which is a
+   * background and is not readable as text. */
+  --accent: var(--plepic-cyan-deep);
+  --accent-hover: var(--plepic-navy);
+  --accent-fill: var(--plepic-orange);
+  --accent-fill-text: var(--plepic-navy);
+  --accent-quiet: var(--plepic-gold);
+  --accent-positive: var(--plepic-cyan-deep);
+
+  --border: var(--plepic-sand); /* decorative hairline */
+  --border-interactive: var(--plepic-navy-55); /* input and control edges */
+  --border-strong: var(--plepic-navy);
+
+  --focus-ring: var(--plepic-navy);
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+
+  --shadow-sm: 0 1px 2px rgb(21 27 70 / 8%);
+  --shadow-md: 0 6px 20px rgb(21 27 70 / 10%);
+  --shadow-lg: 0 18px 48px rgb(21 27 70 / 14%);
+  --scrim: rgb(21 27 70 / 55%);
+
+  --selection-bg: var(--plepic-gold);
+  --selection-fg: var(--plepic-navy);
+}
+
+/* The publisher layer is also addressable by name, so a section can switch
+ * back to it inside a Lunar Base region without resetting the document. */
+[data-layer="publisher"] {
+  --surface: var(--plepic-offwhite);
+  --surface-raised: var(--plepic-white);
+  --surface-sunken: var(--plepic-navy);
+  --surface-decor: var(--plepic-sand);
+
+  --text: var(--plepic-navy);
+  --text-muted: var(--plepic-navy-70);
+  --text-subtle: var(--plepic-navy-55);
+  --text-on-surface-sunken: var(--plepic-offwhite);
+
+  --accent: var(--plepic-cyan-deep);
+  --accent-hover: var(--plepic-navy);
+  --accent-fill: var(--plepic-orange);
+  --accent-fill-text: var(--plepic-navy);
+  --accent-quiet: var(--plepic-gold);
+  --accent-positive: var(--plepic-cyan-deep);
+
+  --border: var(--plepic-sand);
+  --border-interactive: var(--plepic-navy-55);
+  --border-strong: var(--plepic-navy);
+
+  --focus-ring: var(--plepic-navy);
+
+  --shadow-sm: 0 1px 2px rgb(21 27 70 / 8%);
+  --shadow-md: 0 6px 20px rgb(21 27 70 / 10%);
+  --shadow-lg: 0 18px 48px rgb(21 27 70 / 14%);
+  --scrim: rgb(21 27 70 / 55%);
+
+  --selection-bg: var(--plepic-gold);
+  --selection-fg: var(--plepic-navy);
+}
+
+/* ------------------------------------------------------------------------
+ * Layer 1 — semantic tokens, Lunar Base layer
+ *
+ * Same token names, different values. --lunar-nebula and --lunar-line* carry
+ * no text: they are graphic surfaces and dividers only, because their
+ * contrast against the layer's text tokens does not reach AA. That is why
+ * --surface-raised here is --lunar-slate and not --lunar-nebula.
+ * --------------------------------------------------------------------- */
+[data-layer="lunar"] {
+  --surface: var(--lunar-void);
+  --surface-raised: var(--lunar-slate);
+  --surface-sunken: var(--lunar-ink);
+  --surface-decor: var(--lunar-nebula);
+
+  --text: var(--lunar-text);
+  --text-muted: var(--lunar-text-muted);
+  --text-subtle: var(--lunar-text-subtle);
+  --text-on-surface-sunken: var(--lunar-text);
+
+  --accent: var(--plepic-cyan);
+  --accent-hover: var(--plepic-gold);
+  --accent-fill: var(--plepic-orange);
+  --accent-fill-text: var(--plepic-navy);
+  --accent-quiet: var(--plepic-gold);
+  --accent-positive: var(--plepic-gold);
+
+  --border: var(--lunar-line);
+  --border-interactive: var(--lunar-text-subtle);
+  --border-strong: var(--lunar-text);
+
+  --focus-ring: var(--plepic-gold);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 45%);
+  --shadow-lg: 0 22px 56px rgb(0 0 0 / 55%);
+  --scrim: rgb(0 0 0 / 65%);
+
+  --selection-bg: var(--plepic-cyan);
+  --selection-fg: var(--lunar-void);
+}
+
+/* ------------------------------------------------------------------------
+ * Layer 2 — component tokens
+ *
+ * Every value below resolves through a layer 1 token. **The selector list
+ * matters and is not decoration.** A custom property is resolved where it is
+ * declared, not where it is used: declared only on `:root`, `--card-bg` would
+ * compute once against the publisher palette and every `[data-layer="lunar"]`
+ * descendant would inherit that already-resolved colour — a white card on a
+ * near-black section, which is how this file shipped in its first revision.
+ * Repeating the block on each layer selector re-resolves it inside that layer.
+ *
+ * Consequence for anyone adding a third layer: add its selector here too, or
+ * its components silently render in the publisher palette. Adding a raw brand
+ * value or a literal colour in this section defeats the whole file.
+ * --------------------------------------------------------------------- */
+:root,
+[data-layer="publisher"],
+[data-layer="lunar"] {
+  /* Buttons ------------------------------------------------------------ */
+  --button-font-size: var(--step-0);
+  --button-font-weight: var(--font-weight-medium);
+  --button-letter-spacing: var(--letter-spacing-body);
+  --button-radius: var(--radius-pill);
+  --button-padding-block: var(--space-xs);
+  --button-padding-inline: var(--space-md);
+  --button-gap: var(--space-2xs);
+  --button-min-height: 2.75rem; /* 44px pointer target */
+  --button-border-width: var(--border-width-thick);
+  --button-transition: background-color var(--duration-fast)
+      var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+
+  --button-primary-bg: var(--accent-fill);
+  --button-primary-fg: var(--accent-fill-text);
+  --button-primary-border: var(--accent-fill);
+  --button-primary-bg-hover: var(--accent-quiet);
+  --button-primary-fg-hover: var(--accent-fill-text);
+
+  --button-secondary-bg: transparent;
+  --button-secondary-fg: var(--text);
+  --button-secondary-border: var(--border-strong);
+  --button-secondary-bg-hover: var(--surface-decor);
+  --button-secondary-fg-hover: var(--text);
+
+  --button-quiet-bg: transparent;
+  --button-quiet-fg: var(--accent);
+  --button-quiet-border: transparent;
+  --button-quiet-bg-hover: transparent;
+  --button-quiet-fg-hover: var(--accent-hover);
+
+  --button-disabled-bg: var(--surface-decor);
+  --button-disabled-fg: var(--text-subtle);
+  --button-disabled-border: var(--border);
+
+  /* Cards -------------------------------------------------------------- */
+  --card-bg: var(--surface-raised);
+  --card-fg: var(--text);
+  --card-border-color: var(--border);
+  --card-border-width: var(--border-width);
+  --card-radius: var(--radius-lg);
+  --card-padding: var(--space-md);
+  --card-padding-lg: var(--space-lg);
+  --card-gap: var(--space-sm);
+  --card-shadow: var(--shadow-sm);
+  --card-shadow-hover: var(--shadow-md);
+  --card-heading-size: var(--step-2);
+  --card-body-size: var(--step-0);
+  --card-meta-size: var(--step--1);
+  --card-meta-color: var(--text-subtle);
+
+  /* Navigation --------------------------------------------------------- */
+  --nav-height: 4.5rem;
+  --nav-height-compact: 3.5rem;
+  --nav-bg: var(--surface);
+  --nav-fg: var(--text);
+  --nav-fg-muted: var(--text-muted);
+  --nav-fg-active: var(--accent);
+  --nav-border-color: var(--border);
+  --nav-border-width: var(--border-width);
+  --nav-link-size: var(--step-0);
+  --nav-link-weight: var(--font-weight-medium);
+  --nav-link-gap: var(--space-md);
+  --nav-link-padding-block: var(--space-2xs);
+  --nav-link-padding-inline: var(--space-2xs);
+  --nav-item-min-height: 2.75rem;
+  --nav-sheet-bg: var(--surface-raised);
+  --nav-sheet-width: min(22rem, 88vw);
+  --nav-scrim: var(--scrim);
+  --nav-z: 100;
+
+  /* Purchase panel ----------------------------------------------------- */
+  --purchase-panel-bg: var(--surface-raised);
+  --purchase-panel-fg: var(--text);
+  --purchase-panel-border-color: var(--border);
+  --purchase-panel-border-width: var(--border-width);
+  --purchase-panel-radius: var(--radius-lg);
+  --purchase-panel-padding: var(--space-lg);
+  --purchase-panel-gap: var(--space-sm);
+  --purchase-panel-shadow: var(--shadow-md);
+  --purchase-panel-max-width: 24rem;
+
+  --purchase-price-size: var(--step-5);
+  --purchase-price-weight: var(--font-weight-bold);
+  --purchase-price-color: var(--text);
+  --purchase-price-leading: var(--line-height-tight);
+
+  /* The VAT and shipping note sits directly under the price and is a legal
+   * requirement, not decoration. It gets a readable token, never --text-subtle
+   * on a raised surface. */
+  --purchase-note-size: var(--step--1);
+  --purchase-note-color: var(--text-muted);
+
+  --purchase-meta-size: var(--step--1);
+  --purchase-meta-color: var(--text-muted);
+  /* Availability is text, so it may not use --accent-quiet: that token is gold
+   * on the publisher layer, which is 1.66:1 on the page and 1.82:1 on a raised
+   * panel. --accent-positive is the readable equivalent on both layers. */
+  --purchase-availability-color: var(--accent-positive);
+  --purchase-cta-gap: var(--space-2xs);
+
+  /* Sticky mobile purchase bar. */
+  --purchase-bar-height: 4.25rem;
+  --purchase-bar-bg: var(--surface-raised);
+  --purchase-bar-shadow: var(--shadow-lg);
+  --purchase-bar-z: 90;
+}
+
+/* ------------------------------------------------------------------------
+ * Reduced motion. Transitions collapse rather than disappear so that focus
+ * and hover states still change, just instantly.
+ * --------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+}
