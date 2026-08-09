@@ -34,7 +34,7 @@ export const returns: LegalPage = {
         "The withdrawal period is 14 days from the day you, or somebody you nominated other than the carrier, take physical possession of the goods.",
         "To withdraw, tell us so before the 14 days are up. Email {merchantContactAddress} with your order number and a sentence saying you are withdrawing — that is enough. You may use the model withdrawal form if you prefer, but you are not obliged to. Simply sending the parcel back without telling us also works, but a message is faster and lets us watch for the return.",
       ],
-      source: "task1-commercial-model",
+      source: "withdrawal-terms",
     },
     {
       anchor: "returns-process",
@@ -47,7 +47,7 @@ export const returns: LegalPage = {
         "You may unwrap the game and look at it — that is what you would do in a shop. If the components come back damaged or incomplete because of handling beyond checking what the game is, we may reduce the refund by the loss in value.",
         "None of this affects your separate legal rights if the goods arrive faulty, damaged or not as described. If a card is missing or the box arrived crushed, write to {merchantContactAddress} and we will put it right; do not use the withdrawal process for that.",
       ],
-      source: "task1-commercial-model",
+      source: "return-postage",
     },
   ],
 };

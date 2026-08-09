@@ -45,11 +45,11 @@ export const gameNightUse: Statement = {
   source: "official-wording",
 };
 
-/** The specification strip beside the box. Every figure is official. */
+/** The specification strip beside the box. Every figure keys to the manifest. */
 export const specifications: readonly ListItem[] = [
-  { term: "Players", detail: "2–6", source: "official-wording" },
-  { term: "Playing time", detail: "About 30 minutes", source: "official-wording" },
-  { term: "Setup", detail: "About a minute", source: "official-wording" },
+  { term: "Players", detail: "2–6", source: "E9" },
+  { term: "Playing time", detail: "About 30 minutes", source: "E10" },
+  { term: "Setup", detail: "About a minute", source: "E11" },
   { term: "Weight", detail: "Medium-light", source: "official-wording" },
   { term: "Cards", detail: "90", source: "components" },
 ];
@@ -147,10 +147,10 @@ export const travelsWell: Section = {
   anchor: "travels-well",
   heading: "It goes in the bag you already carry",
   body: [
-    "The box is 12 by 12 by 4 centimetres and weighs 200 grams. It fits in a rucksack pocket without planning, and it needs about a minute and roughly a placemat's worth of table.",
+    "The box is 12 by 12 by 4 centimetres and weighs 200 grams. It fits in a rucksack pocket without planning.",
     "That is the difference between a game you own and a game you play: this one comes to the pub, the cabin and the second day of a convention, and it is the box that comes back out when the big one finishes at eleven.",
   ],
-  source: "task1-commercial-model",
+  source: "E12",
 };
 
 /**
@@ -230,21 +230,21 @@ export const productFaq: readonly FaqEntry[] = [
     answer: [
       "It is calculated at checkout from your delivery address. The price of the game is the same everywhere: {priceLine}",
     ],
-    source: "task1-commercial-model",
+    source: "shipping-charge",
   },
   {
     question: "Where do you ship?",
     answer: [
       "Everywhere. Orders are dispatched within 3 business days. Delivery inside the EU usually takes 3 to 7 business days, and elsewhere 7 to 21.",
     ],
-    source: "task1-commercial-model",
+    source: "delivery-estimates",
   },
   {
     question: "Can I return it?",
     answer: [
       "Yes. You have 14 days from the day the parcel arrives to tell us you are withdrawing, and 14 more to send it back.",
     ],
-    source: "task1-commercial-model",
+    source: "withdrawal-terms",
   },
   {
     question: "Is there an English rulebook?",
@@ -256,8 +256,8 @@ export const productFaq: readonly FaqEntry[] = [
   {
     question: "Does it work at two players? At six?",
     answer: [
-      "Both. The supply is dealt three cards plus one per player, so the game scales with the table rather than being tuned for one count.",
+      "Both, and six is where it earns its place. Tabletop Games Blog: \"It's one of the few games I own that plays up to 6 players as well, so it's great for when you have a get together with friends or family, while not being a party game.\"",
     ],
-    source: "rulebook",
+    source: "E4",
   },
 ];

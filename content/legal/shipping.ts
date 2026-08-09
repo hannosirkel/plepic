@@ -30,7 +30,7 @@ export const shipping: LegalPage = {
         "Shipping is charged per order and is calculated at checkout once you have entered a delivery address. You see the exact amount before you pay; there is no stage after payment at which the cost changes.",
         "Orders shipped outside the European Union may attract import duties, taxes and carrier handling fees on arrival. Those are charged by the destination country, are payable by the recipient, and are not collected by us. We do not calculate them and cannot estimate them for you.",
       ],
-      source: "task1-commercial-model",
+      source: "delivery-estimates",
     },
     {
       anchor: "vat",
@@ -41,7 +41,7 @@ export const shipping: LegalPage = {
         "Shipping is the only amount added at checkout, and it is shown to you before you commit to the order.",
         "Business buyers: the displayed price is a consumer price inclusive of tax. If you need an invoice with the tax treatment stated for your own accounting, write to us at {merchantContactAddress} before ordering.",
       ],
-      source: "task1-commercial-model",
+      source: "price-presentation",
     },
   ],
 };

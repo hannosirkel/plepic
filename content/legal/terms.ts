@@ -28,7 +28,7 @@ export const terms: LegalPage = {
         "We accept payment by card through our payment processor. We never see or store your card number. If the payment fails or is later reversed, the order does not proceed.",
         "Sold to consumers, and to businesses on the same terms. Nothing on this page reduces the statutory rights of a consumer.",
       ],
-      source: "task1-commercial-model",
+      source: "checkout-contract",
     },
     {
       anchor: "delivery",

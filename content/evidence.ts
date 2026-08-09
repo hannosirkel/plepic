@@ -13,7 +13,7 @@
  * extra steps.
  */
 
-import type { Source, SourceId } from "./schema.js";
+import type { CommercialTermId, Source, SourceId } from "./schema.js";
 
 export const SOURCES: Readonly<Record<SourceId, Source>> = {
   E1: {
@@ -118,27 +118,108 @@ export const SOURCES: Readonly<Record<SourceId, Source>> = {
       "The authoritative public rulebook, verified byte-identical to the operator's master and served from this site.",
     presentation: ["statement"],
   },
-  "task1-commercial-model": {
-    id: "task1-commercial-model",
-    kind: "commercial-fact",
-    summary:
-      "The commercial model frozen in Task 1: one price worldwide with tax included, unmanaged stock, packaged size and weight, dispatch and delivery estimates, buyer-borne duties outside the EU.",
+  E9: {
+    id: "E9",
+    kind: "official-wording",
+    summary: "2-6 players.",
     presentation: ["statement", "figure"],
     caution:
-      "Commercial terms, not review evidence. These belong on the purchase, shipping and legal surfaces — never in the proof strip, where they would read as third-party validation.",
+      "The publisher's own specification, not third-party proof. E9 to E11 are the only player-count, playtime and setup figures the site may state.",
+  },
+  E10: {
+    id: "E10",
+    kind: "official-wording",
+    summary: "About 30 minutes per game.",
+    presentation: ["statement", "figure"],
+  },
+  E11: {
+    id: "E11",
+    kind: "official-wording",
+    summary: "About a minute to set up.",
+    presentation: ["statement", "figure"],
+  },
+  E12: {
+    id: "E12",
+    kind: "commercial-fact",
+    summary: "Packaged 12 by 12 by 4 centimetres, 200 grams.",
+    presentation: ["statement", "figure"],
+  },
+  E13: {
+    id: "E13",
+    kind: "commercial-fact",
+    summary:
+      "One advertised price worldwide, inclusive of tax. Delivered from configuration and never written into a content file, which is why the figure does not appear in this summary.",
+    presentation: ["statement"],
+  },
+};
+
+/**
+ * The merchant's own commitments, and where each was decided.
+ *
+ * Kept beside the evidence registry and deliberately apart from it: these are
+ * promises we are making, not facts anybody checked. The type system keeps them
+ * out of the proof strip; this registry keeps them accountable.
+ */
+export const COMMERCIAL_TERMS: Readonly<
+  Record<CommercialTermId, { readonly summary: string; readonly decidedIn: string }>
+> = {
+  "price-presentation": {
+    summary:
+      "One advertised price for every visitor in every country, inclusive of tax, with tax computed from the confirmed delivery address rather than added on top.",
+    decidedIn: "Task 1, frozen commercial model",
+  },
+  "checkout-contract": {
+    summary:
+      "The order is an offer; the contract exists on dispatch confirmation. The final button says it carries an obligation to pay, and the goods, price, shipping, total, address and delivery estimate are all on that screen.",
+    decidedIn: "Task 1 commercial model, and EU distance selling",
+  },
+  "stock-policy": {
+    summary: "Stock is unlimited and unmanaged, so availability is a phrase and never a count.",
+    decidedIn: "Task 1, frozen commercial model",
+  },
+  "dispatch-window": {
+    summary: "Dispatched within 3 business days of payment clearing.",
+    decidedIn: "Task 1, frozen commercial model",
+  },
+  "delivery-estimates": {
+    summary: "3 to 7 business days inside the EU, 7 to 21 business days elsewhere.",
+    decidedIn: "Task 1, frozen commercial model",
+  },
+  "shipping-charge": {
+    summary:
+      "Shipping is charged per order, calculated at checkout from the delivery address, and shown before payment.",
+    decidedIn: "Task 1, frozen commercial model",
+  },
+  "duties-outside-eu": {
+    summary:
+      "Import duties and handling outside the EU are borne by the recipient, stated as one line and never calculated.",
+    decidedIn: "Task 1, frozen commercial model",
+  },
+  "withdrawal-terms": {
+    summary:
+      "14 days from delivery to withdraw and 14 more to return, with the refund covering the goods and the standard outbound delivery charge.",
+    decidedIn: "EU distance selling; restated here as our undertaking",
+  },
+  "return-postage": {
+    summary: "The buyer bears the cost of returning the goods.",
+    decidedIn: "Statutory default, pending operator confirmation",
+  },
+  "packaged-dimensions": {
+    summary: "12 by 12 by 4 centimetres, 200 grams packaged.",
+    decidedIn: "Task 1, frozen commercial model",
   },
 };
 
 /**
  * Claims that are **not** evidenced and therefore may never appear.
  *
- * The first two are the sharp ones: the plan itself suggests "funded in two
- * hours" and "4,606% of goal" as proof-strip candidates, and neither figure
- * is in the evidence manifest. The manifest's exclusion list is explicit that
- * the funding total, the percentage and any tighter backer count are not
- * publishable. The plan also instructs that every such figure is a candidate
- * pending verification against the manifest — this is that verification, and
- * both figures fail it.
+ * The first two are the sharp ones. The plan itself suggests a funding
+ * percentage and a funding duration as proof-strip candidates, and instructs
+ * that every such figure is a candidate pending verification against the
+ * manifest. This is that verification, and they fail it for different reasons:
+ * the manifest's exclusion list names "the percentage of funding goal reached"
+ * outright, while the duration is simply not in the manifest at all — and the
+ * governing rule is that nothing may appear on the site that is not in it.
  *
  * `content.test.ts` fails the build if any of these strings appears in a
  * content file.

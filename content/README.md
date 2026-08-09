@@ -16,25 +16,39 @@ test makes the rest **loud**.
 | Prohibition | How it is prevented |
 |---|---|
 | An absolute URL | There is no `href`, `url` or `link` field of type `string` anywhere in `schema.ts`. A link is a `LinkTarget`: an internal `RouteId`, an `AnchorId`, or a named `ExternalTargetId` that runtime configuration resolves to a URL. There is no slot to put a URL in. |
-| A hostname | Nothing accepts a host. The canonical host, the base URL and every external URL come from configuration. `content.test.ts` additionally fails on any hostname-shaped string in any content file, including comments. |
-| A price | There is no amount field, no currency field and no numeric price anywhere. Copy that must state a price writes `{price}`, `{priceLine}` or `{taxNote}`, all declared as resolving from the **catalogue**. `content.test.ts` fails on a currency symbol, a currency code, the word *euro*, or a decimal money amount. |
+| A hostname | Nothing accepts a host. The canonical host, the base URL and every external URL come from configuration. `content.test.ts` additionally fails on any hostname-shaped string a content module *exports*, and on one in its source text. |
+| A price | There is no amount field, no currency field and no numeric price anywhere. Copy that must state a price writes `{price}`, `{priceLine}` or `{taxNote}`, all declared as resolving from the **catalogue**. The scan fails on a currency symbol, a currency code, the word *euro*, or a decimal money amount. |
 | An unkeyed proof claim | `Quotation` and `ProofItem` both require a `SourceId`, and `SourceId` is a closed union of ids that exist in the evidence manifest. A claim with no source does not compile. |
+| Our own commitments passed off as proof | The dispatch window, delivery estimates and return terms are `CommercialTermId`s, a **separate union**. `ProofItem` and `Quotation` take a `SourceId`, so "dispatched within 3 business days" cannot enter the proof strip at all. |
 | An award | `SourcePresentation` has no `"award"` member. The one review mention the site carries is a pick in a video, and the model gives nobody a way to promote it. |
 | More than three proof items | `ProofStripItems` is a tuple type: exactly two or exactly three. A fourth is a compile error, not a review comment. |
 | Campaign-state language | `CAMPAIGN_STATE_PHRASES` in `evidence.ts` is checked against every content file. |
 | A claim the manifest excludes | `NOT_PUBLISHABLE` in `evidence.ts`, same mechanism. |
-| A legal obligation quietly dropped | `LEGAL_ELEMENTS` is a closed list and a test asserts the five legal pages cover all of it, exactly once each. |
+| A legal obligation quietly dropped | `LEGAL_ELEMENTS` is a closed list of ten — eight from EU distance selling, two from the plan's consent constraint — and a test asserts the five legal pages cover all of it, exactly once each. |
 | Publishing a legal page with placeholder identity | A test refuses `operator-approved` on any page whose prose still contains an unresolved placeholder. |
 
-The two mechanisms are complementary. Types catch the *shape* of a violation;
-the text scan catches a raw literal sitting inside a prose string, which no type
-can see. Between them, an absolute URL, a hostname or a hard-coded price in a
-content file is either impossible or a red build.
+### The scan reads values, not source text
 
-The guards are exercised, not assumed: injecting a URL, a hostname, an email
-address, a currency symbol, a money amount, a campaign phrase, an excluded claim
-and an undeclared placeholder into one content file produces eight distinct
-failures.
+`content.test.ts` **imports every content module and walks the strings it
+exports.** That is the load-bearing check, and it is deliberately not a grep.
+
+A source-text scan restricted to `.ts` was the first revision's mistake. It let
+a `.tsx` or a `.json` under `content/` through untouched — and `.tsx` is exactly
+what the next unit adds — and it let `["plepicgames", "com"].join(".")` and
+`String.fromCharCode(8364) + "25.00"` past, because those literals only exist
+after evaluation. Walking resolved values closes both: whatever produced the
+string, the string is what gets checked.
+
+`EXTENSIONS` in that file is a closed list checked against the directory, so a
+file type nobody anticipated fails the build instead of skipping the scan
+silently. A source-text pass is kept as a second line, because a hostname in a
+comment still leaks and comments are not values.
+
+The guards are exercised, not assumed. Dropping the reviewer's own probes into a
+clean checkout — `content/promo.json`, `content/blocks/Hero.tsx`,
+`content/blocks/Sneak.ts` with concatenated and character-code literals, and a
+`.yaml` nobody planned for — produces **26 failures** across the value scan, the
+source scan and the file-coverage guard.
 
 ### The one gap, stated honestly
 
@@ -51,13 +65,14 @@ carries the load alone.
 | `content-document.md` | The editorial record: positioning, every piece of copy, the proof choice and its rejections, the campaign-language removals, and the open operator inputs |
 | `routes.ts` | Every route, anchor and named external target. The single source of truth for paths |
 | `schema.ts` | The content model and the placeholder registry |
-| `evidence.ts` | The evidence registry, plus the two blocklists |
+| `evidence.ts` | The evidence registry, the commercial-commitment registry, and the two blocklists. **Not re-exported from `index.ts`** — the blocklists contain the strings the site must never show, and they have no business in a bundle |
 | `publisher.ts` | Publisher sentence, story, timeline, team, newsletter |
 | `lunar-base.ts` | The one canonical set of product copy |
 | `proof.ts` | The proof strip, its rejections, and the quotations |
 | `support.ts` | Rules FAQ, rulebook link, contact |
 | `legal/` | The five legal pages |
 | `pages.ts` | Title, description, indexability and sections per route |
+| `index.ts` | The barrel a renderer imports. Deliberately narrower than the directory |
 | `content.test.ts` | Everything above, enforced |
 
 ## Adding or changing copy

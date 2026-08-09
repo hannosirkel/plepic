@@ -63,9 +63,9 @@ export const proofStrip: ProofStrip = {
         "The best-written quotation we have, and far too long for a strip. It leads the reviews section on the game page instead, where it has room to land.",
     },
     {
-      source: "task1-commercial-model",
+      source: "E9",
       reason:
-        "Player count and playing time are true and useful, but they are our own specification, not third-party validation. Putting them in a proof strip alongside a review would borrow credibility they have not earned. They belong beside the box, in the specification list, which is where they are.",
+        "Player count — and with it playing time and setup time, E10 and E11 — is true and useful, but it is our own specification, not third-party validation. In a proof strip beside a review it would borrow credibility it has not earned. It belongs next to the box, in the specification list, which is where it is.",
     },
   ],
 };

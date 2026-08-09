@@ -20,7 +20,7 @@ export const privacy: LegalPage = {
     "What we collect, why, who processes it on our behalf, and how to refuse or withdraw consent for analytics.",
   indexable: true,
   sections: ["consent", "processors", "contact"],
-  covers: [],
+  covers: ["analytics-lawful-basis", "third-party-processors"],
   reviewStatus: "draft-pending-operator-input",
   body: [
     {

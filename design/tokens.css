@@ -169,6 +169,7 @@
   --accent-fill: var(--plepic-orange);
   --accent-fill-text: var(--plepic-navy);
   --accent-quiet: var(--plepic-gold);
+  --accent-positive: var(--plepic-cyan-deep);
 
   --border: var(--plepic-sand); /* decorative hairline */
   --border-interactive: var(--plepic-navy-55); /* input and control edges */
@@ -181,6 +182,7 @@
   --shadow-sm: 0 1px 2px rgb(21 27 70 / 8%);
   --shadow-md: 0 6px 20px rgb(21 27 70 / 10%);
   --shadow-lg: 0 18px 48px rgb(21 27 70 / 14%);
+  --scrim: rgb(21 27 70 / 55%);
 
   --selection-bg: var(--plepic-gold);
   --selection-fg: var(--plepic-navy);
@@ -204,6 +206,7 @@
   --accent-fill: var(--plepic-orange);
   --accent-fill-text: var(--plepic-navy);
   --accent-quiet: var(--plepic-gold);
+  --accent-positive: var(--plepic-cyan-deep);
 
   --border: var(--plepic-sand);
   --border-interactive: var(--plepic-navy-55);
@@ -214,6 +217,7 @@
   --shadow-sm: 0 1px 2px rgb(21 27 70 / 8%);
   --shadow-md: 0 6px 20px rgb(21 27 70 / 10%);
   --shadow-lg: 0 18px 48px rgb(21 27 70 / 14%);
+  --scrim: rgb(21 27 70 / 55%);
 
   --selection-bg: var(--plepic-gold);
   --selection-fg: var(--plepic-navy);
@@ -243,6 +247,7 @@
   --accent-fill: var(--plepic-orange);
   --accent-fill-text: var(--plepic-navy);
   --accent-quiet: var(--plepic-gold);
+  --accent-positive: var(--plepic-gold);
 
   --border: var(--lunar-line);
   --border-interactive: var(--lunar-text-subtle);
@@ -253,6 +258,7 @@
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 45%);
   --shadow-lg: 0 22px 56px rgb(0 0 0 / 55%);
+  --scrim: rgb(0 0 0 / 65%);
 
   --selection-bg: var(--plepic-cyan);
   --selection-fg: var(--lunar-void);
@@ -261,11 +267,21 @@
 /* ------------------------------------------------------------------------
  * Layer 2 — component tokens
  *
- * Every value below resolves through a layer 1 token, so both layers are
- * already covered. Adding a raw brand value or a literal colour in this
- * section defeats the whole file.
+ * Every value below resolves through a layer 1 token. **The selector list
+ * matters and is not decoration.** A custom property is resolved where it is
+ * declared, not where it is used: declared only on `:root`, `--card-bg` would
+ * compute once against the publisher palette and every `[data-layer="lunar"]`
+ * descendant would inherit that already-resolved colour — a white card on a
+ * near-black section, which is how this file shipped in its first revision.
+ * Repeating the block on each layer selector re-resolves it inside that layer.
+ *
+ * Consequence for anyone adding a third layer: add its selector here too, or
+ * its components silently render in the publisher palette. Adding a raw brand
+ * value or a literal colour in this section defeats the whole file.
  * --------------------------------------------------------------------- */
-:root {
+:root,
+[data-layer="publisher"],
+[data-layer="lunar"] {
   /* Buttons ------------------------------------------------------------ */
   --button-font-size: var(--step-0);
   --button-font-weight: var(--font-weight-medium);
@@ -336,7 +352,7 @@
   --nav-item-min-height: 2.75rem;
   --nav-sheet-bg: var(--surface-raised);
   --nav-sheet-width: min(22rem, 88vw);
-  --nav-scrim: rgb(0 0 0 / 45%);
+  --nav-scrim: var(--scrim);
   --nav-z: 100;
 
   /* Purchase panel ----------------------------------------------------- */
@@ -363,7 +379,10 @@
 
   --purchase-meta-size: var(--step--1);
   --purchase-meta-color: var(--text-muted);
-  --purchase-availability-color: var(--accent-quiet);
+  /* Availability is text, so it may not use --accent-quiet: that token is gold
+   * on the publisher layer, which is 1.66:1 on the page and 1.82:1 on a raised
+   * panel. --accent-positive is the readable equivalent on both layers. */
+  --purchase-availability-color: var(--accent-positive);
   --purchase-cta-gap: var(--space-2xs);
 
   /* Sticky mobile purchase bar. */

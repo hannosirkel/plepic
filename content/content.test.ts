@@ -4,20 +4,36 @@
  * The type system already makes an absolute URL, a hostname, a price and an
  * unkeyed proof claim unrepresentable as *structure* — there is no field that
  * accepts one. What it cannot see is a raw literal sitting inside a prose
- * string. This suite reads every content source file as text and fails the
- * build on one, which is what turns the plan's prohibitions from a convention
- * into a mechanism.
+ * string. This suite catches that, and it does so by **importing every content
+ * module and walking the strings it actually exports**, not by reading the
+ * source text.
  *
- * This file is the only content file exempt from its own scanning, for the
- * obvious reason that it contains the patterns.
+ * That distinction is the fix for two real holes in the first revision. A
+ * source-text scan restricted to `.ts` let a `.tsx` or a `.json` under
+ * `content/` through untouched — and `.tsx` is exactly what the next unit adds.
+ * It also let `"plepicgames.com"` and `"E" + "UR 25.00"` past, because the
+ * literal only exists after evaluation. Walking resolved values closes both:
+ * whatever gymnastics produced the string, the string is what gets checked.
+ *
+ * A source-text pass is kept as well, because comments are not values and a
+ * hostname in a comment still leaks. It is secondary; the value scan is what is
+ * load-bearing.
+ *
+ * `EXTENSIONS` is closed and asserted against the directory, so a file type
+ * nobody thought about fails the build rather than skipping the scan.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, extname, join, relative, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { CAMPAIGN_STATE_PHRASES, NOT_PUBLISHABLE, SOURCES } from "./evidence.js";
+import {
+  CAMPAIGN_STATE_PHRASES,
+  COMMERCIAL_TERMS,
+  NOT_PUBLISHABLE,
+  SOURCES,
+} from "./evidence.js";
 import { legalPages } from "./legal/index.js";
 import { pages } from "./pages.js";
 import { proofStrip, quotations } from "./proof.js";
@@ -35,102 +51,214 @@ import {
 const contentDir = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Files exempt from the *phrase* checks, because they define or explain the
- * banned phrases. They are still scanned for URLs, hostnames and prices.
+ * Every extension allowed under `content/`, and how each is handled.
+ *
+ * `module`  — imported, and every string it exports is scanned.
+ * `data`    — parsed as JSON, and every string in it is scanned.
+ * `document`— editorial prose for humans, never rendered. It has no exported
+ *              values, so only its source text is scanned — and the two
+ *              documents named in `PHRASE_CHECK_EXEMPT` are exempt from that
+ *              too, because their job is to quote the campaign copy that was
+ *              removed and to record the commercial model for the editorial
+ *              gate. A new, unlisted document is scanned like anything else.
+ * `self`    — this file, which contains the patterns.
  */
-const PHRASE_CHECK_EXEMPT = ["evidence.ts", "schema.ts"];
+const EXTENSIONS: Readonly<Record<string, "module" | "data" | "document">> = {
+  ".ts": "module",
+  ".tsx": "module",
+  ".mts": "module",
+  ".cts": "module",
+  ".js": "module",
+  ".jsx": "module",
+  ".mjs": "module",
+  ".json": "data",
+  ".md": "document",
+};
 
 interface ContentFile {
   readonly name: string;
-  readonly text: string;
+  readonly path: string;
+  readonly kind: "module" | "data" | "document" | "self" | "unknown";
 }
 
-function contentFiles(): readonly ContentFile[] {
+function listContentFiles(): readonly ContentFile[] {
   const entries = readdirSync(contentDir, { recursive: true, withFileTypes: true });
   const files: ContentFile[] = [];
 
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
-    if (entry.name.endsWith(".test.ts")) continue;
+    if (!entry.isFile()) continue;
 
-    const full = join(entry.parentPath, entry.name);
-    files.push({
-      name: relative(contentDir, full).split(sep).join("/"),
-      text: readFileSync(full, "utf8"),
-    });
+    const path = join(entry.parentPath, entry.name);
+    const name = relative(contentDir, path).split(sep).join("/");
+    const kind = name.endsWith(".test.ts")
+      ? ("self" as const)
+      : (EXTENSIONS[extname(name)] ?? ("unknown" as const));
+
+    files.push({ name, path, kind });
   }
 
   return files.toSorted((a, b) => a.name.localeCompare(b.name));
 }
 
-const files = contentFiles();
+const files = listContentFiles();
 
-/** A trailing `\b` is deliberate on each of these; see the notes per test. */
-const TLD = "com|net|org|eu|ee|dk|fi|io|dev|app|co|uk|de|shop|games|info|me|tv";
+/** Every string reachable from `value`, however deeply nested. */
+function stringsIn(value: unknown, seen = new Set<object>()): readonly string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value !== "object" || value === null) return [];
+  if (seen.has(value)) return [];
+  seen.add(value);
 
-const FORBIDDEN_LITERALS: readonly { readonly label: string; readonly pattern: RegExp }[] = [
-  { label: "a URL scheme", pattern: /\b[a-z][a-z0-9+.-]*:\/\//i },
-  { label: "a protocol-relative URL", pattern: new RegExp(`//[a-z0-9-]+\\.(?:${TLD})\\b`, "i") },
-  { label: "a hostname", pattern: new RegExp(`\\b[a-z0-9][a-z0-9-]*\\.(?:${TLD})\\b`, "i") },
-  { label: "a mail scheme", pattern: /\bmailto:/i },
-  { label: "an email address", pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/ },
-  { label: "a currency symbol", pattern: /[€$£¥₽]/ },
-  { label: "a currency code", pattern: /\b(?:EUR|USD|GBP)\b/ },
-  { label: "a currency word", pattern: /\beuros?\b/i },
-  { label: "a money amount", pattern: /\b\d+[.,]\d{2}\b/ },
-  { label: "a cent amount", pattern: /\b\d+\s*cents?\b/i },
+  const found: string[] = [];
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    found.push(...stringsIn(nested, seen));
+  }
+  return found;
+}
+
+interface ScannedFile {
+  readonly name: string;
+  /** Strings the module or data file actually exports. */
+  readonly values: readonly string[];
+  /** Raw file text, comments included. */
+  readonly source: string;
+}
+
+const scanned: ScannedFile[] = [];
+
+for (const file of files) {
+  const source = readFileSync(file.path, "utf8");
+
+  if (file.kind === "module") {
+    const module: unknown = await import(pathToFileURL(file.path).href);
+    scanned.push({ name: file.name, values: stringsIn(module), source });
+  } else if (file.kind === "data") {
+    scanned.push({ name: file.name, values: stringsIn(JSON.parse(source)), source });
+  } else if (file.kind === "document") {
+    scanned.push({ name: file.name, values: [], source });
+  }
+}
+
+/**
+ * Files exempt from the *phrase* checks, because they define or explain the
+ * banned phrases. They are still scanned for URLs, hostnames and prices, and
+ * the editorial documents are exempt because their job is to quote the copy
+ * that was removed.
+ */
+const PHRASE_CHECK_EXEMPT = [
+  "evidence.ts",
+  "schema.ts",
+  "README.md",
+  "content-document.md",
 ];
 
-describe("content files carry no literal that belongs in configuration", () => {
-  it("finds content files to check", () => {
-    expect(files.length).toBeGreaterThan(8);
+const TLD = [
+  "com", "net", "org", "info", "biz", "io", "dev", "app", "co", "me", "tv",
+  "shop", "games", "eu", "ee", "dk", "fi", "se", "no", "lv", "lt", "de", "nl",
+  "fr", "at", "it", "es", "pl", "cz", "ie", "uk", "us", "ru", "cn",
+].join("|");
+
+const FORBIDDEN_LITERALS: readonly { readonly label: string; readonly pattern: RegExp }[] = [
+  { label: "URL scheme", pattern: /\b[a-z][a-z0-9+.-]*:\/\// },
+  { label: "protocol-relative URL", pattern: new RegExp(`//[a-z0-9-]+\\.(?:${TLD})\\b`, "i") },
+  { label: "hostname", pattern: new RegExp(`\\b[a-z0-9][a-z0-9-]*\\.(?:${TLD})\\b`, "i") },
+  { label: "mail scheme", pattern: /\bmailto:/i },
+  { label: "email address", pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/ },
+  { label: "currency symbol", pattern: /[€$£¥₽₹]/ },
+  { label: "currency code", pattern: /\b(?:EUR|USD|GBP|CHF|SEK|DKK|NOK|PLN)\b/ },
+  { label: "currency word", pattern: /\beuros?\b|\bdollars?\b|\bpounds sterling\b/i },
+  { label: "money amount", pattern: /\b\d+[.,]\d{2}\b/ },
+  { label: "cent amount", pattern: /\b\d+\s*(?:cents?|pence)\b/i },
+];
+
+function firstMatch(strings: readonly string[], pattern: RegExp): string | null {
+  for (const candidate of strings) {
+    const match = pattern.exec(candidate);
+    if (match !== null) return match[0];
+  }
+  return null;
+}
+
+describe("file coverage", () => {
+  it("knows how to handle every file under content/", () => {
+    const unknown = files.filter((file) => file.kind === "unknown").map((file) => file.name);
+    expect(
+      unknown,
+      "add the extension to EXTENSIONS, or the scan silently skips these files",
+    ).toEqual([]);
   });
 
-  for (const file of files) {
+  it("scans a value set from every module and data file", () => {
+    const expected = files.filter(
+      (file) => file.kind === "module" || file.kind === "data",
+    ).length;
+    const withValues = scanned.filter((file) => file.values.length > 0).length;
+    expect(expected).toBeGreaterThan(8);
+    expect(withValues).toBe(expected);
+  });
+
+  it("renders no MDX", () => {
+    expect(files.filter((file) => file.name.endsWith(".mdx"))).toEqual([]);
+  });
+});
+
+describe("no exported string carries a literal that belongs in configuration", () => {
+  for (const file of scanned) {
+    if (file.values.length === 0) continue;
+
     for (const { label, pattern } of FORBIDDEN_LITERALS) {
-      it(`${file.name} contains no ${label}`, () => {
-        const match = pattern.exec(file.text);
-        expect(
-          match === null ? null : `${label}: ${JSON.stringify(match[0])}`,
-        ).toBeNull();
+      it(`${file.name} exports no ${label}`, () => {
+        const hit = firstMatch(file.values, pattern);
+        expect(hit === null ? null : `${label}: ${JSON.stringify(hit)}`).toBeNull();
       });
     }
   }
 });
 
-describe("content files carry no unpublishable claim and no campaign-state language", () => {
-  const checked = files.filter((file) => !PHRASE_CHECK_EXEMPT.includes(file.name));
+describe("no source file mentions one either, comments included", () => {
+  for (const file of scanned) {
+    for (const { label, pattern } of FORBIDDEN_LITERALS) {
+      if (PHRASE_CHECK_EXEMPT.includes(file.name) && file.name.endsWith(".md")) continue;
 
-  it("exempts only the two files that define the phrase lists", () => {
-    const names = files.map((file) => file.name);
-    for (const exempt of PHRASE_CHECK_EXEMPT) {
-      expect(names).toContain(exempt);
+      it(`${file.name} contains no ${label}`, () => {
+        const match = pattern.exec(file.source);
+        expect(match === null ? null : `${label}: ${JSON.stringify(match[0])}`).toBeNull();
+      });
     }
-    expect(files.length - checked.length).toBe(PHRASE_CHECK_EXEMPT.length);
+  }
+});
+
+describe("no unpublishable claim and no campaign-state language", () => {
+  const checked = scanned.filter((file) => !PHRASE_CHECK_EXEMPT.includes(file.name));
+
+  it("exempts only the files that define or quote the phrase lists", () => {
+    const names = scanned.map((file) => file.name);
+    for (const exempt of PHRASE_CHECK_EXEMPT) expect(names).toContain(exempt);
+    expect(scanned.length - checked.length).toBe(PHRASE_CHECK_EXEMPT.length);
   });
 
   for (const file of checked) {
     it(`${file.name} states no claim the evidence manifest excludes`, () => {
-      const lowered = file.text.toLowerCase();
-      const hits = NOT_PUBLISHABLE.filter((phrase) => lowered.includes(phrase));
-      expect(hits).toEqual([]);
+      const haystack = [...file.values, file.source].join("\n").toLowerCase();
+      expect(NOT_PUBLISHABLE.filter((phrase) => haystack.includes(phrase))).toEqual([]);
     });
 
     it(`${file.name} is written in the past tense of a shipped product`, () => {
-      const lowered = file.text.toLowerCase();
-      const hits = CAMPAIGN_STATE_PHRASES.filter((phrase) => lowered.includes(phrase));
-      expect(hits).toEqual([]);
+      const haystack = [...file.values, file.source].join("\n").toLowerCase();
+      expect(CAMPAIGN_STATE_PHRASES.filter((phrase) => haystack.includes(phrase))).toEqual([]);
     });
   }
 });
 
 describe("substitutions", () => {
-  it("every {token} used in content is a declared placeholder", () => {
+  it("every placeholder used in content is declared", () => {
     const unknown: string[] = [];
 
-    for (const file of files) {
-      for (const token of placeholderTokensIn(file.text)) {
-        if (!isPlaceholderToken(token)) unknown.push(`${file.name}: {${token}}`);
+    for (const file of scanned) {
+      for (const candidate of [...file.values, file.source]) {
+        for (const token of placeholderTokensIn(candidate)) {
+          if (!isPlaceholderToken(token)) unknown.push(`${file.name}: ${token}`);
+        }
       }
     }
 
@@ -157,20 +285,17 @@ describe("substitutions", () => {
   });
 });
 
-describe("content is TypeScript, and only TypeScript", () => {
-  it("renders no MDX", () => {
-    const entries = readdirSync(contentDir, { recursive: true, withFileTypes: true });
-    const mdx = entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".mdx"))
-      .map((entry) => entry.name);
-    expect(mdx).toEqual([]);
-  });
-});
-
 describe("evidence", () => {
   it("every registry entry's id matches its key", () => {
     for (const [key, source] of Object.entries(SOURCES)) {
       expect(source.id).toBe(key);
+    }
+  });
+
+  it("keeps commitments out of the evidence registry and evidence out of the commitments", () => {
+    const evidenceIds = new Set(Object.keys(SOURCES));
+    for (const term of Object.keys(COMMERCIAL_TERMS)) {
+      expect(evidenceIds.has(term), `${term} is in both registries`).toBe(false);
     }
   });
 
@@ -224,9 +349,14 @@ describe("the proof strip is chosen, not accumulated", () => {
     }
   });
 
-  it("does not dress our own commercial terms up as third-party proof", () => {
-    const sources: readonly SourceId[] = proofStrip.items.map((item) => item.source);
-    expect(sources).not.toContain("task1-commercial-model");
+  it("does not dress our own commitments up as third-party proof", () => {
+    // Structural: ProofItem.source is a SourceId, and no CommercialTermId is a
+    // SourceId, so this cannot compile wrong. Asserted anyway, because the
+    // guarantee is only as good as the two unions staying disjoint.
+    const commitments = new Set<string>(Object.keys(COMMERCIAL_TERMS));
+    for (const item of proofStrip.items) {
+      expect(commitments.has(item.source), `${item.source} is a commitment`).toBe(false);
+    }
   });
 
   it("gives a reason for every verified item it leaves out", () => {
@@ -263,6 +393,12 @@ describe("legal pages", () => {
     }
 
     expect(duplicated).toEqual([]);
+  });
+
+  it("keeps the consent obligations on the privacy page", () => {
+    const privacyPage = legalPages.find((page) => page.route === "legalPrivacy");
+    expect(privacyPage?.covers).toContain("analytics-lawful-basis");
+    expect(privacyPage?.covers).toContain("third-party-processors");
   });
 
   it("are not marked approved while the merchant's details are still placeholders", () => {

@@ -27,7 +27,7 @@ export const imprint: LegalPage = {
       body: [
         "This site is operated by {merchantLegalName}, registered at {merchantRegisteredAddress}.",
         "Company registration number: {merchantRegistrationNumber}. VAT identification number: {merchantVatNumber}.",
-        "Email: {merchantContactAddress}. We answer in a day or two.",
+        "Email: {merchantContactAddress}.",
         "{merchantLegalName} is the seller for every order placed on {siteName}, and the party responsible for the contract you enter at checkout.",
       ],
     },

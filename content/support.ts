@@ -105,7 +105,7 @@ export const contactForm = {
   subjectLabel: "What is this about?",
   messageLabel: "Message",
   submitLabel: "Send",
-  successMessage: "Thanks — that has reached us. We answer in a day or two.",
+  successMessage: "Thanks — that has reached us.",
   errorMessage:
     "That did not send. Please try again, or email us directly at {merchantContactAddress}.",
 } as const;

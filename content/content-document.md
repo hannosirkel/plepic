@@ -58,9 +58,11 @@ one before the visitor has to scroll:
 
 `Lunar Base — EUR 25.00 / VAT included. Shipping calculated at checkout.`
 
-That string never appears in a content file. Price is a `{priceLine}`
-placeholder resolved from the catalogue, and the homepage's *Buy for {price}*
-call to action resolves the same way. Stock is unlimited and unmanaged, so
+That string never appears in a content file — the figure is **E13**, and E13's
+own manifest entry records that it is delivered from configuration rather than
+written down. Price in copy is a `{priceLine}` placeholder resolved from the
+catalogue, and the homepage's *Buy for {price}* call to action resolves the same
+way. Stock is unlimited and unmanaged, so
 availability is the phrase **In stock** and never a count; a number would be a
 fabrication and a low-stock nudge would be a lie.
 
@@ -68,18 +70,23 @@ fabrication and a low-stock nudge would be a lie.
 
 | | |
 |---|---|
-| Players | 2–6 |
-| Playing time | about 30 minutes |
-| Setup | about a minute |
-| Weight | medium-light |
-| Cards | 90 |
-| **Age** | **not stated — see Open inputs** |
+| Players | 2–6 (E9) |
+| Playing time | about 30 minutes (E10) |
+| Setup | about a minute (E11) |
+| Weight | medium-light (official wording) |
+| Cards | 90 (components) |
+| **Age** | **not stated** |
 
-Every figure above except age is official wording or the rulebook's own
-component count. **There is no evidenced age recommendation.** The rulebook does
-not print one and the evidence manifest does not carry one, so the site states
-none. A plausible "10+" would be an invention on a specification table, which is
-the worst place to put one.
+Sourcing, one figure at a time: players **E9**, playing time **E10**, setup
+**E11**, weight and the pitch sentence *official wording*, card count
+*components*. The first revision attributed the playtime and setup figures to
+*official wording* when the manifest carried no such entries — true figures with
+nothing behind them, which is exactly the failure this model exists to prevent.
+The manifest now carries E9 to E11 and the copy points at them.
+
+**No age recommendation exists.** The rulebook prints none and the manifest says
+so explicitly. A plausible "10+" would be an invention on a specification table,
+which is the worst possible place for one.
 
 ## What is in the box
 
@@ -191,22 +198,35 @@ retail fact rather than a photograph of card stock.
   the game. Secondary position on the game page.
 - **E4 — Tabletop Games Blog.** The best-written quotation we have and far too
   long for a strip. It leads the reviews section instead, where it has room.
-- **Player count and playing time.** True, but they are our specification, not
-  third-party validation. In a proof strip beside a review they would borrow
-  credibility they have not earned. They sit beside the box, in the
-  specification list.
+- **Player count and playing time (E9–E11).** True, but they are our own
+  specification, not third-party validation. In a proof strip beside a review
+  they would borrow credibility they have not earned. They sit beside the box,
+  in the specification list.
+- **Our commercial commitments** — the dispatch window, the delivery estimates,
+  the return terms. These are not so much rejected as *ineligible*: they are
+  `CommercialTermId`s, a separate union from `SourceId`, and `ProofItem` accepts
+  only the latter. Nobody verified them; we are undertaking to make them true.
+  Putting one in the strip is a type error rather than a judgement call.
 
 ### Two figures the plan suggested that do not ship
 
-The plan proposes "funded in two hours" and "4,606% of goal" as proof-strip
+The plan proposes a funding percentage and a funding duration as proof-strip
 candidates, and instructs that every such figure is a **candidate pending
 verification** against the evidence manifest. This is that verification, and
-both fail it. The manifest records only *"funded on Kickstarter, 2000+
-backers"*, and its exclusion list names the funding total, the percentage of
-goal and any backer count tighter than "over 2000" as not evidenced and
-therefore not publishable. Neither figure appears on the site. Both are in the
-`NOT_PUBLISHABLE` list in `evidence.ts`, and the build fails if either is ever
-typed into a content file.
+they fail it for two different reasons — worth stating precisely, because the
+difference is the whole method:
+
+- The **percentage** is named in the manifest's exclusion list — "the percentage
+  of funding goal reached" — alongside the exact funding total and any backer
+  count tighter than "over 2000". It is explicitly not publishable.
+- The **duration** is not excluded by name. It is simply not in the manifest at
+  all, and the governing rule is that nothing may appear on the site that is not
+  in it. Absence is sufficient; it does not need a prohibition.
+
+The manifest records only *"funded on Kickstarter, 2000+ backers"*. Neither
+figure appears on the site, both are in the `NOT_PUBLISHABLE` list in
+`evidence.ts`, and the build fails if either is ever typed into a content
+file.
 
 ### Review quotations, verbatim and attributed
 
@@ -295,6 +315,12 @@ Five pages, one obligation each, and a closed list the build checks:
 | `/legal/returns` | withdrawal process, its deadline, who pays return postage, the return address |
 | `/legal/privacy` | lawful basis for analytics, every third-party processor the site loads |
 
+The last two are not EU distance-selling elements; they come from this plan's
+own consent constraint. The first revision left them out of `LEGAL_ELEMENTS`
+and gave the privacy page `covers: []`, so the closed-list test protected
+nothing there and the processor list could have been deleted with the build
+still green. Both are elements now, and the privacy page claims them.
+
 `content.test.ts` asserts the five pages between them cover **every** element of
 `LEGAL_ELEMENTS`, and that no element is claimed twice, so each obligation has
 exactly one home and a missing one fails the build rather than surfacing at
@@ -325,7 +351,7 @@ while its prose still contains an unresolved placeholder.
 | Customer contact email address | legal pages, support, contact form | Account addresses come from configuration, never content |
 | Return address | `/legal/returns` | Same |
 | Who pays return postage — confirm buyer-pays | `/legal/returns` | Written as buyer-pays, which is the statutory default when the trader has said so; the operator should confirm rather than inherit |
-| Age recommendation, if one exists | the specification list | No evidenced source. Better absent than invented |
+| Who bears duties outside the EU — confirm | `/legal/shipping` | Written as buyer-borne per the frozen model, and recorded as a commitment rather than as evidence |
 | Team names and roles | `/about` | Not in the evidence manifest; the plan wants names in HTML and they must come from the operator |
 | Whether the origin was six or seven people | `/about` | Evidence says six. Contradicts the plan's phrasing; evidence wins until it does not |
 | The Fontspring invoice, for the monthly pageview cap | the webfont licence | Recorded in `design/README.md` as unresolved, not as satisfied |

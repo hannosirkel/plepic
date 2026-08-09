@@ -39,15 +39,15 @@ import type { AnchorId, ExternalTargetId, RouteId } from "./routes.js";
  * --------------------------------------------------------------------- */
 
 /**
- * Identifiers of entries in the operator's ignored evidence manifest, plus the
- * two non-review sources the site is allowed to state facts from.
+ * Identifiers of entries in the operator's ignored evidence manifest.
  *
- * `E1`–`E8` key one-to-one to that manifest. `official-wording`,
+ * `E1`–`E13` key one-to-one to numbered entries there. `official-wording`,
  * `rulebook-victory-conditions`, `components` and `rulebook` key to its
- * verbatim sections. `task1-commercial-model` keys to the commercial model
- * frozen in Task 1 — price, dispatch and delivery estimates, packaged size and
- * weight — which is a commercial fact, not review evidence, and is labelled
- * as such so the two are never confused in a proof strip.
+ * verbatim sections. **Every member of this union has an entry behind it.** An
+ * id with nothing behind it falsifies the model's entire guarantee, which is
+ * how the first revision attributed "about 30 minutes" and "about a minute" to
+ * `official-wording` while the manifest carried no such figures. They are E10
+ * and E11 now.
  */
 export type SourceId =
   | "E1"
@@ -58,11 +58,42 @@ export type SourceId =
   | "E6"
   | "E7"
   | "E8"
+  | "E9"
+  | "E10"
+  | "E11"
+  | "E12"
+  | "E13"
   | "official-wording"
   | "rulebook-victory-conditions"
   | "components"
-  | "rulebook"
-  | "task1-commercial-model";
+  | "rulebook";
+
+/**
+ * The merchant's own binding commitments: the dispatch window, the delivery
+ * estimates, who bears duties and return postage, how stock is treated, how
+ * price is presented.
+ *
+ * These are **not evidence.** Nobody verified them; we are undertaking to make
+ * them true. They get their own union rather than a member of {@link SourceId}
+ * exactly so a commitment cannot be dressed up as third-party proof:
+ * {@link ProofItem} and {@link Quotation} accept a `SourceId` and nothing else,
+ * so putting "dispatched within 3 business days" in the proof strip is a type
+ * error rather than a matter of taste.
+ */
+export type CommercialTermId =
+  | "price-presentation"
+  | "checkout-contract"
+  | "stock-policy"
+  | "dispatch-window"
+  | "delivery-estimates"
+  | "shipping-charge"
+  | "duties-outside-eu"
+  | "withdrawal-terms"
+  | "return-postage"
+  | "packaged-dimensions";
+
+/** What body copy may cite: evidence, or a commitment we are making. */
+export type Attribution = SourceId | CommercialTermId;
 
 export type SourceKind =
   | "review"
@@ -251,20 +282,20 @@ export interface Section {
   readonly anchor: AnchorId;
   readonly heading: string;
   readonly body: Prose;
-  readonly source?: SourceId;
+  readonly source?: Attribution;
   readonly links?: readonly Link[];
 }
 
 export interface ListItem {
   readonly term: string;
   readonly detail: string;
-  readonly source?: SourceId;
+  readonly source?: Attribution;
 }
 
 export interface FaqEntry {
   readonly question: string;
   readonly answer: Prose;
-  readonly source?: SourceId;
+  readonly source?: Attribution;
 }
 
 /* ------------------------------------------------------------------------
@@ -325,9 +356,12 @@ export interface Page {
 }
 
 /**
- * The elements EU distance selling obliges the legal pages to carry. The list
- * is closed, and a test asserts the legal pages between them cover all of it —
- * so a missing obligation fails the build instead of being noticed at launch.
+ * The elements the legal pages are obliged to carry: EU distance selling for
+ * the first eight, and this plan's own consent constraint for the last two —
+ * record the lawful basis for analytics, and name every third-party processor
+ * the site loads. The list is closed, and a test asserts the legal pages
+ * between them cover all of it exactly once, so deleting the processor section
+ * fails the build instead of being noticed after launch.
  */
 export const LEGAL_ELEMENTS = [
   "merchant-identity",
@@ -340,6 +374,8 @@ export const LEGAL_ELEMENTS = [
   "dispatch-estimate",
   "vat-presentation",
   "checkout-acknowledgement",
+  "analytics-lawful-basis",
+  "third-party-processors",
 ] as const;
 
 export type LegalElement = (typeof LEGAL_ELEMENTS)[number];
