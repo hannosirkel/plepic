@@ -1,0 +1,185 @@
+.page {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-space);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  grid-template-areas: "copy image";
+  gap: var(--space-xl);
+  align-items: center;
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    grid-template-areas: "image" "copy";
+  }
+}
+
+/*
+ * Exactly one element per named grid area. `grid-area: copy` belongs to this
+ * wrapper alone: named areas are cells, not columns, so four siblings each
+ * carrying `grid-area: copy` are four items placed in the same cell, painted
+ * on top of one another. The copy stacks here, in normal flow.
+ */
+.heroCopy {
+  grid-area: copy;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.publisherLine {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--step-1);
+  color: var(--text-muted);
+}
+
+.pitch {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--step-6);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-display);
+}
+
+.differentiator {
+  margin: 0 0 var(--space-md);
+  font-size: var(--step-2);
+  color: var(--text-muted);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.heroImage {
+  grid-area: image;
+  width: 100%;
+  height: auto;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--step-4);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+}
+
+.storyBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: var(--content-measure);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.newsletter {
+  background: var(--surface-raised);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: var(--content-measure);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin-top: var(--space-2xs);
+}
+
+.fieldLabel {
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+.fieldRow {
+  display: flex;
+  /*
+   * Wrapping is the other half of the `min-width: 0` below. Letting the
+   * field shrink stops the row overflowing, but on its own it shrinks it to
+   * whatever is left after `Subscribe` — 55px of usable email field at a
+   * 320px viewport. With a 12rem basis the button drops to its own line
+   * before that happens, so the narrow layout degrades to stacked rather
+   * than to a field nobody can type in. Desktop is unaffected: the row has
+   * ~576px there and never reaches the wrap point.
+   */
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+/*
+ * `min-width: 0` is load-bearing, not tidiness. A flex item's default
+ * `min-width: auto` floors it at its own min-content width, and an <input>'s
+ * min-content width is its `size` attribute — 211px, measured. The floor won
+ * over `flex-shrink`, so on a 390px viewport the document's `scrollWidth`
+ * was 403 and `Subscribe` sat at x=292→403: off the right edge of the phone,
+ * with the whole page scrolling sideways to reach it. `min-width: 0`
+ * restores the shrink and returns `scrollWidth` to 390 exactly. A
+ * `box-sizing` reset does not — it was measured too, and changes nothing.
+ * See `mockup-layout.test.ts`, which now holds every growable flex item to
+ * this.
+ */
+.field {
+  flex: 1 1 12rem;
+  min-width: 0;
+  min-height: var(--button-min-height);
+  padding-inline: var(--space-sm);
+  border: var(--border-width) solid var(--border-interactive);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.field:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.submit {
+  min-height: var(--button-min-height);
+  padding-inline: var(--space-md);
+  border-radius: var(--button-radius);
+  border: var(--button-border-width) solid var(--button-primary-border);
+  background: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+  font-weight: var(--button-font-weight);
+  cursor: pointer;
+}
+
+.consentNote {
+  margin: 0;
+  font-size: var(--step--2);
+  color: var(--text-subtle);
+}

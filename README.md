@@ -17,6 +17,79 @@ Next.js storefront and, later, a Medusa backend.
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
   for the redirect map's documented shape. Page composition, the cart, and
   checkout are later PR units.
+
+  `storefront/public/` carries the committed web derivatives — the publisher
+  and Lunar Base brand marks, favicons, product and component photography,
+  and two Open Graph cards — derived from masters that live outside every
+  repository and are never committed here
+  (`storefront/tests/no-live-hostname.test.ts` holds every one of them to a
+  byte ceiling, and to carrying no EXIF, XMP or PNG text metadata, for
+  exactly that reason). The two OG cards are not the same kind of thing, and
+  calling both "authored" would have been wrong: `og/publisher-og.png` is the
+  Plepic brand pack's own 1200x630 card, committed byte-for-byte because it
+  already existed and redrawing it would have been waste, while
+  `og/lunar-base-og.png` is composed for this site from the Lunar Base
+  wordmark and the components photograph, then quantised with
+  `pngquant --quality 70-95` and stripped of an alpha channel it never used
+  (322,200 → 73,203 bytes, RMSE 0.4%).
+
+  **Some of what is in `public/` is referenced by no source file, on
+  purpose.** Three groups, and the distinction matters because "nothing
+  imports it" is otherwise a good argument for deleting a file:
+
+  - **Referenced by the platform, not by code** — `favicon.ico`,
+    `icons/favicon-32.png`, `icons/favicon-64.png`,
+    `icons/apple-touch-icon.png`, `icons/web-app-icon-192.png` and
+    `icons/web-app-icon-512.png`. Browsers and installers fetch these by
+    convention and by web-app manifest; the manifest and the `<head>` links
+    belong to `t2-pages`, which builds the real routes.
+  - **Referenced by page metadata a later unit writes** — `og/publisher-og.png`
+    and `og/lunar-base-og.png`, which become `openGraph.images` entries.
+  - **Brand-pack deliverables, committed as deliverables.** The plan's
+    fourth checkbox asks for publisher-level supporting assets in their own
+    right, so `brand/plepic-icon-primary.svg`,
+    `brand/plepic-wordmark-small-print.svg`, `brand/lunar-base-logo.svg` and
+    `brand/lunar-base-icon.svg` are here whether or not a component happens
+    to name them today. `plepic-wordmark-small-print.svg` (3,183 bytes) is
+    the reduced-detail variant of the wordmark — four rules rather than six
+    and a larger secondary GAMES line, so it survives reproduction at small
+    sizes where the primary's hairlines close up. It is deliberately *not*
+    what the footer uses: its letterforms are `#151B46`, which is
+    `--surface-sunken` on the publisher layer, so on the footer it measured
+    1.00:1 and rendered as three coloured bars and no name. The footer takes
+    `plepic-wordmark-dark.svg`, and `tests/site-chrome.test.tsx` measures
+    that pairing on both token layers so the swap cannot be undone by
+    accident.
+
+  `storefront/src/components/` carries three content-driven composites
+  rebuilt from what used to be baked raster images (`FeatureSpecStrip`,
+  `TeamPhotoSection`, `ReviewComposite`) and two full-page mockups under
+  `components/mockups/` (`HomepageMockup`, `LunarBaseMockup`) built from
+  `design/tokens.css` and `content/`, not from an image. Neither mockup is
+  imported by `src/app/` — they are markup a later unit lifts into the real
+  routes, not routes themselves. `tests/mockup-layout.test.ts` and
+  `tests/site-chrome.test.tsx` hold them to the properties rendered markup
+  cannot show, each added after a review found a page visibly broken while
+  the suite was green: that no two grid items are placed in one named grid
+  area (four items in one named area occupy one cell and overlap; they do
+  not stack); that every growable flex item bounds its own minimum size,
+  rather than being floored at its content's min-content width and pushing
+  its siblings off the screen; that the footer wordmark measurably contrasts
+  with the footer surface on both token layers; and that nothing off-screen
+  or inert is left in the keyboard tab order. All four are decided from the
+  stylesheet, because this suite has no layout engine — the trade-off, and
+  what a browser-driven harness would add on top, is argued at the head of
+  `tests/mockup-layout.test.ts`.
+
+  `sharp` is a direct dependency of the storefront for one documented
+  reason. Next.js declares it an `optionalDependency` of its own, and its
+  `sharp-missing-in-production` guidance is that installing it is "strongly
+  recommended" for a production environment using `next start` — which is
+  exactly how this workspace's `start` script serves the site. It is
+  imported by no source file here and is not a build-time asset tool; the
+  committed derivatives were produced outside the repository. If `next/image`
+  is still unused when the storefront ships, returning it to Next's own
+  optional resolution is a one-line change.
 - `backend/` — Medusa backend, added by a later PR unit.
 
 Two directories are not workspaces but are consumed by the storefront:
@@ -100,9 +173,13 @@ runtime, never committed here.
 
 That last sentence is a test, not a promise. `content/content.test.ts` holds
 `content/` to naming no hostname at all, and
-`storefront/tests/no-live-hostname.test.ts` holds `storefront/src` and
-`storefront/tests` to an allowlist of RFC 2606 reserved example domains plus
-the third-party endpoints the application genuinely talks to. Both scan source
-text as well as exported values, because a hostname in a comment leaks exactly
-as completely as one in a string — and a comment is where the last one was
-found.
+`storefront/tests/no-live-hostname.test.ts` holds every file `storefront/`'s
+own `.gitignore` would let into a commit — not a fixed list of
+subdirectories, but a walk over everything git would track there — to an
+allowlist of RFC 2606 reserved example domains plus the third-party endpoints
+the application genuinely talks to. Text files scan source text as well as
+exported values, because a hostname in a comment leaks exactly as completely
+as one in a string — and a comment is where the last one was found; binary
+web derivatives under `storefront/public/` are instead held to a byte
+ceiling, so a master committed by mistake fails loudly instead of silently
+bloating the repository.
