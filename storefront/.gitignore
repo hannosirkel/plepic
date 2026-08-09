@@ -1,0 +1,4 @@
+# Build output and caches. Root .gitignore already covers node_modules/ and
+# .next/ at any depth; these are storefront-specific artifacts on top of that.
+*.tsbuildinfo
+.next-test/

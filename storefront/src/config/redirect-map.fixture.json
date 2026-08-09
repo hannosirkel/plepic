@@ -1,0 +1,17 @@
+{
+  "hosts": {
+    "www.example.com": [
+      { "path": "/", "target": "home" },
+      { "path": "*", "target": "home" }
+    ],
+    "alt-brand.example.org": [
+      { "path": "/", "target": "lunarBase" },
+      { "path": "/game", "target": "lunarBase" },
+      { "path": "/rules", "target": "rulebook" },
+      { "path": "*", "target": "lunarBase" }
+    ],
+    "www.alt-brand.example.org": [
+      { "path": "*", "target": "lunarBase" }
+    ]
+  }
+}
