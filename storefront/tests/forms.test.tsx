@@ -181,6 +181,62 @@ describe("a repeated submission is a new answer, not the same answer again", () 
   }
 });
 
+/**
+ * MIN-10 of review pass 2. `previous` is not a value this server remembers:
+ * React serialises the last outcome into the form as a plaintext hidden
+ * control and the browser posts it back, so on the unhydrated path it is
+ * whatever the client sent. Before the guard, `{"submissions":"…"}` reached
+ * `+ 1` as a string and the rendered `data-submission` attribute was built by
+ * **concatenation** — measured on a running server as
+ * `data-submission="REVIEWER-TAMPERED-COUNT1"`.
+ *
+ * The property: whatever comes in, what comes out is the fixed `content/`
+ * sentence and an integer. A count that cannot be used is treated as no count
+ * at all, which is 1 — and nothing throws, because a form press must not be
+ * answered with a 500.
+ */
+describe("a forged previous state cannot become part of the answer", () => {
+  const actions = [
+    ["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage],
+    ["contact", reportContactNotSent, contactFormCopy.notSentMessage],
+  ] as const;
+
+  const forged: readonly (readonly [string, unknown])[] = [
+    ["a string count", { submissions: "REVIEWER-TAMPERED-COUNT" }],
+    ["markup as the count", { submissions: "<img src=x onerror=alert(1)>" }],
+    ["an object as the count", { submissions: { a: 1 } }],
+    ["a fractional count", { submissions: 1.5 }],
+    ["NaN", { submissions: Number.NaN }],
+    ["Infinity", { submissions: Number.POSITIVE_INFINITY }],
+    ["a null count", { submissions: null }],
+    ["no count at all", { message: "attacker prose" }],
+    ["not an object", "not an object"],
+    ["an array", []],
+    ["undefined", undefined],
+  ];
+
+  for (const [name, action, sentence] of actions) {
+    for (const [description, previous] of forged) {
+      it(`${name}: ${description} is answered with the fixed sentence and 1`, async () => {
+        const outcome = await action(previous);
+        expect(outcome.message).toBe(sentence);
+        expect(outcome.submissions).toBe(1);
+      });
+    }
+
+    it(`${name}: an integer count is still the one thing it accepts`, async () => {
+      expect((await action({ submissions: 41 })).submissions).toBe(42);
+      expect((await action(null)).submissions).toBe(1);
+    });
+
+    it(`${name}: never returns a count that is not an integer`, async () => {
+      for (const [, previous] of forged) {
+        expect(Number.isInteger((await action(previous)).submissions)).toBe(true);
+      }
+    });
+  }
+});
+
 describe("the Turnstile widget renders at a size that fits the card it sits in", () => {
   it("takes the compact size on both forms, without either passing one", () => {
     // Cloudflare: normal 300x65, flexible 100% with a 300px MINIMUM, compact

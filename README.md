@@ -233,19 +233,47 @@ Next.js storefront and, later, a Medusa backend.
   Proved on a running server with `javaScriptEnabled: false` at 1280, 390 and
   320, and asserted in `tests/build-and-serve.test.ts`.
 
-  **Every completed submission is announced, including consecutive identical
-  ones.** The answer is the same sentence every time, so while the action
-  returned that bare string a second press handed `useActionState` a value
-  React judged equal to the one it already had: the focus effect keyed on it
-  did not re-run and the live region's contents did not change. Measured in a
-  browser on the second consecutive hydrated press: **0 mutations** in the
-  `role="status"` region on both forms. The answer was still on screen — so
-  this was never a WCAG failure — but a screen-reader user got silence for a
-  press that had plainly done something. The action now returns a
-  `PublicFormOutcome`, a fixed `content/` sentence plus a submission count,
+  **The one value that travels back *in* is treated as untrusted.** React
+  serialises the previous answer into the form as a plaintext hidden control
+  and the browser reposts it, so on the unhydrated path it is whatever the
+  client sent rather than something the server remembers — a forged count of
+  `41` really does render `42`, and before the guard a forged *string* count
+  was **concatenated** rather than added, straight into a rendered attribute.
+  The actions therefore take the previous state as `unknown` and narrow it:
+  anything that is not an integer is no previous state at all and is answered
+  with 1, and nothing throws, because a form press must not be answered with a
+  500. That is correctness rather than security — nothing in that value is
+  stored, logged or read back, and the message is always the fixed `content/`
+  sentence — but the next unit inherits the argument. What a press serialises
+  back is now asserted verbatim on three consecutive presses on both forms
+  (`tests/build-and-serve.test.ts`): the fixed sentence, an integer, and
+  nothing else.
+
+  **Every completed submission now changes the DOM inside the live region,
+  including consecutive identical ones.** The answer is the same sentence
+  every time, so while the action returned that bare string a second press
+  handed `useActionState` a value React judged equal to the one it already
+  had: the focus effect keyed on it did not re-run and the live region's
+  contents did not change. Measured in a browser on the second consecutive
+  hydrated press: **0 mutations** in the `role="status"` region on both forms.
+  The answer was still on screen — so this was never a WCAG failure — but a
+  polite live region whose contents do not change gives a screen-reader user
+  silence for a press that had plainly done something. The action now returns
+  a `PublicFormOutcome`, a fixed `content/` sentence plus a submission count,
   and the paragraph is keyed on that count so it remounts. Same measurement
   after: **2 mutations** (the old paragraph out, the new one in) and focus on
   the new answer, on both forms.
+
+  **What was measured is the mutation count, not the announcement**, and the
+  distinction is the point of the paragraph above rather than a caveat on it.
+  No screen reader was run: there is none in this environment, and that is a
+  standing gap on this work, not something these changes closed. That a
+  childList change inside an `aria-atomic` `role="status"` region is spoken is
+  read off the specification and off what the mutation observer recorded — it
+  was not heard. `tests/forms.test.tsx` and `tests/build-and-serve.test.ts`
+  say the same thing where they assert the mechanism, and the WCAG 2.2 AA
+  ledger row this work feeds stays open for exactly this reason: it closes on
+  a human assistive-technology pass and on nothing else.
 
   **The Turnstile widget renders at Cloudflare's `compact` size.** It
   defaulted to `flexible`, which Cloudflare documents as *100% wide with a

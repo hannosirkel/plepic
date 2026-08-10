@@ -68,8 +68,9 @@
  * and no submission host wired to the contact form; both are Task 5's work,
  * together with the server-side Turnstile verification.
  *
- * The first argument they *do* bind is this module's own previous return
- * value, and it exists for one reason: see `PublicFormOutcome` below.
+ * The first argument they *do* bind is the previous answer as the **client
+ * posts it back**, and it exists for one reason: see `PublicFormOutcome`
+ * below, which also says why it is treated as untrusted input.
  *
  * **They do not fabricate success.** A silent no-op that leaves the page
  * looking as though something was sent is its own defect — arguably a worse one
@@ -115,29 +116,80 @@ import { contactForm } from "../../../../content/support.js";
  * It is a number and not a timestamp or a random id deliberately: it is
  * serialised into the form as the next submission's `previous` argument, so it
  * has to be small, stable and obviously free of anything about the visitor.
+ *
+ * ## `previous` comes back **in**, and nothing authenticates it
+ *
+ * React's progressive enhancement serialises the last returned outcome into
+ * the form it renders back, as a plaintext hidden control (`$ACTION_1:1`).
+ * Nothing signs or encrypts it, so on the unhydrated path `previous` is
+ * **whatever the client posted**, not something this server remembers. The
+ * declared type is therefore a claim by the sender, not a fact — measured on a
+ * running server, a forged `{"submissions":41}` rendered
+ * `data-submission="42"`, and a forged `{"submissions":"…"}` was
+ * *concatenated* rather than added, because `+ 1` on a string is not
+ * arithmetic. {@link nextSubmission} narrows it instead, which is why both
+ * actions take `unknown`.
+ *
+ * **That is a correctness fix and not a security one**, and it should not be
+ * read as one: `message` is never read back out of `previous`, React escapes
+ * the attribute the count lands in, a cross-site POST is refused by Next.js's
+ * `Origin` check, and nothing here is stored or logged. The reason to say it
+ * plainly is that **the next unit inherits this argument** — server-side
+ * Turnstile verification and the actual submit both live on the far side of
+ * it — and the rest of this comment reads as though the outcome only ever
+ * travels outward.
  */
 export interface PublicFormOutcome {
   /** The sentence to show. Always a fixed string from `content/`. */
   readonly message: string;
-  /** How many submissions this form has answered, counting from 1. */
+  /**
+   * Which answer this is, counting from 1: one more than the count the
+   * previous answer carried.
+   *
+   * **Not "how many submissions this form has answered"** — nothing on the
+   * server counts anything. On the unhydrated path the previous count arrives
+   * from the client (see above), so this is client-asserted and only as
+   * trustworthy as the browser that sent it. It is still an integer and still
+   * free of anything about the visitor, because {@link nextSubmission}
+   * enforces both; its one job is to make two consecutive identical answers
+   * two distinct values.
+   */
   readonly submissions: number;
 }
 
-/** The count for the next answer, given the answer before it (if any). */
-function nextSubmission(previous: PublicFormOutcome | null): number {
-  return (previous?.submissions ?? 0) + 1;
+/**
+ * The count for the next answer, given whatever came back in as the previous
+ * one.
+ *
+ * The parameter is `unknown` deliberately. This value is posted by the client,
+ * so a declared shape here would be a lie the compiler enforces nowhere at
+ * runtime; `unknown` makes narrowing structurally unavoidable rather than a
+ * call some later edit can quietly drop.
+ *
+ * **Anything that is not an integer becomes 1** — the same answer an absent
+ * `previous` gets, because a previous state this function cannot use is not a
+ * previous state. It never throws: a form press must not be answered with a
+ * 500, and the visitor has done nothing wrong even when their browser has.
+ * `Number.isInteger` and nothing beyond it is also deliberate. A range check
+ * or a cap would be sanitisation theatre over a value that is never stored,
+ * never logged and never read back as anything but a number — what the guard
+ * has to buy is that a rendered attribute cannot be built out of a string the
+ * client chose, and that is bought here.
+ */
+function nextSubmission(previous: unknown): number {
+  const counted =
+    typeof previous === "object" && previous !== null && "submissions" in previous
+      ? previous.submissions
+      : undefined;
+  return typeof counted === "number" && Number.isInteger(counted) ? counted + 1 : 1;
 }
 
 /** The newsletter form's answer to a submission this build cannot act on. */
-export async function reportNewsletterNotSent(
-  previous: PublicFormOutcome | null,
-): Promise<PublicFormOutcome> {
+export async function reportNewsletterNotSent(previous: unknown): Promise<PublicFormOutcome> {
   return { message: newsletter.notSentMessage, submissions: nextSubmission(previous) };
 }
 
 /** The contact form's answer to a submission this build cannot act on. */
-export async function reportContactNotSent(
-  previous: PublicFormOutcome | null,
-): Promise<PublicFormOutcome> {
+export async function reportContactNotSent(previous: unknown): Promise<PublicFormOutcome> {
   return { message: contactForm.notSentMessage, submissions: nextSubmission(previous) };
 }

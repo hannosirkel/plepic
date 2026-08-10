@@ -1139,6 +1139,24 @@ describe("neither public form can put a field value in a URL", () => {
     return /data-submission="([^"]*)"/.exec(formMarkup(html, label))?.[1] ?? null;
   }
 
+  /**
+   * The hidden control React's progressive enhancement uses to carry the
+   * previous action state back to the server on the next press.
+   *
+   * Named rather than sniffed out by shape on purpose. If React ever renames
+   * it, the assertions below must fail loudly instead of quietly checking a
+   * control that is no longer there — which is the failure mode that would
+   * turn this whole guarantee back into something nobody is watching.
+   */
+  const PREVIOUS_STATE_FIELD = "$ACTION_1:1";
+
+  /** The raw serialised previous state this page would resubmit, if any. */
+  function serialisedPreviousState(html: string, label: string): string | undefined {
+    return hiddenFields(formMarkup(html, label)).find(
+      ([name]) => name === PREVIOUS_STATE_FIELD,
+    )?.[1];
+  }
+
   /** Every hidden control a browser would resubmit, in document order. */
   function hiddenFields(form: string): readonly (readonly [string, string])[] {
     return [...form.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].flatMap((match) => {
@@ -1336,6 +1354,74 @@ describe("neither public form can put a field value in a URL", () => {
           expect(paintedText(body).replaceAll(/\s+/g, " ")).toContain(
             form.answer.replaceAll(/\s+/g, " "),
           );
+        }
+      });
+
+      /**
+       * MIN-11 of review pass 2 — **the unit's central guarantee, and until
+       * now the one nothing in this repository checked.**
+       *
+       * The forms answer in place rather than redirecting, so the whole case
+       * that no field value escapes rests on what React serialises back into
+       * the form: `$ACTION_1:1` is the previous outcome, in plaintext, in the
+       * markup, and a browser reposts it on the next press. If a field value
+       * ever reached the returned outcome it would travel out in that control
+       * and straight back in — and every other assertion in this file would
+       * still pass, because the response *body* check above only ever looked
+       * at the first press, where `previous` is `[null]` and therefore the
+       * least informative moment there is.
+       *
+       * So: three consecutive presses, retyping every field each time, with
+       * the state read off the form the previous press served. `toEqual`
+       * fails on an unexpected key, so the shape assertion is "these two
+       * fields and nothing else"; the message must be the fixed `content/`
+       * sentence and the count must be that press's integer.
+       *
+       * Mutation-proved by making the action put a submitted field into the
+       * message it returns: this test reddens on both forms, on every press,
+       * while the response-body test above stays green on press 1.
+       */
+      it("serialises back the fixed sentence and an integer, and nothing else, on every press", async () => {
+        const typed = Object.entries(form.typed);
+        const served = await requestWithHost(server.port, form.route, LIVE_HOST);
+
+        // Before any press at all. If this control is absent the loop below
+        // would be asserting `undefined` is fine forever.
+        expect(
+          serialisedPreviousState(served.body, form.label),
+          `the served form declares no ${PREVIOUS_STATE_FIELD} — React renamed it, and this test is no longer looking at the previous state`,
+        ).toBe("[null]");
+
+        let page = served.body;
+        for (const press of [1, 2, 3]) {
+          const response = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
+            ...hiddenFields(formMarkup(page, form.label)),
+            ...typed,
+          ]);
+          expect(response.status).toBe(200);
+          expect(outcomeSubmission(response.body, form.label)).toBe(String(press));
+
+          const state = serialisedPreviousState(response.body, form.label);
+          expect(state, `press ${String(press)} served back no ${PREVIOUS_STATE_FIELD}`).toBeDefined();
+
+          expect(
+            JSON.parse(state ?? "null"),
+            `press ${String(press)} serialised something other than the fixed sentence and a count`,
+          ).toEqual([{ message: form.answer, submissions: press }]);
+
+          // Said the other way round, against the raw string: not one thing
+          // the visitor typed is in there, in any of the encodings this
+          // control can carry it in.
+          for (const [field, value] of Object.entries(form.typed)) {
+            expect(
+              state,
+              `"${field}" is in the state press ${String(press)} serialises back`,
+            ).not.toContain(value);
+            expect(state).not.toContain(encodeURIComponent(value));
+            expect(state).not.toContain(JSON.stringify(value).slice(1, -1));
+          }
+
+          page = response.body;
         }
       });
     });
