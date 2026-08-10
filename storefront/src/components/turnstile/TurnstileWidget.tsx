@@ -56,8 +56,20 @@ export interface TurnstileWidgetProps {
    * because `.turnstile` in both `styles/forms.module.css` and
    * `styles/pages/shop.module.css` carried `overflow: hidden`, which clipped
    * the widget instead of overflowing the page. Both rules have had that
-   * declaration removed, so a future oversize is visible to a sweep rather
-   * than silently cut off.
+   * declaration removed, so a future oversize is measurable rather than
+   * silently cut off.
+   *
+   * **Measurable by what, exactly.** Not by a page-level sweep:
+   * `styles/global.css` sets `overflow-x: hidden` on `html` and `body`, so
+   * `document.documentElement.scrollWidth <= clientWidth` cannot fail on this
+   * site whatever overflows, and removing this clip does not change that.
+   * Measured at a 320px viewport with a 300px stand-in in the real container,
+   * `documentElement.scrollWidth` was 305 against a `clientWidth` of 305 —
+   * clean — while `body.scrollWidth` read 365 and the stand-in's right edge
+   * sat 141px past its container's. What the removal restores is
+   * detectability to a **box-level `getBoundingClientRect()` or a
+   * `body.scrollWidth`** measurement, which is the conclusion
+   * `tests/mockup-layout.test.ts` already records for the whole site.
    *
    * `compact` is 150px wide, which fits inside the narrowest of those boxes
    * with 24px to spare, and is Cloudflare's documented answer for exactly

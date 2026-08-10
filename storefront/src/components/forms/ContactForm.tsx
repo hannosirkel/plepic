@@ -15,14 +15,16 @@
  * ## Nothing typed here reaches the URL, in any state of this page
  *
  * This form used to be `<form onSubmit={…}>` with no `method` and no
- * `action`, which is a GET form: a press before hydration, or with
- * JavaScript off, put a name, an email address, a subject and the entire
- * message body into the query string — and from there into browser history,
- * the next request's `Referer`, and every access log between the tunnel and
- * Loki. It now carries a Server Function as its `action`, so the browser
- * sends a `POST` with the values in the request body. See
- * `./public-form-actions.ts`, and `NewsletterForm.tsx` for the same note on
- * the form it shares this defect and this fix with.
+ * `action`, which is a GET form — and a GET serialises every named control,
+ * not only the ones somebody typed into. A press before hydration, or with
+ * JavaScript off, put **5 of this form's 5 controls** into the query string:
+ * a name, an email address, a subject, the entire message body, and
+ * `additional-notes`, which is `HoneypotField`'s hidden anti-spam input. From
+ * there into browser history, the next request's `Referer`, and every access
+ * log between the tunnel and Loki. It now carries a Server Function as its
+ * `action`, so the browser sends a `POST` with the values in the request
+ * body. See `./public-form-actions.ts`, and `NewsletterForm.tsx` for the same
+ * note on the form it shares this defect and this fix with.
  *
  * A valid submission is answered with `contactForm.notSentMessage`, hydrated
  * or not, identically: this build has no submission host, so the honest
@@ -38,6 +40,7 @@ import { contact, contactForm } from "../../../../content/support.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { reportContactNotSent } from "./public-form-actions.js";
+import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
 
 export interface ContactFormProps {
@@ -63,11 +66,19 @@ const FIELDS: readonly FieldSpec[] = [
 export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
   const baseId = useId();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
-  const [outcome, submit] = useActionState<string | null, FormData>(reportContactNotSent, null);
+  const [outcome, submit] = useActionState<PublicFormOutcome | null, FormData>(
+    reportContactNotSent,
+    null,
+  );
   const outcomeRef = useRef<HTMLParagraphElement>(null);
   /** See `NewsletterForm.tsx`: focus the answer only after a press made here. */
   const dispatched = useRef(false);
 
+  /**
+   * See `NewsletterForm.tsx` and `PublicFormOutcome`: the outcome is a new
+   * object per submission, which is what makes this effect re-run — and the
+   * answer therefore re-focus — on a second consecutive press.
+   */
   useEffect(() => {
     if (outcome === null || !dispatched.current) return;
     dispatched.current = false;
@@ -154,11 +165,21 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
       {/* Always in the document, so what lands in it is announced rather than
           merely appearing, and `autoFocus` so an unhydrated POST response
           scrolls to the answer instead of landing at the top of the page with
-          it below the fold. See `NewsletterForm.tsx` for both. */}
+          it below the fold. `key={outcome.submissions}` remounts the
+          paragraph on every completed submission, so a second consecutive
+          press is a real DOM change inside the live region rather than a
+          repaint of identical text. See `NewsletterForm.tsx` for all three. */}
       <div className={styles.alertAnchor} role="status">
         {outcome !== null && !anyError ? (
-          <p className={styles.outcome} ref={outcomeRef} tabIndex={-1} autoFocus>
-            {outcome}
+          <p
+            key={outcome.submissions}
+            data-submission={outcome.submissions}
+            className={styles.outcome}
+            ref={outcomeRef}
+            tabIndex={-1}
+            autoFocus
+          >
+            {outcome.message}
           </p>
         ) : null}
       </div>

@@ -207,22 +207,45 @@ Next.js storefront and, later, a Medusa backend.
 
   **Neither public form can put a field value in a URL, and neither pretends
   to have sent anything.** Both shipped as `<form onSubmit={…}>` with no
-  `method` and no `action` — which is a GET, so an unhydrated press (or one
-  with JavaScript off) put the newsletter address, or the contact form's
-  name, address, subject and whole message body, into the query string, the
-  browser's history, the next request's `Referer` and every access log on the
-  way to Loki. The checkout had the same defect and was fixed first, with a
-  route and a `303`; these two carry a Server Function as the form's `action`
-  instead (`src/components/forms/public-form-actions.ts`), which reaches the
-  same guarantee from inside the form components. The values travel in a
-  request body, the function **reads nothing** — neither takes the `FormData`
-  argument React passes — and the answer is rendered into the HTML of the
-  POST response, so it is legible with no JavaScript at all. That answer is
+  `method` and no `action` — which is a GET, and a GET serialises **every**
+  named control, not only the ones somebody typed into. Measured on a rebuilt
+  base revision, an unhydrated press (or one with JavaScript off) put **2 of
+  the newsletter's 2 controls** and **5 of the contact form's 5** into the
+  query string, the browser's history, the next request's `Referer` and every
+  access log on the way to Loki: the subscriber's address; the contact form's
+  name, address, subject and whole message body; and, on both forms,
+  `additional-notes` — which is the **honeypot**
+  (`src/components/turnstile/HoneypotField.tsx`), so the hidden anti-spam
+  field went into the URL alongside the visible ones, publishing whether it
+  had caught anything to every log on the path. The checkout had the same
+  defect and was fixed first, with a route and a `303`; these two carry a
+  Server Function as the form's `action` instead
+  (`src/components/forms/public-form-actions.ts`), which reaches the same
+  guarantee from inside the form components. The values travel in a request
+  body, the functions **read nothing a visitor typed** — React calls a
+  `useActionState` action as `(previousState, formData)` and neither function
+  binds the second argument, so no expression in that module can reach a
+  field — and the answer is rendered into the HTML of the POST response, so
+  it is legible with no JavaScript at all. That answer is
   `newsletter.notSentMessage` / `contactForm.notSentMessage`: nothing was
   sent, nothing was stored. Silently accepting a submission nothing can act
   on is its own defect, and it is the one the previous revision shipped.
   Proved on a running server with `javaScriptEnabled: false` at 1280, 390 and
   320, and asserted in `tests/build-and-serve.test.ts`.
+
+  **Every completed submission is announced, including consecutive identical
+  ones.** The answer is the same sentence every time, so while the action
+  returned that bare string a second press handed `useActionState` a value
+  React judged equal to the one it already had: the focus effect keyed on it
+  did not re-run and the live region's contents did not change. Measured in a
+  browser on the second consecutive hydrated press: **0 mutations** in the
+  `role="status"` region on both forms. The answer was still on screen — so
+  this was never a WCAG failure — but a screen-reader user got silence for a
+  press that had plainly done something. The action now returns a
+  `PublicFormOutcome`, a fixed `content/` sentence plus a submission count,
+  and the paragraph is keyed on that count so it remounts. Same measurement
+  after: **2 mutations** (the old paragraph out, the new one in) and focus on
+  the new answer, on both forms.
 
   **The Turnstile widget renders at Cloudflare's `compact` size.** It
   defaulted to `flexible`, which Cloudflare documents as *100% wide with a
@@ -233,8 +256,23 @@ Next.js storefront and, later, a Medusa backend.
   rules also carried `overflow: hidden`, so it was **clipped rather than
   overflowing** and three page-level sweeps read clean over it. `compact`
   (150x140) fits every container this site produces, and the clipping
-  declaration is gone from both stylesheets so a future oversize is visible
-  to a sweep.
+  declaration is gone from both stylesheets so a future oversize is
+  measurable rather than silently cut off.
+
+  **How much that buys is worth stating exactly, because it is less than "a
+  sweep".** `src/styles/global.css` keeps `overflow-x: hidden` on `html` and
+  `body` for the reason recorded further down this file, so
+  `document.documentElement.scrollWidth <= clientWidth` can never fail on
+  this site whatever overflows — removing the clip from `.turnstile` does not
+  change that. Measured at a 320px viewport with a 300px stand-in (the
+  `flexible` floor) in the real container:
+  `documentElement.scrollWidth` 305 against a `clientWidth` of 305, still
+  clean, while `body.scrollWidth` reads **365** and the stand-in's right edge
+  sits 141px past its container's. So what the removal restores is
+  detectability to a **box-level `getBoundingClientRect()` or a
+  `body.scrollWidth`** measurement — which is exactly what
+  `tests/mockup-layout.test.ts` already says a browser-driven harness must
+  do, and not to a root-scroll-width sweep.
 
   **`--accent-fill` can no longer be used as a text colour.**
   `tests/mockup-layout.test.ts` now scans every `.module.css` under `src/` for

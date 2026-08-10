@@ -1090,12 +1090,30 @@ describe("neither public form can put a field value in a URL", () => {
       route: "/",
       label: newsletterCopy.heading,
       answer: newsletterCopy.notSentMessage,
+      copy: newsletterCopy,
+      /**
+       * The sentence this route must never paint, because painting it would
+       * be a lie about a form that sends nothing.
+       *
+       * **`null` because the newsletter copy has no success sentence at
+       * all**, deliberately: nothing in this build can succeed, so
+       * `content/publisher.ts`'s `newsletter` object never had one to
+       * fabricate. The test below pins that absence instead. It used to
+       * assert that the *contact* form's success line was missing from the
+       * homepage — which a page that never had that string passes for free,
+       * and which said nothing about the newsletter at all. Give the
+       * newsletter a success sentence and this fixture has to gain the string
+       * to look for, or the suite reddens.
+       */
+      fabricatedAnswer: null,
       typed: { email: "unhydrated-subscriber@example.com" },
     },
     {
       route: "/support/lunar-base",
       label: contactCopy.heading,
       answer: contactFormCopy.notSentMessage,
+      copy: contactFormCopy,
+      fabricatedAnswer: contactFormCopy.successMessage,
       typed: {
         name: "Unhydrated Person",
         email: "unhydrated-writer@example.com",
@@ -1110,6 +1128,15 @@ describe("neither public form can put a field value in a URL", () => {
     const marker = html.indexOf(`aria-label="${label}"`);
     if (marker === -1) return "";
     return html.slice(html.lastIndexOf("<form", marker), html.indexOf("</form>", marker));
+  }
+
+  /**
+   * The submission count the served answer carries, or `null` if this
+   * response painted no answer at all. See the form components' `alertAnchor`
+   * block for why the count is on the element as well as in the React key.
+   */
+  function outcomeSubmission(html: string, label: string): string | null {
+    return /data-submission="([^"]*)"/.exec(formMarkup(html, label))?.[1] ?? null;
   }
 
   /** Every hidden control a browser would resubmit, in document order. */
@@ -1249,7 +1276,67 @@ describe("neither public form can put a field value in a URL", () => {
 
       it("does not fabricate a success message anywhere on the route", async () => {
         const response = await requestWithHost(server.port, form.route, LIVE_HOST);
-        expect(paintedText(response.body)).not.toContain(contactFormCopy.successMessage);
+
+        if (form.fabricatedAnswer === null) {
+          // See the fixture: this form has no success copy to fabricate, and
+          // the check with teeth is that it still has none.
+          expect(
+            Object.keys(form.copy),
+            "this form now has success copy; give the fixture the string to look for",
+          ).not.toContain("successMessage");
+          return;
+        }
+
+        expect(paintedText(response.body)).not.toContain(form.fabricatedAnswer);
+      });
+
+      /**
+       * MIN-4 of review pass 1, end to end: a second consecutive submission
+       * must be its own answer and not a repaint of the first.
+       *
+       * React's progressive enhancement binds the previous state into the
+       * form it serves back (`$ACTION_1:1`), so resubmitting the form from a
+       * POST response — exactly what a browser does on a second press — is
+       * the same sequence a hydrated visitor produces. Before the fix the
+       * action returned the bare sentence, there was no counter and no
+       * `data-submission` attribute, and the hydrated case produced zero
+       * mutations in the live region on the second press.
+       *
+       * The attribute is the observable; the React `key` built from the same
+       * number is the mechanism that remounts the paragraph, and a key is
+       * invisible in markup. This file cannot hydrate, so it proves the
+       * counter reaches the render and increments; the live-region mutation
+       * count itself was measured in a browser and is recorded in the unit's
+       * report.
+       */
+      it("answers a second consecutive submission as its own event", async () => {
+        const typed = Object.entries(form.typed);
+        const served = await requestWithHost(server.port, form.route, LIVE_HOST);
+
+        const first = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
+          ...hiddenFields(formMarkup(served.body, form.label)),
+          ...typed,
+        ]);
+        expect(first.status).toBe(200);
+        expect(outcomeSubmission(first.body, form.label)).toBe("1");
+
+        // The identical press again, on the page the first press produced.
+        const second = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
+          ...hiddenFields(formMarkup(first.body, form.label)),
+          ...typed,
+        ]);
+        expect(second.status).toBe(200);
+        expect(
+          outcomeSubmission(second.body, form.label),
+          "the second submission is indistinguishable from the first",
+        ).toBe("2");
+
+        // And it is the same fixed sentence from content/, both times.
+        for (const body of [first.body, second.body]) {
+          expect(paintedText(body).replaceAll(/\s+/g, " ")).toContain(
+            form.answer.replaceAll(/\s+/g, " "),
+          );
+        }
       });
     });
   }

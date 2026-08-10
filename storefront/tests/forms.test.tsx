@@ -25,8 +25,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { newsletter as newsletterCopy } from "../../content/publisher.js";
+import { contactForm as contactFormCopy } from "../../content/support.js";
 import { ContactForm } from "../src/components/forms/ContactForm.js";
 import { NewsletterForm } from "../src/components/forms/NewsletterForm.js";
+import {
+  reportContactNotSent,
+  reportNewsletterNotSent,
+} from "../src/components/forms/public-form-actions.js";
 
 describe("NewsletterForm", () => {
   const html = renderToStaticMarkup(<NewsletterForm turnstileSiteKey="test-site-key" nonce="abc" />);
@@ -121,6 +127,56 @@ describe("neither form is a GET form", () => {
 
     it(`${name} keeps a live region in the document before anything is announced`, () => {
       expect(html).toContain('role="status"');
+    });
+  }
+});
+
+/**
+ * **Every completed submission is announced, including consecutive identical
+ * ones.**
+ *
+ * Both forms answer with the same fixed sentence every time, so while the
+ * action returned that bare string a second consecutive press handed
+ * `useActionState` a value React judges equal to the one it already had:
+ * React bailed out, the effect keyed on the outcome never re-ran, focus
+ * stayed on the submit button, and the live region recorded **zero
+ * mutations**. The answer was still on screen, so this was never a WCAG
+ * failure — a screen-reader user simply got silence for a press that had
+ * plainly done something.
+ *
+ * The property below is the one React actually tests. `Object.is(second,
+ * first)` was `true` for two identical strings and is `false` for two
+ * outcomes; `submissions` is the substantive half, and the message must stay
+ * byte-identical while the value around it changes.
+ *
+ * This suite has no DOM (see this file's head), so what it cannot show is the
+ * announcement itself. The counter reaching the rendered answer is asserted
+ * end to end against a built server in `tests/build-and-serve.test.ts`, and
+ * the live-region mutation count was measured in a browser.
+ */
+describe("a repeated submission is a new answer, not the same answer again", () => {
+  const cases = [
+    ["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage],
+    ["contact", reportContactNotSent, contactFormCopy.notSentMessage],
+  ] as const;
+
+  for (const [name, action, sentence] of cases) {
+    it(`${name}: answers with the fixed sentence from content/, every time`, async () => {
+      const first = await action(null);
+      const second = await action(first);
+      expect(first.message).toBe(sentence);
+      expect(second.message).toBe(sentence);
+    });
+
+    it(`${name}: returns a value React cannot mistake for the previous one`, async () => {
+      const first = await action(null);
+      const second = await action(first);
+      expect(first.submissions).toBe(1);
+      expect(second.submissions).toBe(2);
+      expect(
+        Object.is(second, first),
+        "a second press produces a state React bails out of, so nothing is announced",
+      ).toBe(false);
     });
   }
 });

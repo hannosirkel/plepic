@@ -14,13 +14,18 @@
  * ## The address never reaches the URL, in any state of this page
  *
  * This form used to be `<form onSubmit={…}>` with no `method` and no
- * `action` — a GET form. A press before hydration, or with JavaScript off,
- * put the visitor's email address in the query string, the URL bar, the
- * browser history, the next request's `Referer`, and every access log on the
- * way to Loki. `event.preventDefault()` in the handler below only ever
- * covered the hydrated case, and this is a `"use client"` component: every
- * visitor passes through the unhydrated window, and under this application's
- * `'strict-dynamic'` CSP a nonce mismatch means the page never leaves it.
+ * `action` — a GET form, and a GET serialises every named control, not only
+ * the ones somebody typed into. A press before hydration, or with JavaScript
+ * off, put **2 of this form's 2 controls** in the query string: the visitor's
+ * email address *and* `additional-notes`, which is `HoneypotField`'s hidden
+ * anti-spam input. Measured on a rebuilt base revision, the URL after an
+ * unhydrated Subscribe was `/?email=…&additional-notes=`. From there into the
+ * URL bar, the browser history, the next request's `Referer`, and every
+ * access log on the way to Loki. `event.preventDefault()` in the handler
+ * below only ever covered the hydrated case, and this is a `"use client"`
+ * component: every visitor passes through the unhydrated window, and under
+ * this application's `'strict-dynamic'` CSP a nonce mismatch means the page
+ * never leaves it.
  *
  * It now carries a Server Function as its `action`, so React renders a real
  * `method="POST"` form. The values travel in a request body — no query
@@ -47,6 +52,7 @@ import { newsletter } from "../../../../content/publisher.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { reportNewsletterNotSent } from "./public-form-actions.js";
+import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
 
 export interface NewsletterFormProps {
@@ -58,7 +64,7 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
   const fieldId = useId();
   const errorId = useId();
   const [error, setError] = useState<string | null>(null);
-  const [outcome, submit] = useActionState<string | null, FormData>(
+  const [outcome, submit] = useActionState<PublicFormOutcome | null, FormData>(
     reportNewsletterNotSent,
     null,
   );
@@ -70,6 +76,13 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
    */
   const dispatched = useRef(false);
 
+  /**
+   * Keyed on the whole outcome, which is a **new object per submission** —
+   * see `PublicFormOutcome`. When the action returned the bare sentence, a
+   * second consecutive press produced a value React judged equal to the last
+   * one and this effect did not re-run at all, so focus stayed on the submit
+   * button.
+   */
   useEffect(() => {
     if (outcome === null || !dispatched.current) return;
     dispatched.current = false;
@@ -146,11 +159,33 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
           below the fold, so an answer nobody scrolls to is an answer nobody
           reads. `autofocus` is an HTML attribute, not a script: measured with
           JavaScript switched off, the browser scrolls to it (scrollY 5166) and
-          focuses it. Hydrated, the effect above does the same thing. */}
+          focuses it. Hydrated, the effect above does the same thing.
+
+          `key={outcome.submissions}` is what makes the *second* consecutive
+          press audible. The sentence is identical every time, so re-rendering
+          the same <p> with the same text changes nothing in the DOM and a
+          polite live region with unchanged contents announces nothing —
+          measured at zero mutations before this key existed. Keying the
+          paragraph on the submission count remounts it, which is a real
+          childList change inside an `aria-atomic` region, so every completed
+          submission is announced, including consecutive identical ones.
+
+          A React key is invisible in rendered markup, so the same count is
+          also written to `data-submission`, which is what
+          `tests/build-and-serve.test.ts` can actually read off a built
+          server's POST response. The attribute is the observable; the key is
+          the mechanism. */}
       <div className={styles.alertAnchor} role="status">
         {outcome !== null && error === null ? (
-          <p className={styles.outcome} ref={outcomeRef} tabIndex={-1} autoFocus>
-            {outcome}
+          <p
+            key={outcome.submissions}
+            data-submission={outcome.submissions}
+            className={styles.outcome}
+            ref={outcomeRef}
+            tabIndex={-1}
+            autoFocus
+          >
+            {outcome.message}
           </p>
         ) : null}
       </div>
