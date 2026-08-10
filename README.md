@@ -205,6 +205,45 @@ Next.js storefront and, later, a Medusa backend.
   validate their own fields with tied, announced errors, and submit to
   nothing yet.
 
+  **Neither public form can put a field value in a URL, and neither pretends
+  to have sent anything.** Both shipped as `<form onSubmit={…}>` with no
+  `method` and no `action` — which is a GET, so an unhydrated press (or one
+  with JavaScript off) put the newsletter address, or the contact form's
+  name, address, subject and whole message body, into the query string, the
+  browser's history, the next request's `Referer` and every access log on the
+  way to Loki. The checkout had the same defect and was fixed first, with a
+  route and a `303`; these two carry a Server Function as the form's `action`
+  instead (`src/components/forms/public-form-actions.ts`), which reaches the
+  same guarantee from inside the form components. The values travel in a
+  request body, the function **reads nothing** — neither takes the `FormData`
+  argument React passes — and the answer is rendered into the HTML of the
+  POST response, so it is legible with no JavaScript at all. That answer is
+  `newsletter.notSentMessage` / `contactForm.notSentMessage`: nothing was
+  sent, nothing was stored. Silently accepting a submission nothing can act
+  on is its own defect, and it is the one the previous revision shipped.
+  Proved on a running server with `javaScriptEnabled: false` at 1280, 390 and
+  320, and asserted in `tests/build-and-serve.test.ts`.
+
+  **The Turnstile widget renders at Cloudflare's `compact` size.** It
+  defaulted to `flexible`, which Cloudflare documents as *100% wide with a
+  300px minimum* — a floor, not a target. The `.turnstile` box measures 174px
+  on the newsletter and 222px on the checkout at a 320px viewport, and 244px
+  on the newsletter at 390px, so the widget was wider than its own container
+  on five of nine measured viewport/form combinations. Both `.turnstile`
+  rules also carried `overflow: hidden`, so it was **clipped rather than
+  overflowing** and three page-level sweeps read clean over it. `compact`
+  (150x140) fits every container this site produces, and the clipping
+  declaration is gone from both stylesheets so a future oversize is visible
+  to a sweep.
+
+  **`--accent-fill` can no longer be used as a text colour.**
+  `tests/mockup-layout.test.ts` now scans every `.module.css` under `src/` for
+  it. That token is a background — `design/tokens.css` says so itself — and as
+  text it measures 2.91:1 on the contact form's surface and 3.19:1 on the
+  newsletter's, against WCAG 1.4.3's 4.5:1. It shipped in two stylesheets and
+  survived a fix pass in one of them, because nothing in the repository could
+  see it.
+
   **`ConsentManager` is styled.** It was inherited unstyled — a raw
   paragraph and two default `<button>`s below the footer of every page —
   which was invisible while every route was a placeholder and is not now that

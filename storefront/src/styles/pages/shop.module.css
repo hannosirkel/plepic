@@ -544,10 +544,18 @@
   color: var(--text);
 }
 
+/*
+ * The one rule in this sheet the public-form defect unit was granted, and it
+ * was granted for the declaration that is no longer here: `overflow: hidden`.
+ * It clipped the Turnstile widget instead of letting it overflow, which is
+ * how a widget too wide for its card read clean through three page-level
+ * sweeps. The widget now renders at Cloudflare's `compact` size, which fits.
+ * See `styles/forms.module.css`'s `.turnstile` and
+ * `src/components/turnstile/TurnstileWidget.tsx`.
+ */
 .turnstile {
   margin-top: var(--space-2xs);
   max-width: 100%;
-  overflow: hidden;
 }
 
 .consentLine {

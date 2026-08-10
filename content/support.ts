@@ -108,4 +108,17 @@ export const contactForm = {
   successMessage: "Thanks — that has reached us.",
   errorMessage:
     "That did not send. Please try again, or email us directly at {merchantContactAddress}.",
+  /**
+   * What the form says once it has been submitted and this build cannot act
+   * on it — which is every submission, until the submission host is wired up
+   * in Task 5.
+   *
+   * Deliberately distinct from `errorMessage`: that sentence describes a send
+   * that failed and invites a retry, and a retry here would fail identically
+   * every time. This one says plainly that the form carries nothing yet, and
+   * points at the email address the section above already prints. See
+   * `storefront/src/components/forms/public-form-actions.ts`.
+   */
+  notSentMessage:
+    "Nothing was sent. This form does not reach our mailbox, so your message was not delivered or stored. Please email us instead — the address is just above.",
 } as const;

@@ -26,19 +26,56 @@ export interface TurnstileWidgetProps {
   /** Distinguishes multiple widgets on one page, e.g. contact vs. newsletter. */
   readonly formName: string;
   /**
-   * Turnstile's own `data-size`. Defaults to `"flexible"` — Cloudflare's own
-   * answer to a widget that has to sit inside a narrow, responsive card:
-   * the fixed `"normal"` size renders at 300x65 regardless of its
-   * container, which is wider than this site's newsletter and contact
-   * cards at a 320px viewport (measured: the card's content box is ~192px
-   * there) and overflowed its own card, cut off at the edge, when this
-   * unit rendered it for the first time. `"flexible"` fills the available
-   * container width instead.
+   * Turnstile's own `data-size`. Cloudflare documents exactly three, and
+   * their dimensions are fixed by Cloudflare, not by this site's CSS:
+   *
+   * | `data-size` | width | height | Cloudflare's stated use |
+   * |---|---|---|---|
+   * | `normal` (its default) | 300px | 65px | standard |
+   * | `flexible` | 100%, **minimum 300px** | 65px | responsive |
+   * | `compact` | 150px | 140px | **space-constrained layouts** |
+   *
+   * This defaults to `"compact"`, and that is a correctness fix rather than
+   * a taste one. It read `"flexible"`, on the belief that flexible fills
+   * whatever it is given — but flexible has a **300px floor** and does not
+   * shrink past it, and three of this site's containers are narrower than
+   * that floor. Measured in a browser, the `.turnstile` box's own content
+   * width, against a widget that will not render below 300px:
+   *
+   * | viewport | newsletter (`/`) | contact (`/support/lunar-base`) | checkout |
+   * |---|---|---|---|
+   * | 320px | **174px** (126 short) | **272px** (28 short) | **222px** (78 short) |
+   * | 390px | **244px** (56 short) | 342px | **292px** (8 short) |
+   * | 1280px | 608px | 512px | 1102px |
+   *
+   * So it was clipped on five of those nine combinations, not merely at
+   * 320px, and the newsletter — the form most visitors meet — was the worst
+   * of them.
+   *
+   * That overflow was invisible to every automated sweep on this plan
+   * because `.turnstile` in both `styles/forms.module.css` and
+   * `styles/pages/shop.module.css` carried `overflow: hidden`, which clipped
+   * the widget instead of overflowing the page. Both rules have had that
+   * declaration removed, so a future oversize is visible to a sweep rather
+   * than silently cut off.
+   *
+   * `compact` is 150px wide, which fits inside the narrowest of those boxes
+   * with 24px to spare, and is Cloudflare's documented answer for exactly
+   * this. It is one fixed size at every viewport, deliberately: a container
+   * query cannot pick between the sizes, because `data-size` is an attribute
+   * the Turnstile script reads once and CSS cannot set an attribute. The
+   * alternatives — mounting two widgets and hiding one, which would open two
+   * challenges and put two tokens in one form, or scaling the challenge
+   * iframe with a transform — are both worse than a widget Cloudflare
+   * designed for narrow layouts.
+   *
+   * Overridable per call site, but nothing overrides it today: contact,
+   * newsletter and checkout all take this default.
    */
   readonly size?: "normal" | "compact" | "flexible";
 }
 
-export function TurnstileWidget({ siteKey, nonce, formName, size = "flexible" }: TurnstileWidgetProps) {
+export function TurnstileWidget({ siteKey, nonce, formName, size = "compact" }: TurnstileWidgetProps) {
   if (siteKey === null) return null;
 
   return (

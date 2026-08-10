@@ -187,15 +187,68 @@ textarea.stackedField {
 }
 
 /*
- * `max-width: 100%` plus `overflow: hidden` is a safety net underneath
- * `TurnstileWidget`'s own `data-size="flexible"` default (see that
- * component's doc comment): flexible mode fills this element's width, but
- * should Cloudflare ever change flexible mode's own minimum width, this
- * still stops the widget's iframe breaking out of its card at a narrow
- * viewport the way the fixed-size default measurably did.
+ * The Turnstile widget's box.
+ *
+ * **`overflow: hidden` is gone, and its removal is the point of this rule.**
+ * It was written as a safety net under `TurnstileWidget`'s `data-size`
+ * default, and instead it hid the defect that default was causing: flexible
+ * mode has a 300px floor and this box is narrower than that floor on both
+ * forms. Measured in a browser, this element's own content width is **174px**
+ * on the homepage newsletter and **272px** on the contact form at a 320px
+ * viewport, and still only **244px** on the newsletter at 390px.
+ * `overflow: hidden` clipped the difference rather than letting it overflow,
+ * and three page-level overflow sweeps on this plan duly read clean over a
+ * widget cut off by 126px. A clipping container makes an overflow defect
+ * invisible to exactly the check that exists to find it, so this one does not
+ * clip.
+ *
+ * The widget now renders at `compact` — 150px by 140px, fixed by Cloudflare —
+ * which fits the narrowest of those boxes with 24px to spare. See
+ * `src/components/turnstile/TurnstileWidget.tsx` for the documented sizes and
+ * for why a container query cannot make that choice.
+ *
+ * `max-width: 100%` stays: it costs nothing and keeps this box itself inside
+ * its card whatever is put in it.
  */
 .turnstile {
   margin-top: var(--space-2xs);
   max-width: 100%;
-  overflow: hidden;
+}
+
+/*
+ * A live region that is always in the document, so a sentence put into it is
+ * announced rather than merely appearing. `display: contents` so an empty one
+ * occupies no box and adds no gap to the form's `flex` column — the idiom
+ * `pages/shop.module.css` already ships for the checkout's error summary.
+ */
+.alertAnchor {
+  display: contents;
+}
+
+/*
+ * The form-level answer to a submission: "nothing was sent". Same shape as
+ * `.fieldError` above and for the same reason — `--text` for the text,
+ * because `--accent-fill` is a background and fails WCAG 1.4.3 as text, with
+ * the orange carried by a marker down the inline start. It is a `role="status"`
+ * message rather than an error: nothing the visitor did was wrong.
+ *
+ * `tabIndex={-1}` on the element makes it a focus target: after a hydrated
+ * submission an effect focuses it, and on an unhydrated POST response the
+ * `autofocus` attribute does, so a keyboard user is put on the answer rather
+ * than left on the button, and the answer is scrolled into view rather than
+ * sitting below the fold of a freshly loaded page. Neither kind of focus
+ * matches `:focus-visible`, so the outline is on `:focus`.
+ */
+.outcome {
+  margin: 0;
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  border-inline-start: var(--border-width-thick) solid var(--accent-fill);
+  padding-inline-start: var(--space-2xs);
+}
+
+.outcome:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
