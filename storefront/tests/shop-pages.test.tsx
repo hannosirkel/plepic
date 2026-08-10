@@ -44,13 +44,17 @@ import {
   catalogueLine,
   clampQuantity,
   declaredShippingMethod,
+  deliveryCountries,
   formatAmount,
   initialQuantityField,
   isAvailable,
   MAX_QUANTITY_PER_LINE,
   MIN_QUANTITY_PER_LINE,
+  orderMayBePlaced,
   parseQuantityInput,
   quantityFieldReducer,
+  SHIPPING_ZONES,
+  zoneForCountryName,
   type CartLine,
   type QuantityFieldEvent,
 } from "../src/lib/cart.js";
@@ -94,6 +98,40 @@ function renderCheckout(scenario: MockScenario | null): string {
         nonce={undefined}
         scenario={scenario}
         latencyMs={0}
+      />
+    </CartProvider>,
+  );
+}
+
+/**
+ * A delivery address in the reserved synthetic form the packet requires —
+ * `Name`, `Street and number`, `00000`, `Town`, `example@example.com` — with
+ * the country left to the caller, because the country is the only field that
+ * changes what anybody is charged. No invented person exists here; every value
+ * but the country is the same obviously-fake token the served form uses as a
+ * validation example.
+ */
+function addressIn(country: string): Readonly<Record<string, string>> {
+  return {
+    fullName: "Name",
+    streetAddress: "Street and number",
+    postalCode: "00000",
+    city: "Town",
+    country,
+    email: "example@example.com",
+  };
+}
+
+/** The checkout as it renders once an address has been completed. */
+function renderCheckoutWithAddress(country: string): string {
+  return renderToStaticMarkup(
+    <CartProvider scenario="filled" latencyMs={0}>
+      <CheckoutPageContent
+        turnstileSiteKey={null}
+        nonce={undefined}
+        scenario="filled"
+        latencyMs={0}
+        initialAddress={addressIn(country)}
       />
     </CartProvider>,
   );
@@ -429,7 +467,7 @@ describe("an unavailable line", () => {
   it("contributes nothing to the goods figure", () => {
     const lines = basketForScenario("unavailable").lines;
     expect(lines.every((line) => !isAvailable(line))).toBe(true);
-    expect(cartTotals(lines, { hasDeliveryAddress: true }).goodsAmount).toBe(0);
+    expect(cartTotals(lines, { deliveryZone: "europeanUnion" }).goodsAmount).toBe(0);
   });
 
   it("blocks the way to checkout", () => {
@@ -443,26 +481,57 @@ describe("an unavailable line", () => {
 /* ------------------------------------------------------------------------ */
 
 describe("every figure comes from the mock catalogue and the declared shipping method", () => {
-  it("declares exactly one shipping method with one flat charge", () => {
+  it("declares exactly one shipping method, flat rates only, one per zone", () => {
     expect(declaredShippingMethod.currency).toBe("EUR");
-    expect(Number.isInteger(declaredShippingMethod.amount)).toBe(true);
-    expect(declaredShippingMethod.amount).toBeGreaterThan(0);
     expect(declaredShippingMethod.name.length).toBeGreaterThan(0);
+    expect(Object.keys(declaredShippingMethod.rates).toSorted()).toEqual(
+      [...SHIPPING_ZONES].toSorted(),
+    );
+    for (const zone of SHIPPING_ZONES) {
+      expect(Number.isInteger(declaredShippingMethod.rates[zone])).toBe(true);
+      expect(declaredShippingMethod.rates[zone]).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The operator's figures, 2026-08-10, pinned exactly as
+   * `tests/catalogue.test.ts` pins the frozen catalogue facts — and for the
+   * same reason: Task 5 must seed the live Medusa shipping options to match
+   * these two amounts, and a silent edit to either would move what a buyer is
+   * charged without moving anything a reader would notice.
+   */
+  it("carries the operator's two frozen amounts: EUR 7.00 in the EU, EUR 12.00 outside it", () => {
+    expect(declaredShippingMethod.rates.europeanUnion).toBe(700);
+    expect(declaredShippingMethod.rates.restOfWorld).toBe(1200);
+    expect(formatAmount(declaredShippingMethod.rates.europeanUnion, "EUR")).toBe("€7.00");
+    expect(formatAmount(declaredShippingMethod.rates.restOfWorld, "EUR")).toBe("€12.00");
   });
 
   it("withholds the shipping charge and the total until a delivery address exists", () => {
     const lines = [catalogueLine(1)];
-    const withoutAddress = cartTotals(lines, { hasDeliveryAddress: false });
+    const withoutAddress = cartTotals(lines, { deliveryZone: null });
     expect(withoutAddress.shippingAmount).toBeNull();
     expect(withoutAddress.orderAmount).toBeNull();
   });
 
-  it("adds the shipping charge to the goods, and nothing else", () => {
+  it("adds the zone's shipping charge to the goods, and nothing else", () => {
     const lines = [catalogueLine(2)];
-    const totals = cartTotals(lines, { hasDeliveryAddress: true });
-    expect(totals.goodsAmount).toBe(lines[0]!.unitAmount * 2);
-    expect(totals.shippingAmount).toBe(declaredShippingMethod.amount);
-    expect(totals.orderAmount).toBe(totals.goodsAmount + declaredShippingMethod.amount);
+    for (const zone of SHIPPING_ZONES) {
+      const totals = cartTotals(lines, { deliveryZone: zone });
+      expect(totals.goodsAmount).toBe(lines[0]!.unitAmount * 2);
+      expect(totals.shippingAmount).toBe(declaredShippingMethod.rates[zone]);
+      expect(totals.orderAmount).toBe(totals.goodsAmount + declaredShippingMethod.rates[zone]);
+    }
+  });
+
+  it("charges an EU address less than a non-EU one, so the axis is not decorative", () => {
+    const lines = [catalogueLine(1)];
+    const eu = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    const nonEu = cartTotals(lines, { deliveryZone: "restOfWorld" });
+    expect(eu.shippingAmount).toBeLessThan(nonEu.shippingAmount!);
+    expect(nonEu.orderAmount! - eu.orderAmount!).toBe(
+      declaredShippingMethod.rates.restOfWorld - declaredShippingMethod.rates.europeanUnion,
+    );
   });
 
   it("shows the basket the goods figure but never a total, because shipping is not known there", () => {
@@ -505,29 +574,349 @@ describe("every figure comes from the mock catalogue and the declared shipping m
 
   /**
    * `cartTotals` adds a catalogue figure to a `shipping.json` figure and
-   * formats the result in one currency. `shipping.json` carries the one amount
-   * in this unit still waiting on the operator, so it is the file most likely
-   * to be edited — and an edit that moved its currency alone would otherwise
-   * produce a wrong total on the screen Article 8(2) requires to be right.
+   * formats the result in one currency. Both files are operator-supplied
+   * commercial facts edited by hand, by somebody deciding commerce rather than
+   * reading this module — an edit that moved one file's currency and not the
+   * other's would otherwise produce a wrong total on the screen Article 8(2)
+   * requires to be right.
    */
   it("refuses to add two currencies rather than producing a wrong total", () => {
     const inAnotherCurrency = { ...catalogueLine(1), currency: "SEK" };
-    expect(() => cartTotals([inAnotherCurrency], { hasDeliveryAddress: true })).toThrow(
-      /shipping\.json/,
-    );
+    expect(() => cartTotals([inAnotherCurrency], { deliveryZone: "europeanUnion" })).toThrow(/shipping\.json/);
     // The disagreement is caught before the address exists too — the basket
-    // page shows a goods figure with `hasDeliveryAddress: false`.
-    expect(() => cartTotals([inAnotherCurrency], { hasDeliveryAddress: false })).toThrow();
+    // page shows a goods figure with no zone at all.
+    expect(() => cartTotals([inAnotherCurrency], { deliveryZone: null })).toThrow();
     // And an unavailable line, which contributes nothing to the sum, is still
     // checked: it is priced on the screen beside the ones that do.
     expect(() =>
-      cartTotals([{ ...inAnotherCurrency, availability: "OutOfStock" }], {
-        hasDeliveryAddress: true,
-      }),
+      cartTotals([{ ...inAnotherCurrency, availability: "OutOfStock" }], { deliveryZone: "restOfWorld" }),
     ).toThrow();
-    expect(cartTotals([catalogueLine(1)], { hasDeliveryAddress: true }).currency).toBe(
+    expect(cartTotals([catalogueLine(1)], { deliveryZone: "europeanUnion" }).currency).toBe(
       declaredShippingMethod.currency,
     );
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The shipping zone, and the country it is decided from                     */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * **The 27, pinned. This is the most valuable assertion in this area.**
+ *
+ * The `eu` flag in `storefront/mock/countries.json` selects between two
+ * operator-frozen rates that differ by five euro. Nothing on the screen reveals
+ * a wrong flag: a customer in a member state marked `false` is simply charged
+ * the non-EU rate, is given a correct-looking total, and is bound by it. It is
+ * the one field in this unit whose failure mode is a silent mispricing, so the
+ * membership list is written out here in full rather than counted, and a member
+ * state added or dropped in the data has to be added or dropped here too.
+ *
+ * The flag means **one of the 27 EU member states** and deliberately not the EU
+ * VAT or customs territory. Territories of a member state that ISO 3166-1 lists
+ * separately (Åland, the French overseas departments) are `false` and pay the
+ * non-EU rate — reported to the operator as a judgment call, and asserted here
+ * so it stays a decision rather than becoming an accident.
+ */
+describe("the EU membership flag is exactly the 27 member states", () => {
+  const EU_MEMBER_STATES = [
+    "Austria",
+    "Belgium",
+    "Bulgaria",
+    "Croatia",
+    "Cyprus",
+    "Czechia",
+    "Denmark",
+    "Estonia",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Hungary",
+    "Ireland",
+    "Italy",
+    "Latvia",
+    "Lithuania",
+    "Luxembourg",
+    "Malta",
+    "Netherlands",
+    "Poland",
+    "Portugal",
+    "Romania",
+    "Slovakia",
+    "Slovenia",
+    "Spain",
+    "Sweden",
+  ] as const;
+
+  const EU_MEMBER_CODES = [
+    "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU",
+    "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK",
+  ] as const;
+
+  const flagged = deliveryCountries.filter((country) => country.euMember);
+
+  it("is 27 entries, no more and no fewer", () => {
+    expect(EU_MEMBER_STATES).toHaveLength(27);
+    expect(EU_MEMBER_CODES).toHaveLength(27);
+    expect(flagged).toHaveLength(27);
+  });
+
+  it("is those 27 by name, exactly", () => {
+    expect(flagged.map((country) => country.name).toSorted()).toEqual(
+      [...EU_MEMBER_STATES].toSorted(),
+    );
+  });
+
+  it("is those 27 by ISO 3166-1 alpha-2 code, exactly", () => {
+    expect(flagged.map((country) => country.code).toSorted()).toEqual(
+      [...EU_MEMBER_CODES].toSorted(),
+    );
+  });
+
+  it("includes the three that are most often left out", () => {
+    for (const member of ["Ireland", "Cyprus", "Malta"]) {
+      expect(zoneForCountryName(member), `${member} is a member state`).toBe("europeanUnion");
+    }
+  });
+
+  it("excludes the four that are most often let in", () => {
+    for (const nonMember of ["Norway", "Switzerland", "Iceland", "United Kingdom"]) {
+      expect(zoneForCountryName(nonMember), `${nonMember} is not a member state`).toBe("restOfWorld");
+    }
+  });
+});
+
+/**
+ * Why the country stopped being a free-text field.
+ *
+ * Review 1 upheld the `<input>` **on the explicit premise that no rate depended
+ * on it**. A rate does now, so the premise is gone: `Estonai`, `eesti` and `EE`
+ * would each have been charged the non-EU rate, and overcharging an EU customer
+ * five euro through a spelling difference is a defect, not an edge case.
+ */
+describe("no EU customer can be charged the non-EU rate through a spelling difference", () => {
+  it("offers every country, because the legal page says we ship to every country", () => {
+    expect(shipping.body.find((section) => section.anchor === "delivery")?.body).toContain(
+      "We ship to every country.",
+    );
+    // The officially assigned ISO 3166-1 alpha-2 set.
+    expect(deliveryCountries).toHaveLength(249);
+  });
+
+  it("offers each country once, under a name no other country shares", () => {
+    expect(new Set(deliveryCountries.map((country) => country.name)).size).toBe(
+      deliveryCountries.length,
+    );
+    expect(new Set(deliveryCountries.map((country) => country.code)).size).toBe(
+      deliveryCountries.length,
+    );
+    for (const country of deliveryCountries) {
+      expect(country.code, `"${country.name}" has no alpha-2 code`).toMatch(/^[A-Z]{2}$/);
+      expect(country.name.length).toBeGreaterThan(1);
+    }
+  });
+
+  it("renders the country field as a selection over that list, in the same slot", () => {
+    const html = renderCheckout("filled");
+    const field = checkout.address.fields.find((entry) => entry.name === "country");
+
+    expect(field?.control).toBe("country");
+    expect(html).toMatch(/<select[^>]*name="country"/);
+    // Same label, same autoComplete, same required-ness, same error wiring.
+    expect(field?.label).toBe("Country");
+    expect(html).toMatch(/<select[^>]*autocomplete="country-name"/i);
+    expect(html).toMatch(/<select[^>]*required/);
+    expect(html).toMatch(
+      new RegExp(`<option value=""[^>]*>${checkout.address.countryUnchosen}</option>`),
+    );
+    for (const name of ["Estonia", "Ireland", "Norway", "United Kingdom"]) {
+      expect(html).toContain(`<option value="${name}">${name}</option>`);
+    }
+  });
+
+  it("is the only field that is a selection: the other five are still typed", () => {
+    const selections = checkout.address.fields.filter((field) => field.control === "country");
+    expect(selections.map((field) => field.name)).toEqual(["country"]);
+  });
+
+  /**
+   * The option React marks selected in the first paint is the unchosen one, so
+   * a reader who never opens the list is in no zone rather than in whichever
+   * country sorts first — and an unchosen country produces no charge at all.
+   */
+  it("nobody is defaulted into a country, and so nobody is defaulted into a rate", () => {
+    const html = renderCheckout("filled");
+    expect(html, "a country was selected before anybody chose one").not.toMatch(
+      /<option value="[^"]+"[^>]*selected/,
+    );
+    expect(zoneForCountryName("")).toBeNull();
+  });
+
+  /**
+   * The property this whole change exists for, stated as one assertion: a
+   * misspelling cannot become a price. It is not repaired into a country
+   * either — a lookup that repairs its input can repair it wrongly, and this
+   * one decides which of two prices somebody pays.
+   */
+  it("answers no zone at all — never the dearer one — to anything that is not a listed country", () => {
+    for (const typed of ["Estonai", "eesti", "EE", "ESTONIA", " Estonia", "Estonia ", "", "  "]) {
+      expect(zoneForCountryName(typed), `"${typed}" was priced as a zone`).toBeNull();
+    }
+    expect(zoneForCountryName("Estonia")).toBe("europeanUnion");
+  });
+
+  it("prices no order at all from a country it does not recognise", () => {
+    const totals = cartTotals([catalogueLine(1)], { deliveryZone: zoneForCountryName("Estonai") });
+    expect(totals.shippingAmount).toBeNull();
+    expect(totals.orderAmount).toBeNull();
+  });
+
+  it("gives every listed country a zone, so no chosen country is unpriceable", () => {
+    for (const country of deliveryCountries) {
+      const zone = zoneForCountryName(country.name);
+      expect(zone, `"${country.name}" resolved to no zone`).not.toBeNull();
+      expect(SHIPPING_ZONES).toContain(zone);
+    }
+  });
+
+  it("asks a chooser to choose, rather than telling them to enter a dropdown", () => {
+    expect(checkout.errors.missingSelectionPrefix).toBe("Choose a ");
+    expect(`${checkout.errors.missingSelectionPrefix}country.`).toBe("Choose a country.");
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The Article 8(2) invariant                                                */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * **THE ARTICLE 8(2) INVARIANT. Do not delete this suite as redundant.**
+ *
+ * > No order placement can succeed in any state where all six Article 8(2)
+ * > values are not displayed as values.
+ *
+ * The operator resolved the open legal question review 1 raised —
+ * `content/legal/terms.ts` says the six are visible "immediately above" the
+ * button, while the implementation shows three of them as instructions until
+ * the address is complete — and the resolution **ships as this invariant rather
+ * than as a paragraph**, because a paragraph decays silently the moment
+ * somebody makes the order button optimistic.
+ *
+ * Today no placement can succeed at all: payment is not connected and
+ * `placeMockOrder` always fails. So what is asserted here is the testable half
+ * — that the *state* in which an order could be placed is exactly the state in
+ * which all six are values, and that the shipping value shown is the one the
+ * chosen country's zone dictates.
+ */
+describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six values are values", () => {
+  const lines = [catalogueLine(1)];
+
+  describe("the incomplete-address state", () => {
+    const html = renderCheckout("filled");
+    const text = visibleText(html);
+
+    it("renders the shipping charge, the total and the delivery address as instructions", () => {
+      expect(text).toContain(checkout.delivery.chargePending);
+      expect(text).toContain(checkout.order.totalPending);
+      expect(text).toContain(checkout.address.missingValue);
+    });
+
+    it("shows no shipping value and no total value, in either zone's amount", () => {
+      for (const zone of SHIPPING_ZONES) {
+        const charge = formatAmount(declaredShippingMethod.rates[zone], "EUR");
+        expect(text, `${charge} was disclosed without a delivery address`).not.toContain(charge);
+        const total = formatAmount(
+          catalogueLine(1).unitAmount + declaredShippingMethod.rates[zone],
+          "EUR",
+        );
+        expect(text, `${total} was disclosed without a delivery address`).not.toContain(total);
+      }
+    });
+
+    it("places nothing: the invariant refuses it", () => {
+      const totals = cartTotals(lines, { deliveryZone: null });
+      expect(orderMayBePlaced({ lines, addressComplete: false, totals })).toBe(false);
+    });
+  });
+
+  describe("the complete-address state", () => {
+    it("renders all six as values, and the shipping value the chosen zone dictates", () => {
+      for (const [country, zone] of [
+        ["Estonia", "europeanUnion"],
+        ["Norway", "restOfWorld"],
+      ] as const) {
+        const html = renderCheckoutWithAddress(country);
+        const orderBlock = html.slice(html.indexOf('aria-labelledby="checkout-order-heading"'));
+        const text = visibleText(orderBlock);
+
+        const charge = formatAmount(declaredShippingMethod.rates[zone], "EUR");
+        const total = formatAmount(
+          catalogueLine(1).unitAmount + declaredShippingMethod.rates[zone],
+          "EUR",
+        );
+
+        // 1 the goods, 2 the price of the goods.
+        expect(text).toContain("Lunar Base × 1");
+        expect(text).toContain(formatAmount(catalogueLine(1).unitAmount, "EUR"));
+        // 3 the shipping charge, and it is this country's, not the other's.
+        expect(text, `${country} was not charged ${charge}`).toContain(charge);
+        expect(text).not.toContain(
+          formatAmount(declaredShippingMethod.rates[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
+        );
+        // 4 the total.
+        expect(text).toContain(total);
+        // 5 the delivery address, as a value and without the email address.
+        expect(text).toContain(`Name, Street and number, 00000, Town, ${country}`);
+        expect(text).not.toContain("example@example.com");
+        // 6 the delivery estimate.
+        expect(text).toContain(DELIVERY_ESTIMATE);
+
+        // And not one of the three instructions is left on the screen.
+        expect(text).not.toContain(checkout.delivery.chargePending);
+        expect(text).not.toContain(checkout.order.totalPending);
+        expect(text).not.toContain(checkout.address.missingValue);
+      }
+    });
+
+    it("is the state, and the only state, in which the invariant permits a placement", () => {
+      for (const zone of SHIPPING_ZONES) {
+        const totals = cartTotals(lines, { deliveryZone: zone });
+        expect(orderMayBePlaced({ lines, addressComplete: true, totals })).toBe(true);
+      }
+    });
+  });
+
+  it("refuses every state in which any of the six is not a value", () => {
+    const euTotals = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    const noZone = cartTotals(lines, { deliveryZone: null });
+    const unavailable = [{ ...catalogueLine(1), availability: "OutOfStock" } as const];
+
+    // No basket: there are no goods and no price of the goods to disclose.
+    expect(orderMayBePlaced({ lines: [], addressComplete: true, totals: euTotals })).toBe(false);
+    // No address: the address, the charge and the total are instructions.
+    expect(orderMayBePlaced({ lines, addressComplete: false, totals: noZone })).toBe(false);
+    // A complete-looking address whose country yields no zone. This is the
+    // state the free-text field made reachable and the one a `null` zone is
+    // for: the address is a value, the charge and the total are not.
+    expect(orderMayBePlaced({ lines, addressComplete: true, totals: noZone })).toBe(false);
+    // A line we cannot supply: the goods disclosed would not be the basket.
+    expect(
+      orderMayBePlaced({
+        lines: unavailable,
+        addressComplete: true,
+        totals: cartTotals(unavailable, { deliveryZone: "europeanUnion" }),
+      }),
+    ).toBe(false);
+  });
+
+  it("cannot be satisfied by a total the screen never showed", () => {
+    // The two nullable disclosures move together, so there is no state in
+    // which a total exists without a charge or the reverse.
+    for (const zone of [...SHIPPING_ZONES, null]) {
+      const totals = cartTotals(lines, { deliveryZone: zone });
+      expect(totals.shippingAmount === null).toBe(totals.orderAmount === null);
+    }
   });
 });
 

@@ -405,6 +405,33 @@
 }
 
 /*
+ * The country selection, which carries `.field` as well so it is the same box
+ * as the four text fields beside it — same height, same border, same radius,
+ * same focus ring, in the same slot. Only what a `<select>` needs differs.
+ *
+ * `appearance` is **left alone deliberately**: the native disclosure arrow is
+ * what tells a sighted reader this is a chooser rather than a text box, and a
+ * custom one would be a background image under a CSP with no reason to gain
+ * one. The end padding is not widened either — the arrow sits in the engine's
+ * own reserved gutter.
+ *
+ * `text-overflow: ellipsis` is the load-bearing rule. The longest name in
+ * `storefront/mock/countries.json` is wider than the field at a 320px
+ * viewport, and without this a `<select>` clips it mid-glyph. It is a truthful
+ * truncation of a value the reader chose from a list and can reopen; the
+ * `min-width: 0` above is what stops the widest option forcing the column
+ * wider than the page.
+ *
+ * `line-height` is set because `min-height` alone does not centre a select's
+ * text the way it centres an input's in every engine.
+ */
+.select {
+  padding-block: 0;
+  line-height: var(--button-min-height);
+  text-overflow: ellipsis;
+}
+
+/*
  * A field's error text.
  *
  * **The orange is a marker, not the text colour.** This rule read

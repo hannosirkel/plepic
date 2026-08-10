@@ -270,7 +270,10 @@ export function BasketPageContent() {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
   const { lines, failure, add, busy } = useCart();
 
-  const totals = cartTotals(lines, { hasDeliveryAddress: false });
+  // No address form here, so no zone and therefore no charge. The basket says
+  // "Calculated at checkout", which is what `content/legal/shipping.ts` says
+  // and is now true of two rates rather than one.
+  const totals = cartTotals(lines, { deliveryZone: null });
   const blocked = lines.some((line) => !isAvailable(line));
 
   return (

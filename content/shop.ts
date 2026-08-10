@@ -47,6 +47,24 @@ import type { CallToAction, Link } from "./schema.js";
 export interface AddressFieldCopy {
   readonly name: string;
   readonly label: string;
+  /**
+   * What the field renders as.
+   *
+   * `"country"` is a **selection over `storefront/mock/countries.json`**, not
+   * a text box, and that is a pricing decision rather than a styling one: the
+   * shipping charge is one of two operator-frozen rates chosen by whether the
+   * delivery address is in the EU, and a rate driven from typed text charges
+   * `Estonai`, `eesti` and `EE` the non-EU rate. The list is mock data Task 5
+   * replaces with Medusa regions, so it is not repeated here — 249 country
+   * names are not copy.
+   *
+   * The country field keeps the slot, the label and the `autoComplete` token
+   * it had as an `<input>`: swapping the control is the smallest change that
+   * makes the rate honest, and Task 5's rule is that page composition does not
+   * change.
+   */
+  readonly control: "input" | "country";
+  /** The `<input type>`. Ignored by a `"country"` field, which is a `<select>`. */
   readonly type: "text" | "email";
   readonly autoComplete: string;
   /**
@@ -192,6 +210,7 @@ export const checkout = {
       {
         name: "fullName",
         label: "Full name",
+        control: "input",
         type: "text",
         autoComplete: "name",
         inDeliveryAddress: true,
@@ -199,6 +218,7 @@ export const checkout = {
       {
         name: "streetAddress",
         label: "Street and number",
+        control: "input",
         type: "text",
         autoComplete: "street-address",
         inDeliveryAddress: true,
@@ -206,6 +226,7 @@ export const checkout = {
       {
         name: "postalCode",
         label: "Postcode",
+        control: "input",
         type: "text",
         autoComplete: "postal-code",
         inDeliveryAddress: true,
@@ -213,13 +234,19 @@ export const checkout = {
       {
         name: "city",
         label: "Town or city",
+        control: "input",
         type: "text",
         autoComplete: "address-level2",
         inDeliveryAddress: true,
       },
       {
+        // A selection, not a text box, because the shipping charge is priced
+        // from it — see `AddressFieldCopy["control"]`. The hint says what the
+        // list contains, which is now a checkable claim about the control
+        // rather than a promise made beside a field that accepts anything.
         name: "country",
         label: "Country",
+        control: "country",
         type: "text",
         autoComplete: "country-name",
         inDeliveryAddress: true,
@@ -228,6 +255,7 @@ export const checkout = {
       {
         name: "email",
         label: "Email address",
+        control: "input",
         type: "email",
         autoComplete: "email",
         // Not part of the postal address — see `AddressFieldCopy`.
@@ -235,6 +263,14 @@ export const checkout = {
         hint: "Your order confirmation goes here.",
       },
     ] satisfies readonly AddressFieldCopy[],
+    /**
+     * The unchosen state of the country selection. It is a real option rather
+     * than a blank one so that a screen reader announces the field as unset
+     * instead of announcing whichever country happens to sort first — and so
+     * that nobody is defaulted into a zone, and therefore into a price, they
+     * did not choose.
+     */
+    countryUnchosen: "Choose a country",
     missingValue: "Enter your delivery address above.",
   },
 
@@ -306,6 +342,13 @@ export const checkout = {
      * `ContactForm.tsx` composes its own field errors the same way.
      */
     missingFieldPrefix: "Enter ",
+    /**
+     * The same message for a field that is chosen rather than typed. "Enter
+     * country" is an instruction a reader cannot follow in front of a
+     * dropdown, and an error that tells somebody to do the wrong thing is
+     * worse than a terse one.
+     */
+    missingSelectionPrefix: "Choose a ",
     invalidEmail: "Enter an email address we can send your confirmation to.",
     unavailableLine: "Remove the item we cannot supply before ordering.",
     paymentNotConnected:

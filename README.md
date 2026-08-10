@@ -62,9 +62,32 @@ Next.js storefront and, later, a Medusa backend.
   checkout once an address has been entered — so the basket says "Calculated at
   checkout" rather than showing a figure that does not exist yet.
   [`storefront/mock/shipping.json`](./storefront/mock/shipping.json) declares
-  one method with one flat charge (the plan forbids calculated carrier rates);
-  its `$comment` records that the amount is the one figure in this area that is
-  **not** an operator-frozen commercial fact and still needs confirming.
+  one method and **two flat rates on a zone axis** — EUR 7.00 to a delivery
+  address in the EU, EUR 12.00 to one outside it, both operator-supplied on
+  2026-08-10. Flat rates only: the plan forbids calculated carrier rates, and
+  Task 5 must seed the live Medusa shipping options to match both figures.
+
+  **The country is chosen, not typed, because the charge is priced from it.**
+  A rate driven from a free-text field charges `Estonai`, `eesti` and `EE` the
+  non-EU rate, and overcharging an EU customer through a spelling difference is
+  a defect rather than an edge case. The country field is a `<select>` over
+  [`storefront/mock/countries.json`](./storefront/mock/countries.json) — all 249
+  ISO 3166-1 entries, because the legal page says we ship to every country — in
+  the same slot, with the same label and the same `autoComplete` token it had as
+  an `<input>`. That file's `eu` flag is **exactly the 27 member states**, which
+  is the one field here whose failure mode is a silent mispricing, so
+  `tests/shop-pages.test.tsx` pins all 27 by name and by ISO code.
+  `zoneForCountryName` answers *no zone* rather than the dearer rate to anything
+  it does not recognise, so an unrecognised country leaves the charge and the
+  total unshown instead of guessing at somebody's expense.
+
+  **The Article 8(2) invariant is a function, not a paragraph.**
+  `orderMayBePlaced` (`src/lib/cart.ts`) states it — *no order placement can
+  succeed in any state where all six Article 8(2) values are not displayed as
+  values* — and the checkout's submit handler is a call to it. It is written
+  that way because a paragraph decays silently the moment somebody makes the
+  order button optimistic; `tests/shop-pages.test.tsx` names the invariant where
+  it drives it, in both the incomplete-address and the complete-address state.
 
   The card step is a labelled placeholder region and nothing else — no card
   field, no fabricated instrument — and pressing the order button reports that

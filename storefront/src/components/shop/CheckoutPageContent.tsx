@@ -62,6 +62,26 @@
  * with an error summary that takes focus — the same pattern `ContactForm`
  * already uses on this site.
  *
+ * ## The country is chosen, not typed, because the shipping charge is priced
+ * from it
+ *
+ * Shipping is two operator-supplied flat rates on a zone axis: one for a
+ * delivery address in the EU and a higher one for anywhere else. A rate driven
+ * from a free-text field would charge `Estonai`, `eesti` and `EE` the non-EU
+ * rate, and overcharging an EU customer through a spelling difference is a
+ * defect rather than an edge case. So the country field is a `<select>` over
+ * `storefront/mock/countries.json` — every country, because
+ * `content/legal/shipping.ts` says we ship to every country — in the same
+ * slot, with the same label and the same `autoComplete` token it had as an
+ * `<input>`, which is the smallest composition change that makes the charge
+ * honest. `zoneForCountryName` in `src/lib/cart.ts` is what turns the chosen
+ * name into a rate, and it answers "no zone" rather than the dearer rate to
+ * anything it does not recognise.
+ *
+ * Changing the country re-derives the charge and the total in the same render,
+ * inside the `aria-live="polite"` disclosure list, so the six Article 8(2)
+ * values are announced when they move.
+ *
  * ## The order button cannot place an order in this build, and says so
  *
  * Stripe elements and server-side Turnstile verification are deferred. The
@@ -79,7 +99,7 @@
  */
 
 import { useId, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 
 import { checkout } from "../../../../content/shop.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
@@ -87,8 +107,11 @@ import { resolveCatalogue } from "../../lib/catalogue.js";
 import {
   cartTotals,
   declaredShippingMethod,
+  deliveryCountries,
   formatAmount,
   isAvailable,
+  orderMayBePlaced,
+  zoneForCountryName,
 } from "../../lib/cart.js";
 import { useCart } from "../../lib/cart-store.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
@@ -124,7 +147,13 @@ function validate(values: AddressValues): Readonly<Record<string, string>> {
   for (const field of FIELDS) {
     const value = (values[field.name] ?? "").trim();
     if (value.length === 0) {
-      errors[field.name] = `${checkout.errors.missingFieldPrefix}${field.label.toLowerCase()}.`;
+      // "Enter country" is an instruction nobody can follow in front of a
+      // dropdown, so a chosen field asks to be chosen.
+      const prefix =
+        field.control === "country"
+          ? checkout.errors.missingSelectionPrefix
+          : checkout.errors.missingFieldPrefix;
+      errors[field.name] = `${prefix}${field.label.toLowerCase()}.`;
       continue;
     }
     if (field.type === "email" && !isPlausibleEmail(value)) {
@@ -152,6 +181,18 @@ export interface CheckoutPageContentProps {
   readonly unhydratedOrderAttempt?: boolean;
   /** Overridden to `0` by tests so the order attempt resolves without a timer. */
   readonly latencyMs?: number;
+  /**
+   * The address the form starts with. **A test seam, and the route never
+   * passes it** — for a visitor every field starts empty, which is what
+   * `tests/shop-pages.test.tsx` asserts of the served markup.
+   *
+   * It exists because `storefront/` has no DOM in its test environment, so a
+   * test cannot type an address, and the *complete*-address state is where the
+   * Article 8(2) invariant has to be checked: all six disclosures rendered as
+   * values, with the shipping figure the chosen country's zone dictates. The
+   * alternative was asserting that state nowhere.
+   */
+  readonly initialAddress?: AddressValues;
 }
 
 function initialOutcome(
@@ -169,6 +210,7 @@ export function CheckoutPageContent({
   scenario,
   unhydratedOrderAttempt = false,
   latencyMs,
+  initialAddress = EMPTY_ADDRESS,
 }: CheckoutPageContentProps) {
   const catalogue = resolveCatalogue();
   const { lines } = useCart();
@@ -176,7 +218,7 @@ export function CheckoutPageContent({
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const outcomeRef = useRef<HTMLParagraphElement>(null);
 
-  const [values, setValues] = useState<AddressValues>(EMPTY_ADDRESS);
+  const [values, setValues] = useState<AddressValues>(initialAddress);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [placing, setPlacing] = useState(scenario === "placing");
   const [outcome, setOutcome] = useState<OrderOutcome | null>(() =>
@@ -184,10 +226,15 @@ export function CheckoutPageContent({
   );
 
   const addressComplete = isComplete(values);
-  const totals = useMemo(
-    () => cartTotals(lines, { hasDeliveryAddress: addressComplete }),
-    [lines, addressComplete],
-  );
+  /*
+   * The zone, and therefore the charge, is a function of the chosen country
+   * and nothing else. It is withheld until the whole address is complete
+   * because `content/legal/shipping.ts` promises the charge "once you have
+   * entered a delivery address" — and an unrecognised country is no zone at
+   * all rather than the dearer one.
+   */
+  const deliveryZone = addressComplete ? zoneForCountryName((values.country ?? "").trim()) : null;
+  const totals = useMemo(() => cartTotals(lines, { deliveryZone }), [lines, deliveryZone]);
   const unavailable = lines.some((line) => !isAvailable(line));
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
 
@@ -206,7 +253,17 @@ export function CheckoutPageContent({
       window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
       return;
     }
-    if (lines.length === 0 || unavailable) return;
+    /*
+     * THE ARTICLE 8(2) INVARIANT. No order placement succeeds in any state
+     * where all six Article 8(2) values are not displayed as values — see
+     * `orderMayBePlaced` in `src/lib/cart.ts`, which is where it is stated and
+     * where a test drives it. It subsumes the empty-basket and unavailable-line
+     * refusals this line used to make, and adds the one they were missing: a
+     * complete-looking address whose country yields no zone leaves the shipping
+     * charge and the total unshown, and nobody may be bound by a screen that
+     * has not shown them the total.
+     */
+    if (!orderMayBePlaced({ lines, addressComplete, totals })) return;
 
     setPlacing(true);
     void placeMockOrder({ latencyMs, failing: scenario === "error" }).then((result) => {
@@ -318,6 +375,21 @@ export function CheckoutPageContent({
                 .filter((id): id is string => id !== null)
                 .join(" ");
 
+              /** Everything an `<input>` and a `<select>` need identically. */
+              const shared = {
+                id: fieldId,
+                name: field.name,
+                required: true,
+                autoComplete: field.autoComplete,
+                value: values[field.name] ?? "",
+                "aria-invalid": error !== undefined,
+                "aria-describedby": describedBy === "" ? undefined : describedBy,
+                onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+                  const next = event.currentTarget.value;
+                  setValues((current) => ({ ...current, [field.name]: next }));
+                },
+              };
+
               return (
                 <div className={styles.fieldGroup} key={field.name}>
                   <label className={styles.fieldLabel} htmlFor={fieldId}>
@@ -328,21 +400,27 @@ export function CheckoutPageContent({
                       {field.hint}
                     </p>
                   )}
-                  <input
-                    id={fieldId}
-                    className={styles.field}
-                    name={field.name}
-                    type={field.type}
-                    required
-                    autoComplete={field.autoComplete}
-                    value={values[field.name] ?? ""}
-                    aria-invalid={error !== undefined}
-                    aria-describedby={describedBy === "" ? undefined : describedBy}
-                    onChange={(event) => {
-                      const next = event.currentTarget.value;
-                      setValues((current) => ({ ...current, [field.name]: next }));
-                    }}
-                  />
+                  {/* One control swapped for another, because the charge is
+                      priced from this answer — see the file's doc comment. The
+                      identity, the name, the `autoComplete` token, the
+                      required-ness and the whole error wiring are the *same
+                      object* for both, so the two branches cannot drift apart
+                      into one control that announces itself and one that does
+                      not. */}
+                  {field.control === "country" ? (
+                    <select {...shared} className={`${styles.field} ${styles.select}`}>
+                      {/* Nobody is defaulted into a country, and so nobody is
+                          defaulted into a shipping rate. */}
+                      <option value="">{checkout.address.countryUnchosen}</option>
+                      {deliveryCountries.map((country) => (
+                        <option key={country.code} value={country.name}>
+                          {country.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input {...shared} className={styles.field} type={field.type} />
+                  )}
                   {error === undefined ? null : (
                     <p id={errorId} className={styles.fieldError}>
                       {error}
