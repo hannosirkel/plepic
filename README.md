@@ -130,6 +130,18 @@ Next.js storefront and, later, a Medusa backend.
   image. On a live hostname `?mock=filled` is a `/cart` with an ignored query
   string.
 
+  **Both browser stores this site writes are disclosed on `/legal/privacy`,
+  and that is derived rather than remembered.** The basket lives in
+  `sessionStorage` and the analytics consent decision in `localStorage`;
+  neither is a cookie, so neither is a row in the page's cookie table — they
+  are two sentences of prose above it, each naming where it is kept, how long
+  it survives and what it holds. `tests/browser-storage-disclosure.test.ts`
+  walks `src/` for Web Storage writes and requires a sentence per store found,
+  so a third store cannot be added without the notice growing with it. It also
+  fails outright if `src/` ever sets a cookie of its own, because that needs a
+  table row with a provider and a duration and is an operator decision, not an
+  inference.
+
   **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
   `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and
   `src/app/support/lunar-base/rulebook/page.tsx` render genuine page

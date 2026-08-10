@@ -60,13 +60,24 @@
  * loses its registration number renders as a complete legal notice that is not
  * one.
  *
- * **So does the address behind a named external target.** `content/routes.ts`
- * declares `EXTERNAL_TARGETS` as ids precisely so no content file has to hold
- * a URL, and `/legal/terms` needs one: Article 6(1)(t) CRD requires the
- * out-of-court body *and the method of reaching it*, which is a web address
- * and therefore configuration. `EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE`
- * carries it, and an unset one is treated like an unset registration number —
- * a named gap and a notice — not like an optional link that can be omitted.
+ * **So does the address behind a named external target**, and it is the other
+ * failure mode rather than the same one. `content/routes.ts` declares
+ * `EXTERNAL_TARGETS` as ids precisely so no content file has to hold a URL, and
+ * `EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE` carries the one address a legal
+ * page links to. An unset one is **not** treated like an unset registration
+ * number: the link is simply not rendered, and the page shows no gap marker and
+ * no incompleteness notice.
+ *
+ * That is the operator's ruling of 2026-08-10, verified manually by the
+ * qualified reviewer — naming the out-of-court body without an access method
+ * satisfies Article 6(1)(t) CRD, and `content/legal/terms.ts` names the
+ * Consumer Disputes Committee in its own prose. The distinction is *what the
+ * missing thing is*: a registration number **is** the disclosure and nothing
+ * else on the page carries it, while the address only makes a remedy the prose
+ * already stated easier to reach. An optional enhancement must not be able to
+ * make a legally complete page announce itself incomplete, which is what the
+ * first revision did. `src/components/mockups/link-target.ts` holds the rule;
+ * `tests/legal-pages.test.tsx` asserts both states.
  */
 
 import type { ExternalTargetId } from "../../../content/routes.js";
