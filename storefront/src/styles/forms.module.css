@@ -150,12 +150,33 @@ textarea.stackedField {
  * WCAG 3.3.1 (Error Identification). Not `display: none` when absent; the
  * component only renders the element at all once there is something to say,
  * so there is nothing to toggle the visibility of.
+ *
+ * **The orange is a marker, not the text colour.** This rule read
+ * `color: var(--accent-fill)`, and `design/tokens.css` says of that token, in
+ * its own comment, that it "is a background and is not readable as text";
+ * `design/README.md` names `--plepic-orange-deep` as the colour for orange
+ * text on light. Measured in a browser on the two forms this sheet dresses, at
+ * `--step--1` (14px) weight 500 — not large text, so WCAG 1.4.3 asks for
+ * 4.5:1 — it was **2.91:1** on the contact form's off-white surface
+ * (`/support/lunar-base`) and **3.19:1** on the newsletter form's white card
+ * (`/`). Both failed.
+ *
+ * The fix is the one `pages/shop.module.css` already applies to its own
+ * `.fieldError`, character for character, because that rule was copied from
+ * this one and the copy was corrected while the original was left standing:
+ * navy text, with the orange carried by a marker rule down the inline start,
+ * which is what a fill token is for. It stays inside the semantic layer —
+ * `design/tokens.css` is not this unit's to add a semantic alias to. The error
+ * is not signalled by colour alone in any case: it sits under its field, is
+ * referenced by `aria-describedby`, and the input carries `aria-invalid`.
  */
 .fieldError {
   margin: 0;
   font-size: var(--step--1);
-  color: var(--accent-fill);
   font-weight: var(--font-weight-medium);
+  color: var(--text);
+  border-inline-start: var(--border-width-thick) solid var(--accent-fill);
+  padding-inline-start: var(--space-2xs);
 }
 
 .status {

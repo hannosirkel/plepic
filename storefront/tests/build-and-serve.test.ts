@@ -49,6 +49,22 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { checkout as checkoutCopy, unavailableFigure } from "../../content/shop.js";
+import {
+  CHECKOUT_ORDER_POST_PATH,
+  ORDER_NOT_PLACED,
+  ORDER_NOT_PLACED_LOCATION,
+  ORDER_OUTCOME_PARAM,
+} from "../src/components/shop/checkout-order-post.js";
+import {
+  CARD_STATEMENT,
+  CONFIRMATION_PROMISE,
+  CONSENT_LINE,
+  CONTRACT_FORMATION,
+  DELIVERY_ESTIMATE,
+  RETURN_POSTAGE,
+} from "../src/components/shop/checkout-terms.js";
+import { formatAmount } from "../src/lib/cart.js";
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
 import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
@@ -195,6 +211,50 @@ function requestWithHost(port: number, path: string, host: string): Promise<Host
       },
     );
     request.on("error", reject);
+    request.end();
+  });
+}
+
+/**
+ * The same, as a form POST with a urlencoded body — what a browser does when
+ * it submits the checkout form itself, before hydration or with JavaScript
+ * off. `redirect` is never followed: the point of the assertion is the status
+ * and the `Location`, and in particular that neither carries a field value.
+ */
+function postFormWithHost(
+  port: number,
+  path: string,
+  host: string,
+  fields: Readonly<Record<string, string>>,
+): Promise<HostRequestResult> {
+  const body = new URLSearchParams(fields).toString();
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: {
+          Host: host,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => {
+          resolve({
+            status: response.statusCode ?? 0,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+    request.on("error", reject);
+    request.write(body);
     request.end();
   });
 }
@@ -747,6 +807,310 @@ describe("the legal pages serve their content, resolved from the runtime environ
     expect(response.body).toContain(RUNTIME_ENV.MERCHANT_PHONE_NUMBER);
     expect(response.body).toContain("SHAH01338706");
     expect(response.body).not.toContain("product-safety-incomplete-notice");
+  });
+});
+
+/**
+ * The basket and the checkout, as a browser is actually served them.
+ *
+ * Both routes rendered `RoutePlaceholder` — a heading and a meta description —
+ * for three merged pull requests, and every test stayed green because each
+ * asked whether the route answered 200 with a canonical, and it did. These ask
+ * what is on it, and in particular whether the screen `content/legal/terms.ts`
+ * describes is the screen this server sends: the Article 8(2) button label, the
+ * six disclosures immediately above it, the consent line, the confirmation
+ * promise, the card statement and the return-postage disclosure.
+ *
+ * `?mock=` is the mock data layer's state parameter — see
+ * `src/lib/mock-cart-actions.ts`. Without it, an empty basket is the default,
+ * which is asserted first because it is what an ordinary first visit renders.
+ *
+ * **Every request that carries `?mock=` uses {@link MOCK_HOST}**, and that is
+ * load-bearing rather than incidental: the parameter is gated off any hostname
+ * a real visitor could reach, and `runtime.example.com` — this server's
+ * `SITE_CANONICAL_HOST` — is exactly such a hostname. A request to it with
+ * `?mock=filled` must render an empty basket, which the last block below
+ * asserts directly. Sending these through the canonical host is how the
+ * parameter used to be able to write into a stranger's session.
+ */
+const MOCK_HOST = "test.runtime.example.com";
+
+describe("the basket and the checkout serve their real composition", () => {
+  it("renders an empty basket by default, not a placeholder heading", async () => {
+    const response = await requestWithHost(server.port, "/cart", "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text).toContain("Your basket is empty");
+    expect(text).toContain("Add Lunar Base to your basket");
+    // The route used to render its own meta description as body copy.
+    expect(text).not.toContain("What you are about to buy, and what it will cost delivered.");
+  });
+
+  it("renders an empty checkout by default", async () => {
+    const response = await requestWithHost(server.port, "/checkout", "runtime.example.com");
+    expect(response.status).toBe(200);
+    expect(paintedText(response.body)).toContain("There is nothing to check out.");
+  });
+
+  it("prices a filled basket from the mock catalogue, and defers shipping to checkout", async () => {
+    const response = await requestWithHost(
+      server.port,
+      "/cart?mock=filled",
+      MOCK_HOST,
+    );
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text).toContain(resolveCatalogue().price);
+    expect(text).toContain("Calculated at checkout");
+    expect(response.body).toContain('href="/checkout"');
+  });
+
+  it("serves the checkout screen content/legal/terms.ts describes", async () => {
+    const response = await requestWithHost(
+      server.port,
+      "/checkout?mock=filled",
+      MOCK_HOST,
+    );
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+
+    // Article 8(2): the label, and the six disclosures above it.
+    expect(text).toContain("Order with obligation to pay");
+    for (const label of [
+      "The goods",
+      "Price of the goods",
+      "Shipping charge",
+      "Total",
+      "Delivery address",
+      "Delivery estimate",
+    ]) {
+      expect(text, `the served order block is missing "${label}"`).toContain(label);
+    }
+
+    // The four sentences, verbatim from the legal page.
+    for (const sentence of [
+      CONSENT_LINE,
+      CONFIRMATION_PROMISE,
+      CARD_STATEMENT,
+      CONTRACT_FORMATION,
+      RETURN_POSTAGE,
+      DELIVERY_ESTIMATE,
+    ]) {
+      expect(text, `the served checkout is missing "${sentence.slice(0, 48)}…"`).toContain(sentence);
+    }
+
+    // Article 6(1)(h): reachable here, and reachable earlier.
+    expect(response.body).toContain('href="/legal/returns#withdrawal-form"');
+  });
+
+  /**
+   * `initialAddress` is a documented test seam that the route never passes.
+   * "Never passes" was asserted nowhere against the **served** markup, so a
+   * route that started passing it — for a demo, for a screenshot, by
+   * copy-paste — would put an invented person's address into a public shop and
+   * nothing would say so. This is that assertion, on what the server sends.
+   */
+  it("serves a delivery-address form with every field empty and no country chosen", async () => {
+    const response = await requestWithHost(server.port, "/checkout?mock=filled", MOCK_HOST);
+    expect(response.status).toBe(200);
+    expect(response.body, "a value reached a served address field").not.toMatch(
+      /<input[^>]*\bname="(?:fullName|streetAddress|postalCode|city|email)"[^>]*\bvalue="[^"]/,
+    );
+    expect(response.body, "a country was selected before anybody chose one").not.toMatch(
+      /<option value="[^"]+"[^>]*selected/,
+    );
+  });
+
+  /**
+   * MAJ-1. With a line that cannot be supplied, the Article 8(2) block stated
+   * "Price of the goods: €0.00" and a total that was the shipping charge on its
+   * own. An address cannot be typed over HTTP without a browser, so what is
+   * asserted here is the half that is in the first paint: no figure of nothing,
+   * the instruction that replaced it, and the button saying so where the button
+   * is rather than only at the top of a very long page.
+   */
+  it("states no price for a basket it cannot supply, and says so at the button", async () => {
+    const response = await requestWithHost(server.port, "/checkout?mock=unavailable", MOCK_HOST);
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text, "the goods were priced at nothing").not.toContain(formatAmount(0, "EUR"));
+    expect(text).toContain(unavailableFigure);
+    expect(text).toContain(checkoutCopy.errors.unavailableLine);
+    expect(response.body).toMatch(/<button[^>]*aria-disabled="true"/);
+    expect(response.body).toContain('role="status"');
+    expect(response.body, "a disabled attribute would drop focus").not.toMatch(
+      /<button[^>]*\sdisabled(?:=|\s|>)/,
+    );
+  });
+
+  it("reaches the withdrawal conditions and the model form from the basket too", async () => {
+    const response = await requestWithHost(server.port, "/cart", "runtime.example.com");
+    expect(response.body).toContain('href="/legal/returns#withdrawal"');
+    expect(response.body).toContain('href="/legal/returns#withdrawal-form"');
+  });
+
+  it("serves no card field and no payment script on either route", async () => {
+    for (const path of ["/cart?mock=filled", "/checkout?mock=filled"]) {
+      const response = await requestWithHost(server.port, path, MOCK_HOST);
+      expect(response.body).not.toMatch(/autocomplete="cc-/i);
+      expect(response.body.toLowerCase()).not.toContain("js.stripe");
+    }
+  });
+
+  it("leaves no unresolved placeholder on either route, in any state", async () => {
+    for (const path of [
+      "/cart",
+      "/cart?mock=filled",
+      "/cart?mock=updating",
+      "/cart?mock=error",
+      "/cart?mock=unavailable",
+      "/checkout",
+      "/checkout?mock=filled",
+      "/checkout?mock=placing",
+      "/checkout?mock=error",
+      "/checkout?mock=unavailable",
+      `/checkout?${ORDER_OUTCOME_PARAM}=${ORDER_NOT_PLACED}`,
+    ]) {
+      const response = await requestWithHost(server.port, path, MOCK_HOST);
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(paintedText(response.body), `${path} rendered an unresolved placeholder`).not.toMatch(
+        /\{[A-Za-z][A-Za-z0-9]*\}/,
+      );
+    }
+  });
+});
+
+/**
+ * MAJ-2: no value a visitor typed into the checkout form may reach a URL — not
+ * in the URL bar, not in browser history, not in a `Referer` header, and not in
+ * any access log between the tunnel and Loki.
+ *
+ * The defect was a `<form>` with no `method`, which is a GET. It fired with
+ * JavaScript off, and in the window between first paint and hydration — which
+ * under this application's `'strict-dynamic'` CSP is not hypothetical, because
+ * a nonce mismatch leaves a page that paints and never hydrates.
+ *
+ * These assertions are what a browser can be shown to be able to do, on the
+ * real served markup, without running any of the page's JavaScript: the served
+ * form declares a POST, the POST answers a redirect that carries no field
+ * value, and the page it redirects to says plainly that no order was placed.
+ */
+describe("the checkout form cannot put a delivery address in a URL", () => {
+  it("serves a form that posts, with an action, before anything hydrates", async () => {
+    const response = await requestWithHost(server.port, "/checkout?mock=filled", MOCK_HOST);
+    expect(response.status).toBe(200);
+
+    const form = /<form\b[^>]*>/.exec(response.body)?.[0] ?? "";
+    expect(form, "the checkout served no form at all").not.toBe("");
+    expect(form, "a form with no method is a GET, and a GET puts the address in the URL").toMatch(
+      /method="post"/i,
+    );
+    expect(form).toContain(`action="${CHECKOUT_ORDER_POST_PATH}"`);
+  });
+
+  it("answers an unhydrated submission with a redirect that carries no field value", async () => {
+    const typed = {
+      fullName: "Name",
+      streetAddress: "Street and number",
+      postalCode: "00000",
+      city: "Town",
+      country: "Estonia",
+      email: "example@example.com",
+    };
+    const response = await postFormWithHost(
+      server.port,
+      CHECKOUT_ORDER_POST_PATH,
+      MOCK_HOST,
+      typed,
+    );
+
+    // 303, so a reload of the destination cannot re-post the form.
+    expect(response.status).toBe(303);
+
+    const location = response.headers.location ?? "";
+    expect(location).toBe(ORDER_NOT_PLACED_LOCATION);
+    for (const [field, value] of Object.entries(typed)) {
+      expect(location, `"${field}" reached the redirect target`).not.toContain(value);
+      expect(location, `"${field}" reached the redirect target`).not.toContain(
+        encodeURIComponent(value),
+      );
+      expect(location).not.toContain(field);
+    }
+  });
+
+  it("says plainly that no order was placed, in the first paint, with no script involved", async () => {
+    const response = await requestWithHost(
+      server.port,
+      ORDER_NOT_PLACED_LOCATION,
+      MOCK_HOST,
+    );
+    expect(response.status).toBe(200);
+    // Read out of the served markup with every <script> stripped: this message
+    // is in the HTML the server sent, not something hydration produced.
+    expect(paintedText(response.body)).toContain(checkoutCopy.errors.paymentNotConnected);
+  });
+
+  it("exposes nothing on that path but the POST", async () => {
+    const response = await requestWithHost(server.port, CHECKOUT_ORDER_POST_PATH, MOCK_HOST);
+    expect(response.status).toBe(405);
+  });
+});
+
+/**
+ * MAJ-3: `?mock=` writes the requested basket into `sessionStorage`, so it is
+ * gated off any hostname a passing stranger could be sent a link to.
+ *
+ * `runtime.example.com` is this server's `SITE_CANONICAL_HOST` — the live
+ * public site, as far as this deployment is concerned. `test.runtime.example.com`
+ * is in its `SITE_TEST_HOSTNAMES`. Both are read from the process environment
+ * this server was started with; nothing about the gate is compiled in.
+ */
+describe("?mock= is inert on the hostname a visitor reaches", () => {
+  const scenarioPaths = [
+    "/cart?mock=filled",
+    "/cart?mock=updating",
+    "/cart?mock=unavailable",
+    "/cart?mock=error",
+    "/checkout?mock=filled",
+    "/checkout?mock=placing",
+  ] as const;
+
+  it("renders the empty default on the canonical host, whatever is asked for", async () => {
+    for (const path of scenarioPaths) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+
+      const text = paintedText(response.body);
+      expect(text, `${path} honoured a scenario on the live hostname`).toContain(
+        "Your basket is empty",
+      );
+      expect(text, `${path} priced a basket on the live hostname`).not.toContain(
+        resolveCatalogue().price,
+      );
+      expect(text, `${path} served an order button on the live hostname`).not.toContain(
+        "Order with obligation to pay",
+      );
+    }
+  });
+
+  it("still honours it on a declared test hostname, which is what the suites and the dev story need", async () => {
+    const cart = await requestWithHost(server.port, "/cart?mock=filled", MOCK_HOST);
+    expect(paintedText(cart.body)).toContain(resolveCatalogue().price);
+
+    const checkout = await requestWithHost(server.port, "/checkout?mock=filled", MOCK_HOST);
+    expect(paintedText(checkout.body)).toContain("Order with obligation to pay");
+  });
+
+  it("leaves both routes working on the canonical host without the parameter", async () => {
+    for (const path of ["/cart", "/checkout"]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(paintedText(response.body)).toContain("Your basket is empty");
+    }
   });
 });
 

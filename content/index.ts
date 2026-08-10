@@ -22,4 +22,5 @@ export * as publisher from "./publisher.js";
 export * as lunarBase from "./lunar-base.js";
 export * as proof from "./proof.js";
 export * as support from "./support.js";
+export * as shop from "./shop.js";
 export * as legal from "./legal/index.js";

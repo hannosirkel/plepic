@@ -15,8 +15,120 @@ Next.js storefront and, later, a Medusa backend.
   server-side and handed to the browser — never a `NEXT_PUBLIC_*` variable. See
   [`storefront/src/config/runtime-config.ts`](./storefront/src/config/runtime-config.ts)
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
-  for the redirect map's documented shape. The cart and checkout flows are a
-  later PR unit; every other route is real.
+  for the redirect map's documented shape. Every route is real; the basket and
+  checkout flows run against mock cart actions, and only Stripe elements,
+  server-side Turnstile verification and real totals are deferred.
+
+  **The basket and the checkout, and the legal page that specifies them.**
+  `src/app/cart/page.tsx` and `src/app/checkout/page.tsx` render
+  `src/components/shop/`, against the mock cart actions in
+  `src/lib/mock-cart-actions.ts` and the state in `src/lib/cart-store.tsx`.
+  `content/legal/terms.ts` is merged, live and says its checkout section "is
+  written to match the checkout screen exactly", so it is the specification:
+  the consent line, the contract-formation sentence, the confirmation promise
+  and the card-number statement are **read out of that content object** by
+  `src/components/shop/checkout-terms.ts` and rendered verbatim, along with the
+  return-postage sentence from `content/legal/returns.ts` and the delivery
+  estimate from `content/legal/shipping.ts`. There is no second copy to drift,
+  and a reworded legal paragraph is a loud failure rather than a checkout that
+  quietly stops disclosing something.
+
+  Article 8(2) CRD is what the checkout's layout is for: the final control is
+  labelled **"Order with obligation to pay"**, and immediately above it, in one
+  block, are the six disclosures the legal page lists — the goods, the price of
+  the goods, the shipping charge, the total, the delivery address and the
+  delivery estimate. Two things sit between the last of them and the button:
+  the catalogue's price qualification, which qualifies the two figures directly
+  above it, and then the consent line. Everything a buyer must be told **before
+  being bound** sits above that block. One paragraph is below the button — the
+  Article 8(7) confirmation promise, which is a statement about what happens
+  *after* the contract is formed and changes nothing about what pressing the
+  button means; it is the last element of the block, so the button is not. There
+  is no consent tick box, because the consent line says the confirmation is
+  given *by placing the order*.
+
+  The checkout form posts. A `<form>` with no `method` is a GET, so a press
+  before hydration — or with JavaScript switched off — would put the delivery
+  address into the URL, the browser history, the `Referer` header and every
+  access log on the path. It carries `method="post"` and an action instead:
+  `src/app/checkout/order/route.ts` reads nothing out of the body and answers
+  `303` back to the checkout with a fixed marker, and the page says in its
+  first paint that no order was placed and nothing was charged — which is true,
+  with or without JavaScript, while Stripe is deferred. See
+  [`storefront/src/components/shop/checkout-order-post.ts`](./storefront/src/components/shop/checkout-order-post.ts).
+
+  The shipping charge and the total are `null` until a delivery address is
+  complete, because `content/legal/shipping.ts` says shipping is calculated at
+  checkout once an address has been entered — so the basket says "Calculated at
+  checkout" rather than showing a figure that does not exist yet.
+  [`storefront/mock/shipping.json`](./storefront/mock/shipping.json) declares
+  one method and **two flat rates on a zone axis** — EUR 7.00 to a delivery
+  address in an **EU member state**, EUR 12.00 to one anywhere else, both
+  operator-supplied on 2026-08-10. Flat rates only: the plan forbids calculated
+  carrier rates, and Task 5 must seed the live Medusa shipping options to match
+  both figures. "Member state" rather than "in the EU" is the rule the code
+  implements: Åland, French Guiana, Guadeloupe, Martinique, Réunion and Mayotte
+  are delivery addresses in the EU and are charged the higher rate, because the
+  flag they are selected by is membership of the 27 and nothing wider.
+
+  **The country is chosen, not typed, because the charge is priced from it.**
+  A rate driven from a free-text field charges `Estonai`, `eesti` and `EE` the
+  non-EU rate, and overcharging an EU customer through a spelling difference is
+  a defect rather than an edge case. The country field is a `<select>` over
+  [`storefront/mock/countries.json`](./storefront/mock/countries.json) — all 249
+  ISO 3166-1 entries, because the legal page says we ship to every country — in
+  the same slot, with the same label and the same `autoComplete` token it had as
+  an `<input>`. That file's `euMember` flag is **exactly the 27 member states**, which
+  is the one field here whose failure mode is a silent mispricing, so
+  `tests/shop-pages.test.tsx` pins all 27 by name and by ISO code.
+  `zoneForCountryName` answers *no zone* rather than the dearer rate to anything
+  it does not recognise, so an unrecognised country leaves the charge and the
+  total unshown instead of guessing at somebody's expense.
+
+  **The Article 8(2) invariant is a function, not a paragraph.**
+  `orderMayBePlaced` (`src/lib/cart.ts`) states it — *no order placement can
+  succeed in any state where all six Article 8(2) values are not displayed as
+  values* — and the checkout's submit handler is a call to it. It is written
+  that way because a paragraph decays silently the moment somebody makes the
+  order button optimistic; `tests/shop-pages.test.tsx` names the invariant where
+  it drives it, in both the incomplete-address and the complete-address state.
+
+  **A basket holding something we cannot supply has no price and no total.**
+  `cartTotals` answers `null` rather than `0` for the price of the goods, and
+  the total follows it, so neither screen states a figure for a basket that
+  cannot be sold. Excluding the unavailable line from the sum instead put
+  the price of the goods as a formatted zero, and a total that was the shipping
+  charge alone, into the Article 8(2) block — beside a "The goods" row still
+  listing the item. A refused placement does not repair a disclosure that is on
+  the screen and false. Both figures render the same kind of instruction the two
+  address-dependent figures already do, the order button takes `aria-disabled`,
+  and a `role="status"` line directly beneath it — which is also the button's
+  `aria-describedby` — says what has to happen first. That is the only state in
+  which the order button is `aria-disabled`: an incomplete address must stay
+  pressable, because pressing it is what produces the error summary.
+
+  The card step is a labelled placeholder region and nothing else — no card
+  field, no fabricated instrument — and pressing the order button reports that
+  nothing was charged and no order was placed, which is true while Stripe is
+  deferred. `?mock=` requests either route in a given state
+  (`filled`, `updating`, `removing`, `unavailable`, `error`, `placing`) so the
+  loading and error layouts can be inspected on a real device; it belongs to
+  the mock data layer and leaves with it.
+
+  **`?mock=` is inert in production, and that is enforced rather than
+  promised.** Requesting a scenario writes the requested basket into
+  `sessionStorage` — deliberately, so `/cart?mock=filled` and the `/checkout`
+  you navigate to next agree — which means a link of that shape sent to a
+  stranger would put an item in their basket. `isMockLayerEnabled`
+  (`src/lib/mock-cart-actions.ts`) is asked before the parameter is parsed at
+  all, and answers **no by default**: yes only for a hostname the deployment
+  declared in `SITE_TEST_HOSTNAMES` — the same validated set that drives
+  `X-Robots-Tag: noindex` and the disallow-all `robots.txt` — or for a
+  development host (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`). The
+  hostname set is read from the process environment per request, like every
+  other per-environment value here, so nothing about the gate is baked into an
+  image. On a live hostname `?mock=filled` is a `/cart` with an ignored query
+  string.
 
   **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
   `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and

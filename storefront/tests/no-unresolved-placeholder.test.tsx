@@ -34,6 +34,9 @@ import { legalPages } from "../../content/legal/index.js";
 import { PLACEHOLDERS } from "../../content/schema.js";
 import { ROUTE_PATHS } from "../../content/routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
+import { CartProvider } from "../src/lib/cart-store.js";
+import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
+import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { AboutPageContent } from "../src/components/pages/AboutPageContent.js";
 import { RulebookPageContent } from "../src/components/pages/RulebookPageContent.js";
@@ -91,6 +94,34 @@ const ROUTES: readonly { readonly path: string; readonly html: string }[] = [
   },
   { path: "/support/lunar-base/rulebook", html: renderToStaticMarkup(<RulebookPageContent />) },
   /*
+   * The basket and the checkout, in the state a filled basket puts them in —
+   * which is the state that quotes `{productName}` (the "Add … to your basket"
+   * button, the quantity and remove labels) and renders every figure. The
+   * empty state is asserted separately below, because it is the default and
+   * carries a different subset of the copy.
+   */
+  {
+    path: "/cart",
+    html: renderToStaticMarkup(
+      <CartProvider scenario="filled" latencyMs={0}>
+        <BasketPageContent />
+      </CartProvider>,
+    ),
+  },
+  {
+    path: "/checkout",
+    html: renderToStaticMarkup(
+      <CartProvider scenario="filled" latencyMs={0}>
+        <CheckoutPageContent
+          turnstileSiteKey={null}
+          nonce={undefined}
+          scenario="filled"
+          latencyMs={0}
+        />
+      </CartProvider>,
+    ),
+  },
+  /*
    * The five legal routes, in the unconfigured state.
    *
    * They were absent from this list because they rendered `RoutePlaceholder`
@@ -119,6 +150,28 @@ describe("no unresolved placeholder reaches rendered text on any real route", ()
       ).toEqual([]);
     });
   }
+
+  it("also holds for an empty basket, which is the default state of both commercial routes", () => {
+    for (const html of [
+      renderToStaticMarkup(
+        <CartProvider scenario={null} latencyMs={0}>
+          <BasketPageContent />
+        </CartProvider>,
+      ),
+      renderToStaticMarkup(
+        <CartProvider scenario={null} latencyMs={0}>
+          <CheckoutPageContent
+            turnstileSiteKey={null}
+            nonce={undefined}
+            scenario={null}
+            latencyMs={0}
+          />
+        </CartProvider>,
+      ),
+    ]) {
+      expect(unresolvedTokensIn(html)).toEqual([]);
+    }
+  });
 
   it("also holds with a merchant contact address configured, not only with it suppressed", () => {
     const html = renderToStaticMarkup(
