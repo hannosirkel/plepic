@@ -28,6 +28,7 @@ import { isTestHost, loadSiteHostConfig } from "../../../config/hosts.js";
 import { buildPageMetadata } from "../../../lib/seo.js";
 import { getRequestHost } from "../../../lib/request-host.js";
 import { LOCALIZED_ROUTE_VIEWS, resolveLocalizedRoute } from "../../localized-routes.js";
+import { NOT_FOUND_TITLE } from "../../not-found-content.js";
 
 export const dynamic = "force-dynamic";
 
@@ -45,12 +46,23 @@ export async function generateMetadata({
   const resolved = resolveLocalizedRoute(locale, segments);
 
   /*
-   * A path that resolves to nothing is about to be a 404, and a 404 carries
-   * no canonical, no alternates and no description. Emitting a page's
-   * metadata beside a 404 body is how a crawler is told a URL exists that
-   * does not.
+   * A path that resolves to nothing is about to be a 404. It gets a title,
+   * because a document with none shows the raw URL in the browser tab, and it
+   * gets `noindex` — and it gets **no canonical and no alternates**, ever.
+   *
+   * That last clause is load-bearing and was nearly lost. `notFound()` does
+   * **not** discard this metadata: a canary canonical placed in this branch
+   * reaches the hydrated DOM, so a rendering crawler would be told a canonical
+   * exists for a URL that answers 404. `tests/build-and-serve.test.ts` asserts
+   * it against the payload the hydration reads, and that assertion has been
+   * watched to fail with the canary in place.
+   *
+   * So this object is built by hand rather than by `buildPageMetadata`, which
+   * always attaches both.
    */
-  if (resolved === null) return { robots: { index: false, follow: false } };
+  if (resolved === null) {
+    return { title: NOT_FOUND_TITLE, robots: { index: false, follow: false } };
+  }
 
   const hostConfig = loadSiteHostConfig();
   const host = await getRequestHost();

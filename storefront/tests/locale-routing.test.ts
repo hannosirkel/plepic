@@ -330,3 +330,79 @@ describe("canonical URLs", () => {
     }
   });
 });
+
+/**
+ * The 404's link, and the one thing that can be guarded cheaply.
+ *
+ * The link shipped with no class and no rule, so it rendered at the user
+ * agent's default `rgb(0,0,238)` on the page's background: **1.75:1** against
+ * a 4.5:1 requirement, on the single interactive element the page exists to
+ * offer. The heading and paragraphs beside it were at 14.96:1, so nothing
+ * looked wrong.
+ *
+ * **What this does not do.** It does not measure contrast. Measuring what a
+ * browser actually paints needs a browser, this suite has none, and the plan
+ * forbids adding one — the ratio was measured out of band (5.32:1) and is
+ * recorded in the unit's report. A source-level "every `<a>` must carry a
+ * className" rule was considered and rejected: nine anchors elsewhere under
+ * `src/` are legitimately styled by descendant selectors, so it would be nine
+ * false positives on components outside this unit's authority and wrong in
+ * principle.
+ *
+ * **What it does do** is close the chain between what this page paints and
+ * what `design/tokens.test.ts` already measures. That suite resolves the token
+ * file and holds declared pairs to their WCAG minimum; it cannot see an
+ * element that declares nothing. Putting this page on `--accent` over
+ * `--surface` — a pair it *does* measure — means the contrast is covered going
+ * forward by a suite that runs on every build. These assertions are the links
+ * in that chain: the component uses the classes, the classes use the tokens,
+ * and the token suite measures that pair. Break any one and this goes red.
+ */
+describe("the 404's link is on a token pair the contrast suite measures", () => {
+  /* Comments stripped: this file quotes the two measured colours in prose,
+     and a guard a doc comment can trip is a guard the next doc comment weakens. */
+  const styles = stripComments(
+    readFileSync(join(srcDir, "styles/pages/not-found.module.css"), "utf8"),
+  );
+  const component = sourceFiles().find((file) => file.name === "app/not-found-content.tsx");
+  const tokenSuite = readFileSync(
+    join(dirname(dirname(dirname(fileURLToPath(import.meta.url)))), "design/tokens.test.ts"),
+    "utf8",
+  );
+
+  it("gives the page a surface and the link an accent, both as tokens", () => {
+    expect(styles).toMatch(/\.page\s*\{[^}]*background:\s*var\(--surface\)/);
+    expect(styles).toMatch(/\.link\s*\{[^}]*color:\s*var\(--accent\)/);
+  });
+
+  it("writes no literal colour on this page", () => {
+    expect(
+      styles.match(/#[0-9a-f]{3,8}\b|\brgba?\(/gi) ?? [],
+      "a literal colour here is a colour the token suite cannot measure",
+    ).toEqual([]);
+  });
+
+  it("is the pair design/tokens.test.ts holds to 4.5:1", () => {
+    expect(tokenSuite).toMatch(
+      /foreground:\s*"--accent",\s*background:\s*"--surface",\s*minimum:\s*4\.5/,
+    );
+  });
+
+  it("actually applies those classes to the heading, the body and the link", () => {
+    expect(component?.code).toMatch(/<a\s+className=\{styles\.link\}/);
+    expect(component?.code).toMatch(/className=\{styles\.page\}/);
+    expect(component?.code).toMatch(/<h1 className=\{styles\.heading\}/);
+  });
+
+  /**
+   * A hover colour is not a focus indicator. `--accent-hover` on this layer is
+   * the navy the page's own text is made of, so a keyboard user tabbing to the
+   * only link would get a colour change they cannot see against the copy
+   * beside it. The ring is the site's convention.
+   */
+  it("gives the link the site's focus ring rather than a colour change", () => {
+    expect(styles).toMatch(
+      /a\.link:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring\)/,
+    );
+  });
+});

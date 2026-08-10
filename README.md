@@ -679,15 +679,28 @@ the two layouts cannot drift.
 ### The cost of two root layouts: the 404
 
 Two root layouts are what make `<html lang>` a property of the edition rather
-than a literal, and they are paid for. In Next 16.3, **a 404 renders the
-framework's own `<html id="__next_error__">` document**, with the
+than a literal, and they are paid for. In Next 16.3 a 404 renders the
+framework's own `<html id="__next_error__">` document, with the
 `not-found.tsx` body in the flight payload rather than in the server-rendered
-HTML. The status, the `noindex` and the hydrated body are all correct; the
-document element carries no `lang` and no `data-layer`, so
-`src/app/not-found-content.tsx` declares both on the content root instead,
-which is valid HTML and what can be recovered.
+HTML.
 
-Two things about that were established by running it, not by reading:
+**At full price: a visitor with JavaScript disabled receives zero characters
+of body.** Not a degraded page — nothing. What they do get is the correct
+`404` status and a server-rendered `<title>`, so the browser tab reads
+"Page not found" rather than the raw URL. With JavaScript the page is
+complete: styled, brand navy, `MADE Evolve Sans`, the heading, the sentence
+and the link, and `<main lang="en" data-layer="publisher">` — the document
+element carries no `lang`, so the content root declares it instead, which is
+valid HTML.
+
+**There was no designed 404 to regress from.** Before this, an unmatched path
+got Next's own `/_not-found` page — the framework's stock *"This page could
+not be found"* — and on `main` its inline styling was blocked by **five CSP
+`style-src` violations**, because this application serves a nonce-based policy
+the framework's error page carries no nonce for. The replacement says more,
+and says it in the site's own voice.
+
+Two things about the trade were established by running it:
 
 - **`notFound()` behaves this way on `main` too**, with its single root layout
   and a `not-found.tsx` present. `main` never met it because nothing there
@@ -695,17 +708,33 @@ Two things about that were established by running it, not by reading:
 - **With multiple root layouts the unmatched-path 404 has no root layout to
   render into either.** A `not-found.tsx` beside each root layout, one nested
   under the catch-all, one rendering its own `<html>`, a root-level
-  `app/not-found.tsx`, `app/global-not-found.tsx` (experimental in this version
-  and inert without a `next.config.ts` flag), and `dynamicParams = false` were
-  all tried; all six produce the same document. `dynamicParams = false` was
-  additionally rejected on its own merits — it marks the localized route
-  statically prerendered, which would bake the build environment's base URL
-  into a second edition's pages.
+  `app/not-found.tsx`, `app/global-not-found.tsx` (experimental in this
+  version and inert without a `next.config.ts` flag), and
+  `dynamicParams = false` were all tried; all six produce the same document.
+
+**`dynamicParams = false` is rejected because it does not fix the 404
+document, and for no other reason.** An earlier revision of this section also
+claimed it would statically prerender the localized route and bake the
+building environment's base URL into a second edition. That did not reproduce:
+tested with a build-time canary in three configurations — as shipped, with
+`force-dynamic` removed from the page, and removed from the page and the
+layout — the route stayed dynamic and no canary appeared anywhere in `.next/`,
+because `generateMetadata` reads `headers()` and that keeps the segment
+dynamic regardless. The conclusion stood; the reason was an inference written
+down as a measurement, and it is withdrawn.
+
+**A 404 carries no canonical and no alternates, and that is guarded.**
+`notFound()` does *not* discard this application's metadata: a canary
+canonical placed in the 404 branch of the localized route reaches the
+**hydrated DOM**, where a rendering crawler would read it as a claim that the
+URL exists. `storefront/tests/build-and-serve.test.ts` asserts its absence
+against the payload hydration reads, and proves its own needle by requiring a
+real page to match the same patterns.
 
 What would end the trade is a rewrite in `src/proxy.ts` mapping the unprefixed
-paths onto a single dynamic root segment, so there is one root layout again and
-it can still read the locale. That file was outside the authority of the unit
-that added this.
+paths onto a single dynamic root segment, so there is one root layout again
+and it can still read the locale. That file was outside the authority of the
+unit that added this.
 
 ### `hreflang` at one locale
 

@@ -1,0 +1,89 @@
+/*
+ * The 404.
+ *
+ * It exists because the page had none, and an element with no rule is not
+ * "unstyled" — it is styled by the user agent. The one link on this page
+ * rendered at the UA default `rgb(0,0,238)` on `rgb(21,27,70)`: **1.75:1**,
+ * against a 4.5:1 requirement, on the single interactive element the page
+ * exists to offer. The heading and the paragraphs beside it measured 14.96:1,
+ * so nothing about the page looked wrong.
+ *
+ * `design/tokens.test.ts` could not see it. That suite resolves the token file
+ * and measures declared pairs; an element that declares nothing has no pair to
+ * measure. So the fix is not just "a colour" — it is to put this page onto a
+ * pair that suite **already** measures:
+ *
+ *   .page  background: var(--surface)
+ *   .link  color:      var(--accent)
+ *
+ * which is the `{ label: "link text", foreground: "--accent",
+ * background: "--surface", minimum: 4.5 }` row in `design/tokens.test.ts`.
+ * `storefront/tests/locale-routing.test.ts` asserts this file keeps using
+ * exactly those two custom properties, so the chain from "what this page
+ * paints" to "what is measured for contrast" cannot be broken silently by
+ * either end.
+ *
+ * `min-height: 100dvh` because a 404 renders inside the framework's own error
+ * document, whose `body` carries no `data-layer` and therefore resolves no
+ * surface token — without it the page paints a band of brand navy on a white
+ * canvas.
+ *
+ * The shape follows `legal.module.css`: one narrow measure, generous leading,
+ * nothing decorative. This is not a designed 404 — page composition is another
+ * unit's — it is the same typography as the rest of the site.
+ */
+
+.page {
+  background: var(--surface);
+  color: var(--text);
+  min-height: 100dvh;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space);
+}
+
+/*
+ * The painted surface is the outer box and the measure is an inner one, the
+ * way `legal.module.css` splits `.page` from `.main`. Constraining the painted
+ * box instead would paint a cream column on the navy canvas at any viewport
+ * wider than `--content-wide`, which no other page on this site does.
+ */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+}
+
+.heading {
+  max-width: var(--content-measure);
+  font-size: var(--step-4);
+  line-height: var(--line-height-heading);
+}
+
+.body {
+  max-width: var(--content-measure);
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+}
+
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+a.link:hover {
+  color: var(--accent-hover);
+}
+
+/*
+ * The focus treatment is the ring the rest of the site uses, not a colour
+ * change. A hover colour is not a focus indicator: a keyboard user needs
+ * something visible against the surface, and `--accent-hover` on this page is
+ * the navy the surface is made of.
+ */
+a.link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

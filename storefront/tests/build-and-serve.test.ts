@@ -80,6 +80,7 @@ import {
 } from "../../content/routes.js";
 import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
 import { localizedPath } from "../src/lib/urls.js";
+import { NOT_FOUND_TITLE } from "../src/app/not-found-content.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(storefrontDir);
@@ -1957,19 +1958,85 @@ describe("the served document declares its language and its alternates", () => {
   });
 
   /**
+   * A 404 must never carry a canonical or an alternate.
+   *
+   * `notFound()` does **not** discard this application's metadata — an earlier
+   * revision of this suite deleted this guard believing it did. A canary
+   * canonical placed in the `resolved === null` branch of
+   * `app/[locale]/[[...segments]]/page.tsx` reaches the **hydrated DOM**:
+   * `document.querySelector('link[rel=canonical]')` resolves to it. A
+   * rendering crawler is then told a canonical exists for a URL that answers
+   * 404.
+   *
+   * **Where it is asserted, and why that is honest.** The hydrated DOM is
+   * built from the flight payload, and the flight payload is in the response
+   * body — so that is what this reads, after unescaping, rather than the
+   * rendered HTML. The previous version searched the raw body for
+   * `rel="canonical"`, which never appears on a 404 in that form and so could
+   * not fail. This is not a DOM assertion and does not claim to be; it is an
+   * assertion on the one input the DOM value can come from, in a suite that
+   * has no browser and may not gain one.
+   *
+   * **The needle is proved present, not assumed.** A real page must match the
+   * same patterns this asserts a 404 does not. If the patterns were wrong, the
+   * positive half fails and the negative half cannot quietly pass on a typo.
+   */
+  it("gives a 404 no canonical and no alternates, in the payload hydration reads", async () => {
+    const unescaped = (body: string) => body.replace(/\\/g, "");
+    const CANONICAL = [/rel="canonical"/, /"rel":"canonical"/];
+    const ALTERNATE = [/rel="alternate"/, /"rel":"alternate"/, /hrefLang/];
+
+    const page = unescaped((await requestWithHost(server.port, "/legal/imprint", HOST)).body);
+    expect(
+      CANONICAL.some((pattern) => pattern.test(page)),
+      "no pattern matches a page that does carry a canonical — the needle is wrong",
+    ).toBe(true);
+    expect(
+      ALTERNATE.some((pattern) => pattern.test(page)),
+      "no pattern matches a page that does carry alternates — the needle is wrong",
+    ).toBe(true);
+
+    for (const path of ["/nonsense", "/en/legal/imprint", "/zz/anything"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+
+      const body = unescaped(response.body);
+      for (const pattern of CANONICAL) {
+        expect(pattern.test(body), `${path} carries a canonical (${String(pattern)})`).toBe(false);
+      }
+      for (const pattern of ALTERNATE) {
+        expect(pattern.test(body), `${path} carries an alternate (${String(pattern)})`).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * A 404 still says what it is: one `noindex` and a title, so the browser tab
+   * does not show the raw URL. Both survive without JavaScript — the `<title>`
+   * is server-rendered even though the body is not.
+   */
+  it("gives a 404 a server-rendered title and exactly one robots directive", async () => {
+    for (const path of ["/nonsense", "/en/legal/imprint"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+      expect(response.body, `${path} has no server-rendered title`).toContain(
+        `<title>${NOT_FOUND_TITLE}</title>`,
+      );
+      expect(
+        response.body.match(/<meta name="robots"/g)?.length ?? 0,
+        `${path} does not carry exactly one robots directive`,
+      ).toBe(1);
+      expect(response.body).toContain("noindex");
+    }
+  });
+
+  /**
    * The default edition's identifier is not a URL prefix of this site. If it
    * were, every page would have two URLs and one canonical — the duplicate a
    * locale dimension exists to prevent.
    *
    * This one is live: making `localeForPathSegment` return a locale whose
-   * prefix is empty turns `/en/legal/imprint` into a 200 and this red. What is
-   * deliberately **not** asserted anywhere is the shape of the 404 document —
-   * `notFound()` discards this application's metadata and renders the
-   * framework's own error page, so an assertion about a 404's canonical passes
-   * whatever `generateMetadata` returns. That was checked by making
-   * `generateMetadata` return a real page's metadata and watching the
-   * assertion stay green; it is in `src/app/not-found-content.tsx` as a
-   * finding rather than here as a guard that cannot fail.
+   * prefix is empty turns `/en/legal/imprint` into a 200 and this red.
    */
   it("404s the default edition's own identifier as a prefix", async () => {
     for (const path of ["/en", "/en/legal/imprint", "/en/about"]) {

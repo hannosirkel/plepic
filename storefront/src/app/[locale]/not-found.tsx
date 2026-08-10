@@ -4,7 +4,11 @@
  * unmatched URL on this site. See `src/app/not-found-content.tsx` for what
  * Next.js does with the surrounding document and what was measured.
  */
-import { NotFoundContent } from "../not-found-content.js";
+import type { Metadata } from "next";
+
+import { NotFoundContent, NOT_FOUND_TITLE } from "../not-found-content.js";
+
+export const metadata: Metadata = { title: NOT_FOUND_TITLE };
 
 export default function NotFound() {
   return <NotFoundContent />;
