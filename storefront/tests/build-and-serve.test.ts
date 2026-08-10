@@ -49,7 +49,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { checkout as checkoutCopy } from "../../content/shop.js";
+import { checkout as checkoutCopy, unavailableFigure } from "../../content/shop.js";
 import {
   CHECKOUT_ORDER_POST_PATH,
   ORDER_NOT_PLACED,
@@ -64,6 +64,7 @@ import {
   DELIVERY_ESTIMATE,
   RETURN_POSTAGE,
 } from "../src/components/shop/checkout-terms.js";
+import { formatAmount } from "../src/lib/cart.js";
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
 import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
@@ -905,6 +906,47 @@ describe("the basket and the checkout serve their real composition", () => {
     expect(response.body).toContain('href="/legal/returns#withdrawal-form"');
   });
 
+  /**
+   * `initialAddress` is a documented test seam that the route never passes.
+   * "Never passes" was asserted nowhere against the **served** markup, so a
+   * route that started passing it — for a demo, for a screenshot, by
+   * copy-paste — would put an invented person's address into a public shop and
+   * nothing would say so. This is that assertion, on what the server sends.
+   */
+  it("serves a delivery-address form with every field empty and no country chosen", async () => {
+    const response = await requestWithHost(server.port, "/checkout?mock=filled", MOCK_HOST);
+    expect(response.status).toBe(200);
+    expect(response.body, "a value reached a served address field").not.toMatch(
+      /<input[^>]*\bname="(?:fullName|streetAddress|postalCode|city|email)"[^>]*\bvalue="[^"]/,
+    );
+    expect(response.body, "a country was selected before anybody chose one").not.toMatch(
+      /<option value="[^"]+"[^>]*selected/,
+    );
+  });
+
+  /**
+   * MAJ-1. With a line that cannot be supplied, the Article 8(2) block stated
+   * "Price of the goods: €0.00" and a total that was the shipping charge on its
+   * own. An address cannot be typed over HTTP without a browser, so what is
+   * asserted here is the half that is in the first paint: no figure of nothing,
+   * the instruction that replaced it, and the button saying so where the button
+   * is rather than only at the top of a very long page.
+   */
+  it("states no price for a basket it cannot supply, and says so at the button", async () => {
+    const response = await requestWithHost(server.port, "/checkout?mock=unavailable", MOCK_HOST);
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text, "the goods were priced at nothing").not.toContain(formatAmount(0, "EUR"));
+    expect(text).toContain(unavailableFigure);
+    expect(text).toContain(checkoutCopy.errors.unavailableLine);
+    expect(response.body).toMatch(/<button[^>]*aria-disabled="true"/);
+    expect(response.body).toContain('role="status"');
+    expect(response.body, "a disabled attribute would drop focus").not.toMatch(
+      /<button[^>]*\sdisabled(?:=|\s|>)/,
+    );
+  });
+
   it("reaches the withdrawal conditions and the model form from the basket too", async () => {
     const response = await requestWithHost(server.port, "/cart", "runtime.example.com");
     expect(response.body).toContain('href="/legal/returns#withdrawal"');
@@ -930,6 +972,7 @@ describe("the basket and the checkout serve their real composition", () => {
       "/checkout?mock=filled",
       "/checkout?mock=placing",
       "/checkout?mock=error",
+      "/checkout?mock=unavailable",
       `/checkout?${ORDER_OUTCOME_PARAM}=${ORDER_NOT_PLACED}`,
     ]) {
       const response = await requestWithHost(server.port, path, MOCK_HOST);

@@ -82,6 +82,24 @@ export interface AddressFieldCopy {
   readonly hint?: string;
 }
 
+/**
+ * What a money figure says while the basket holds a line we cannot supply.
+ *
+ * Both screens use it, from this one string, because both are stating the same
+ * thing and a second copy is a second thing to drift. `cartTotals` in
+ * `storefront/src/lib/cart.ts` answers `null` rather than `0` for the price of
+ * the goods and the total in that state — a basket we cannot sell has no
+ * price, and a formatted zero is a statement about a price rather than the
+ * absence of one. The checkout's Article 8(2) block stated exactly that: one
+ * Lunar Base, costing nothing, with a total that was the shipping charge on
+ * its own.
+ *
+ * It is worded as the two address-dependent figures are ("Shown once your
+ * delivery address is complete"), because it is the same kind of sentence: what
+ * has to be true before there is a figure to state.
+ */
+export const unavailableFigure = "Shown once your basket holds only items we can supply";
+
 export const basket = {
   heading: "Your basket",
   lede: "One game, one price, sent anywhere. Shipping is added at checkout once you have entered a delivery address.",
@@ -141,9 +159,35 @@ export const basket = {
     suffix: ". Your basket has not been changed.",
   },
 
+  /**
+   * What the basket says when "Add … to your basket" would push a line past
+   * the most one order may carry.
+   *
+   * Composed with `MAX_QUANTITY_PER_LINE` at render, exactly as
+   * {@link basket.quantityError} is and for the same reason: the limit is
+   * written in `storefront/src/lib/cart.ts` and nowhere else.
+   *
+   * It exists because the add action used to *clamp* — an eleventh copy became
+   * ten while the screen said "Adding it to your basket…", which is the module
+   * reinterpreting a request instead of refusing it. Everything else in the
+   * quantity path refuses; this is that path's last silent reinterpretation,
+   * and this is what it says instead.
+   */
+  limitError: {
+    prefix: "One order can carry at most ",
+    suffix: " copies, and your basket already holds that many. Nothing has been added.",
+  },
+
   unavailableLabel: "Not available",
+  /**
+   * It read "…so it is not counted in the total", which described the very
+   * arithmetic that put a false price and total on the checkout: a basket
+   * priced as though the line were not in it. The basket is not priced at all
+   * while the line is there — see {@link unavailableFigure} — and this says
+   * that instead.
+   */
   unavailableNote:
-    "We cannot supply this at the moment, so it is not counted in the total. Remove it to carry on.",
+    "We cannot supply this at the moment, so your basket cannot be priced. Remove it to carry on.",
 
   summary: {
     heading: "Order summary",

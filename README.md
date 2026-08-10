@@ -63,9 +63,13 @@ Next.js storefront and, later, a Medusa backend.
   checkout" rather than showing a figure that does not exist yet.
   [`storefront/mock/shipping.json`](./storefront/mock/shipping.json) declares
   one method and **two flat rates on a zone axis** — EUR 7.00 to a delivery
-  address in the EU, EUR 12.00 to one outside it, both operator-supplied on
-  2026-08-10. Flat rates only: the plan forbids calculated carrier rates, and
-  Task 5 must seed the live Medusa shipping options to match both figures.
+  address in an **EU member state**, EUR 12.00 to one anywhere else, both
+  operator-supplied on 2026-08-10. Flat rates only: the plan forbids calculated
+  carrier rates, and Task 5 must seed the live Medusa shipping options to match
+  both figures. "Member state" rather than "in the EU" is the rule the code
+  implements: Åland, French Guiana, Guadeloupe, Martinique, Réunion and Mayotte
+  are delivery addresses in the EU and are charged the higher rate, because the
+  flag they are selected by is membership of the 27 and nothing wider.
 
   **The country is chosen, not typed, because the charge is priced from it.**
   A rate driven from a free-text field charges `Estonai`, `eesti` and `EE` the
@@ -74,7 +78,7 @@ Next.js storefront and, later, a Medusa backend.
   [`storefront/mock/countries.json`](./storefront/mock/countries.json) — all 249
   ISO 3166-1 entries, because the legal page says we ship to every country — in
   the same slot, with the same label and the same `autoComplete` token it had as
-  an `<input>`. That file's `eu` flag is **exactly the 27 member states**, which
+  an `<input>`. That file's `euMember` flag is **exactly the 27 member states**, which
   is the one field here whose failure mode is a silent mispricing, so
   `tests/shop-pages.test.tsx` pins all 27 by name and by ISO code.
   `zoneForCountryName` answers *no zone* rather than the dearer rate to anything
@@ -88,6 +92,20 @@ Next.js storefront and, later, a Medusa backend.
   that way because a paragraph decays silently the moment somebody makes the
   order button optimistic; `tests/shop-pages.test.tsx` names the invariant where
   it drives it, in both the incomplete-address and the complete-address state.
+
+  **A basket holding something we cannot supply has no price and no total.**
+  `cartTotals` answers `null` rather than `0` for the price of the goods, and
+  the total follows it, so neither screen states a figure for a basket that
+  cannot be sold. Excluding the unavailable line from the sum instead put
+  the price of the goods as a formatted zero, and a total that was the shipping
+  charge alone, into the Article 8(2) block — beside a "The goods" row still
+  listing the item. A refused placement does not repair a disclosure that is on
+  the screen and false. Both figures render the same kind of instruction the two
+  address-dependent figures already do, the order button takes `aria-disabled`,
+  and a `role="status"` line directly beneath it — which is also the button's
+  `aria-describedby` — says what has to happen first. That is the only state in
+  which the order button is `aria-disabled`: an incomplete address must stay
+  pressable, because pressing it is what produces the error summary.
 
   The card step is a labelled placeholder region and nothing else — no card
   field, no fabricated instrument — and pressing the order button reports that

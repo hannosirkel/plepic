@@ -20,7 +20,11 @@
  * ## The zone, and why the country field is a selection
  *
  * Which of the two rates applies is decided by whether the delivery address is
- * in the EU, and that decision is made **from a country the buyer chose out of
+ * in an **EU member state** — one of the 27, which is narrower than "in the
+ * EU": Åland and the French outermost regions are in a member state's
+ * territory and are charged the higher rate, because {@link DeliveryCountry}'s
+ * `euMember` flag is membership and nothing wider. That decision is made
+ * **from a country the buyer chose out of
  * `storefront/mock/countries.json`, never from typed text**. A rate driven
  * from a free-text field charges `Estonai`, `eesti` and `EE` the non-EU rate,
  * and overcharging an EU customer by five euro through a spelling difference
@@ -41,12 +45,23 @@
  * and {@link orderMayBePlaced} refuses an order while either is `null` — a
  * buyer cannot be bound by a screen that has not yet shown them the total.
  *
- * ## Unavailable lines are excluded from the total, never silently priced
+ * ## A basket holding something we cannot supply has no price and no total
  *
  * A line whose catalogue availability is not `InStock` is not something we can
- * sell today, so it contributes nothing to the goods figure and blocks the
- * order until it is removed. Pricing it into a total we could not honour is
- * the failure mode this rule exists to prevent.
+ * sell today. Pricing it into a total we could not honour is the failure mode
+ * this rule exists to prevent — and so is pricing it at **nothing**, which is
+ * what excluding it from the sum used to do: the disclosure block on
+ * `/checkout` listed "Lunar Base × 1" as the goods, gave their price as a
+ * formatted zero, and gave a total that was the shipping charge on its own.
+ * Article 8(2) CRD is a disclosure obligation, so a screen that refuses the
+ * order but states a false price has still made the false statement.
+ *
+ * {@link CartTotals.goodsAmount} is therefore `null` — not `0` — whenever any
+ * line cannot be supplied, and {@link CartTotals.orderAmount} follows it. Both
+ * screens render an instruction in place of the figure, exactly as they
+ * already do for the two amounts that wait on a delivery address. The honest
+ * answer to "what do these goods cost?" for a basket we cannot sell is
+ * "nothing is being stated", not "nothing".
  */
 
 import { mockCatalogue, type CatalogueAvailability, type CatalogueProduct } from "./catalogue.js";
@@ -195,11 +210,15 @@ export function zoneForCountryName(countryName: string): ShippingZone | null {
 
 export interface CartTotals {
   readonly currency: string;
-  /** Sum of every available line. Minor units. */
-  readonly goodsAmount: number;
+  /**
+   * Sum of every line, in minor units — or `null` when the basket holds a line
+   * we cannot supply, because then there is no price that describes what is in
+   * it. See this module's doc comment.
+   */
+  readonly goodsAmount: number | null;
   /** `null` until a delivery address exists — see this module's doc comment. */
   readonly shippingAmount: number | null;
-  /** `null` whenever {@link shippingAmount} is. */
+  /** `null` whenever {@link goodsAmount} or {@link shippingAmount} is. */
   readonly orderAmount: number | null;
 }
 
@@ -283,9 +302,15 @@ export function cartTotals(
 ): CartTotals {
   assertOneCurrency(lines, shipping);
 
-  const goodsAmount = lines
-    .filter((line) => isAvailable(line))
-    .reduce((sum, line) => sum + lineAmount(line), 0);
+  /*
+   * A basket we cannot supply in full is not priced at all — see this module's
+   * doc comment. Summing only the available lines produced a figure that
+   * described a different basket from the one the same screen was listing, and
+   * a formatted zero is a statement about a price rather than its absence.
+   */
+  const goodsAmount = lines.every((line) => isAvailable(line))
+    ? lines.reduce((sum, line) => sum + lineAmount(line), 0)
+    : null;
 
   const shippingAmount =
     deliveryZone !== null && lines.length > 0 ? shipping.rates[deliveryZone] : null;
@@ -294,7 +319,8 @@ export function cartTotals(
     currency: lines[0]?.currency ?? shipping.currency,
     goodsAmount,
     shippingAmount,
-    orderAmount: shippingAmount === null ? null : goodsAmount + shippingAmount,
+    orderAmount:
+      goodsAmount === null || shippingAmount === null ? null : goodsAmount + shippingAmount,
   };
 }
 
@@ -322,9 +348,14 @@ export function cartTotals(
  * `tests/shop-pages.test.tsx` names the invariant where it drives it.
  *
  * The unavailable-line condition is here too, and belongs here: a line we
- * cannot supply is priced out of the goods figure, so the "goods" and "price of
- * the goods" a buyer would be bound by would not describe what is in the
- * basket.
+ * cannot supply leaves the basket with no price of the goods and no total at
+ * all, so the figures a buyer would be bound by do not exist. It is stated
+ * twice on purpose — once as the explicit `isAvailable` refusal below and once
+ * through {@link CartTotals.goodsAmount} being `null` — because the two say
+ * different things. The first is "this order may not be placed"; the second is
+ * "this basket has no price". Article 8(2) is a disclosure obligation, so
+ * refusing the placement without withholding the figure leaves a false
+ * statement on the screen, which is exactly what shipped.
  */
 export function orderMayBePlaced({
   lines,
@@ -338,7 +369,9 @@ export function orderMayBePlaced({
   if (lines.length === 0) return false;
   if (lines.some((line) => !isAvailable(line))) return false;
   if (!addressComplete) return false;
-  return totals.shippingAmount !== null && totals.orderAmount !== null;
+  return (
+    totals.goodsAmount !== null && totals.shippingAmount !== null && totals.orderAmount !== null
+  );
 }
 
 /**

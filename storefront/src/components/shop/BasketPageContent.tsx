@@ -32,8 +32,10 @@
  *   `role="alert"`, states that nothing changed, and leaves every control
  *   usable so retrying is simply pressing the button again.
  * - **unavailable** — a line the catalogue cannot supply (`?mock=unavailable`).
- *   It is excluded from the goods figure and blocks checkout rather than being
- *   quietly priced into a total we could not honour.
+ *   The basket has **no goods figure at all** in that state — not a figure of
+ *   nothing — and the way to checkout is blocked. Excluding the line from the
+ *   sum instead is what put a false price and a false total into the Article
+ *   8(2) block on `/checkout`; see `cartTotals` in `src/lib/cart.ts`.
  *
  * ## The quantity field never disagrees with the basket
  *
@@ -90,7 +92,7 @@
 
 import { useId, useState } from "react";
 
-import { basket, checkout as checkoutCopy } from "../../../../content/shop.js";
+import { basket, checkout as checkoutCopy, unavailableFigure } from "../../../../content/shop.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../../lib/catalogue.js";
 import {
   cartTotals,
@@ -119,6 +121,14 @@ const QUANTITY_ERROR_MESSAGE =
   `${basket.quantityError.prefix}${String(MIN_QUANTITY_PER_LINE)}` +
   `${basket.quantityError.rangeSeparator}${String(MAX_QUANTITY_PER_LINE)}` +
   `${basket.quantityError.suffix}`;
+
+/**
+ * What "Add … to your basket" says when the line is already at the limit —
+ * composed with `MAX_QUANTITY_PER_LINE` for the same reason as the message
+ * above. The add action refuses rather than clamping; see
+ * `src/lib/mock-cart-actions.ts`.
+ */
+const LIMIT_ERROR_MESSAGE = `${basket.limitError.prefix}${String(MAX_QUANTITY_PER_LINE)}${basket.limitError.suffix}`;
 
 function BasketLine({ line }: { readonly line: CartLine }) {
   const catalogue = resolveCatalogue();
@@ -283,9 +293,12 @@ export function BasketPageContent() {
         <p className={styles.lede}>{basket.lede}</p>
       </div>
 
+      {/* Two different refusals, two different sentences. "Try again in a
+          moment" is true of an action that failed and false of a limit that
+          will still be there in a moment. */}
       {failure === null ? null : (
         <p className={styles.error} role="alert">
-          {checkoutCopy.errors.actionFailed}
+          {failure === "limit" ? LIMIT_ERROR_MESSAGE : checkoutCopy.errors.actionFailed}
         </p>
       )}
 
@@ -337,7 +350,17 @@ export function BasketPageContent() {
             <dl className={styles.summary}>
               <div className={styles.summaryRow}>
                 <dt>{basket.summary.goodsLabel}</dt>
-                <dd>{formatAmount(totals.goodsAmount, totals.currency)}</dd>
+                {/* A basket holding something we cannot supply has no goods
+                    figure — see `cartTotals` in `src/lib/cart.ts`. It used to
+                    read as a formatted zero, which is a statement about a price rather
+                    than the absence of one, and the same arithmetic put a
+                    false price and total into the Article 8(2) block on
+                    `/checkout`. */}
+                <dd>
+                  {totals.goodsAmount === null
+                    ? unavailableFigure
+                    : formatAmount(totals.goodsAmount, totals.currency)}
+                </dd>
               </div>
               <div className={styles.summaryRow}>
                 <dt>{basket.summary.shippingLabel}</dt>

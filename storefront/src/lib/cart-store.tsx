@@ -53,6 +53,8 @@ import {
   basketForScenario,
   removeLineAction,
   updateLineQuantityAction,
+  type BasketFailure,
+  type CartActionOutcome,
   type LinePending,
   type MockBasketState,
   type MockScenario,
@@ -122,7 +124,7 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
   const initial = useMemo(() => basketForScenario(scenario), [scenario]);
   const [lines, setLines] = useState<readonly CartLine[]>(initial.lines);
   const [pending, setPending] = useState<Readonly<Record<string, LinePending>>>(initial.pending);
-  const [failure, setFailure] = useState<"action" | null>(initial.failure);
+  const [failure, setFailure] = useState<BasketFailure | null>(initial.failure);
   const restored = useRef(false);
   /* The lines an in-flight action started from. A ref rather than a read
      inside a state updater: a reducer must stay pure, and an action that
@@ -158,9 +160,7 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     async (
       id: string,
       state: LinePending,
-      action: (current: readonly CartLine[]) => Promise<
-        { ok: true; lines: readonly CartLine[] } | { ok: false; reason: "action-failed" }
-      >,
+      action: (current: readonly CartLine[]) => Promise<CartActionOutcome>,
     ) => {
       setFailure(null);
       setPending((current) => ({ ...current, [id]: state }));
@@ -171,7 +171,9 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
         return next;
       });
       if (outcome.ok) setLines(outcome.lines);
-      else setFailure("action");
+      // A refusal and a failure are different sentences on the screen — see
+      // `CartActionOutcome`.
+      else setFailure(outcome.reason === "line-limit" ? "limit" : "action");
     },
     [],
   );

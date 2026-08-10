@@ -75,7 +75,7 @@
  * `/cart` with an ignored query string.
  */
 
-import { catalogueLine, clampQuantity, type CartLine } from "./cart.js";
+import { catalogueLine, clampQuantity, MAX_QUANTITY_PER_LINE, type CartLine } from "./cart.js";
 
 export const DEFAULT_LATENCY_MS = 450;
 
@@ -170,11 +170,14 @@ export function isMockLayerEnabled(
 /** What a line is currently doing. Drives the pending affordances and `aria-busy`. */
 export type LinePending = "adding" | "updating" | "removing";
 
+/** Why the basket is showing a refusal, or `null`. One key per sentence. */
+export type BasketFailure = "action" | "limit";
+
 export interface MockBasketState {
   readonly lines: readonly CartLine[];
   readonly pending: Readonly<Record<string, LinePending>>;
-  /** A failed action's message key, or `null`. */
-  readonly failure: "action" | null;
+  /** A refused action's message key, or `null`. */
+  readonly failure: BasketFailure | null;
 }
 
 export const EMPTY_BASKET: MockBasketState = { lines: [], pending: {}, failure: null };
@@ -210,9 +213,14 @@ export interface MockActionOptions {
   readonly failing?: boolean;
 }
 
+/**
+ * `line-limit` is a refusal, not a failure, and the two are separate because
+ * they say different things to a reader: "that did not work, try again in a
+ * moment" is true of one and false of the other.
+ */
 export type CartActionOutcome =
   | { readonly ok: true; readonly lines: readonly CartLine[] }
-  | { readonly ok: false; readonly reason: "action-failed" };
+  | { readonly ok: false; readonly reason: "action-failed" | "line-limit" };
 
 function wait(ms: number): Promise<void> {
   return ms <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms));
@@ -227,6 +235,19 @@ export async function addCatalogueLineAction(
 
   const existing = lines[0];
   if (existing === undefined) return { ok: true, lines: [catalogueLine(1)] };
+
+  /*
+   * Refuses; never reinterprets — the same rule `parseQuantityInput` states
+   * for a typed entry. This read `clampQuantity(existing.quantity + 1)`, which
+   * turned an eleventh copy into a tenth *while the screen said "Adding it to
+   * your basket…"*, and was the last place in this module that answered a
+   * request with something other than what was asked for or a refusal. It is
+   * unreachable from the served basket today (the add control only exists on
+   * an empty one), which is precisely why it had to be fixed rather than
+   * relied upon.
+   */
+  if (existing.quantity >= MAX_QUANTITY_PER_LINE) return { ok: false, reason: "line-limit" };
+
   return {
     ok: true,
     lines: [{ ...existing, quantity: clampQuantity(existing.quantity + 1) }, ...lines.slice(1)],

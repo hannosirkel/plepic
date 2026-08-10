@@ -16,13 +16,17 @@
  * what let five legal pages ship rendering nothing at all.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { returns } from "../../content/legal/returns.js";
 import { shipping } from "../../content/legal/shipping.js";
 import { terms } from "../../content/legal/terms.js";
-import { basket, checkout } from "../../content/shop.js";
+import { basket, checkout, unavailableFigure } from "../../content/shop.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
 import {
   CHECKOUT_ORDER_POST_PATH,
@@ -60,6 +64,7 @@ import {
 } from "../src/lib/cart.js";
 import { CartProvider } from "../src/lib/cart-store.js";
 import {
+  addCatalogueLineAction,
   basketForScenario,
   isMockLayerEnabled,
   placeMockOrder,
@@ -464,15 +469,148 @@ describe("an unavailable line", () => {
     expect(text).toContain(basket.unavailableNote);
   });
 
-  it("contributes nothing to the goods figure", () => {
+  /**
+   * It used to contribute `0`, and `0` is a price. The basket said "Goods
+   * €0.00" and the checkout's Article 8(2) block said "Price of the goods
+   * €0.00" and "Total €7.00" — a price and a total for a basket that could not
+   * be sold, beside a "The goods" row still listing the item.
+   */
+  it("leaves the basket with no goods figure at all, rather than a figure of nothing", () => {
     const lines = basketForScenario("unavailable").lines;
     expect(lines.every((line) => !isAvailable(line))).toBe(true);
-    expect(cartTotals(lines, { deliveryZone: "europeanUnion" }).goodsAmount).toBe(0);
+
+    const totals = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    expect(totals.goodsAmount, "€0.00 is a statement about a price").toBeNull();
+    expect(totals.orderAmount, "a total that was the shipping charge alone").toBeNull();
+
+    // And it is the unavailability that does it, not the basket being small:
+    // the same line, suppliable, is priced normally.
+    const available = [catalogueLine(1)];
+    expect(cartTotals(available, { deliveryZone: "europeanUnion" }).goodsAmount).toBe(
+      catalogueLine(1).unitAmount,
+    );
+  });
+
+  it("suppresses one line's price for the whole basket, not just that line's", () => {
+    const mixed = [catalogueLine(1), { ...catalogueLine(1), id: "second", availability: "OutOfStock" } as const];
+    expect(cartTotals(mixed, { deliveryZone: "europeanUnion" }).goodsAmount).toBeNull();
+  });
+
+  it("says so on the basket instead of showing a figure", () => {
+    expect(visibleText(html)).toContain(unavailableFigure);
+    expect(visibleText(html), "a money figure was stated for an unsellable basket").not.toContain(
+      formatAmount(0, "EUR"),
+    );
   });
 
   it("blocks the way to checkout", () => {
     expect(visibleText(html)).toContain(checkout.errors.unavailableLine);
     expect(html).not.toContain('href="/checkout"');
+  });
+});
+
+/**
+ * **MAJ-1.** The disclosure block on the one screen Article 8(2) CRD governs,
+ * in the state that produced a false one: a line that cannot be supplied, with
+ * the address completed. It rendered "The goods: Lunar Base × 1", "Price of the
+ * goods: €0.00", "Shipping charge: €7.00" and "Total: €7.00" — a price and a
+ * total that described no basket, for an order `orderMayBePlaced` was already
+ * refusing. Article 8(2) is a **disclosure** obligation, so refusing the
+ * placement leaves the false statement standing.
+ */
+describe("ARTICLE 8(2): an unsuppliable basket is not given a price or a total", () => {
+  const unavailableLines = [{ ...catalogueLine(1), availability: "OutOfStock" } as const];
+
+  function renderUnavailableCheckoutWithAddress(country: string): string {
+    return renderToStaticMarkup(
+      <CartProvider scenario="unavailable" latencyMs={0}>
+        <CheckoutPageContent
+          turnstileSiteKey={null}
+          nonce={undefined}
+          scenario="unavailable"
+          latencyMs={0}
+          initialAddress={addressIn(country)}
+        />
+      </CartProvider>,
+    );
+  }
+
+  const html = renderUnavailableCheckoutWithAddress("Estonia");
+  const orderBlock = html.slice(html.indexOf('aria-labelledby="checkout-order-heading"'));
+  const text = visibleText(orderBlock);
+
+  it("still lists what is in the basket, because that part was true", () => {
+    expect(text).toContain("Lunar Base × 1");
+  });
+
+  it("states no price of the goods and no total", () => {
+    expect(text, "the goods were priced at nothing").not.toContain(formatAmount(0, "EUR"));
+    const total = formatAmount(
+      catalogueLine(1).unitAmount + declaredShippingMethod.rates.europeanUnion,
+      "EUR",
+    );
+    expect(text, "a total was stated for a basket that cannot be sold").not.toContain(total);
+    // The shipping charge on its own was the total that shipped.
+    const charge = formatAmount(declaredShippingMethod.rates.europeanUnion, "EUR");
+    const totalRow = text.slice(text.indexOf(checkout.order.totalLabel));
+    expect(totalRow, "the total was the shipping charge alone").not.toContain(charge);
+  });
+
+  it("says what has to be true before there is a figure, in both rows", () => {
+    const priceRow = text.slice(
+      text.indexOf(checkout.order.goodsPriceLabel),
+      text.indexOf(checkout.order.shippingLabel),
+    );
+    const totalRow = text.slice(
+      text.indexOf(checkout.order.totalLabel),
+      text.indexOf(checkout.order.addressLabel),
+    );
+    expect(priceRow).toContain(unavailableFigure);
+    expect(totalRow).toContain(unavailableFigure);
+    // Not the address-dependent sentence: the address is complete, and telling
+    // a reader to finish it would send them to the wrong screen.
+    expect(totalRow).not.toContain(checkout.order.totalPending);
+  });
+
+  it("refuses the placement as well, so the two halves agree", () => {
+    const totals = cartTotals(unavailableLines, { deliveryZone: "europeanUnion" });
+    expect(orderMayBePlaced({ lines: unavailableLines, addressComplete: true, totals })).toBe(false);
+  });
+
+  /**
+   * The second half of MAJ-1. Pressing the button did nothing and said
+   * nothing: the live regions were byte-identical before and after, the button
+   * took no `aria-busy`, and the only signal was a `role="alert"` at the top of
+   * a page whose button sits some 4,000 pixels below it.
+   */
+  it("marks the button unavailable and says why, beside the button", () => {
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('role="status"');
+    expect(text).toContain(checkout.errors.unavailableLine);
+
+    // `aria-disabled`, never `disabled` — a `disabled` attribute landing on a
+    // focused control drops focus to the body.
+    expect(html, "a disabled attribute would drop focus").not.toMatch(
+      /<button[^>]*\sdisabled(?:=|\s|>)/,
+    );
+
+    // The reason is part of the button's own announcement.
+    const button = /<button[^>]*type="submit"[^>]*>/.exec(html)?.[0] ?? "";
+    const describedBy = /aria-describedby="([^"]+)"/.exec(button)?.[1];
+    expect(describedBy, "the button describes itself with nothing").toBeDefined();
+    expect(html).toContain(`id="${String(describedBy)}"`);
+  });
+
+  it("leaves the button pressable when the address is merely incomplete", () => {
+    // The confirmed decision this must not undo: an incomplete address is not
+    // a reason to mark the control unavailable, because pressing it is what
+    // produces the error summary a reader needs.
+    const complete = renderCheckoutWithAddress("Estonia");
+    const filled = renderCheckout("filled");
+    for (const markup of [complete, filled]) {
+      const button = /<button[^>]*type="submit"[^>]*>/.exec(markup)?.[0] ?? "";
+      expect(button, "the order button was marked unavailable").not.toContain('aria-disabled="true"');
+    }
   });
 });
 
@@ -520,7 +658,7 @@ describe("every figure comes from the mock catalogue and the declared shipping m
       const totals = cartTotals(lines, { deliveryZone: zone });
       expect(totals.goodsAmount).toBe(lines[0]!.unitAmount * 2);
       expect(totals.shippingAmount).toBe(declaredShippingMethod.rates[zone]);
-      expect(totals.orderAmount).toBe(totals.goodsAmount + declaredShippingMethod.rates[zone]);
+      expect(totals.orderAmount).toBe(totals.goodsAmount! + declaredShippingMethod.rates[zone]);
     }
   });
 
@@ -604,7 +742,7 @@ describe("every figure comes from the mock catalogue and the declared shipping m
 /**
  * **The 27, pinned. This is the most valuable assertion in this area.**
  *
- * The `eu` flag in `storefront/mock/countries.json` selects between two
+ * The `euMember` flag in `storefront/mock/countries.json` selects between two
  * operator-frozen rates that differ by five euro. Nothing on the screen reveals
  * a wrong flag: a customer in a member state marked `false` is simply charged
  * the non-EU rate, is given a correct-looking total, and is bound by it. It is
@@ -908,6 +1046,58 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
         totals: cartTotals(unavailable, { deliveryZone: "europeanUnion" }),
       }),
     ).toBe(false);
+  });
+
+  /**
+   * **The one edit that was unguarded.** `orderMayBePlaced`'s doc comment says
+   * it is a function rather than a paragraph because the invariant "decays
+   * silently the moment somebody makes the order button optimistic" — and
+   * deleting the single line in `CheckoutPageContent`'s submit handler that
+   * calls it left all 1,426 tests green. Every assertion above drives the
+   * function; none of them noticed that nothing called it.
+   *
+   * This package has no DOM in its test environment, so the press cannot be
+   * driven. What can be checked is that the call is in the handler and ahead of
+   * the placement, which is the property that decayed — the same source-scan
+   * idiom `tests/no-hardcoded-price.test.ts` already uses, and for the same
+   * reason: a convention nobody can quietly break.
+   */
+  describe("the submit handler is a call to it, and a test notices if it stops being one", () => {
+    const source = readFileSync(
+      join(
+        dirname(dirname(fileURLToPath(import.meta.url))),
+        "src",
+        "components",
+        "shop",
+        "CheckoutPageContent.tsx",
+      ),
+      "utf8",
+    );
+    const handler = source.slice(
+      source.indexOf("function handleSubmit"),
+      source.indexOf("const outcomeMessage"),
+    );
+
+    it("found the handler to look at", () => {
+      expect(handler.length, "handleSubmit was renamed or moved").toBeGreaterThan(200);
+      expect(handler).toContain("placeMockOrder(");
+    });
+
+    it("asks the invariant before it places anything", () => {
+      expect(
+        handler,
+        "nothing in the submit handler calls orderMayBePlaced: the invariant is a paragraph again",
+      ).toContain("orderMayBePlaced(");
+      expect(handler).toMatch(/if\s*\(\s*!orderMayBePlaced\(/);
+      expect(
+        handler.indexOf("orderMayBePlaced("),
+        "the placement runs before the invariant is asked",
+      ).toBeLessThan(handler.indexOf("placeMockOrder("));
+    });
+
+    it("imports it from the module that states it, rather than restating it", () => {
+      expect(source).toMatch(/import\s*\{[\s\S]*?orderMayBePlaced[\s\S]*?\}\s*from\s*"\.\.\/\.\.\/lib\/cart\.js"/);
+    });
   });
 
   it("cannot be satisfied by a total the screen never showed", () => {
@@ -1220,6 +1410,43 @@ describe("the mock cart actions are the one seam Task 5 replaces", () => {
       ok: false,
       reason: "action-failed",
     });
+  });
+
+  it("adds a copy to a line that has room for one", async () => {
+    const outcome = await addCatalogueLineAction([catalogueLine(1)], { latencyMs: 0 });
+    expect(outcome.ok && outcome.lines[0]?.quantity).toBe(2);
+  });
+
+  it("creates the line when the basket is empty", async () => {
+    const outcome = await addCatalogueLineAction([], { latencyMs: 0 });
+    expect(outcome.ok && outcome.lines.map((line) => line.quantity)).toEqual([1]);
+  });
+
+  /**
+   * The last place in this module that reinterpreted rather than refused. It
+   * read `clampQuantity(existing.quantity + 1)`, so an eleventh copy became a
+   * tenth **while the screen said "Adding it to your basket…"** — the basket
+   * silently holding something other than what was asked for, which is the
+   * defect the whole quantity path was rebuilt around. Unreachable from the
+   * served basket today, because the add control only exists on an empty one.
+   */
+  it("refuses an eleventh copy rather than quietly making it a tenth", async () => {
+    const full = [catalogueLine(MAX_QUANTITY_PER_LINE)];
+    const outcome = await addCatalogueLineAction(full, { latencyMs: 0 });
+    expect(outcome).toEqual({ ok: false, reason: "line-limit" });
+    // And a refusal is not a failure: the two get different sentences.
+    expect(basket.limitError.prefix).not.toBe(checkout.errors.actionFailed);
+  });
+
+  it("states the limit once, and composes it into the refusal", () => {
+    for (const piece of Object.values(basket.limitError)) {
+      expect(piece, `"${piece}" writes the limit into content`).not.toMatch(/\d/);
+    }
+    expect(
+      `${basket.limitError.prefix}${String(MAX_QUANTITY_PER_LINE)}${basket.limitError.suffix}`,
+    ).toBe(
+      "One order can carry at most 10 copies, and your basket already holds that many. Nothing has been added.",
+    );
   });
 });
 

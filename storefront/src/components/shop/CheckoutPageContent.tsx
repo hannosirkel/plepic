@@ -66,10 +66,15 @@
  * from it
  *
  * Shipping is two operator-supplied flat rates on a zone axis: one for a
- * delivery address in the EU and a higher one for anywhere else. A rate driven
- * from a free-text field would charge `Estonai`, `eesti` and `EE` the non-EU
- * rate, and overcharging an EU customer through a spelling difference is a
- * defect rather than an edge case. So the country field is a `<select>` over
+ * delivery address in an **EU member state** and a higher one for everywhere
+ * else. "Member state" rather than "in the EU" is the rule the code implements
+ * and the rule the data holds — Åland and the French outermost regions are
+ * delivery addresses in the EU and are charged the higher rate, because
+ * `euMember` in `storefront/mock/countries.json` is the 27 and nothing wider.
+ * A rate driven from a free-text field would charge `Estonai`, `eesti` and
+ * `EE` the non-EU rate, and overcharging an EU customer through a spelling
+ * difference is a defect rather than an edge case. So the country field is a
+ * `<select>` over
  * `storefront/mock/countries.json` — every country, because
  * `content/legal/shipping.ts` says we ship to every country — in the same
  * slot, with the same label and the same `autoComplete` token it had as an
@@ -81,6 +86,29 @@
  * Changing the country re-derives the charge and the total in the same render,
  * inside the `aria-live="polite"` disclosure list, so the six Article 8(2)
  * values are announced when they move.
+ *
+ * ## A basket we cannot supply is not priced, and the button says why
+ *
+ * When any line is out of stock the order cannot be placed, and it could not
+ * be placed before this either — `orderMayBePlaced` has always refused it. What
+ * the screen did anyway was **state a price and a total for it**: "The goods:
+ * Lunar Base × 1", the price of those goods as a formatted zero, and a total
+ * that was the shipping charge on its own. Article 8(2) CRD is a disclosure
+ * obligation, so refusing
+ * the placement does not repair a disclosure that is on the screen and false.
+ *
+ * `cartTotals` now answers `null` for the price of the goods and the total in
+ * that state (`src/lib/cart.ts`), and this block renders the same kind of
+ * instruction it already renders for the two figures that wait on a delivery
+ * address. Nothing is stated about a basket we cannot sell.
+ *
+ * The button is not left silent either. It takes `aria-disabled` and is
+ * described by a `role="status"` line directly beneath it saying what has to
+ * happen first — the idiom every other blocked control in this unit uses, and
+ * **not** the `disabled` attribute, which drops focus to the body when it
+ * lands on a focused control. It is the only state in which the order button
+ * takes `aria-disabled`: an incomplete address must still be pressable,
+ * because pressing it is what produces the error summary a reader needs.
  *
  * ## The order button cannot place an order in this build, and says so
  *
@@ -101,7 +129,7 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
-import { checkout } from "../../../../content/shop.js";
+import { checkout, unavailableFigure } from "../../../../content/shop.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { resolveCatalogue } from "../../lib/catalogue.js";
 import {
@@ -224,6 +252,13 @@ export function CheckoutPageContent({
   const [outcome, setOutcome] = useState<OrderOutcome | null>(() =>
     initialOutcome(scenario, unhydratedOrderAttempt),
   );
+  /*
+   * True only while a real attempt is in flight, which is what the
+   * double-submit guard actually means. `?mock=placing` *paints* the busy
+   * state with nothing behind it to resolve it, so a guard on `placing` alone
+   * swallowed every press and left the state unescapable without a reload.
+   */
+  const attemptInFlight = useRef(false);
 
   const addressComplete = isComplete(values);
   /*
@@ -236,11 +271,16 @@ export function CheckoutPageContent({
   const deliveryZone = addressComplete ? zoneForCountryName((values.country ?? "").trim()) : null;
   const totals = useMemo(() => cartTotals(lines, { deliveryZone }), [lines, deliveryZone]);
   const unavailable = lines.some((line) => !isAvailable(line));
+  const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (placing) return;
+    if (attemptInFlight.current) return;
+    // Leaves a painted `?mock=placing` rather than being swallowed by it. In
+    // every other case this is already `false`, because a real attempt in
+    // flight returned above.
+    setPlacing(false);
 
     const nextErrors = validate(values);
     setErrors(nextErrors);
@@ -265,8 +305,10 @@ export function CheckoutPageContent({
      */
     if (!orderMayBePlaced({ lines, addressComplete, totals })) return;
 
+    attemptInFlight.current = true;
     setPlacing(true);
     void placeMockOrder({ latencyMs, failing: scenario === "error" }).then((result) => {
+      attemptInFlight.current = false;
       setPlacing(false);
       setOutcome(result);
       window.requestAnimationFrame(() => outcomeRef.current?.focus());
@@ -520,7 +562,15 @@ export function CheckoutPageContent({
             </div>
             <div className={styles.summaryRow}>
               <dt>{checkout.order.goodsPriceLabel}</dt>
-              <dd>{formatAmount(totals.goodsAmount, totals.currency)}</dd>
+              {/* No figure at all while a line cannot be supplied — see this
+                  file's doc comment. A formatted zero is a statement about a price
+                  rather than the absence of one, and it described a basket
+                  other than the one listed directly above it. */}
+              <dd>
+                {totals.goodsAmount === null
+                  ? unavailableFigure
+                  : formatAmount(totals.goodsAmount, totals.currency)}
+              </dd>
             </div>
             <div className={styles.summaryRow}>
               <dt>{checkout.order.shippingLabel}</dt>
@@ -532,10 +582,16 @@ export function CheckoutPageContent({
             </div>
             <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>
               <dt>{checkout.order.totalLabel}</dt>
+              {/* Two different reasons there is no total, and they are not the
+                  same sentence: an address that is not finished yet, and a
+                  basket that cannot be sold. The second is the one a reader
+                  cannot resolve on this screen, so it wins when both hold. */}
               <dd>
-                {totals.orderAmount === null
-                  ? checkout.order.totalPending
-                  : formatAmount(totals.orderAmount, totals.currency)}
+                {totals.orderAmount !== null
+                  ? formatAmount(totals.orderAmount, totals.currency)
+                  : totals.goodsAmount === null
+                    ? unavailableFigure
+                    : checkout.order.totalPending}
               </dd>
             </div>
             <div className={`${styles.summaryRow} ${styles.summaryProse}`}>
@@ -562,9 +618,34 @@ export function CheckoutPageContent({
 
           <p className={styles.consentLine}>{CONSENT_LINE}</p>
 
-          <button type="submit" className={styles.orderButton} aria-busy={placing}>
+          {/* `aria-disabled`, never `disabled`: the attribute lands on a
+              control a keyboard user may be standing on, and `disabled` would
+              drop their focus to the body — the same reason every basket
+              control gives. The handler refuses the press; this is what tells
+              assistive technology so, and `aria-describedby` makes the reason
+              part of the button's own announcement rather than something a
+              reader has to go and find. An incomplete address is deliberately
+              *not* in this condition: that press has work to do. */}
+          <button
+            type="submit"
+            className={styles.orderButton}
+            aria-busy={placing}
+            aria-disabled={unavailable}
+            aria-describedby={unavailable ? blockedNoteId : undefined}
+          >
             {placing ? checkout.placingLabel : checkout.orderButtonLabel}
           </button>
+
+          {/* Below the button rather than above it: the consent line is
+              "immediately above the control it describes" and nothing may be
+              interposed there. It is a `role="status"` so a reader who arrives
+              at the button by keyboard is told why it will not act, instead of
+              relying on the page-top alert some 4,000 pixels above. */}
+          {unavailable ? (
+            <p id={blockedNoteId} className={styles.pending} role="status">
+              {checkout.errors.unavailableLine}
+            </p>
+          ) : null}
 
           <p className={styles.note}>{CONFIRMATION_PROMISE}</p>
         </section>

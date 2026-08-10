@@ -617,9 +617,11 @@
  * which there is no reason to take on when the `role="status"` line beside it
  * is what actually says the control is busy.
  *
- * The order button is not in this list. It never takes `aria-disabled` — it
- * reports a submission in flight with `aria-busy` and its own label — so the
- * selector matched nothing and said otherwise.
+ * The order button is not in this list because these three are *busy* and it is
+ * not: it reports a submission in flight with `aria-busy` and its own label.
+ * The one state in which it does take `aria-disabled` — a basket holding a
+ * line we cannot supply — is a refusal rather than a wait, and takes the
+ * cursor that says so, below.
  */
 .primaryButton[aria-disabled="true"],
 .secondaryButton[aria-disabled="true"],
@@ -647,4 +649,16 @@
 .orderButton:hover {
   background: var(--button-primary-bg-hover);
   color: var(--button-primary-fg-hover);
+}
+
+/*
+ * The order button while the basket holds a line we cannot supply. It keeps
+ * its colours on purpose — a `--button-disabled-*` pair measures 4.12:1, and
+ * there is no reason to take an exempted ratio when the `role="status"` line
+ * beneath it, which is also its `aria-describedby`, is what says the control
+ * will not act. `not-allowed` rather than `progress`: nothing is in flight,
+ * and the thing that has to change is on the other screen.
+ */
+.orderButton[aria-disabled="true"] {
+  cursor: not-allowed;
 }
