@@ -50,6 +50,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
+import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
@@ -113,6 +114,43 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
   throw new Error(`server at ${url} never became ready: ${String(lastError)}`);
+}
+
+/**
+ * The text a browser paints: `<script>` and `<style>` blocks removed with
+ * their contents, then tags stripped.
+ *
+ * Needed because the brace assertions below run against a whole served page,
+ * and a minified framework chunk contains `{a}`-shaped substrings by the
+ * dozen. Scanning raw HTML for a placeholder grammar therefore reports the
+ * webpack runtime as a content defect. `tests/no-unresolved-placeholder.test.tsx`
+ * strips the same two elements for the same reason, and deliberately strips
+ * nothing else — `<details>` in particular stays, because "not visible in the
+ * first paint" is exactly the excuse under which the `{priceLine}` defect
+ * shipped.
+ */
+function paintedText(html: string): string {
+  return html
+    .replaceAll(/<script\b[^>]*>[\s\S]*?<\/script>/g, " ")
+    .replaceAll(/<style\b[^>]*>[\s\S]*?<\/style>/g, " ")
+    .replaceAll(/<[^>]+>/g, " ");
+}
+
+/**
+ * The details a legal page's incompleteness notice enumerates, as a list.
+ *
+ * Parsed out rather than compared as one joined string: the joined form was
+ * pinned to the runtime's default ICU collation, so a container with a
+ * different `LANG` flipped two entries and reddened the suite for a reason
+ * that had nothing to do with the page. React's SSR text separators become
+ * whitespace under {@link paintedText}, so entries are trimmed.
+ */
+function noticeLabels(html: string): readonly string[] {
+  const listed = /text below:([^.]+)\./.exec(paintedText(html))?.[1] ?? "";
+  return listed
+    .split(",")
+    .map((entry) => entry.replaceAll(/\s+/g, " ").trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function extractCanonical(html: string): string | null {
@@ -191,6 +229,10 @@ const SHAPED: Partial<Record<RuntimeEnvVar, string>> = {
   SITE_TEST_HOSTNAMES: `test-build-canary-${uuid}.example.com`,
   MERCHANT_CONTACT_ADDRESS: `build-canary-${randomDigits(18)}@example.com`,
   REDIRECT_MAP_PATH: join(scratchDir, `build-canary-${uuid}`, "redirect-map.json"),
+  // Rendered into an `href`, so it has to parse as a URL rather than as an
+  // opaque token — a canary that cannot be a destination proves nothing about
+  // whether the destination was baked in.
+  EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: `https://build-canary-${uuid}.example.org/committee`,
 };
 
 const BUILD_TIME_ENV = Object.fromEntries(
@@ -229,6 +271,13 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   ANALYTICS_MEASUREMENT_ID: "G-RUNTIMEVALUE",
   TURNSTILE_SITE_KEY: "0xRUNTIMEVALUE",
   MERCHANT_CONTACT_ADDRESS: "runtime-value@example.com",
+  MERCHANT_LEGAL_NAME: "Runtime Value Legal Name OU",
+  MERCHANT_PHONE_NUMBER: "+000 00 000000",
+  MERCHANT_REGISTERED_ADDRESS: "1 Runtime Value Street, Runtime Value Town",
+  MERCHANT_REGISTRATION_NUMBER: "RUNTIMEVALUE-REG",
+  MERCHANT_RETURN_ADDRESS: "2 Runtime Value Street, Runtime Value Town",
+  MERCHANT_VAT_NUMBER: "RUNTIMEVALUE-VAT",
+  EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: "https://runtime-value.example.org/committee",
   REDIRECT_MAP_PATH: runtimeRedirectMapPath,
 };
 
@@ -490,14 +539,214 @@ describe("the running server reflects the runtime environment, not the build-tim
    * running server rather than against the projection function, because the
    * failure was in what the *page* served.
    */
-  it("publishes the merchant address only on the route that quotes it, never in the config blob", async () => {
-    for (const path of ["/", "/cart", "/checkout", "/legal/terms", "/games/lunar-base"]) {
+  it("never serializes the merchant address into the runtime-config blob, on any route", async () => {
+    const BLOB = new RegExp(
+      `<script[^>]*id="${RUNTIME_CONFIG_ELEMENT_ID}"[^>]*>([\\s\\S]*?)</script>`,
+    );
+
+    for (const path of [
+      "/",
+      "/cart",
+      "/checkout",
+      "/legal/terms",
+      "/legal/imprint",
+      "/games/lunar-base",
+    ]) {
       const response = await requestWithHost(server.port, path, "runtime.example.com");
       expect(response.status, `${path} did not answer 200`).toBe(200);
-      expect(response.body, `${path} serialized the merchant contact address`).not.toContain(
+
+      const blob = BLOB.exec(response.body)?.[1];
+      expect(blob, `${path} carries no runtime-config blob to check`).toBeTypeOf("string");
+      expect(blob, `${path} serialized the merchant contact address`).not.toContain(
+        RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS,
+      );
+      expect(blob, `${path} serialized the merchant legal name`).not.toContain(
+        RUNTIME_ENV.MERCHANT_LEGAL_NAME,
+      );
+      expect(blob, `${path} serialized a merchant field at all`).not.toContain("merchant");
+    }
+  });
+
+  it("keeps the merchant address out of the body of routes that do not quote it", async () => {
+    for (const path of ["/", "/cart", "/checkout"]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(response.body, `${path} rendered the merchant contact address`).not.toContain(
         RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS,
       );
     }
+  });
+});
+
+/**
+ * The legal pages and the GPSR block, as a browser is actually served them.
+ *
+ * Every route under `/legal/` used to render `RoutePlaceholder` — a heading
+ * and the page's own meta description — so not one word of `content/legal/*`
+ * reached a visitor, and every existing test stayed green because each asked
+ * whether the route answered 200 with a self-referencing canonical, and it
+ * did. These ask what is on it.
+ */
+describe("the legal pages serve their content, resolved from the runtime environment", () => {
+  const LEGAL_PATHS = [
+    "/legal/imprint",
+    "/legal/terms",
+    "/legal/shipping",
+    "/legal/returns",
+    "/legal/privacy",
+  ] as const;
+
+  it("renders the whole trader identity on the imprint, from this process's environment", async () => {
+    const response = await requestWithHost(server.port, "/legal/imprint", "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    for (const value of [
+      RUNTIME_ENV.MERCHANT_LEGAL_NAME,
+      RUNTIME_ENV.MERCHANT_REGISTERED_ADDRESS,
+      RUNTIME_ENV.MERCHANT_REGISTRATION_NUMBER,
+      RUNTIME_ENV.MERCHANT_VAT_NUMBER,
+      RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS,
+      RUNTIME_ENV.MERCHANT_PHONE_NUMBER,
+    ]) {
+      expect(response.body, `the imprint does not state ${value}`).toContain(value);
+    }
+
+    expect(response.body).not.toContain(BUILD_TIME_ENV.MERCHANT_LEGAL_NAME);
+    expect(response.body).toContain("Estonian Commercial Register");
+  });
+
+  it("renders the return address on the returns page", async () => {
+    const response = await requestWithHost(server.port, "/legal/returns", "runtime.example.com");
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_RETURN_ADDRESS);
+  });
+
+  it("leaves no brace, no marker and no incompleteness notice on any of the five", async () => {
+    for (const path of LEGAL_PATHS) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(paintedText(response.body), `${path} rendered an unresolved placeholder`).not.toMatch(
+        /\{[A-Za-z][A-Za-z0-9]*\}/,
+      );
+      expect(response.body, `${path} rendered an unconfigured marker`).not.toContain(
+        "[not configured",
+      );
+      expect(response.body, `${path} rendered the incompleteness notice`).not.toContain(
+        "legal-incomplete-notice",
+      );
+    }
+  });
+
+  /**
+   * Article 6(1)(t) CRD wants the out-of-court body **and the method of
+   * reaching it**. The address is configuration, because `content/` may hold
+   * no host, so this is the assertion that the configured address actually
+   * reaches the served page rather than stopping at the config object.
+   */
+  it("serves the dispute-resolution access method, resolved from the environment", async () => {
+    const response = await requestWithHost(server.port, "/legal/terms", "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    expect(response.body).toContain("Consumer Disputes Committee");
+    expect(response.body, "the forum is named with no way to reach it").toContain(
+      `href="${RUNTIME_ENV.EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE}"`,
+    );
+    expect(response.body).not.toContain(
+      BUILD_TIME_ENV.EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE,
+    );
+  });
+
+  /**
+   * Minor 2, and the operator's replacement wording of 2026-08-10: no
+   * unqualified "VAT included" on the page whose job is to say something more
+   * careful, because no EU VAT is due on an export.
+   */
+  it("serves one statement about tax on the shipping page, and it is the qualified one", async () => {
+    const response = await requestWithHost(server.port, "/legal/shipping", "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text).toContain(`${resolveCatalogue().price} · VAT included where applicable`);
+    expect(text).toContain("Non-EU taxes and duties, if any, are not included.");
+    expect(text, "the shipping page asserts VAT is included, unqualified").not.toMatch(
+      /VAT included(?! where applicable)/,
+    );
+    expect(text).toContain(
+      "Where VAT is due on your order, it is contained within that figure rather than added to it",
+    );
+  });
+
+  /**
+   * The same wording, one page up, and this is why the finding named the
+   * product page as well: a legal page saying *"where applicable"* over a
+   * purchase panel saying *"VAT included"* flatly moves the contradiction to
+   * the more prominent of the two. Both read `priceQualifiers`.
+   */
+  it("presents the price identically on the product page", async () => {
+    const response = await requestWithHost(
+      server.port,
+      "/games/lunar-base",
+      "runtime.example.com",
+    );
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text).toContain(resolveCatalogue().price);
+    expect(text).toContain(resolveCatalogue().priceQualifiers);
+    expect(text, "the product page asserts VAT is included, unqualified").not.toMatch(
+      /VAT included(?! where applicable)/,
+    );
+  });
+
+  /**
+   * Four columns, and the one that gets lost is `Duration`. Asserted on the
+   * **served** page rather than on the content object, because the failure that
+   * matters is a renderer that reads three of the four.
+   */
+  it("serves the cookie table's four columns and the operator's two sentences", async () => {
+    const response = await requestWithHost(server.port, "/legal/privacy", "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    for (const cell of [
+      "Cookie",
+      "Provider",
+      "Purpose",
+      "Duration",
+      "Up to 2 years",
+      "Up to 3 months",
+      "Varies",
+      "Security, traffic management and protection against malicious traffic",
+    ]) {
+      expect(text, `the served cookie table is missing "${cell}"`).toContain(cell);
+    }
+
+    expect(text).toContain("Google Analytics and Meta cookies are used only with your consent.");
+    expect(text).toContain(
+      "Cloudflare security cookies are strictly necessary for the operation and security of the " +
+        "site and do not require consent.",
+    );
+  });
+
+  it("says out loud that all five are drafts pending the operator", async () => {
+    for (const path of LEGAL_PATHS) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.body, `${path} does not say it is a draft`).toContain("legal-draft-note");
+    }
+  });
+
+  it("carries the product page's GPSR manufacturer identity, contact and test report", async () => {
+    const response = await requestWithHost(
+      server.port,
+      "/games/lunar-base",
+      "runtime.example.com",
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_LEGAL_NAME);
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_REGISTERED_ADDRESS);
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS);
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_PHONE_NUMBER);
+    expect(response.body).toContain("SHAH01338706");
+    expect(response.body).not.toContain("product-safety-incomplete-notice");
   });
 });
 
@@ -642,5 +891,167 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     expect(response.status).toBe(200);
     expect(response.body).not.toContain("{merchantContactAddress}");
     expect(response.body).not.toContain("You can also reach us at");
+  });
+
+  /**
+   * The opposite decision, on the pages where dropping would be the defect.
+   *
+   * Suppressing the sentence is right on the Support page: a visitor loses one
+   * alternative contact route they could not have used anyway, and the contact
+   * form under it still works. An imprint that quietly loses its registration
+   * number renders as a complete, confident legal notice that is missing a
+   * disclosure the law requires, and nobody can see that anything is gone. So
+   * these routes name the gap where it is and say so at the top of the page.
+   */
+  it("names, rather than drops, every unconfigured legal disclosure on the imprint", async () => {
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/legal/imprint",
+      "unconfigured.example.com",
+    );
+    expect(response.status).toBe(200);
+
+    // No brace reaches a visitor, in this state either.
+    expect(paintedText(response.body)).not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
+
+    for (const label of [
+      "registered company name",
+      "registered address",
+      "company registration number",
+      "VAT identification number",
+      "contact email address",
+      "telephone number",
+    ]) {
+      expect(response.body, `the imprint hides its missing ${label}`).toContain(
+        `[not configured: ${label}]`,
+      );
+    }
+
+    expect(response.body).toContain("legal-incomplete-notice");
+    expect(response.body).toContain("This notice is incomplete.");
+
+    /*
+     * The notice enumerates the missing details, and it is asserted as a
+     * **set plus the one ordering fact that matters** rather than as a joined
+     * string.
+     *
+     * The joined string was pinned to `localeCompare`'s default collation, so
+     * a container with a different `LANG` reordered two entries and reddened
+     * this suite for a reason with nothing to do with the page. The property
+     * worth keeping is that the list is sorted by the label a reader sees and
+     * not by the token behind it — token order would open with "contact email
+     * address" — and that survives any collation.
+     */
+    const listed = noticeLabels(response.body);
+    expect(listed.length, "the notice lists nothing").toBeGreaterThan(0);
+    expect(listed.toSorted()).toEqual(
+      [
+        "registered company name",
+        "registered address",
+        "company registration number",
+        "VAT identification number",
+        "contact email address",
+        "telephone number",
+      ].toSorted(),
+    );
+    expect(
+      listed[0],
+      "the notice is sorted by placeholder token, not by the label a reader sees",
+    ).toBe("company registration number");
+
+    // And the surrounding prose is still there, not dropped with the value.
+    expect(response.body).toContain("Estonian Commercial Register");
+    expect(response.body).toContain("the party responsible for the contract you enter at checkout");
+  });
+
+  /**
+   * The **opposite** decision, one layer out, and the two classes side by side
+   * on one served page.
+   *
+   * A missing merchant detail is a missing disclosure: nothing else on the page
+   * conveys it, so it is named where it belongs and enumerated in the notice.
+   * A missing destination is not: `content/legal/terms.ts` names the Consumer
+   * Disputes Committee in prose, which the operator and the qualified reviewer
+   * confirmed on 2026-08-10 satisfies Article 6(1)(t) CRD by itself, so the
+   * address is an enhancement. The previous revision had it in the required-gap
+   * set, which let an optional link make a legally complete page announce
+   * itself as incomplete.
+   */
+  it("drops the unconfigured dispute-resolution link quietly, while the identity set stays loud", async () => {
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/legal/terms",
+      "unconfigured.example.com",
+    );
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+
+    // The disclosure is the sentence, and it is untouched.
+    expect(text).toContain("The procedure is free of charge.");
+    expect(text).toContain(
+      "you may refer the dispute to the Consumer Disputes Committee at the Estonian Consumer " +
+        "Protection and Technical Regulatory Authority.",
+    );
+
+    // The enhancement is gone, and nothing on the page mentions it.
+    expect(text, "an optional link is still being rendered as a disclosure gap").not.toContain(
+      "web address of the dispute resolution body",
+    );
+    expect(noticeLabels(response.body)).not.toContain(
+      "web address of the dispute resolution body",
+    );
+
+    // The identity set on the same page, in the same state, is still loud.
+    expect(response.body).toContain("legal-incomplete-notice");
+    expect(text).toContain("[not configured: contact email address]");
+    expect(noticeLabels(response.body)).toContain("registered company name");
+
+    // Never invented, never a dead link, never a brace.
+    expect(response.body).not.toContain('href="#"');
+    expect(text).not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
+  });
+
+  it("keeps every paragraph of every legal page, configured or not", async () => {
+    for (const path of [
+      "/legal/imprint",
+      "/legal/terms",
+      "/legal/shipping",
+      "/legal/returns",
+      "/legal/privacy",
+    ]) {
+      const configuredResponse = await requestWithHost(server.port, path, "runtime.example.com");
+      const unconfiguredResponse = await requestWithHost(
+        unconfigured.port,
+        path,
+        "unconfigured.example.com",
+      );
+
+      const paragraphs = (html: string): number => (html.match(/<p\b/g) ?? []).length;
+
+      expect(unconfiguredResponse.status, `${path} did not answer 200 unconfigured`).toBe(200);
+      expect(paintedText(unconfiguredResponse.body)).not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
+      // The unconfigured page has the notice's own paragraphs on top, so it can
+      // never have *fewer* than the configured one. Fewer means dropped copy.
+      expect(
+        paragraphs(unconfiguredResponse.body),
+        `${path} rendered fewer paragraphs with nothing configured — copy was dropped`,
+      ).toBeGreaterThanOrEqual(paragraphs(configuredResponse.body));
+    }
+  });
+
+  it("names, rather than drops, the unconfigured GPSR manufacturer identity", async () => {
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/games/lunar-base",
+      "unconfigured.example.com",
+    );
+    expect(response.status).toBe(200);
+    expect(paintedText(response.body)).not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
+    expect(response.body).toContain("[not configured: registered address]");
+    expect(response.body).toContain("product-safety-incomplete-notice");
+    // The safety information itself needs no configuration and must be intact.
+    expect(response.body).toContain("SHAH01338706");
+    expect(response.body).toContain("Flammability");
   });
 });

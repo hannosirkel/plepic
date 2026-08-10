@@ -1,0 +1,269 @@
+/*
+ * The five legal pages. One narrow measure, generous leading, nothing
+ * decorative: this is the copy a buyer reads when something has gone wrong, so
+ * it is set to be read rather than skimmed.
+ *
+ * `--content-measure` on every prose block, not on `.main`, so the section
+ * headings and the incomplete-notice band can run to the page's own width
+ * while the paragraphs under them stay at a readable line length.
+ */
+
+.page {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-space);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space);
+}
+
+.intro {
+  max-width: var(--content-measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--step-6);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-display);
+}
+
+.lede {
+  margin: 0;
+  font-size: var(--step-2);
+  color: var(--text-muted);
+}
+
+/*
+ * The unconfigured state, and it is meant to be unmissable. A legal page
+ * missing a required disclosure is a defect, so it is styled as one rather
+ * than as a tasteful aside — see `src/lib/configuration-placeholders.ts`.
+ */
+.notice {
+  max-width: var(--content-measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  padding: var(--space-md);
+  border: var(--border-width-thick) solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.noticeHeading {
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--step-1);
+}
+
+.noticeBody {
+  margin: 0;
+  line-height: var(--line-height-body);
+}
+
+.draftNote {
+  margin: 0;
+  max-width: var(--content-measure);
+  font-size: var(--step-0);
+  color: var(--text-muted);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.sectionHeading {
+  margin: 0;
+  font-size: var(--step-4);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+  line-height: var(--line-height-tight);
+}
+
+.body {
+  margin: 0;
+  max-width: var(--content-measure);
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+/*
+ * A section's `callout`: an emphasised line with a plain one under it. The
+ * shipping page's price presentation is the operator's own wording *and* their
+ * own formatting, so the emphasis is content rather than styling taste — see
+ * `content/legal/shipping.ts`. Block layout inside one `<p>`, so the two lines
+ * stack without becoming two paragraphs that a screen reader announces as
+ * unrelated.
+ */
+.callout {
+  margin: 0;
+  max-width: var(--content-measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding-inline-start: var(--space-sm);
+  border-inline-start: var(--border-width-thick) solid var(--accent);
+}
+
+.calloutLead {
+  font-size: var(--step-2);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  color: var(--text);
+}
+
+.calloutDetail {
+  font-size: var(--step-0);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+/*
+ * A section's `table`. Four columns of cookie disclosure cannot fit a 320px
+ * viewport: measured in Chromium, the table's own min-content width is 383px
+ * against a 272px content column, and no font step closes that. So the
+ * **wrapper** takes the scroll and the page never does — measured with
+ * per-element `getBoundingClientRect()`, since `overflow-x: hidden` on
+ * `html, body` permanently disarms `scrollWidth <= clientWidth`.
+ *
+ * `min-width` is 24rem because that is min-content, near enough: it stops the
+ * columns collapsing at a wide viewport without adding one pixel of scrolling
+ * that the content did not already require. 30rem was tried first and cost
+ * 208px of scroll at 320 instead of 111px, for no gain a reader can see.
+ *
+ * The wrapper is a focusable, named region because it scrolls: a scrollable
+ * container that only a pointer can reach fails WCAG 2.1.1, and the failure is
+ * invisible to every test in this repository.
+ */
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  /*
+   * A self-arming scroll affordance. At 320 the fourth column — `Duration`, the
+   * one a reader came for — sits outside the container, and a scroll nobody can
+   * see is a column nobody reads. The two `local` gradients are painted with
+   * the content, so each covers its own edge only until that edge is scrolled
+   * to; the two `scroll` shadows are painted against the container and show
+   * through wherever a cover has moved away. Nothing to measure, nothing to
+   * detect, and no breakpoint to keep in step with the table's width.
+   */
+  background-image:
+    linear-gradient(to right, var(--surface) 60%, rgb(0 0 0 / 0%)),
+    linear-gradient(to left, var(--surface) 60%, rgb(0 0 0 / 0%)),
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 16%), rgb(0 0 0 / 0%)),
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 16%), rgb(0 0 0 / 0%));
+  background-position: 0 0, 100% 0, 0 0, 100% 0;
+  background-repeat: no-repeat;
+  background-size: 2rem 100%, 2rem 100%, 0.6rem 100%, 0.6rem 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+.tableScroll:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.table {
+  border-collapse: collapse;
+  min-width: 24rem;
+  font-size: var(--step-0);
+  text-align: start;
+}
+
+.tableCaption {
+  text-align: start;
+  padding-block-end: var(--space-2xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+.tableHeaderCell {
+  text-align: start;
+  vertical-align: top;
+  padding: var(--space-2xs) var(--space-xs) var(--space-2xs) 0;
+  border-block-end: var(--border-width-thick) solid var(--border);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+.tableRowHeader,
+.tableCell {
+  text-align: start;
+  vertical-align: top;
+  padding: var(--space-2xs) var(--space-xs) var(--space-2xs) 0;
+  border-block-end: var(--border-width) solid var(--border);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.tableRowHeader {
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+/*
+ * A section's `links`. Today that is one link: the dispute-resolution section's
+ * access method, whose address arrives from configuration because `content/`
+ * may hold no URL. A deployment that has not supplied it renders no link at
+ * all — the prose above carries the disclosure — so there is no gap style
+ * here. `src/components/mockups/link-target.ts` explains why that is the right
+ * failure mode for a destination and the wrong one for a value.
+ */
+.links {
+  margin: 0;
+  max-width: var(--content-measure);
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+}
+
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+a.link:hover,
+a.link:focus-visible {
+  color: var(--accent-hover);
+}
+
+.itemList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: var(--content-measure);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding-inline-start: var(--space-sm);
+  border-inline-start: var(--border-width-thick) solid var(--border);
+}
+
+.itemTerm {
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+.itemDetail {
+  margin: 0;
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}

@@ -164,6 +164,31 @@ export const SOURCES: Readonly<Record<SourceId, Source>> = {
     summary: "Packaged 12 by 12 by 4 centimetres, 200 grams.",
     presentation: ["statement", "figure"],
   },
+  /**
+   * The toy-safety test report behind the product page's GPSR Article 19
+   * block. The plan journal calls it E16 and this file had no such entry; it
+   * does now.
+   *
+   * `unverifiableByVisitor` is set for exactly the condition that field
+   * documents: the certificate is an operator document, deliberately not
+   * committed, and there is no public link a reader could follow to check it.
+   * The results may still be **stated** — Article 19 asks for the safety
+   * information and this is it — but the flag is what stops the report later
+   * heading a proof-strip claim on the operator's word alone. See
+   * `content.test.ts`, "headlines nothing a visitor cannot check for
+   * themselves".
+   */
+  E16: {
+    id: "E16",
+    kind: "commercial-fact",
+    attribution: "Intertek Testing Services Ltd., Shanghai",
+    summary:
+      "Test report SHAH01338706 of 14 May 2021, applicant the merchant under its registered legal name and registered address: EN71-1:2014+A1:2018 mechanical and physical, EN71-2:2020 flammability, EN71-3:2019 migration of certain elements, and EN71-3:2019 with Regulation (EU) 2019/1922 amending Directive 2009/48/EC for aluminium migration — all passed. Labelled age group 10+. Country of origin China, exported to the EU.",
+    presentation: ["statement", "figure"],
+    unverifiableByVisitor: true,
+    caution:
+      "A test certificate, never an accolade: no laurel, no badge, no trophy styling, and it is not an award. The operator confirmed there is no later print run, so it describes the goods actually being sold and the results may be stated as current. The Toy Safety Regulation does not displace it — the operator's recorded position, with citation CELEX 32025R2509, is that it does not apply until 1 August 2030 and that products placed on the market before then remain permitted; do not restate the conformity route or invent a marking. The certificate itself is an operator document, safety-certificate.pdf, sha256 364736b6799d5e6d4135f11b3ee1691dac295530fb3d7d2f21947a029c856eed, and is deliberately not committed: the site states the results, not the file.",
+  },
   E13: {
     id: "E13",
     kind: "commercial-fact",

@@ -22,7 +22,7 @@
  *   that needs no new anchor.
  *
  * **What changed to become the real route, beyond wiring:** every catalogue
- * placeholder (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`) in the
+ * placeholder (`{price}`, `{priceLine}`, `{productName}`) in the
  * purchase panel and its calls to action is resolved against
  * `storefront/mock/catalogue.json` — see `src/lib/catalogue.ts` — rather
  * than rendered literally, and the rulebook is linked from the "what is in
@@ -80,7 +80,9 @@ import {
   resolveCataloguePlaceholders,
   type ResolvedCatalogue,
 } from "../../lib/catalogue.js";
+import { NO_CONFIGURATION_VALUES, type ConfigurationPlaceholderValues } from "../../lib/configuration-placeholders.js";
 import { FeatureSpecStrip } from "../FeatureSpecStrip.js";
+import { ProductSafetyBlock } from "../ProductSafetyBlock.js";
 import { ReviewComposite } from "../ReviewComposite.js";
 import { SectionDivider } from "../decor/SectionDivider.js";
 import { PurchasePanelMockup } from "../PurchasePanelMockup.js";
@@ -93,6 +95,13 @@ import styles from "../../styles/mockups/lunar-base.module.css";
 export interface LunarBaseMockupProps {
   /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
   readonly catalogue?: ResolvedCatalogue;
+  /**
+   * The merchant identity, for the GPSR Article 19 block. Defaults to nothing
+   * configured, which is the state every deployment is in until an operator
+   * sets the `MERCHANT_*` variables — and which renders named gaps and a
+   * notice rather than dropping the manufacturer disclosure.
+   */
+  readonly merchant?: ConfigurationPlaceholderValues;
 }
 
 /**
@@ -119,7 +128,10 @@ function requirePrimaryPurchaseAction(): CallToAction {
 
 const heroBuyAction: CallToAction = requirePrimaryPurchaseAction();
 
-export function LunarBaseMockup({ catalogue = resolveCatalogue() }: LunarBaseMockupProps = {}) {
+export function LunarBaseMockup({
+  catalogue = resolveCatalogue(),
+  merchant = NO_CONFIGURATION_VALUES,
+}: LunarBaseMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
   return (
@@ -319,6 +331,15 @@ export function LunarBaseMockup({ catalogue = resolveCatalogue() }: LunarBaseMoc
 
         <section id="buy" className={styles.buySection}>
           <PurchasePanelMockup catalogue={catalogue} />
+        </section>
+
+        {/* GPSR Article 19: manufacturer identity and contact, and the safety
+            information, on the page that carries the offer. Last, because it
+            is reference material a buyer consults rather than a sales beat —
+            and above the footer rather than in it, because Article 19 attaches
+            to the offer. */}
+        <section id="product-safety" className={styles.section}>
+          <ProductSafetyBlock values={merchant} />
         </section>
       </main>
 

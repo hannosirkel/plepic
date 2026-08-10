@@ -37,6 +37,13 @@ export type RoutePath = (typeof ROUTE_PATHS)[RouteId];
  * them, because existing backlinks carry those fragments and a fragment is not
  * sent to the server — the redirect cannot repair it. The two odd names are
  * load-bearing; do not tidy them.
+ *
+ * `withdrawal-form`, `legal-guarantee` and `dispute-resolution` are the three
+ * anchors the second qualified legal read created work for (M3, M2 and M4).
+ * Each is its own section rather than a paragraph appended to an existing one,
+ * because `schema.ts`'s `LegalSection.covers` binds one `LegalElement` to one
+ * section: an obligation with no section of its own has no home the build
+ * check can see disappear.
  */
 export const ANCHORS = [
   "aboutgame",
@@ -57,8 +64,11 @@ export const ANCHORS = [
   "components",
   "contact",
   "withdrawal",
+  "withdrawal-form",
   "returns-process",
+  "legal-guarantee",
   "delivery",
+  "dispute-resolution",
   "vat",
   "checkout-acknowledgement",
   "processors",
@@ -76,6 +86,16 @@ export type AnchorId = (typeof ANCHORS)[number];
  * deliberately absent from this list: it is a route on this site, not an
  * external link, because "no page links to a file-sharing service" is a
  * completion criterion of the plan.
+ *
+ * `consumer-disputes-committee` is the one entry any **legal obligation** comes
+ * near. Article 6(1)(t) CRD requires the out-of-court body; `/legal/terms`
+ * names it in prose, which the operator and the qualified reviewer confirmed on
+ * 2026-08-10 is sufficient on its own. The address is a genuine improvement on
+ * that and it cannot be written here — this file may name no host — so it is an
+ * external target whose URL arrives as deployment configuration. **It is an
+ * enhancement, not the disclosure**, so an unconfigured one degrades quietly
+ * rather than marking the page incomplete; `src/components/mockups/link-target.ts`
+ * states the rule and why no destination on this list is in the other class.
  */
 export const EXTERNAL_TARGETS = [
   "kickstarter-campaign",
@@ -86,6 +106,7 @@ export const EXTERNAL_TARGETS = [
   "video-tutorial",
   "instagram",
   "facebook",
+  "consumer-disputes-committee",
 ] as const;
 
 export type ExternalTargetId = (typeof EXTERNAL_TARGETS)[number];

@@ -11,11 +11,26 @@ import {
 } from "../src/lib/client-runtime-config.js";
 
 describe("getRuntimeConfig", () => {
-  it("has a null analytics measurement ID, turnstile site key and merchant address when unconfigured, never a literal", () => {
+  it("has a null analytics measurement ID, turnstile site key and merchant field when unconfigured, never a literal", () => {
     const config = getRuntimeConfig({});
     expect(config.analytics.measurementId).toBeNull();
     expect(config.turnstile.siteKey).toBeNull();
-    expect(config.merchant.contactAddress).toBeNull();
+
+    /*
+     * Every one of the seven, not just the contact address. A merchant field
+     * that defaulted to a literal would put a fabricated trader identity on
+     * the imprint of every unconfigured deployment, which is worse than the
+     * gap it would be hiding.
+     */
+    expect(Object.values(config.merchant)).toEqual([null, null, null, null, null, null, null]);
+
+    /*
+     * And the one external destination a legal obligation depends on. A
+     * fabricated default here would be worse than the gap it hides: the page
+     * would offer a consumer a way to reach a dispute-resolution body that
+     * goes somewhere nobody chose.
+     */
+    expect(config.externalTargets["consumer-disputes-committee"]).toBeNull();
   });
 
   it("reads every field from the environment given to it, not from process.env of the test runner", () => {
@@ -25,6 +40,13 @@ describe("getRuntimeConfig", () => {
       ANALYTICS_MEASUREMENT_ID: "G-EXAMPLE1",
       TURNSTILE_SITE_KEY: "0x0000000000000000000AA",
       MERCHANT_CONTACT_ADDRESS: "hello@canonical.example.net",
+      MERCHANT_LEGAL_NAME: "Example Trader OU",
+      MERCHANT_PHONE_NUMBER: "+000 00 000000",
+      MERCHANT_REGISTERED_ADDRESS: "1 Example Street, Example Town",
+      MERCHANT_REGISTRATION_NUMBER: "EXAMPLE-12345678",
+      MERCHANT_RETURN_ADDRESS: "2 Example Street, Example Town",
+      MERCHANT_VAT_NUMBER: "EXAMPLE-VAT-1",
+      EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: "https://disputes.example.org/committee",
     });
 
     expect(config).toEqual({
@@ -32,7 +54,18 @@ describe("getRuntimeConfig", () => {
       canonicalHost: "canonical.example.net",
       analytics: { measurementId: "G-EXAMPLE1" },
       turnstile: { siteKey: "0x0000000000000000000AA" },
-      merchant: { contactAddress: "hello@canonical.example.net" },
+      merchant: {
+        legalName: "Example Trader OU",
+        registeredAddress: "1 Example Street, Example Town",
+        registrationNumber: "EXAMPLE-12345678",
+        vatNumber: "EXAMPLE-VAT-1",
+        contactAddress: "hello@canonical.example.net",
+        phoneNumber: "+000 00 000000",
+        returnAddress: "2 Example Street, Example Town",
+      },
+      externalTargets: {
+        "consumer-disputes-committee": "https://disputes.example.org/committee",
+      },
     });
   });
 

@@ -61,10 +61,31 @@ describe("resolveCatalogue", () => {
     expect(resolved.price).toBe("€25.00");
   });
 
-  it("builds a priceLine carrying the price, the tax note and the shipping note", () => {
+  it("builds a priceLine carrying the price and its qualifiers", () => {
     expect(resolved.priceLine).toContain(resolved.price);
-    expect(resolved.priceLine).toContain("VAT included");
-    expect(resolved.priceLine).toContain("Shipping calculated at checkout");
+    expect(resolved.priceLine).toContain(resolved.priceQualifiers);
+  });
+
+  /**
+   * The operator's wording of 2026-08-10, and the reason it lives here rather
+   * than only on `/legal/shipping`: the purchase panel, the product hero and
+   * the shipping FAQ all read this one string, so the product page cannot
+   * assert flatly what the legal page qualifies.
+   *
+   * The bare "VAT included" is the specific claim under test. It is untrue of
+   * an export, where no EU VAT is due at all, and the second qualified read
+   * struck it off the legal page as Minor 2 while it stayed here.
+   */
+  it("qualifies the tax claim and discloses non-EU duties, in the operator's words", () => {
+    expect(resolved.priceQualifiers).toContain("VAT included where applicable");
+    expect(resolved.priceQualifiers).toContain("Shipping calculated at checkout.");
+    expect(resolved.priceQualifiers).toContain(
+      "Non-EU taxes and duties, if any, are not included.",
+    );
+    expect(
+      /VAT included(?! where applicable)/.test(resolved.priceQualifiers),
+      "an unqualified VAT claim is back in the string the product page renders",
+    ).toBe(false);
   });
 
   it("carries the product name and a readable availability flag", () => {
@@ -85,7 +106,7 @@ describe("resolveCatalogue", () => {
     });
     expect(otherwise.productName).toBe("Other Game");
     expect(otherwise.price).toBe("US$9.99");
-    expect(otherwise.taxNote).toBe("VAT calculated at checkout");
+    expect(otherwise.priceQualifiers).toContain("VAT calculated at checkout");
     expect(otherwise.inStock).toBe(false);
   });
 });
@@ -96,7 +117,6 @@ describe("resolveCataloguePlaceholders", () => {
   it("resolves every catalogue-sourced placeholder content/schema.ts declares", () => {
     expect(resolveCataloguePlaceholders("{price}", catalogue)).toBe(catalogue.price);
     expect(resolveCataloguePlaceholders("{priceLine}", catalogue)).toBe(catalogue.priceLine);
-    expect(resolveCataloguePlaceholders("{taxNote}", catalogue)).toBe(catalogue.taxNote);
     expect(resolveCataloguePlaceholders("{productName}", catalogue)).toBe(catalogue.productName);
   });
 
@@ -125,13 +145,40 @@ describe("resolveCataloguePlaceholders", () => {
   });
 });
 
-describe("every catalogue-sourced token this module resolves is a real content/schema.ts PLACEHOLDERS key", () => {
-  it("resolves price, priceLine, taxNote and productName — and only those four are source: \"catalogue\"", async () => {
+/**
+ * The set-equality pin, and it is asserted in **both** directions on purpose.
+ *
+ * It used to name the expected set once, so removing a placeholder from
+ * `content/schema.ts` and leaving its resolver in `src/lib/catalogue.ts` — or
+ * the reverse — needed only this one literal edited to stay green. `taxNote`
+ * was removed from all three places in one change on the operator's answer of
+ * 2026-08-10, and the second direction is what makes that a guard rather than a
+ * convention: a resolver with no declaration behind it is a token content
+ * cannot legally write, and a declaration with no resolver is a brace on a
+ * page.
+ */
+describe("the catalogue resolvers and content/schema.ts's catalogue placeholders are the same set", () => {
+  it("resolves price, priceLine and productName — exactly the source: \"catalogue\" declarations", async () => {
     const { PLACEHOLDERS } = await import("../../content/schema.js");
     const catalogueSourced = Object.entries(PLACEHOLDERS)
       .filter(([, placeholder]) => placeholder.source === "catalogue")
       .map(([token]) => token)
       .toSorted();
-    expect(catalogueSourced).toEqual(["price", "priceLine", "productName", "taxNote"].toSorted());
+
+    expect(catalogueSourced).toEqual(["price", "priceLine", "productName"]);
+
+    // And nothing resolves that content cannot declare: every declared token
+    // comes back changed, and an undeclared one comes back untouched.
+    const catalogue = resolveCatalogue();
+    for (const token of catalogueSourced) {
+      expect(
+        resolveCataloguePlaceholders(`{${token}}`, catalogue),
+        `{${token}} is declared in content/schema.ts and this module cannot resolve it`,
+      ).not.toContain("{");
+    }
+    expect(
+      resolveCataloguePlaceholders("{taxNote}", catalogue),
+      "taxNote resolves here but is no longer declared — a resolver for a string no page may write",
+    ).toBe("{taxNote}");
   });
 });

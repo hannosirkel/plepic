@@ -41,7 +41,7 @@ import type { AnchorId, ExternalTargetId, RouteId } from "./routes.js";
 /**
  * Identifiers of entries in the operator's ignored evidence manifest.
  *
- * `E1`–`E15` key one-to-one to numbered entries there. `official-wording`,
+ * `E1`–`E16` key one-to-one to numbered entries there. `official-wording`,
  * `rulebook-victory-conditions`, `components` and `rulebook` key to its
  * verbatim sections. **Every member of this union has an entry behind it.** An
  * id with nothing behind it falsifies the model's entire guarantee, which is
@@ -65,6 +65,7 @@ export type SourceId =
   | "E13"
   | "E14"
   | "E15"
+  | "E16"
   | "official-wording"
   | "rulebook-victory-conditions"
   | "components"
@@ -177,10 +178,44 @@ export interface Placeholder {
   readonly source: PlaceholderSource;
   readonly description: string;
   /**
-   * True when the value does not exist yet. A legal page that still depends on
-   * one of these may not be marked `operator-approved`.
+   * True when no deployment has supplied the value yet. A legal page that
+   * still depends on one of these may not be marked `operator-approved`.
+   *
+   * The operator supplied the merchant identity set on 2026-08-09, but the
+   * values are deployment configuration and reach a page through
+   * `MERCHANT_*` environment variables — see
+   * `storefront/src/config/runtime-env.ts`. Until a deployment sets them, they
+   * are still unresolved here, and that is deliberately the same flag that
+   * blocks approval: approving a legal page is approving the page **as
+   * served**, not the template.
    */
   readonly unresolved?: boolean;
+  /**
+   * True when the value is itself a legally required disclosure — the trader's
+   * name, registered address, register number, VAT number, contact address,
+   * telephone number, or the address returns go to.
+   *
+   * This flag is what separates the merchant identity from optional prose, and
+   * it exists because the two need opposite failure modes. Dropping the copy
+   * that quotes an unconfigured value is right on the Support page (a visitor
+   * loses one alternative contact route they could not have used anyway); on
+   * an imprint it is a compliance defect wearing the costume of graceful
+   * degradation, because the page then looks complete and is not.
+   * `storefront/src/lib/configuration-placeholders.ts` renders a named,
+   * visible gap for these instead.
+   *
+   * **What enforces that, precisely.** `storefront/tests/legal-pages.test.tsx`
+   * proves the component's two states against a hand-written fixture, which is
+   * worth having but cannot see a placeholder nothing supplies a value for —
+   * the fixture supplies them all. The check that actually catches that is
+   * `storefront/tests/runtime-config.test.ts`, which asserts `RUNTIME_ENV_VARS`
+   * is exactly the set of variables `src/` reads, and
+   * `storefront/tests/build-and-serve.test.ts`, which renders all five routes
+   * against a real configured environment and fails on any gap marker or
+   * incompleteness notice. A mutation to the resolver was caught by the former,
+   * not by the fixture test.
+   */
+  readonly legallyRequired?: boolean;
 }
 
 /**
@@ -202,10 +237,18 @@ export const PLACEHOLDERS = {
     description:
       "Full price line including the tax note and the shipping note, rendered from the catalogue entry.",
   },
-  taxNote: {
-    source: "catalogue",
-    description: "Tax presentation note that accompanies the advertised price.",
-  },
+  /*
+   * **`taxNote` used to sit here, and it is deliberately gone.** It resolved
+   * to the bare "VAT included" — the unqualified claim Minor 2 of the second
+   * qualified read removed from `/legal/shipping`, because no EU VAT is due
+   * on an export — and no copy used it. A live resolver for a string we have
+   * decided is misleading in a legal context is a loaded gun, so the operator
+   * answer of 2026-08-10 closed it: the declaration here, the resolver in
+   * `storefront/src/lib/catalogue.ts`, and the set-equality pin in
+   * `storefront/tests/catalogue.test.ts` went in the same change, so no guard
+   * was weakened to let one of the three go first. The tax presentation the
+   * catalogue does still carry is `priceQualifiers`, which is qualified.
+   */
   productName: {
     source: "catalogue",
     description: "Product name as the catalogue holds it.",
@@ -214,35 +257,49 @@ export const PLACEHOLDERS = {
     source: "configuration",
     description: "Registered legal name of the merchant.",
     unresolved: true,
+    legallyRequired: true,
   },
   merchantRegisteredAddress: {
     source: "configuration",
     description: "Registered address of the merchant, as filed.",
     unresolved: true,
+    legallyRequired: true,
   },
   merchantRegistrationNumber: {
     source: "configuration",
     description: "Company registration number.",
     unresolved: true,
+    legallyRequired: true,
   },
   merchantVatNumber: {
     source: "configuration",
     description: "VAT identification number, or the absence of one.",
     unresolved: true,
+    legallyRequired: true,
   },
   merchantContactAddress: {
     source: "configuration",
     description: "Contact email address for customers.",
     unresolved: true,
+    legallyRequired: true,
+  },
+  /**
+   * Added for M1 of the second qualified read. Article 6(1)(c) CRD as amended
+   * by Directive (EU) 2019/2161 dropped the old "where available" qualifier,
+   * so the trader's telephone number is mandatory — transposed into VÕS § 54¹.
+   * A number that reaches voicemail satisfies it; no number does not.
+   */
+  merchantPhoneNumber: {
+    source: "configuration",
+    description: "Telephone number customers can reach the merchant on.",
+    unresolved: true,
+    legallyRequired: true,
   },
   returnAddress: {
     source: "configuration",
     description: "Postal address returns are sent to.",
     unresolved: true,
-  },
-  siteName: {
-    source: "configuration",
-    description: "Public name of the site, for use in legal prose.",
+    legallyRequired: true,
   },
 } as const satisfies Record<string, Placeholder>;
 
@@ -253,7 +310,7 @@ export type PlaceholderToken = keyof typeof PLACEHOLDERS;
  * so that {@link PlaceholderToken} is a union of the literal keys; this view
  * exists so the values can actually be read as {@link Placeholder}s.
  */
-const placeholderTable: Readonly<Record<PlaceholderToken, Placeholder>> = PLACEHOLDERS;
+export const PLACEHOLDER_TABLE: Readonly<Record<PlaceholderToken, Placeholder>> = PLACEHOLDERS;
 
 const PLACEHOLDER_PATTERN = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 
@@ -273,7 +330,22 @@ export function unresolvedPlaceholdersIn(
 ): readonly PlaceholderToken[] {
   return placeholderTokensIn(text)
     .filter(isPlaceholderToken)
-    .filter((token) => placeholderTable[token].unresolved === true);
+    .filter((token) => PLACEHOLDER_TABLE[token].unresolved === true);
+}
+
+/**
+ * Placeholders in `text` that are themselves legally required disclosures.
+ *
+ * The renderer uses this to decide between the two failure modes: drop the
+ * copy (optional prose) or render a named, visible gap and say so (anything on
+ * this list). See {@link Placeholder.legallyRequired}.
+ */
+export function legallyRequiredPlaceholdersIn(
+  text: string,
+): readonly PlaceholderToken[] {
+  return placeholderTokensIn(text)
+    .filter(isPlaceholderToken)
+    .filter((token) => PLACEHOLDER_TABLE[token].legallyRequired === true);
 }
 
 /* ------------------------------------------------------------------------
@@ -292,18 +364,82 @@ export interface Statement {
   readonly source: SourceId;
 }
 
-export interface Section {
-  readonly anchor: AnchorId;
-  readonly heading: string;
-  readonly body: Prose;
-  readonly source?: Attribution;
-  readonly links?: readonly Link[];
-}
-
 export interface ListItem {
   readonly term: string;
   readonly detail: string;
   readonly source?: Attribution;
+}
+
+/**
+ * One emphasised line with one plain line under it, rendered ahead of a
+ * section's prose.
+ *
+ * It exists for exactly one kind of content: a disclosure whose **formatting
+ * is part of the operator's answer**, not the renderer's taste. The price
+ * presentation on `/legal/shipping` is the case that produced it — the
+ * operator supplied it as two lines, the first emphasised and the second not,
+ * and `Prose` is a flat array of equal paragraphs with nowhere to record that.
+ *
+ * Writing it as a one-entry `items` list would have needed no model change and
+ * would have been a lie: `<dl>` says the second line defines the first, and it
+ * does not.
+ */
+export interface Callout {
+  /** The emphasised line. May carry placeholders like any other copy. */
+  readonly lead: string;
+  /** The plain line beneath it. */
+  readonly detail: string;
+}
+
+/**
+ * A genuine table: more than two columns, so {@link ListItem}'s term-and-detail
+ * pair cannot hold it.
+ *
+ * The cookie disclosure is why this exists. The operator supplied it as four
+ * columns — cookie, provider, purpose, duration — and every previous tabular
+ * disclosure on these pages fitted `items` because it had two. Folding a
+ * fourth column into a parenthetical inside `detail` is how a duration stops
+ * being scannable and starts being prose nobody reads, so the model grew a
+ * shape that holds the data instead.
+ *
+ * Every row must have exactly as many cells as there are columns;
+ * `content.test.ts` asserts it, because a short row renders as a table with a
+ * hole in it rather than as an error.
+ */
+export interface SectionTable {
+  /** Rendered as the table's `<caption>`: its name, for a reader and for assistive technology. */
+  readonly caption: string;
+  /** Column headings, in order. The first column is the row's own header. */
+  readonly columns: readonly string[];
+  /** Rows, each one cell per column, in the same order. */
+  readonly rows: readonly (readonly string[])[];
+  /**
+   * Prose that belongs **under** the table rather than before it — for the
+   * cookie table, the operator's two sentences about which of these need
+   * consent, which only make sense once the rows have been read.
+   */
+  readonly notes?: Prose;
+}
+
+export interface Section {
+  readonly anchor: AnchorId;
+  readonly heading: string;
+  readonly body: Prose;
+  /**
+   * An emphasised statement ahead of the prose. See {@link Callout}; today the
+   * one user is the price presentation the operator supplied as two lines.
+   */
+  readonly callout?: Callout;
+  /**
+   * A term-and-detail list under the prose, for the handful of disclosures
+   * that are genuinely tabular in **two** columns — the toy-safety test
+   * results. Anything wider is a {@link SectionTable}.
+   */
+  readonly items?: readonly ListItem[];
+  /** A table under the prose, for a disclosure `items` is too narrow to hold. */
+  readonly table?: SectionTable;
+  readonly source?: Attribution;
+  readonly links?: readonly Link[];
 }
 
 export interface FaqEntry {
@@ -379,25 +515,60 @@ export interface Page {
 
 /**
  * The elements the legal pages are obliged to carry: EU distance selling for
- * the first eight, and this plan's own consent constraint for the last two —
- * record the lawful basis for analytics, and name every third-party processor
- * the site loads. The list is closed, and a test asserts the legal pages
- * between them cover all of it exactly once, so deleting the processor section
- * fails the build instead of being noticed after launch.
+ * most of them, and this plan's own consent constraint for
+ * `analytics-lawful-basis` and `third-party-processors`. The list is closed,
+ * and `content.test.ts` asserts the legal pages between them cover all of it
+ * exactly once, so deleting the processor section fails the build instead of
+ * being noticed after launch.
+ *
+ * ## The five that were added, and why the guarantee was false without them
+ *
+ * The second qualified read's structural finding was that this list *"is
+ * promising more than it checks"*: legally required disclosures had no element
+ * here and no home on any page, so the closed list guaranteed nothing about
+ * them. The additions are:
+ *
+ * | Element | Obligation |
+ * |---|---|
+ * | `legal-guarantee-of-conformity` | Article 6(1)(l) CRD wants a **positive statement** that the two-year legal guarantee exists, not a saving clause. Directive (EU) 2019/771; VÕS §§ 218–222, and the two-month notification duty of VÕS § 220(1) |
+ * | `model-withdrawal-form` | Article 6(1)(h) CRD obliges the trader to **provide** the Annex I(B) form, not to mention that one exists |
+ * | `dispute-resolution` | Article 6(1)(t) CRD, and one mechanism squarely applies: the Consumer Disputes Committee at the TTJA |
+ * | `processing-lawful-bases` | Article 13(1)(c) GDPR wants purpose **and legal basis** per operation. Only measurement had one |
+ * | `third-country-transfers` | Article 13(1)(f) GDPR wants the transfers and their safeguard. Four US processors, unmentioned |
+ *
+ * The read counted four, treating the two GDPR halves as one. They are split
+ * because `LegalSection.covers` binds one element to exactly one section and
+ * the two halves belong in different sections of the privacy page — the bases
+ * beside what we hold, the transfers beside who handles it.
+ *
+ * ## What makes the guarantee true rather than aspirational
+ *
+ * Coverage is declared **per section** ({@link LegalSection.covers}) and the
+ * page's own `covers` must equal the union of its sections'. So deleting a
+ * section, or deleting the last section that carries an obligation, fails
+ * `content.test.ts` from both ends: the page no longer covers what it claims,
+ * and the site no longer covers the closed list. Before this, `covers` was a
+ * page-level array that no section had to justify, and a page could keep
+ * claiming an element whose prose had been deleted.
  */
 export const LEGAL_ELEMENTS = [
   "merchant-identity",
   "registered-address",
   "withdrawal-process",
   "withdrawal-deadline",
+  "model-withdrawal-form",
   "return-postage-liability",
   "return-address",
+  "legal-guarantee-of-conformity",
   "delivery-terms",
   "dispatch-estimate",
   "vat-presentation",
   "checkout-acknowledgement",
+  "dispute-resolution",
   "analytics-lawful-basis",
   "third-party-processors",
+  "processing-lawful-bases",
+  "third-country-transfers",
 ] as const;
 
 export type LegalElement = (typeof LEGAL_ELEMENTS)[number];
@@ -406,8 +577,22 @@ export type LegalReviewStatus =
   | "draft-pending-operator-input"
   | "operator-approved";
 
+/**
+ * A section of a legal page, which additionally declares which obligations
+ * **this section's own prose** discharges.
+ *
+ * `covers: []` is a legitimate and common answer — plenty of legal prose is
+ * necessary without being one of the closed list's named elements. What is not
+ * legitimate is a page claiming an element no section carries, and that is
+ * what the equality check in `content.test.ts` prevents.
+ */
+export interface LegalSection extends Section {
+  readonly covers: readonly LegalElement[];
+}
+
 export interface LegalPage extends Page {
+  /** Must equal the union of `body[].covers`, as a set. Asserted. */
   readonly covers: readonly LegalElement[];
   readonly reviewStatus: LegalReviewStatus;
-  readonly body: readonly Section[];
+  readonly body: readonly LegalSection[];
 }

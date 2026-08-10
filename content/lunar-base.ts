@@ -226,11 +226,24 @@ export const factions: readonly ListItem[] = [
  * Every price is a placeholder resolved from the catalogue. Availability is a
  * statement, not a number: stock is not managed, so a count would be a
  * fabrication and a low-stock nudge would be a lie.
+ *
+ * **`priceLine` and `taxNote` are gone from this object** — carried finding N8
+ * from the `t2-pages` review. `PurchasePanelMockup` reads `catalogue.price` and
+ * `catalogue.priceQualifiers` off the resolved catalogue directly, because the
+ * panel's price slot wants the bare figure and its note slot wants the
+ * qualifiers; the one-sentence `priceLine` is the wrong shape for both. That
+ * left these two fields rendered by nothing at all, which is worse than
+ * useless — the next reader assumes they still drive the panel and edits them.
+ *
+ * The two names had different fates one layer down. The `{priceLine}`
+ * *placeholder* is very much alive; `productFaq` below quotes it, and a
+ * sentence is exactly what is wanted there. The `taxNote` placeholder is gone
+ * from `../schema.ts` entirely, on the operator's answer of 2026-08-10: it
+ * resolved to a bare "VAT included", nothing used it, and the operator has
+ * replaced that claim with a qualified one everywhere it is actually made.
  */
 export const purchase = {
   productName: "{productName}",
-  priceLine: "{priceLine}",
-  taxNote: "{taxNote}",
   availability: "In stock",
   notes: [
     {
@@ -296,3 +309,79 @@ export const productFaq: readonly FaqEntry[] = [
     source: "rulebook",
   },
 ];
+
+/**
+ * The product page's GPSR block — manufacturer identity and contact, plus the
+ * safety information.
+ *
+ * **Regulation (EU) 2023/988 Article 19** requires an online offer to display
+ * the manufacturer's name, postal address and electronic address, plus any
+ * warnings or safety information. It lands on the product page rather than on
+ * one of the five legal pages because that is where the offer is.
+ *
+ * ## Who the manufacturer is, and why it is not the printer
+ *
+ * **The merchant is the manufacturer.** Under Directive 2009/48/EC Article 2(3)
+ * and GPSR Article 3(8) the manufacturer is whoever has the product made **and
+ * markets it under their own name** — which is this shop, not the factory. The
+ * contract producer is named as the producer and never as the manufacturer,
+ * because naming the wrong entity is itself a compliance defect. This was
+ * decided by the operator and no agent may re-decide it.
+ *
+ * The identity is placeholders for the same reason the imprint's is: the
+ * registered name, registered address, contact address and telephone number are
+ * configuration, and every one of them is marked `legallyRequired` in
+ * `schema.ts`, so an unconfigured deployment renders a named, visible gap and a
+ * notice rather than dropping the disclosure.
+ *
+ * ## The safety information is certification, not an accolade
+ *
+ * Every figure is from the operator's Intertek report — see `E16` in
+ * `evidence.ts`, which also carries the checksum of the document and the
+ * reasons the 2021 results describe current stock. It is presented as test
+ * results and nothing else: no wreath, no badge, no trophy styling. A test
+ * certificate dressed up as an accolade is one of the fabrications the plan
+ * forbids outright, and `evidence.ts` spells the restriction out on `E16`.
+ *
+ * **The age marking is not repeated here.** `FeatureSpecStrip` already renders
+ * "Age 10+ — a safety marking for this product, not a play recommendation."
+ * from `storefront/mock/catalogue.json`; this block says what stands behind it
+ * instead of saying it twice.
+ */
+export const productSafety = {
+  heading: "Manufacturer and product safety",
+  manufacturer: {
+    heading: "Manufacturer",
+    body: [
+      "{merchantLegalName}, {merchantRegisteredAddress}.",
+      "Email: {merchantContactAddress}. Telephone: {merchantPhoneNumber}.",
+      "{merchantLegalName} has this game made to its own specification and sells it under its own name, and is the manufacturer of it in the sense EU product-safety law uses that word. Longpack Co., Ltd., of Shanghai, China, is the contract producer that prints and assembles it; a contract producer is not the manufacturer.",
+    ],
+  },
+  safety: {
+    heading: "Safety information",
+    body: [
+      "The age marking in the specifications above is a safety marking for this product, not a play recommendation. This is what stands behind it.",
+      "The game was tested against the European toy safety standards by Intertek Testing Services Ltd. in Shanghai, in test report SHAH01338706 of 14 May 2021, and passed every test in it. The results below are current: there has been no later print run, so they describe the copies actually being sold.",
+    ],
+    results: [
+      {
+        term: "EN71-1:2014+A1:2018",
+        detail: "Mechanical and physical properties — pass.",
+        source: "E16",
+      },
+      { term: "EN71-2:2020", detail: "Flammability — pass.", source: "E16" },
+      {
+        term: "EN71-3:2019",
+        detail: "Migration of certain elements — pass.",
+        source: "E16",
+      },
+      {
+        term: "EN71-3:2019 with Regulation (EU) 2019/1922",
+        detail:
+          "Amending Directive 2009/48/EC, aluminium migration — pass.",
+        source: "E16",
+      },
+    ] satisfies readonly ListItem[],
+  },
+} as const;
