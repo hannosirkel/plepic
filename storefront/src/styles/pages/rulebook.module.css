@@ -41,19 +41,14 @@
   gap: var(--space-sm);
 }
 
-.viewer {
-  /* border-box: width: 100% plus a border under the default content-box
-     would add the border on top of it — see forms.module.css's .stackedField
-     doc comment for the concrete defect this pattern already produced once. */
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 80vh;
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-decor);
-}
-
-.fallback {
+/*
+ * `.viewer` and `.fallback` are deleted, not disabled. They styled an inline
+ * `<object>` PDF viewer this application's own CSP (`object-src 'none'`)
+ * blocked outright — see RulebookPageContent.tsx. Leaving dead rules behind
+ * would have left the next reader believing the page still has a viewer.
+ */
+.note {
   margin: 0;
-  color: var(--text-muted);
+  font-size: var(--step--1);
+  color: var(--text-subtle);
 }

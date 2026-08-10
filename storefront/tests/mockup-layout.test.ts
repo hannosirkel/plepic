@@ -78,6 +78,32 @@
  *    floors at minmax(auto, 1fr) - the same automatic-minimum-size defect
  *    under a different property name. bareFrGridTracks flags a
  *    grid-template-columns value carrying an un-minmax'd <number>fr token.
+ *
+ * Widened again after the t2-pages review, which found every review card
+ * overflowing its grid cell by exactly 50px at all three widths, with card 1
+ * painting 26px outside its own card and under card 5's top edge on
+ * /games/lunar-base. review-composite.module.css's .figure set height: 100%
+ * alongside padding and a border under the default content-box sizing, so
+ * two paddings and two borders were added on top of the full cell height.
+ * This repository has no global box-sizing reset by deliberate choice, and
+ * the README claimed "every element like this now sets box-sizing:
+ * border-box explicitly" - a claim nothing enforced and which was false when
+ * written. percentageSizedWithoutBorderBox makes it true: any rule combining
+ * a percentage width/height with padding or a border must say which box it
+ * means.
+ *
+ * ## What this file still cannot see, and what a browser harness must do
+ *
+ * src/styles/global.css sets overflow-x: hidden on html and body, for a
+ * documented and defensible reason (a fixed, translated navigation sheet
+ * widening the root scroll width). One consequence is permanent and belongs
+ * written down here: document.documentElement.scrollWidth <= clientWidth can
+ * never fail again on this site, whatever overflows. It is not a horizontal
+ * overflow detector any more. A browser-driven harness must compare
+ * per-element getBoundingClientRect() against the viewport (and against each
+ * element's own container) instead. The 50px card overflow above is the
+ * concrete case: the root scroll width was clean at every width while five
+ * cards each hung 50px out of their cells.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -237,6 +263,21 @@ function boundsItsOwnMinimumSize(body: string): boolean {
  * shrink (or it wraps into illegibility, a real and worse defect this
  * widened check caused while chasing the overflow one), while the *detail*
  * half is exactly the one that should grow, shrink and wrap.
+ *
+ * **The residue this exemption leaves, recorded rather than papered over.** A
+ * `flex-shrink: 0` item cannot exhibit the *automatic-minimum-size* defect,
+ * which is what this file checks — but it can still overflow its container
+ * the ordinary way, by being wider than the space available and refusing to
+ * shrink. `.metaRow dt` is safe today because its content is a fixed set of
+ * one-word labels from `content/lunar-base.ts` ("Availability", "Dispatch",
+ * "Duties"). It would not be safe if a future row's label were user- or
+ * catalogue-supplied prose. Narrowing the exemption to "flex-shrink: 0 *and*
+ * a bounded flex-basis" was considered and rejected: `flex: 0 0 auto` is the
+ * correct and idiomatic spelling for a label that must not shrink, and
+ * flagging it would push authors to write a meaningless `min-width` to
+ * silence the check — the same wrong-kind-of-strictness this exemption was
+ * added to undo. A long-content overflow needs a layout engine to detect;
+ * this file states in its own header that it has none.
  */
 function hasZeroFlexShrink(body: string): boolean {
   const longhand = declaration(body, "flex-shrink");
@@ -285,6 +326,22 @@ function immediateAncestorSelector(selector: string): string | undefined {
  * `flex` property of its own — its parent, `.metaRow`, is `display: flex`,
  * and CSS Flexbox's automatic minimum size applies to every flex item, not
  * only the ones that opted into growing or shrinking explicitly.
+ *
+ * **Recorded residue.** This matches an ancestor only by *exact selector
+ * text within the same stylesheet*. Three shapes therefore still escape it,
+ * and no static reader that does not resolve CSS Modules composition can
+ * close them:
+ *
+ * 1. a flex container declared in one module and its child styled in
+ *    another (a component composing `styles.row` from a shared sheet);
+ * 2. an ancestor written differently from the child's prefix — `.a .b c`
+ *    against a container rule spelled `.a > .b`, or a container reached
+ *    through more than one level;
+ * 3. a flex container created in an inline `style` or by a UA default.
+ *
+ * The shapes this repository actually ships are all case-zero — parent and
+ * child in the same file, spelled the same way — which is why the check is
+ * worth having as written. It is a floor, not a proof.
  */
 function hasFlexContainerAncestor(selector: string, sheetRules: readonly Rule[]): boolean {
   const ancestor = immediateAncestorSelector(selector);
@@ -343,6 +400,13 @@ function topLevelTokens(value: string): readonly string[] {
  * a class of overflow (a track wider than its content demands) this
  * automatic-minimum-size check is not about. The risk this function exists
  * for only exists once two or more tracks are sharing a row.
+ *
+ * **Residue, recorded rather than claimed fixed.** `repeat(5, 1fr)` is one
+ * token to `topLevelTokens`, so a bare `fr` inside a `repeat()` is not seen
+ * here. `feature-spec-strip.module.css`'s `.strip` ships exactly that shape
+ * and is correct in practice (five equal columns of short, unbreakable
+ * labels), but the check does not prove it — it does not reach inside the
+ * call.
  */
 function bareFrTracks(body: string): readonly string[] {
   const value = declaration(body, "grid-template-columns");
@@ -350,6 +414,69 @@ function bareFrTracks(body: string): readonly string[] {
   const tracks = topLevelTokens(value);
   if (tracks.length < 2) return [];
   return tracks.filter((token) => /^\d*\.?\d+fr$/.test(token));
+}
+
+/**
+ * True when this rule sizes itself as a percentage of its container — the
+ * only case where "does padding count inside or outside?" changes the
+ * result. A fixed length plus padding is a deliberate sum; `100%` plus
+ * padding is a promise the box cannot keep under `content-box`.
+ */
+function hasPercentageSize(body: string): boolean {
+  for (const property of ["width", "height", "max-width", "max-height"]) {
+    const value = declaration(body, property);
+    if (value !== undefined && value.includes("%")) return true;
+  }
+  return false;
+}
+
+const BOX_EXTENT_DECLARATION =
+  /(?:^|[;{\s])(?:padding|border)(?:-(?:block|inline|top|right|bottom|left)(?:-(?:start|end))?)?(?:-width)?\s*:\s*([^;}]+)/g;
+
+/** Every length token in the value is zero, so the declaration adds no extent. */
+const ALL_ZERO_LENGTHS = /^(?:0(?:[a-z]+|%)?[\s,]*)+$/i;
+
+/**
+ * True when this rule adds padding or a border **width** to its own box.
+ *
+ * The value matters, not just the property: `border: 0` and `padding: 0` add
+ * nothing, and flagging them would have made `video-embed.module.css`'s
+ * `.iframe` — `width: 100%; height: 100%; border: 0`, which is exactly right
+ * — into a false positive that teaches authors to ignore this check.
+ * `border-radius` and `box-shadow` are not matched at all: neither changes
+ * the box's extent.
+ */
+function addsPaddingOrBorder(body: string): boolean {
+  for (const match of body.matchAll(BOX_EXTENT_DECLARATION)) {
+    const value = (match[1] ?? "").trim();
+    if (value === "none" || ALL_ZERO_LENGTHS.test(value)) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Rules that size themselves by percentage *and* add padding or a border
+ * without saying which box the percentage refers to. Under this repository's
+ * deliberate no-global-reset policy the answer is `content-box`, so the
+ * padding and border are added on top — 50px per card, in the case that
+ * found this.
+ */
+function percentageSizedWithoutBorderBox(
+  sheets: readonly { readonly name: string; readonly rules: readonly Rule[] }[],
+): readonly string[] {
+  return sheets
+    .flatMap((sheet) =>
+      sheet.rules
+        .filter(
+          (rule) =>
+            hasPercentageSize(rule.body) &&
+            addsPaddingOrBorder(rule.body) &&
+            declaration(rule.body, "box-sizing") !== "border-box",
+        )
+        .map((rule) => `${sheet.name} ${rule.selector}`),
+    )
+    .toSorted();
 }
 
 /** Every distinct name appearing in a `grid-template-areas` value. */
@@ -641,6 +768,66 @@ describe("no bare <number>fr grid-template-columns track — the grid equivalent
     ]);
     expect(topLevelTokens("1fr 1fr").length).toBe(2);
     expect(topLevelTokens("repeat(auto-fit, minmax(14rem, 1fr))").length).toBe(1);
+  });
+});
+
+describe("a percentage-sized box that also has padding or a border says which box it means", () => {
+  it("every such rule under src/ sets box-sizing: border-box", () => {
+    expect(
+      percentageSizedWithoutBorderBox(stylesheets),
+      "this repository ships no global box-sizing reset on purpose, so `height: 100%` (or `width: 100%`) " +
+        "next to padding or a border resolves against the *content* box and the padding and border are " +
+        "added on top of it — which is how every review card overflowed its grid cell by exactly 50px. " +
+        "Add `box-sizing: border-box`",
+    ).toEqual([]);
+  });
+
+  it("has teeth: flags the exact shape .figure shipped in", () => {
+    const shipped = `.figure { height: 100%; padding: 1.5rem; border: 1px solid red; }`;
+    expect(
+      percentageSizedWithoutBorderBox([
+        { name: "probe.module.css", rules: parseRules(stripComments(shipped)) },
+      ]),
+    ).toEqual(["probe.module.css .figure"]);
+  });
+
+  it("accepts the shape that fixed it", () => {
+    const fixed = `.figure { box-sizing: border-box; height: 100%; padding: 1.5rem; border: 1px solid red; }`;
+    expect(
+      percentageSizedWithoutBorderBox([
+        { name: "probe.module.css", rules: parseRules(stripComments(fixed)) },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("does not flag a percentage size with no padding or border, nor padding with no percentage size", () => {
+    const benign = `.a { width: 100%; height: auto; } .b { padding: 1rem; border: 1px solid red; }`;
+    expect(
+      percentageSizedWithoutBorderBox([
+        { name: "probe.module.css", rules: parseRules(stripComments(benign)) },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("does not mistake border-radius or box-shadow for a border", () => {
+    expect(addsPaddingOrBorder("border-radius: 4px; box-shadow: none;")).toBe(false);
+    expect(addsPaddingOrBorder("border: 1px solid red;")).toBe(true);
+    expect(addsPaddingOrBorder("padding-inline: 1rem;")).toBe(true);
+    expect(addsPaddingOrBorder("border-block-start: 1px solid red;")).toBe(true);
+  });
+
+  it("does not flag a zero border or zero padding, which add no extent", () => {
+    expect(addsPaddingOrBorder("border: 0;")).toBe(false);
+    expect(addsPaddingOrBorder("border: none;")).toBe(false);
+    expect(addsPaddingOrBorder("padding: 0;")).toBe(false);
+    expect(addsPaddingOrBorder("padding: 0 0;")).toBe(false);
+    // The exact rule this exemption exists for.
+    const iframe = `.iframe { display: block; width: 100%; height: 100%; border: 0; }`;
+    expect(
+      percentageSizedWithoutBorderBox([
+        { name: "probe.module.css", rules: parseRules(stripComments(iframe)) },
+      ]),
+    ).toEqual([]);
   });
 });
 

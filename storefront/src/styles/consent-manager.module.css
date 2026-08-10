@@ -1,0 +1,113 @@
+/*
+ * `ConsentManager` was inherited unstyled: a raw `<p>` and two default
+ * `<button>`s at the very bottom of the document. That was invisible while
+ * every route was a placeholder, and it now ships on the homepage and the
+ * product page, so it needs to look like the rest of the site and — more to
+ * the point — the banner needs to be somewhere a visitor actually meets it.
+ *
+ * The **banner** is fixed to the bottom of the viewport, because a consent
+ * request that a visitor only reaches by scrolling past the footer is not a
+ * consent request. It is the only fixed element this component introduces,
+ * and it is removed from the document the moment a decision is stored.
+ *
+ * **A fixed box has to buy its space, and this one shipped without doing so.**
+ * That single omission produced two failures at 390 and 320 CSS px, where this
+ * banner measures 154 and 173 px tall: the footer's Imprint, Terms, Shipping,
+ * Returns and Privacy links sat *permanently* beneath it at the bottom of the
+ * document, with no scroll left to reveal them, and tabbing into the contact
+ * form focused a `subject` field that was 100% hidden — WCAG 2.2 AA SC 2.4.11
+ * Focus Not Obscured. The height is now measured, published as a custom
+ * property and reserved twice, as `padding-block-end` and
+ * `scroll-padding-block-end`, by `src/lib/consent-reserved-space.ts` and
+ * `styles/global.css`. Every rule below changes this box's height, so none of
+ * them may be edited on the assumption that the height is fixed;
+ * `tests/consent-banner.test.tsx` fails if the reservation stops holding.
+ *
+ * The **reopen control** is deliberately *not* fixed. It sits in normal flow
+ * immediately after `SiteFooter`, carrying the footer's own sunken surface so
+ * it reads as the last row of the footer rather than as a floating widget
+ * covering page content forever after. It is always present, which is the
+ * property that matters: a visitor can always change their mind.
+ *
+ * Both buttons wear `mockups/call-to-action.module.css`'s classes rather than
+ * re-implementing them, so the focus ring, hit target and pill geometry are
+ * the same ones every other control on the site uses.
+ */
+
+.banner {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  /* Above the navigation sheet, which is the only other fixed layer. */
+  z-index: calc(var(--nav-z) + 10);
+  background: var(--surface-raised);
+  color: var(--text);
+  border-block-start: var(--border-width) solid var(--border);
+  box-shadow: var(--shadow-lg);
+  /*
+   * Deliberately tight. This is the one fixed element on the site and it
+   * covers the bottom of the first viewport until a visitor decides, so
+   * every row of it is paid for in fold: at 320 CSS px the difference
+   * between `--space-md` and `--space-sm` here, and between `--step--1` and
+   * `--step--2` on the text below, is 40px of product page.
+   */
+  padding: var(--space-sm) var(--gutter);
+}
+
+.bannerInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  max-width: var(--content-max);
+  margin-inline: auto;
+}
+
+.bannerText {
+  margin: 0;
+  /* Grows to fill the row and wraps under the buttons on a phone; min-width: 0
+     so it can actually get narrower than its longest line rather than pushing
+     the buttons off the side. */
+  flex: 1 1 20rem;
+  min-width: 0;
+  font-size: var(--step--2);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.bannerLink {
+  color: var(--accent);
+}
+
+.bannerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.reopenBar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--gutter) var(--space-md);
+  background: var(--surface-sunken);
+  color: var(--text-on-surface-sunken);
+}
+
+.reopen {
+  background: none;
+  border: 0;
+  padding: var(--space-2xs) 0;
+  min-height: var(--nav-item-min-height);
+  font-family: inherit;
+  font-size: var(--step--1);
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.reopen:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

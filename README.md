@@ -11,8 +11,8 @@ Next.js storefront and, later, a Medusa backend.
   contract (`src/lib/seo.ts`, `src/lib/sitemap-contract.ts`), the
   consent-gated Google Analytics loader and the Cloudflare Turnstile widget,
   and the one runtime-config object every per-environment value (base URL,
-  measurement ID, site key) is read into server-side and handed to the
-  browser — never a `NEXT_PUBLIC_*` variable. See
+  measurement ID, site key, merchant contact address) is read into
+  server-side and handed to the browser — never a `NEXT_PUBLIC_*` variable. See
   [`storefront/src/config/runtime-config.ts`](./storefront/src/config/runtime-config.ts)
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
   for the redirect map's documented shape. The cart and checkout flows are a
@@ -34,12 +34,52 @@ Next.js storefront and, later, a Medusa backend.
   [`storefront/mock/catalogue.json`](./storefront/mock/catalogue.json) mirrors
   the values Task 5's live Medusa catalogue will be seeded with — one
   product, EUR 25.00 VAT included, in stock, 2–6 players, ~30 minutes, 90
-  cards. `src/lib/catalogue.ts` resolves `content/`'s catalogue placeholders
-  (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`) against it at
-  render time — the two previous units correctly left those placeholders
-  literal, because `content/` was not theirs to resolve against a catalogue
-  that did not exist yet. `tests/no-hardcoded-price.test.ts` fails the build
-  if a price literal appears anywhere outside that one file.
+  cards, age 10+. `src/lib/catalogue.ts` resolves `content/`'s catalogue
+  placeholders (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`)
+  against it at render time — the two previous units correctly left those
+  placeholders literal, because `content/` was not theirs to resolve against a
+  catalogue that did not exist yet. `tests/no-hardcoded-price.test.ts` fails
+  the build if a price literal appears anywhere outside that one file.
+
+  **It is also the only source of the price a search engine is told.** The
+  canonical product page's `Product`/`Offer` JSON-LD used to be built from
+  four environment variables (`CATALOGUE_MOCK_PRICE_AMOUNT`,
+  `_PRICE_CURRENCY`, `_AVAILABILITY`, `_PRODUCT_NAME`) while the visible page
+  read `mock/catalogue.json`, so a single request to a single page could
+  publish one price to a crawler and a different one to a person — and, in
+  the default state with nothing configured, omit `offers` entirely, so the
+  page advertised a price to people and none at all to search engines.
+  Nothing failed and nothing warned. Those four variables are gone. The price,
+  currency, availability and product name are identical in every environment,
+  so they were never per-environment configuration; `src/lib/product-jsonld.ts`
+  and the page composition now read the same catalogue in the same request,
+  and `tests/product-jsonld.test.ts` imports both and compares them rather
+  than repeating figures.
+
+  **No `{token}` reaches a visitor.** Two did:
+  `{priceLine}` in the product page's "How much is shipping?" answer, inside
+  a closed `<details>`, and `{merchantContactAddress}` in plain body type on
+  `/support/lunar-base`. `tests/no-unresolved-placeholder.test.tsx` renders
+  every real route's component and fails on any brace-delimited token
+  surviving in text a browser will paint, with `<details>` content counted
+  whether the disclosure is open or closed.
+
+  **The merchant contact address is configuration, and is suppressed when it
+  is absent.** `content/schema.ts` marks the merchant identity placeholders
+  `unresolved` — the values do not exist yet, and inventing one is not an
+  option. `MERCHANT_CONTACT_ADDRESS` supplies it at runtime;
+  `src/lib/configuration-placeholders.ts` resolves it and **drops the
+  paragraph that quotes it** when no address is configured, per paragraph, so
+  an unresolvable sentence never takes a resolvable one with it. The contact
+  form beneath it is unaffected.
+
+  **The age marking is rendered from the catalogue.** `content/`'s
+  `specifications` list carries no age entry and is read-only to this unit, so
+  `FeatureSpecStrip` renders `mock/catalogue.json`'s `ageRange` beneath the
+  five-column strip, worded as a safety marking for the product rather than a
+  play recommendation. The CE / EN71 certification copy that states why is
+  `content/`'s and belongs to the unit that owns `content/`; it is
+  deliberately absent here rather than paraphrased into a component.
 
   **The newsletter and contact forms mount `TurnstileWidget` and
   `HoneypotField`** (`src/components/forms/`), both built in an earlier unit
@@ -52,6 +92,19 @@ Next.js storefront and, later, a Medusa backend.
   Turnstile verification is a later unit's; these forms render the widget,
   validate their own fields with tied, announced errors, and submit to
   nothing yet.
+
+  **`ConsentManager` is styled.** It was inherited unstyled — a raw
+  paragraph and two default `<button>`s below the footer of every page —
+  which was invisible while every route was a placeholder and is not now that
+  the homepage and the product page are real. The banner is fixed to the
+  bottom of the viewport, because a consent request a visitor only reaches by
+  scrolling past the footer is not one; the always-available control that
+  reopens it deliberately is **not** fixed, and sits in normal flow carrying
+  the footer's own surface rather than floating over page content forever.
+  Both buttons wear `mockups/call-to-action.module.css`'s classes, so the
+  focus ring and hit target are the site's, not the user agent's — that
+  stylesheet also gained the `:focus-visible` rule every call to action was
+  missing, including "Add to basket".
 
   **Video stays on YouTube.** `src/components/video/VideoEmbed.tsx` embeds a
   `youtube-nocookie.com` iframe sized from a real, measured aspect ratio
@@ -67,7 +120,21 @@ Next.js storefront and, later, a Medusa backend.
   `storefront/public/documents/lunar-base-rulebook.pdf` is a byte-identical
   copy of the operator's verified master (25 pages, tagged, not encrypted,
   real extractable text — `pdfinfo`/`pdftotext` verified), served from
-  `/support/lunar-base/rulebook`. `tests/no-live-hostname.test.ts` pins its
+  `/support/lunar-base/rulebook`.
+
+  **That page links the PDF; it does not embed a viewer.** It shipped with an
+  inline `<object type="application/pdf">` under this application's own
+  `object-src 'none'` policy (`src/lib/csp.ts`). Chromium blocked it outright
+  and the page painted an empty bordered box; the fallback link inside it
+  carried no class, so it inherited the user agent's `rgb(0, 0, 238)` on the
+  Lunar surface — 1.59:1, against WCAG 2.2 AA's 4.5:1. The `<object>` and its
+  now-dead `.viewer`/`.fallback` rules are deleted rather than the policy
+  widened: relaxing `object-src` on a public site is a security decision, and
+  the link already works — browsers open the PDF natively, with their own
+  reader honouring its tag structure and text selection. The page states the
+  8.9 MB size so a visitor on a metered connection knows before tapping.
+
+  `tests/no-live-hostname.test.ts` pins its
   sha256 rather than scanning it as text (a PDF's content streams are
   compressed binary) or holding it to the image byte ceiling (it is a
   document, not a web derivative). It is committed as-is rather than
@@ -158,17 +225,27 @@ Next.js storefront and, later, a Medusa backend.
   0` item cannot exhibit the automatic-minimum-size defect at all, because
   that defect is specifically a floor on how far an item may shrink).
 
-  A rendering pass with a real, headless browser at 1280, 390 and 320 CSS
-  pixels — the check this repository's test suite cannot perform itself —
-  additionally found and fixed two defects invisible to every automated
-  check here: `.stackedField` and `.viewer` used `width: 100%` (or
-  `max-width: 100%`) together with `padding`/`border` under the default
-  `content-box` sizing, which adds padding and border *on top of* that
-  percentage rather than inside it, so the contact form's fields and the
-  rulebook's `<object>` measured wider than their own containers. There is no
-  global CSS reset in this repository (`site-header.module.css`'s own doc
-  comment already says so), so every element like this now sets `box-sizing:
-  border-box` explicitly rather than relying on one existing.
+  **A percentage size plus padding or a border must say which box it means,
+  and that is now checked rather than claimed.** There is no global
+  `box-sizing` reset in this repository, on purpose
+  (`site-header.module.css`'s own doc comment says so), which means
+  `height: 100%` or `width: 100%` next to `padding`/`border` resolves against
+  the *content* box and the padding and border are added on top of it. A
+  rendering pass with a real, headless browser at 1280, 390 and 320 CSS
+  pixels found this three times: `.stackedField` and the rulebook's since
+  deleted `.viewer` measured wider than their containers, and every
+  `ReviewComposite` card overflowed its grid cell by exactly 50px — two
+  `--card-padding`s and two border widths — with card 1's attribution
+  painting outside its own card and under card 5's top edge on
+  `/games/lunar-base`.
+
+  An earlier revision of this file claimed "every element like this now sets
+  `box-sizing: border-box` explicitly". Nothing enforced that and it was not
+  true when written. `tests/mockup-layout.test.ts` now makes it true: any rule
+  under `src/` that combines a percentage `width`/`height`/`max-*` with a
+  non-zero padding or border and does not set `box-sizing: border-box` fails
+  the build, by selector and file. `border: 0` and `padding: 0` add no extent
+  and are not flagged.
 
   That same rendering pass found a third defect, in `SiteHeader`'s own
   mobile navigation sheet (inherited, not introduced by this unit): at a
@@ -182,6 +259,17 @@ Next.js storefront and, later, a Medusa backend.
   exactly this: it does not move or resize the sheet, only stops the
   phantom width from being reachable, and this repository introduces nothing
   that is ever meant to be reached by horizontal scrolling.
+
+  **One consequence of that rule is permanent and belongs written down.**
+  With `overflow-x: hidden` on the root two boxes,
+  `document.documentElement.scrollWidth <= clientWidth` can never fail again
+  on this site, whatever overflows — it is no longer a horizontal-overflow
+  detector. Any layout check, in this repository or in the browser-driven
+  harness a later unit adds, must compare **per-element**
+  `getBoundingClientRect()` against the viewport and against each element's
+  own container instead. The 50px card overflow above is the concrete case:
+  the root scroll width was clean at all three widths while five cards each
+  hung 50px out of their cells.
 
   `sharp` is a direct dependency of the storefront for one documented
   reason. Next.js declares it an `optionalDependency` of its own, and its

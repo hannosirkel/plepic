@@ -22,7 +22,7 @@ import { ConsentManager } from "../components/analytics/ConsentManager.js";
 import { RuntimeConfigScript } from "../components/RuntimeConfigScript.js";
 import { isTestHost, loadSiteHostConfig } from "../config/hosts.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
-import type { ClientRuntimeConfig } from "../lib/client-runtime-config.js";
+import { toClientRuntimeConfig } from "../lib/client-runtime-config.js";
 import { getRequestNonce } from "../lib/nonce.js";
 import { getRequestHost } from "../lib/request-host.js";
 
@@ -34,7 +34,14 @@ export default async function RootLayout({ children }: { readonly children: Reac
   const runtimeConfig = getRuntimeConfig();
   const testHost = host !== undefined && isTestHost(host, hostConfig);
 
-  const clientConfig: ClientRuntimeConfig = { ...runtimeConfig, isTestHost: testHost };
+  /*
+   * A named projection, not a spread. This blob is serialized into the HTML of
+   * every route, so a spread published every field `RuntimeConfig` has and
+   * every field it will gain — including the merchant's contact address, on
+   * `/cart` and `/checkout`, which never quote it and whose client-side code
+   * never reads it. See `src/lib/client-runtime-config.ts`.
+   */
+  const clientConfig = toClientRuntimeConfig(runtimeConfig, testHost);
 
   return (
     <html lang="en" data-layer="publisher">

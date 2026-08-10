@@ -1,8 +1,11 @@
 /*
- * One global rule, and the reasoning has to be as narrow as the rule: this
+ * Four global rules. The reasoning for each has to be as narrow as the rule: this
  * repository ships no global stylesheet otherwise (`design/tokens.css` is
  * custom-property declarations only, no selectors that paint anything), so a
- * second reason to add one has to be at least this good.
+ * further reason to add one has to be at least this good. Every one of the four
+ * is here because it is a property of the *document*, not of any component: the
+ * root scroll box, the inherited family, the canvas the browser paints outside
+ * every box, and the space a viewport-pinned element takes out of the page.
  *
  * `SiteHeader`'s mobile navigation sheet (`site-header.module.css`) is
  * `position: fixed; inset-inline-end: 0; transform: translateX(100%)` when
@@ -27,4 +30,94 @@
 html,
 body {
   overflow-x: hidden;
+}
+
+/*
+ * The second rule, found by the same kind of rendering pass and not by any
+ * test: **nothing in this repository was applying `--font-sans`**, so every
+ * page rendered in the user agent's default serif. `design/tokens.css` names
+ * the family and says its fallback stack "must stand on its own: if the face
+ * fails to load the page is still legible and still geometric" — a stack
+ * beginning `"MADE Evolve Sans", "Avenir Next", "Century Gothic", …` that no
+ * element ever asked for. The `@font-face` declarations and the woff/woff2
+ * files are deliberately a later unit's (see `design/README.md` on the
+ * Fontspring obligations); the fallback stack works today and is what the
+ * token exists for.
+ *
+ * `body` rather than `:root`, and family only: type scale, weight and
+ * line-height are per-component decisions the component stylesheets already
+ * make from tokens. Form controls do not inherit `font-family` from their
+ * ancestors, so the ones this repository ships say `font: inherit` (see
+ * `forms.module.css`) or `font-family: inherit`
+ * (`mockups/call-to-action.module.css`, worn by `<button>` as well as `<a>`)
+ * — which is only worth anything once the document has a family to inherit.
+ */
+body {
+  font-family: var(--font-sans);
+}
+
+/*
+ * The third rule: **the canvas**. `html` and `body` carried no `background`
+ * anywhere in this repository, and a browser paints the canvas — everything
+ * outside the root box, which is to say any part of the viewport a short page
+ * does not fill, plus the overscroll gutter at either end — from the root
+ * element's background, falling back to `body`'s. With neither set, that is
+ * user-agent white. Measured at 1280x900 on `/support/lunar-base/rulebook`,
+ * which is deliberately a short page: footer bottom 772, the consent reopen
+ * bar to 840, viewport 900 — **60px of white** below a `data-layer="lunar"`
+ * page whose own surfaces are `#080c23` and `#0d0d3b`. It read as a rendering
+ * fault, and it recurs on every page short enough not to fill the viewport, so
+ * it belongs here and not in one page's stylesheet.
+ *
+ * `--surface-sunken` and not `--surface`, because the canvas is only ever seen
+ * *adjacent* to something, and the thing it is adjacent to at the bottom of
+ * every route in this application is the sunken surface: `SiteFooter` wears it,
+ * and so does `ConsentManager`'s reopen bar, which is the last box in the
+ * document once a visitor has decided. Continuing it is the one choice that
+ * shows no seam.
+ *
+ * **`color` is set with it, and has to be.** A background without its paired
+ * foreground is how a dark canvas becomes a contrast failure: `/cart`,
+ * `/checkout`, all five `/legal/*` routes and the 404 are still placeholders
+ * that render a bare `<main>` with no surface of their own, so their text
+ * inherits straight from `body`. Painting the canvas alone left them at
+ * **1.28:1** — user-agent black on `#151b46`, measured on all eight — where
+ * they had been legible against the user-agent white this rule replaced. The
+ * pair moves them to `--text-on-surface-sunken` on `--surface-sunken`, which
+ * is the token system's own answer and measures 14.2:1. Every route that
+ * *does* have a page root (`homepage`, `lunar-base`, `support`, `about`,
+ * `rulebook`) declares its own `background`/`color` pair from its layer and is
+ * unaffected — which is exactly why both halves belong here and neither alone
+ * does.
+ */
+body {
+  background: var(--surface-sunken);
+  color: var(--text-on-surface-sunken);
+}
+
+/*
+ * The fourth rule: **the space the consent banner takes out of the page**.
+ * `styles/consent-manager.module.css` pins the banner to the bottom of the
+ * viewport with `position: fixed`, which paints it over the page and reserves
+ * nothing. `src/lib/consent-reserved-space.ts` measures the rendered banner and
+ * publishes its height here — see that module for why it is measured rather
+ * than declared, and for the two failures the absence of these two lines caused.
+ *
+ * Both declarations read the same measured value and both are load-bearing:
+ * `padding-block-end` lengthens the document so the footer's last row can be
+ * scrolled clear of the banner, and `scroll-padding-block-end` shrinks the
+ * scrollport the browser scrolls a newly focused control into, so focus lands
+ * above the banner rather than behind it (WCAG 2.2 AA SC 2.4.11). Scroll
+ * padding cannot scroll into space that does not exist, and the space alone
+ * does not stop focus landing under the banner higher up the page.
+ *
+ * The property is absent whenever no banner is shown, so `0px` is the value
+ * every decided visitor — and every server-rendered first paint — computes.
+ */
+html {
+  scroll-padding-block-end: var(--consent-banner-block-size, 0px);
+}
+
+body {
+  padding-block-end: var(--consent-banner-block-size, 0px);
 }

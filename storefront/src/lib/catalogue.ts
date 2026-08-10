@@ -53,8 +53,20 @@ export const mockCatalogue: CatalogueProduct = (catalogueSource as CatalogueFile
 
 export interface ResolvedCatalogue {
   readonly productName: string;
-  /** Formatted with currency, e.g. "€25.00". */
+  /** Formatted with currency, e.g. "€25.00". A bare figure and nothing else: this is the headline slot. */
   readonly price: string;
+  /**
+   * Everything that qualifies the price without being the figure — the tax
+   * note and the shipping note, as one short pair of sentences.
+   *
+   * It exists because {@link priceLine} is a *sentence*. That is right where
+   * prose quotes the price mid-paragraph, and wrong in a display-sized
+   * headline slot, where it wrapped over five lines at 1280 and six at 320
+   * and was then followed by a second line repeating the tax note on its
+   * own. A price component renders {@link price} large and this small; prose
+   * renders {@link priceLine}.
+   */
+  readonly priceQualifiers: string;
   /** The full line the checkout-facing copy quotes: price, tax note and shipping note together. */
   readonly priceLine: string;
   /** The short tax presentation note that accompanies the price on its own. */
@@ -62,6 +74,16 @@ export interface ResolvedCatalogue {
   readonly availability: CatalogueAvailability;
   /** True when {@link availability} is `"InStock"` — the only state this catalogue is ever seeded with today. */
   readonly inStock: boolean;
+  /** The stock statement a buyer reads, derived from {@link availability} and never written as a literal. */
+  readonly availabilityLabel: string;
+  /** The player range as one phrase, e.g. "2–6 players". */
+  readonly playerCount: string;
+  /**
+   * The age marking, e.g. "10+" — a **safety** marking for the product
+   * rather than a difficulty rating. `FeatureSpecStrip.tsx` renders it and
+   * words that distinction.
+   */
+  readonly ageRange: string;
 }
 
 function formatPrice(amount: number, currency: string): string {
@@ -79,15 +101,22 @@ function formatPrice(amount: number, currency: string): string {
 export function resolveCatalogue(product: CatalogueProduct = mockCatalogue): ResolvedCatalogue {
   const price = formatPrice(product.price.amount, product.price.currency);
   const taxNote = product.price.taxIncluded ? "VAT included" : "VAT calculated at checkout";
-  const priceLine = `${price}, ${taxNote}. Shipping calculated at checkout.`;
+  const shippingNote = "Shipping calculated at checkout.";
+  const priceQualifiers = `${taxNote}. ${shippingNote}`;
+  const priceLine = `${price}, ${priceQualifiers}`;
+  const inStock = product.availability === "InStock";
 
   return {
     productName: product.name,
     price,
+    priceQualifiers,
     priceLine,
     taxNote,
     availability: product.availability,
-    inStock: product.availability === "InStock",
+    inStock,
+    availabilityLabel: inStock ? "In stock" : "Out of stock",
+    playerCount: `${product.players.min}–${product.players.max} players`,
+    ageRange: product.ageRange,
   };
 }
 

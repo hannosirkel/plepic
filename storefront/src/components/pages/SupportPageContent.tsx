@@ -10,9 +10,20 @@
  * **The rulebook stops living in Google Drive.** `rulebookLink` (from
  * `content/support.ts`) points at `/support/lunar-base/rulebook`, this site's
  * own route — see `RulebookPageContent.tsx` for the PDF itself.
+ *
+ * **The contact copy is resolved against configuration, and suppressed when
+ * it cannot be.** `content/support.ts`'s `contact.body` ends with "You can
+ * also reach us at {merchantContactAddress}." — a configuration-sourced
+ * placeholder `content/schema.ts` marks `unresolved`, which this page shipped
+ * verbatim, so every visitor read the brace in plain body type at all three
+ * widths. `src/lib/configuration-placeholders.ts` resolves it from
+ * `MERCHANT_CONTACT_ADDRESS` and drops the paragraph when no address is
+ * configured; see that module for why dropping is the only honest third
+ * option.
  */
 import { inTheBox, inTheBoxSummary } from "../../../../content/lunar-base.js";
 import { contact, printedRulebookNote, rulebookLink, rulesFaq, supportIntro } from "../../../../content/support.js";
+import { placeholderValuesFrom, resolvedParagraphs } from "../../lib/configuration-placeholders.js";
 import { ContactForm } from "../forms/ContactForm.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { SiteFooter } from "../SiteFooter.js";
@@ -23,9 +34,20 @@ import styles from "../../styles/pages/support.module.css";
 export interface SupportPageContentProps {
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
+  /** From runtime configuration (`getRuntimeConfig().merchant`). `null` suppresses the copy that quotes it. */
+  readonly merchantContactAddress: string | null;
 }
 
-export function SupportPageContent({ turnstileSiteKey, nonce }: SupportPageContentProps) {
+export function SupportPageContent({
+  turnstileSiteKey,
+  nonce,
+  merchantContactAddress,
+}: SupportPageContentProps) {
+  const contactBody = resolvedParagraphs(
+    contact.body,
+    placeholderValuesFrom({ contactAddress: merchantContactAddress }),
+  );
+
   return (
     <div data-layer="publisher" className={styles.page}>
       <SiteHeader wordmark="primary" />
@@ -102,7 +124,7 @@ export function SupportPageContent({ turnstileSiteKey, nonce }: SupportPageConte
             {contact.heading}
           </h2>
           <div className={styles.contactBody}>
-            {contact.body.map((paragraph) => (
+            {contactBody.map((paragraph) => (
               <p key={paragraph} className={styles.body}>
                 {paragraph}
               </p>

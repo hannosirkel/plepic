@@ -33,7 +33,28 @@
  * medium-light game, REPLAYABLE for the card count that supplies the
  * replay — and that residue, not the box-stated three, is the only judgement
  * call in this file.
+ *
+ * ## The age marking
+ *
+ * The five columns come from `content/`, which this unit may not edit, and
+ * `content/lunar-base.ts`'s `specifications` carries no age entry — so `10+`
+ * appeared nowhere on the served product page at all. It is not invented
+ * here either: `storefront/mock/catalogue.json` already carries
+ * `"ageRange": "10+"`, and the retail box back photographed in
+ * `public/images/box/box-hero-*.webp` prints "PLAYER INFO / 2–6 players, age
+ * 10+". So it is rendered from the catalogue, beneath the strip rather than
+ * as a sixth column: the strip is a five-icon composite rebuilt from a
+ * printed graphic, and a sixth cell would need a sixth icon nothing pairs
+ * with.
+ *
+ * It is worded as a **safety marking, not a play recommendation** — an age
+ * grade on a toy is a conformity statement about the product, and reading it
+ * as "children under ten will not enjoy this" is a different claim. The
+ * CE / EN71-1 / EN71-2 / EN71-3 certification copy that states *why* is
+ * `content/`'s, and belongs to the unit that owns `content/`; it is
+ * deliberately absent here rather than paraphrased into a component.
  */
+import { mockCatalogue } from "../lib/catalogue.js";
 import { specifications } from "../../../content/lunar-base.js";
 import {
   AlienAbductionIcon,
@@ -76,19 +97,30 @@ if (unpaired.length > 0 || specifications.length !== Object.keys(PAIRING).length
   );
 }
 
-export function FeatureSpecStrip() {
+export interface FeatureSpecStripProps {
+  /** The age marking, e.g. `"10+"`. Defaults to `mock/catalogue.json`'s own `ageRange`. */
+  readonly ageRange?: string;
+}
+
+export function FeatureSpecStrip({ ageRange = mockCatalogue.ageRange }: FeatureSpecStripProps = {}) {
   return (
-    <ul className={styles.strip}>
-      {specifications.map((spec) => {
-        const Icon = PAIRING[spec.term]!;
-        return (
-          <li key={spec.term} className={styles.column}>
-            <Icon title="" className={styles.icon} />
-            <span className={styles.term}>{spec.term}</span>
-            <span className={styles.detail}>{spec.detail}</span>
-          </li>
-        );
-      })}
-    </ul>
+    <div className={styles.stripGroup}>
+      <ul className={styles.strip}>
+        {specifications.map((spec) => {
+          const Icon = PAIRING[spec.term]!;
+          return (
+            <li key={spec.term} className={styles.column}>
+              <Icon title="" className={styles.icon} />
+              <span className={styles.term}>{spec.term}</span>
+              <span className={styles.detail}>{spec.detail}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className={styles.ageNote}>
+        <strong className={styles.ageValue}>Age {ageRange}</strong> — a safety marking for this product, not a
+        play recommendation.
+      </p>
+    </div>
   );
 }

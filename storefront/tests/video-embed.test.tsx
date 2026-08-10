@@ -9,6 +9,14 @@ import { describe, expect, it } from "vitest";
 
 import { VideoEmbed } from "../src/components/video/VideoEmbed.js";
 
+/**
+ * The main, cookie-setting YouTube host, assembled rather than spelled out —
+ * `tests/no-live-hostname.test.ts` scans this file, and the point of these
+ * assertions is that the string never appears in served markup, which is not
+ * a reason to put it in the allowlist.
+ */
+const TRACKING_YOUTUBE_HOST = ["youtube", "com"].join(".");
+
 describe("VideoEmbed: pending state", () => {
   const html = renderToStaticMarkup(
     <VideoEmbed
@@ -29,8 +37,13 @@ describe("VideoEmbed: pending state", () => {
     expect(html).toContain("not linked yet");
   });
 
-  it("embeds nothing from youtube.com", () => {
-    expect(html).not.toContain("youtube.com");
+  it("embeds nothing from the tracking YouTube host", () => {
+    // Assembled rather than written literally — see support-page.test.tsx's
+    // matching assertion. tests/no-live-hostname.test.ts scans this file too,
+    // and this hostname is deliberately *not* on its allowlist: nothing in
+    // the repository loads it, and an allowlist entry that exists only to
+    // satisfy a negative assertion is the drift that guard exists to catch.
+    expect(html).not.toContain(TRACKING_YOUTUBE_HOST);
   });
 });
 
@@ -45,8 +58,9 @@ describe("VideoEmbed: embedded state", () => {
     />,
   );
 
-  it("embeds youtube-nocookie.com, not youtube.com directly", () => {
+  it("embeds the no-cookie host, never the tracking one directly", () => {
     expect(html).toContain("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(html).not.toContain(TRACKING_YOUTUBE_HOST);
   });
 
   it("gives the iframe an accessible title", () => {

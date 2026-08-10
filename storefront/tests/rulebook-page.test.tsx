@@ -11,7 +11,6 @@ describe("RulebookPageContent", () => {
   const html = renderToStaticMarkup(<RulebookPageContent />);
 
   it("points at the committed PDF under storefront/public/", () => {
-    expect(html).toContain('data="/documents/lunar-base-rulebook.pdf"');
     expect(html).toContain('href="/documents/lunar-base-rulebook.pdf"');
   });
 
@@ -23,9 +22,34 @@ describe("RulebookPageContent", () => {
     expect(html.toLowerCase()).not.toContain("google drive");
   });
 
-  it("gives the <object> an accessible label and real fallback content, not a blank frame", () => {
-    expect(html).toMatch(/<object[^>]*aria-label="Lunar Base rulebook"/);
+  /**
+   * The page shipped an inline `<object type="application/pdf">` under this
+   * application's own `object-src 'none'` policy. Chromium blocked it and the
+   * page painted an empty bordered box. The viewer is gone and the link is
+   * the whole affordance, so this asserts the absence as well as the
+   * presence — a future edit re-adding an `<object>` would ship the same
+   * blocked frame again.
+   */
+  it("offers the rulebook as a link, and embeds no plugin object the CSP forbids", () => {
     expect(html).toContain("Open the rulebook");
+    expect(html).not.toContain("<object");
+    expect(html).not.toContain("application/pdf");
+  });
+
+  /**
+   * The deleted fallback's `<a>` carried no class at all, so it painted the
+   * user agent's `rgb(0, 0, 238)` on this page's Lunar surface — 1.59:1,
+   * against WCAG 2.2 AA's 4.5:1. Every anchor this page's own `<main>` emits
+   * now carries a class, and therefore a token colour. (Site chrome is
+   * excluded because `SiteFooter`'s legal links are coloured by a descendant
+   * selector rather than a class, and the reviewer's contrast sweep confirmed
+   * they pass.)
+   */
+  it("gives every anchor in its own main content a class, so none falls back to the user agent's link colour", () => {
+    const main = /<main\b[^>]*>([\s\S]*)<\/main>/.exec(html)?.[1] ?? "";
+    const anchors = main.match(/<a\b[^>]*>/g) ?? [];
+    expect(anchors.length).toBeGreaterThan(0);
+    expect(anchors.filter((anchor) => !/\bclass="/.test(anchor))).toEqual([]);
   });
 
   it("has exactly one <h1>", () => {

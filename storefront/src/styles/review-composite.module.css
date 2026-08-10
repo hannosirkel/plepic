@@ -12,6 +12,20 @@
 }
 
 .figure {
+  /*
+   * Load-bearing, and it shipped missing. `height: 100%` under the default
+   * `content-box` sizes the *content* box to the whole grid cell and then
+   * adds `--card-padding` twice and `--card-border-width` twice on top of
+   * it — measured at 50px of overflow per card at 1280, 390 and 320, with
+   * card 1's attribution ("Tabletop Games Blog") painting 26px outside its
+   * own card and under card 5's top edge on /games/lunar-base.
+   *
+   * This repository has no global `box-sizing` reset (see
+   * `site-header.module.css`'s own doc comment), which is exactly why every
+   * rule that combines a percentage size with padding or a border has to say
+   * so itself — as `forms.module.css`'s `.stackedField` already does.
+   */
+  box-sizing: border-box;
   height: 100%;
   display: flex;
   flex-direction: column;

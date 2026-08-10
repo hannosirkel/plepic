@@ -5,6 +5,12 @@
  * homepage hero, the Lunar Base layer on the game page.
  */
 
+.stripGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
 .strip {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -52,4 +58,22 @@
 .detail {
   font-size: var(--step--1);
   color: var(--text-muted);
+}
+
+/*
+ * The age marking sits under the strip rather than in it — see
+ * FeatureSpecStrip.tsx's "The age marking". Note-sized and muted, because it
+ * is a conformity statement about the product and must not read as a badge
+ * or an award.
+ */
+.ageNote {
+  margin: 0;
+  font-size: var(--step--1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.ageValue {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
 }

@@ -129,8 +129,16 @@ const ALLOWED_DOMAINS: readonly string[] = [
   // scoped to two carried findings and catalogue-placeholder resolution, not
   // video CSP, so a future unit supplying a real id must update the CSP too.
   // Recorded in the migration report as a follow-up dependency.
+  //
+  // The main, cookie-setting YouTube host is deliberately **not** here. It
+  // was added beside this entry and nothing in the repository loads it —
+  // `VideoEmbed` uses the no-cookie host and only that, and
+  // `tests/video-embed.test.tsx` asserts the other one never reaches served
+  // markup, assembling the string rather than spelling it. Widening a
+  // publication guard for an entry nothing uses is exactly the drift the
+  // guard exists to prevent; a unit that genuinely needs it adds it then,
+  // with the reference that justifies it.
   "youtube-nocookie.com",
-  "youtube.com",
   // 3. Vendor documentation.
   "nextjs.org",
 ];

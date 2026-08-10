@@ -9,5 +9,11 @@ export default async function SupportPage() {
   const runtimeConfig = getRuntimeConfig();
   const nonce = await getRequestNonce();
 
-  return <SupportPageContent turnstileSiteKey={runtimeConfig.turnstile.siteKey} nonce={nonce} />;
+  return (
+    <SupportPageContent
+      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+      nonce={nonce}
+      merchantContactAddress={runtimeConfig.merchant.contactAddress}
+    />
+  );
 }

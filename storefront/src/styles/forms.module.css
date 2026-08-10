@@ -112,6 +112,11 @@ textarea.stackedField {
 }
 
 .submit {
+  /* A `<button>` does not inherit the document's font. Without this, the one
+     control that submits the form renders in the user agent's own face while
+     everything around it uses `--font-sans` — see `styles/global.css`. */
+  font-family: inherit;
+  font-size: var(--button-font-size);
   min-height: var(--button-min-height);
   padding-inline: var(--button-padding-inline);
   border-radius: var(--button-radius);

@@ -11,7 +11,9 @@ import { pages } from "../../content/pages.js";
 import { SupportPageContent } from "../src/components/pages/SupportPageContent.js";
 
 describe("SupportPageContent", () => {
-  const html = renderToStaticMarkup(<SupportPageContent turnstileSiteKey="test-key" nonce="abc" />);
+  const html = renderToStaticMarkup(
+    <SupportPageContent turnstileSiteKey="test-key" nonce="abc" merchantContactAddress="hello@example.com" />,
+  );
 
   it("covers every anchor content/pages.ts declares for the support route", () => {
     const page = pages.find((candidate) => candidate.route === "support");
@@ -57,5 +59,30 @@ describe("SupportPageContent", () => {
 
   it("has exactly one <h1>", () => {
     expect((html.match(/<h1\b/g) ?? []).length).toBe(1);
+  });
+
+  /**
+   * `content/support.ts`'s contact copy ends with "You can also reach us at
+   * {merchantContactAddress}." — a configuration-sourced placeholder
+   * `content/schema.ts` marks `unresolved`. This page shipped it verbatim, in
+   * plain body type, to every visitor at every width.
+   */
+  describe("the merchant contact placeholder", () => {
+    it("is resolved from configuration when an address is configured", () => {
+      expect(html).toContain("hello@example.com");
+      expect(html).not.toContain("{merchantContactAddress}");
+    });
+
+    it("takes its whole sentence with it when no address is configured, rather than shipping the brace", () => {
+      const unconfigured = renderToStaticMarkup(
+        <SupportPageContent turnstileSiteKey="test-key" nonce="abc" merchantContactAddress={null} />,
+      );
+      expect(unconfigured).not.toContain("{merchantContactAddress}");
+      expect(unconfigured).not.toContain("You can also reach us at");
+      // The rest of the contact section is untouched: dropping is per
+      // paragraph, so an unresolvable sentence never takes a resolvable one.
+      expect(unconfigured).toContain("all of it comes to the same place");
+      expect(unconfigured).toContain('data-testid="turnstile-contact"');
+    });
   });
 });

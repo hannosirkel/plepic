@@ -77,6 +77,50 @@
   font-weight: var(--font-weight-medium);
 }
 
+/*
+ * The hero's commercial block: price, its qualifiers, the stock statement and
+ * the Buy action. The decision order asks for price, stock, player count and
+ * Buy in the hero; the page shipped with none of them above the fold.
+ *
+ * Deliberately *not* a second purchase panel — no card, no border, no shadow.
+ * It is the hero's own copy column continuing, so a buyer reads one price on
+ * this page in two places rather than meeting what looks like two offers.
+ */
+.heroPurchase {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  margin-top: var(--space-2xs);
+}
+
+.heroPrice {
+  margin: 0;
+  font-size: var(--purchase-price-size);
+  font-weight: var(--purchase-price-weight);
+  color: var(--purchase-price-color);
+  line-height: var(--purchase-price-leading);
+}
+
+.heroPriceNote {
+  margin: 0;
+  font-size: var(--purchase-note-size);
+  color: var(--purchase-note-color);
+}
+
+.heroAvailability {
+  margin: 0;
+  font-size: var(--purchase-meta-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--purchase-availability-color);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin-top: var(--space-2xs);
+}
+
 .heroImage {
   width: 100%;
   height: auto;
