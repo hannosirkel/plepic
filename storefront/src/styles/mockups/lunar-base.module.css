@@ -93,12 +93,33 @@
   margin-top: var(--space-2xs);
 }
 
-.heroPrice {
+/*
+ * The operator's emphasised line in the hero — figure and tax qualification
+ * together, shipping and duties below in `.heroPriceNote`. Deliberately the
+ * same treatment as `purchase-panel.module.css`'s `.priceHeadline`, which
+ * records the measurements, the three decisions behind them and the one thing
+ * that was tried and removed: one paragraph, one inline flow, the figure
+ * promoted to `--purchase-price-size` and everything else at `--step--1`, so
+ * the operator's words need no shortening and the line does not become a
+ * display-sized wall. In this wider column that is 1 line at 1280 and 2 at
+ * 390 and 320.
+ *
+ * Not shared with the panel through a common class because the two live in
+ * different CSS modules and this repository composes no cross-module classes.
+ * `tests/price-presentation.test.tsx` asserts the property on both surfaces
+ * instead — in the markup and in these stylesheets — which is the drift that
+ * actually matters.
+ */
+.heroPriceHeadline {
   margin: 0;
-  font-size: var(--purchase-price-size);
+  font-size: var(--step--1);
   font-weight: var(--purchase-price-weight);
   color: var(--purchase-price-color);
   line-height: var(--purchase-price-leading);
+}
+
+.heroPriceFigure {
+  font-size: var(--purchase-price-size);
 }
 
 .heroPriceNote {

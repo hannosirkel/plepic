@@ -450,9 +450,71 @@ describe("the VAT section makes one statement about tax", () => {
       text,
       "the page asserts VAT is included, unqualified",
     ).not.toMatch(/VAT included(?! where applicable)/);
-    expect(text).toContain(
-      "Where VAT is due on your order, it is contained within that figure rather than added to it",
+  });
+
+  /**
+   * **Unify was not delete — this is the assertion that says so.**
+   *
+   * The operator answered "unify to my wording" on 2026-08-10 to a callout and
+   * a Minor 2 replacement sentence that qualified VAT in different words one
+   * line apart. The *phrasing* that went is the reader's; the *substance* is
+   * not the operator's to have dropped, because they were not asked about it.
+   * Two things had to survive, and this fails if either goes:
+   *
+   * 1. **How the tax sits in the figure** — contained within it, not added to
+   *    it. "Included" alone does not say that; a net price with tax still to
+   *    come is also, loosely, a price with tax "included" in what is owed.
+   * 2. **That the figure is identical where no tax is due** — the export case
+   *    Minor 2 was written for.
+   */
+  it("still says how the tax sits in the figure, and that the figure is the same where none is due", () => {
+    const text = visibleText(render(shipping!, CONFIGURED)).replaceAll(/\s+/g, " ");
+
+    expect(
+      text,
+      "the page no longer says the tax is contained within the figure rather than added to it",
+    ).toMatch(/contained within that figure rather than added to it/);
+    expect(
+      text,
+      "the page no longer says the figure is unchanged where no VAT is due",
+    ).toMatch(/does not change[^.]*including where no VAT is due at all/);
+  });
+
+  /**
+   * And the duplication itself: the qualification is stated **once**. The
+   * callout's "where applicable" is the operator's conditional; the body must
+   * not restate it in a second vocabulary, which is exactly what "Where VAT is
+   * due on your order … where it is not due" did one line below it.
+   */
+  it("states the conditional once, in the operator's words", () => {
+    const vatText = [
+      vat?.callout?.lead ?? "",
+      vat?.callout?.detail ?? "",
+      ...(vat?.body ?? []),
+    ].join(" ");
+
+    expect(vatText).toContain("VAT included where applicable");
+    expect(
+      vatText,
+      "the body restates the callout's conditional in its own words, one line below it",
+    ).not.toMatch(/[Ww]here VAT is due/);
+  });
+
+  /**
+   * The legal page and the product surfaces carry the operator's emphasised
+   * line **character for character**, from two different places —
+   * `content/legal/shipping.ts`'s `callout.lead` and `src/lib/catalogue.ts`'s
+   * `priceHeadline`. Nothing but this pin stops one of them being edited
+   * alone, and the operator's own recorded reasoning is that a legal page
+   * saying "where applicable" over a product page saying something else moves
+   * the contradiction up one level, to the more prominent page.
+   */
+  it("carries the identical emphasised line and second line to the ones the product surfaces render", () => {
+    const catalogue = resolveCatalogue();
+    expect(resolveCataloguePlaceholders(vat?.callout?.lead ?? "", catalogue)).toBe(
+      catalogue.priceHeadline,
     );
+    expect(vat?.callout?.detail).toBe(catalogue.priceShippingNote);
   });
 });
 

@@ -70,11 +70,9 @@ a price mid-paragraph and wrong in a display-sized slot.
 `/legal/shipping`'s VAT section uses the bare `{price}` inside the operator's
 own price presentation, because that section exists to say something more
 careful than a flat "VAT included": no EU VAT is due on an export, so the
-second qualified read (Minor 2) replaced the flat claim with *"where VAT is due
-on your order, it is contained within that figure rather than added to it;
-where it is not due, the price is the same"*. Interpolating `{priceLine}` above
-that sentence would put the claim the sentence exists to qualify back on the
-page, one line higher.
+second qualified read (Minor 2) struck the flat claim. Interpolating
+`{priceLine}` above the replacement would put the claim it exists to qualify
+back on the page, one line higher.
 
 **The tax qualification is now the same everywhere — operator, 2026-08-10.**
 The supplied wording is two lines, the first emphasised:
@@ -85,7 +83,7 @@ The supplied wording is two lines, the first emphasised:
 
 It is content on `/legal/shipping` (a `callout`, which is the model shape for a
 disclosure whose *formatting* is part of the operator's answer) and it is the
-catalogue's `priceQualifiers`, which the purchase panel, the product hero and
+catalogue's tax qualification, which the purchase panel, the product hero and
 the shipping FAQ all render. Both halves matter: a legal page saying *"where
 applicable"* over a product page saying *"VAT included"* flatly would have moved
 the contradiction Minor 2 removed up one level, to the more prominent page. The
@@ -94,6 +92,49 @@ euro figure stays `{price}`, bound to the catalogue, on both.
 The same answer deleted the `taxNote` placeholder. It resolved to the bare
 "VAT included" alone, no copy used it, and a live resolver for a string we have
 decided is misleading in a legal context is a hazard rather than an asset.
+
+**The format is part of the answer too, and the product surfaces were not
+honouring it — "unify to my wording", operator, 2026-08-10.** The first
+revision carried the operator's *words* everywhere and their *line break*
+nowhere but `/legal/shipping`: the purchase panel and the product hero rendered
+the figure large and the whole qualifier string small, so *"VAT included where
+applicable"* was small print on the two most prominent surfaces on the site and
+an emphasised line on the least prominent one. The operator's boundary is now
+data rather than each component's reading of one concatenated string — the
+catalogue resolves an emphasised line (`{price} · VAT included where
+applicable`) and a plain one (the shipping and duties sentence) as separate
+fields, and `storefront/tests/price-presentation.test.tsx` pins both, plus the
+character-for-character equality between the emphasised line and this page's
+`callout` lead.
+
+The wrap that the demotion was working around is answered typographically, not
+by shortening the operator's string: the figure keeps its display size and the
+qualification sits beside it at reading size in the same inline flow. Measured
+in Chromium against a real build with the stylesheets confirmed loaded, the
+emphasised block is one line at 1280 and two at 390 and 320 — see
+`README.md` for the numbers.
+
+**The property, stated so a later surface can be judged against it.** *Wherever
+the price is presented as a headline, the emphasised line carries the price and
+the VAT qualifier and the unemphasised line carries the shipping and duties
+sentence.* It reaches the purchase panel and the product hero. It does **not**
+reach the basket and checkout summaries, which present no headline price — the
+goods figure is a table cell, `/cart`'s total is a pending statement rather than
+a figure, and the note there qualifies the summary rather than any one figure
+in it — and it does not reach prose quoting `{priceLine}` mid-paragraph, where
+a sentence is the right shape.
+
+**And `/legal/shipping` states the qualification once — same answer, same
+date.** The operator's callout and Minor 2's replacement sentence sat one line
+apart and qualified VAT in different words; the operator's phrasing governs, so
+the restatement goes. **Unify was not delete.** What the qualified reader put
+there beyond the callout survives in the body: *"Included means contained
+within that figure rather than added to it"* — the inclusive-pricing claim, now
+a gloss on the operator's own word rather than a second, differently-worded
+conditional — and the export case, made explicit on the sentence that already
+said the figure never changes (*"… including where no VAT is due at all"*). The
+delivery-address rule and the business-buyer paragraph are untouched, and no
+other legal page was edited on this decision.
 
 Stock is unlimited and unmanaged, so availability is the phrase **In stock** and
 never a count; a number would be a fabrication and a low-stock nudge would be a
