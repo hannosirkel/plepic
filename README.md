@@ -138,28 +138,46 @@ Next.js storefront and, later, a Medusa backend.
   `tests/browser-storage-disclosure.test.ts` walks `src/` for Web Storage
   writes and requires a sentence per store found.
 
-  **That guard is narrower than "requires a sentence per store" sounds, and the
-  gap matters more than the coverage.** Web Storage has exactly two areas, this
-  site writes both, and both are disclosed — so the per-store requirement can
-  never *newly* fire. What the walk actually protects, both proved by making it
-  fail, is the **removal** of a disclosure (deleting a sentence, or a store
-  ceasing to be written, which trips the scan's own non-vacuity check) and the
-  addition of a **first-party cookie** by `src/`, which would need a table row
-  with a provider and a duration and is an operator decision rather than an
-  inference. Two things it does not see: a store outside Web Storage and
-  cookies — IndexedDB and Cache Storage are invisible to it — and, more
-  dangerously, **a new key in an area that is already disclosed.**
+  **That guard is a floor, not a proof, and this paragraph has twice claimed
+  otherwise.** It said a third store "cannot be added without the notice growing
+  with it"; corrected, it admitted "two things it does not see" and presented
+  that pair as the whole set. Review demonstrated a further escape each time, in
+  the half the text was most confident about. **Read what follows as what is
+  known to escape, never as what can.** A green run means the known forms are
+  absent; it is not evidence that nothing is stored and nothing is set.
 
-  **That last gap is a live hazard for Task 5 and not a hypothetical.** The
+  What the walk does protect, each proved by making it fail: the **removal** of
+  a disclosure (deleting a sentence, or a store ceasing to be written, which
+  trips the scan's own non-vacuity check); the arrival of a **new module**
+  writing browser storage, since the write sites are pinned to
+  `cart-store.tsx` and `ConsentManager.tsx`; and a **first-party cookie** set
+  through any of the forms it recognises — a `document.cookie` assignment,
+  `.cookies.set(` on a `NextRequest` or `NextResponse` jar, and `cookies()`
+  from `next/headers`. The last two were added after review pass 2 showed both
+  passing green, which matters because Task 5's Medusa checkout is exactly the
+  unit that would persist a cart id as a server-set cookie, and a first-party
+  cookie with no row in a table captioned "Cookies this site can set" is the
+  worst outcome this page has.
+
+  Known escapes: a store outside Web Storage and cookies (IndexedDB, Cache
+  Storage); a cookie written through a form the scan does not recognise, of
+  which an aliased receiver — `const jar = document; jar.cookie = …` — is the
+  honest example, since no text scan follows an assignment; and **a new key in
+  an area already disclosed.**
+
+  **That last one is a live hazard for Task 5 and not a hypothetical.** The
   shipped sentence says the basket store "records nothing but which game you
   chose and how many", and it is operator-approved copy on a page carrying two
   qualified-reader reviews. Task 5 replaces this provider's persistence with a
   Medusa cart id and builds the real checkout, so Task 5 is the unit that will
   meet this: caching a shipping address, an email address or an order draft
-  under a second `sessionStorage` key would make that sentence **false while
-  every test in this repository stays green.** If Task 5 stores anything in a
-  browser beyond a product id and a quantity, `/legal/privacy` has to change
-  with it, and no guard will say so — it is a review item, not a red build.
+  would make that sentence false. A *second module* doing so is now caught; a
+  second key inside `cart-store.tsx` itself is not, because the write is
+  `setItem(STORAGE_KEY, …)` — an identifier — and asserting permitted keys
+  statically needs constant resolution the scan does not do. That residue is
+  deferred deliberately. **If Task 5 stores anything in a browser beyond a
+  product id and a quantity, `/legal/privacy` has to change with it, and no
+  guard will necessarily say so — it is a review item, not a red build.**
 
   **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
   `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and
