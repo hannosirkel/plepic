@@ -497,10 +497,18 @@ while its prose still contains an unresolved placeholder.
 
 None of these blocks the next unit: the pages are laid out against the
 placeholders, and the placeholders resolve at render time from configuration.
-They block **publication**, which is what `reviewStatus` records — and, since
-the second read, the render itself says so: an unconfigured legally required
-value appears as `[not configured: …]` with a notice on the page, rather than
-being dropped the way optional prose is.
+The rest block **publication**, which is what `reviewStatus` records — and,
+since the second read, the render itself says so: an unconfigured legally
+required value appears as `[not configured: …]` with a notice on the page,
+rather than being dropped the way optional prose is.
+
+**One row blocks nothing at all, publication included**, and the sentence above
+would otherwise sweep it in. The Consumer Disputes Committee's web address is an
+enhancement: the prose on `/legal/terms` discharges Article 6(1)(t) CRD on its
+own, an unset address renders one link fewer and shows no gap marker and no
+incompleteness notice, and the mechanism that would have made it a blocker was
+deleted rather than emptied. Supplying it improves the page. **Holding
+publication for it would be holding it for nothing.**
 
 ---
 

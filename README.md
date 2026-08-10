@@ -130,17 +130,36 @@ Next.js storefront and, later, a Medusa backend.
   image. On a live hostname `?mock=filled` is a `/cart` with an ignored query
   string.
 
-  **Both browser stores this site writes are disclosed on `/legal/privacy`,
-  and that is derived rather than remembered.** The basket lives in
-  `sessionStorage` and the analytics consent decision in `localStorage`;
-  neither is a cookie, so neither is a row in the page's cookie table — they
-  are two sentences of prose above it, each naming where it is kept, how long
-  it survives and what it holds. `tests/browser-storage-disclosure.test.ts`
-  walks `src/` for Web Storage writes and requires a sentence per store found,
-  so a third store cannot be added without the notice growing with it. It also
-  fails outright if `src/` ever sets a cookie of its own, because that needs a
-  table row with a provider and a duration and is an operator decision, not an
-  inference.
+  **Both browser stores this site writes are disclosed on `/legal/privacy`.**
+  The basket lives in `sessionStorage` and the analytics consent decision in
+  `localStorage`; neither is a cookie, so neither is a row in the page's cookie
+  table — they are two sentences of prose above it, each naming where it is
+  kept, how long it survives and what it holds.
+  `tests/browser-storage-disclosure.test.ts` walks `src/` for Web Storage
+  writes and requires a sentence per store found.
+
+  **That guard is narrower than "requires a sentence per store" sounds, and the
+  gap matters more than the coverage.** Web Storage has exactly two areas, this
+  site writes both, and both are disclosed — so the per-store requirement can
+  never *newly* fire. What the walk actually protects, both proved by making it
+  fail, is the **removal** of a disclosure (deleting a sentence, or a store
+  ceasing to be written, which trips the scan's own non-vacuity check) and the
+  addition of a **first-party cookie** by `src/`, which would need a table row
+  with a provider and a duration and is an operator decision rather than an
+  inference. Two things it does not see: a store outside Web Storage and
+  cookies — IndexedDB and Cache Storage are invisible to it — and, more
+  dangerously, **a new key in an area that is already disclosed.**
+
+  **That last gap is a live hazard for Task 5 and not a hypothetical.** The
+  shipped sentence says the basket store "records nothing but which game you
+  chose and how many", and it is operator-approved copy on a page carrying two
+  qualified-reader reviews. Task 5 replaces this provider's persistence with a
+  Medusa cart id and builds the real checkout, so Task 5 is the unit that will
+  meet this: caching a shipping address, an email address or an order draft
+  under a second `sessionStorage` key would make that sentence **false while
+  every test in this repository stays green.** If Task 5 stores anything in a
+  browser beyond a product id and a quantity, `/legal/privacy` has to change
+  with it, and no guard will say so — it is a review item, not a red build.
 
   **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
   `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and

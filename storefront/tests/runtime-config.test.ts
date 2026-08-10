@@ -279,7 +279,7 @@ describe("RUNTIME_ENV_VARS is the complete set of variables src/ reads", () => {
  *    is the actual class the false claim belongs to.
  *
  * The blocklist stays exact phrases rather than becoming a pattern that hunts
- * paraphrase — that decision is argued at the assertion itself, and a fifth
+ * paraphrase — that decision is argued at the assertion itself, and a seventh
  * unrelated wording would still escape it. The positive check below is the
  * counterweight, and is why "say nothing at all" is not a way to pass.
  */

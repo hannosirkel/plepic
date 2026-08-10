@@ -18,9 +18,34 @@
  *
  * A hand-written list cannot fail on a file nobody added to it, and this
  * repository has already shipped one guard that was inert for exactly that
- * reason (see `tests/helpers/source-files.ts`). A third store added in a third
- * file is precisely the event this test exists to catch, so the list of files
- * is a `readdir` and the list of store kinds is whatever that walk finds.
+ * reason (see `tests/helpers/source-files.ts`). The `readdir` is what makes the
+ * cookie assertion and the non-vacuity check independent of *where* the write
+ * lives, so a first-party cookie set from a file added next week is caught
+ * exactly as one added here would be.
+ *
+ * ## What this does not catch, stated because the README once said otherwise
+ *
+ * "A sentence per store found" reads like a guard against a third store, and it
+ * is not one. Web Storage has exactly two areas, this site writes both, and
+ * both are disclosed, so that requirement can never *newly* fire; what it
+ * really protects is a disclosure being **removed**. Two escapes are green
+ * today and both were demonstrated rather than reasoned about:
+ *
+ * 1. **A store outside Web Storage and cookies.** IndexedDB, Cache Storage and
+ *    the rest are invisible to the scan below.
+ * 2. **A new key in an area already disclosed** — and this one is a live hazard
+ *    rather than a curiosity. `/legal/privacy` says the basket store "records
+ *    nothing but which game you chose and how many", which is operator-approved
+ *    copy. A second `sessionStorage` key holding a shipping address, an email
+ *    address or an order draft — the obvious shape of Task 5's checkout — makes
+ *    that sentence false with this file still green. Task 5 replaces
+ *    `cart-store.tsx`'s persistence and builds that checkout; if it stores
+ *    anything beyond a product id and a quantity, the privacy notice changes
+ *    with it, and nothing here will demand it. See `README.md`.
+ *
+ * Closing the second one properly means asserting the *keys* a deployment may
+ * write, which is a different guard against a different contract, and is worth
+ * building when there is a second key to name rather than speculatively now.
  *
  * ## Why `document.cookie` is an assertion and not a mapping
  *
