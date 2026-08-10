@@ -82,8 +82,11 @@ export interface LegalPageContentProps {
   readonly values: ConfigurationPlaceholderValues;
   /**
    * From runtime configuration (`getRuntimeConfig().externalTargets`). Absent
-   * is the same as unconfigured, which for a required target is a named gap
-   * rather than a dropped link.
+   * is the same as unconfigured, and unconfigured is a dropped link — no
+   * destination is a required disclosure, so an unset one produces no gap
+   * marker and no incompleteness notice. Defaulting to `{}` is a real default
+   * rather than a shortcut: see this file's doc comment above and
+   * `../mockups/link-target.ts`.
    */
   readonly externalTargets?: ExternalTargetUrls;
   /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */

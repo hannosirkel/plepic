@@ -14,15 +14,26 @@
  * a navigation. It is kept in **`sessionStorage`, not a cookie**, and that is
  * a compliance decision rather than a technical preference:
  * `content/legal/privacy.ts` carries a table captioned "Cookies this site can
- * set" listing exactly three, and `content/legal/` is not this unit's to edit
- * — a fourth cookie set by this site would make a merged, legally-read page
- * false. A basket is in any case storage "strictly necessary for a service the
+ * set" listing exactly three, and `content/legal/` was not the cart unit's to
+ * edit — a fourth cookie set by this site would make a merged, legally-read
+ * page false. A basket is in any case storage "strictly necessary for a service the
  * user explicitly requested" under ePrivacy Article 5(3) and needs no consent.
  *
  * **What is stored is a product id and a quantity.** Never a price (the
  * catalogue is the only source of a figure, so a tampered or stale stored
  * price cannot reach a total), never an address, never anything about a
  * person.
+ *
+ * **That sentence is also on `/legal/privacy`, as operator-approved copy: the
+ * basket store "records nothing but which game you chose and how many".
+ * Storing anything more here — a shipping address, an email address, an order
+ * draft — makes a legal page false.** And it does so *quietly from this file*:
+ * `tests/browser-storage-disclosure.test.ts` pins the write sites, so a new
+ * module persisting something would go red, but a second key added inside this
+ * one would not. The write is `setItem(STORAGE_KEY, …)`, an identifier, which
+ * is why the guard stops at modules rather than keys. Read the hazard in
+ * `README.md` before adding one; this is the checkout's shape, so Task 5 is
+ * where it lands.
  *
  * ## Why the read is a layout effect and not a render
  *

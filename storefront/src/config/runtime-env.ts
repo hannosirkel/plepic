@@ -49,16 +49,26 @@ export const RUNTIME_ENV_VARS = [
   "ANALYTICS_MEASUREMENT_ID",
   /**
    * The web address of the Consumer Disputes Committee at the Estonian
-   * Consumer Protection and Technical Regulatory Authority — the access method
-   * Article 6(1)(t) CRD requires alongside the name of the out-of-court body.
+   * Consumer Protection and Technical Regulatory Authority.
    *
    * It is configuration for the same reason the `MERCHANT_*` set is: `content/`
    * may carry no hostname and no absolute URL, so the copy on `/legal/terms`
    * carries only the `consumer-disputes-committee` external-target id and a
-   * deployment supplies the URL. **Absent is not optional here either** — the
-   * page renders a named gap and the incompleteness notice, exactly as it does
-   * for a missing registration number, rather than serving a legal notice that
-   * names a forum a reader has no way to reach.
+   * deployment supplies the URL.
+   *
+   * **Absent is optional here, unlike the set above.** The operator, with the
+   * qualified reviewer's manual verification on 2026-08-10, ruled that naming
+   * the out-of-court body without an access method satisfies Article 6(1)(t)
+   * CRD, and `content/legal/terms.ts` names it in its own prose. The address is
+   * therefore an enhancement: an unset variable renders one link fewer and
+   * changes nothing else — no gap marker, and no incompleteness notice. The
+   * mechanism that would have produced one was removed rather than emptied, so
+   * there is no set to add this id back into; see
+   * `src/components/mockups/link-target.ts` for the rule and
+   * `tests/legal-pages.test.tsx` for both states asserted.
+   *
+   * It is still worth supplying — the page is better with it — but it does not
+   * gate the page's completeness and must not be held for.
    */
   "EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE",
   /**

@@ -56,6 +56,34 @@
  * disclosed before the operator's table arrived and it still is; dropping it
  * would have quietly lost half of what Minor 7 asked for.
  *
+ * ## The basket was the third browser store, and was undisclosed, 2026-08-10
+ *
+ * `storefront/src/lib/cart-store.tsx` keeps the basket in `sessionStorage` under
+ * `plepic.basket`, and this section named only the consent answer — so the page
+ * described two of the three ways this site stores something in a browser and
+ * read as though it had described all of them. A sentence now says so, and it
+ * is **prose above the table for exactly the reasons the consent answer is**:
+ * it is not a cookie, it has no provider and no expiry, and three of the four
+ * columns would again have been empty. It is also a disclosure nothing obliges:
+ * a basket is storage "strictly necessary for a service the user explicitly
+ * requested" under ePrivacy Article 5(3), and what it holds — a product id and
+ * an integer — is not personal data. It is here for transparency, which is why
+ * it is a statement rather than a consent question.
+ *
+ * The sentence deliberately mirrors the consent-answer sentence above it —
+ * where it is stored, how long it survives, and what it contains, in that
+ * order — so the two read as one pattern rather than as two authors.
+ *
+ * Its claims were checked against a running build rather than against the
+ * comment in `cart-store.tsx`: after adding the game to the basket,
+ * `sessionStorage` held `{"plepic.basket":"[{\"id\":\"lunar-base\",
+ * \"quantity\":1}]"}`, `localStorage` held only the consent decision, and
+ * `document.cookie` was empty. If the shape of what is stored ever changes,
+ * **this sentence is part of what has to change with it** —
+ * `storefront/tests/browser-storage-disclosure.test.ts` derives the set of
+ * stores from a walk of `storefront/src/` and fails when one of them has no
+ * sentence here.
+ *
  * **Minor 6 — newsletter single opt-in — is deliberately not fixed.** It is
  * lawful (Estonian ECA § 103¹ requires prior consent, and EU law mandates
  * double opt-in nowhere); the residual exposure is evidential under Article
@@ -88,6 +116,7 @@ export const privacy: LegalPage = {
         "The lawful basis for analytics and for the advertising measurement pixel is your consent, and nothing else. You may withdraw it at any time from the link in the footer, which reopens the same choice. Withdrawing stops future measurement; it does not retroactively erase what was already collected.",
         "The parts of the site that are not measurement — buying the game, contacting us, reading the rules — need no consent and are unaffected by your answer.",
         "Your answer to the measurement question is stored by this site in your browser's local storage rather than as a cookie. It is kept until you clear your browser data or change the answer, and it records nothing but the word granted or declined.",
+        "The contents of your basket are stored by this site in your browser's session storage rather than as a cookie. It is kept only until you close the tab, and it records nothing but which game you chose and how many.",
       ],
       table: {
         caption: "Cookies this site can set",
