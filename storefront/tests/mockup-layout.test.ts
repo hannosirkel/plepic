@@ -831,6 +831,101 @@ describe("a percentage-sized box that also has padding or a border says which bo
   });
 });
 
+/**
+ * `--accent-fill` is a background, and `design/tokens.css` says so in its own
+ * comment: it "is a background and is not readable as text". Used as a `color`
+ * it measures **2.91:1** on this site's off-white surface and **3.19:1** on
+ * white, at `--step--1` (14px) weight 500 — WCAG 1.4.3 asks for 4.5:1, and both
+ * numbers are measurements from a browser, not estimates.
+ *
+ * It shipped anyway, twice, and survived a fix pass: `pages/shop.module.css`
+ * copied `.fieldError` out of `styles/forms.module.css`, a review found and
+ * fixed the copy, and the original stood for another pass. A third pass proved
+ * by mutation that reverting either rule left the whole suite green — nothing
+ * in this repository could see it. This is that missing check, and it lives
+ * here rather than in a form-specific suite because `scanDir` already reads
+ * **every** `.module.css` under `src/`: a third copy in a fourth stylesheet is
+ * caught the day it is written.
+ *
+ * The property scanned is `color` alone. `--accent-fill` as a `background`, a
+ * `border-color` or a marker is what the token is for — `.fieldError`'s own
+ * `border-inline-start` is the shape that replaced the defect — and
+ * `--accent-fill-text` is a different token, so `var(--accent-fill-text)` must
+ * not match. Both facts are asserted below.
+ */
+const ACCENT_FILL = /var\(\s*--accent-fill\s*\)/;
+
+function fillUsedAsText(
+  sheets: readonly { readonly name: string; readonly rules: readonly Rule[] }[],
+): readonly string[] {
+  const offenders: string[] = [];
+  for (const sheet of sheets) {
+    for (const rule of sheet.rules) {
+      const value = declaration(rule.body, "color");
+      if (value !== undefined && ACCENT_FILL.test(value)) {
+        offenders.push(`${sheet.name} ${rule.selector}: color: ${value}`);
+      }
+    }
+  }
+  return offenders.toSorted();
+}
+
+describe("--accent-fill is never used as a text colour", () => {
+  it("is used as a colour by no rule in any stylesheet under src/", () => {
+    expect(fillUsedAsText(stylesheets)).toEqual([]);
+  });
+
+  it("read the two stylesheets that shipped the defect, so that means something", () => {
+    const names = stylesheets.map((sheet) => sheet.name);
+    expect(names).toContain(join("src", "styles", "forms.module.css"));
+    expect(names).toContain(join("src", "styles", "pages", "shop.module.css"));
+  });
+});
+
+describe("the text-colour check has teeth", () => {
+  const check = (css: string): readonly string[] =>
+    fillUsedAsText([{ name: "probe.module.css", rules: parseRules(stripComments(css)) }]);
+
+  it("flags the exact rule both stylesheets shipped", () => {
+    const shipped = `
+      .fieldError {
+        margin: 0;
+        font-size: var(--step--1);
+        font-weight: var(--font-weight-medium);
+        color: var(--accent-fill);
+      }
+    `;
+    expect(check(shipped)).toEqual(["probe.module.css .fieldError: color: var(--accent-fill)"]);
+  });
+
+  it("passes the rule that replaced it — navy text, orange as a marker", () => {
+    const fixed = `
+      .fieldError {
+        color: var(--text);
+        border-inline-start: var(--border-width-thick) solid var(--accent-fill);
+        padding-inline-start: var(--space-2xs);
+      }
+    `;
+    expect(check(fixed)).toEqual([]);
+  });
+
+  it("does not confuse --accent-fill-text, which is a foreground token", () => {
+    expect(check(`.chip { color: var(--accent-fill-text); }`)).toEqual([]);
+  });
+
+  it("leaves the token's real uses alone", () => {
+    expect(
+      check(`.button { background: var(--accent-fill); border-color: var(--accent-fill); }`),
+    ).toEqual([]);
+  });
+
+  it("sees it inside a media query too, where a copy would hide well", () => {
+    expect(
+      check(`@media (max-width: 860px) { .fieldError { color: var(--accent-fill); } }`),
+    ).toEqual(["probe.module.css .fieldError: color: var(--accent-fill)"]);
+  });
+});
+
 describe("the layout check has teeth", () => {
   const overlapping = `
     .hero { display: grid; grid-template-areas: "copy image"; }

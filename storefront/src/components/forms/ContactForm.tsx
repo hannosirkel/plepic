@@ -4,23 +4,43 @@
  * The contact form on `/support/lunar-base` — content/support.ts's
  * `contactForm` copy, mounted with `TurnstileWidget` and `HoneypotField` for
  * the same reason `NewsletterForm` is: both were built and mounted nowhere
- * until this unit. Server-side verification is Task 5's; see
- * `NewsletterForm.tsx`'s doc comment for why no network call is wired here
- * yet and why that is a deliberate, recorded trade rather than an oversight.
+ * until this unit. Server-side verification is Task 5's.
  *
  * Four required fields (name, email, subject, message), each with its own
  * native validation and an error tied to it with `aria-describedby` and
  * `aria-invalid` — WCAG 3.3.1/3.3.2. `noValidate` on the `<form>` turns off
  * the browser's own (inconsistently accessible) validation bubble in favour
  * of this component's own, identically-styled one for every field.
+ *
+ * ## Nothing typed here reaches the URL, in any state of this page
+ *
+ * This form used to be `<form onSubmit={…}>` with no `method` and no
+ * `action`, which is a GET form — and a GET serialises every named control,
+ * not only the ones somebody typed into. A press before hydration, or with
+ * JavaScript off, put **5 of this form's 5 controls** into the query string:
+ * a name, an email address, a subject, the entire message body, and
+ * `additional-notes`, which is `HoneypotField`'s hidden anti-spam input. From
+ * there into browser history, the next request's `Referer`, and every access
+ * log between the tunnel and Loki. It now carries a Server Function as its
+ * `action`, so the browser sends a `POST` with the values in the request
+ * body. See `./public-form-actions.ts`, and `NewsletterForm.tsx` for the same
+ * note on the form it shares this defect and this fix with.
+ *
+ * A valid submission is answered with `contactForm.notSentMessage`, hydrated
+ * or not, identically: this build has no submission host, so the honest
+ * answer is that the message was not delivered and the address printed above
+ * the form is the way through. Doing nothing silently — which is what this
+ * component did before — reads as success to the person who pressed Send.
  */
 
-import { useId, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { contact, contactForm } from "../../../../content/support.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { reportContactNotSent } from "./public-form-actions.js";
+import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
 
 export interface ContactFormProps {
@@ -46,9 +66,32 @@ const FIELDS: readonly FieldSpec[] = [
 export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
   const baseId = useId();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
+  const [outcome, submit] = useActionState<PublicFormOutcome | null, FormData>(
+    reportContactNotSent,
+    null,
+  );
+  const outcomeRef = useRef<HTMLParagraphElement>(null);
+  /** See `NewsletterForm.tsx`: focus the answer only after a press made here. */
+  const dispatched = useRef(false);
 
+  /**
+   * See `NewsletterForm.tsx` and `PublicFormOutcome`: the outcome is a new
+   * object per submission, which is what makes this effect re-run — and the
+   * answer therefore re-focus — on a second consecutive press.
+   */
+  useEffect(() => {
+    if (outcome === null || !dispatched.current) return;
+    dispatched.current = false;
+    outcomeRef.current?.focus();
+  }, [outcome]);
+
+  /**
+   * `preventDefault()` is called only for an invalid submission. A valid one
+   * goes through to the form's `action`, which is what makes the hydrated
+   * answer and the unhydrated answer the same sentence — see this file's doc
+   * comment and `./public-form-actions.ts`.
+   */
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
     const form = event.currentTarget;
     const nextErrors: Record<string, string> = {};
     let firstInvalid: HTMLElement | null = null;
@@ -69,14 +112,24 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
 
     setErrors(nextErrors);
     if (firstInvalid !== null) {
+      event.preventDefault();
       firstInvalid.focus();
       return;
     }
-    // Nothing further to do yet — see NewsletterForm.tsx's doc comment.
+
+    dispatched.current = true;
   }
 
+  const anyError = Object.keys(errors).length > 0;
+
   return (
-    <form className={styles.form} aria-label={contact.heading} onSubmit={handleSubmit} noValidate>
+    <form
+      className={styles.form}
+      aria-label={contact.heading}
+      action={submit}
+      onSubmit={handleSubmit}
+      noValidate
+    >
       {FIELDS.map((field) => {
         const fieldId = `${baseId}-${field.name}`;
         const errorId = `${fieldId}-error`;
@@ -108,6 +161,28 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
           </div>
         );
       })}
+
+      {/* Always in the document, so what lands in it is announced rather than
+          merely appearing, and `autoFocus` so an unhydrated POST response
+          scrolls to the answer instead of landing at the top of the page with
+          it below the fold. `key={outcome.submissions}` remounts the
+          paragraph on every completed submission, so a second consecutive
+          press is a real DOM change inside the live region rather than a
+          repaint of identical text. See `NewsletterForm.tsx` for all three. */}
+      <div className={styles.alertAnchor} role="status">
+        {outcome !== null && !anyError ? (
+          <p
+            key={outcome.submissions}
+            data-submission={outcome.submissions}
+            className={styles.outcome}
+            ref={outcomeRef}
+            tabIndex={-1}
+            autoFocus
+          >
+            {outcome.message}
+          </p>
+        ) : null}
+      </div>
 
       <HoneypotField formName="contact" />
 

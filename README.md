@@ -205,6 +205,111 @@ Next.js storefront and, later, a Medusa backend.
   validate their own fields with tied, announced errors, and submit to
   nothing yet.
 
+  **Neither public form can put a field value in a URL, and neither pretends
+  to have sent anything.** Both shipped as `<form onSubmit={…}>` with no
+  `method` and no `action` — which is a GET, and a GET serialises **every**
+  named control, not only the ones somebody typed into. Measured on a rebuilt
+  base revision, an unhydrated press (or one with JavaScript off) put **2 of
+  the newsletter's 2 controls** and **5 of the contact form's 5** into the
+  query string, the browser's history, the next request's `Referer` and every
+  access log on the way to Loki: the subscriber's address; the contact form's
+  name, address, subject and whole message body; and, on both forms,
+  `additional-notes` — which is the **honeypot**
+  (`src/components/turnstile/HoneypotField.tsx`), so the hidden anti-spam
+  field went into the URL alongside the visible ones, publishing whether it
+  had caught anything to every log on the path. The checkout had the same
+  defect and was fixed first, with a route and a `303`; these two carry a
+  Server Function as the form's `action` instead
+  (`src/components/forms/public-form-actions.ts`), which reaches the same
+  guarantee from inside the form components. The values travel in a request
+  body, the functions **read nothing a visitor typed** — React calls a
+  `useActionState` action as `(previousState, formData)` and neither function
+  binds the second argument, so no expression in that module can reach a
+  field — and the answer is rendered into the HTML of the POST response, so
+  it is legible with no JavaScript at all. That answer is
+  `newsletter.notSentMessage` / `contactForm.notSentMessage`: nothing was
+  sent, nothing was stored. Silently accepting a submission nothing can act
+  on is its own defect, and it is the one the previous revision shipped.
+  Proved on a running server with `javaScriptEnabled: false` at 1280, 390 and
+  320, and asserted in `tests/build-and-serve.test.ts`.
+
+  **The one value that travels back *in* is treated as untrusted.** React
+  serialises the previous answer into the form as a plaintext hidden control
+  and the browser reposts it, so on the unhydrated path it is whatever the
+  client sent rather than something the server remembers — a forged count of
+  `41` really does render `42`, and before the guard a forged *string* count
+  was **concatenated** rather than added, straight into a rendered attribute.
+  The actions therefore take the previous state as `unknown` and narrow it:
+  anything that is not an integer is no previous state at all and is answered
+  with 1, and nothing throws, because a form press must not be answered with a
+  500. That is correctness rather than security — nothing in that value is
+  stored, logged or read back, and the message is always the fixed `content/`
+  sentence — but the next unit inherits the argument. What a press serialises
+  back is now asserted verbatim on three consecutive presses on both forms
+  (`tests/build-and-serve.test.ts`): the fixed sentence, an integer, and
+  nothing else.
+
+  **Every completed submission now changes the DOM inside the live region,
+  including consecutive identical ones.** The answer is the same sentence
+  every time, so while the action returned that bare string a second press
+  handed `useActionState` a value React judged equal to the one it already
+  had: the focus effect keyed on it did not re-run and the live region's
+  contents did not change. Measured in a browser on the second consecutive
+  hydrated press: **0 mutations** in the `role="status"` region on both forms.
+  The answer was still on screen — so this was never a WCAG failure — but a
+  polite live region whose contents do not change gives a screen-reader user
+  silence for a press that had plainly done something. The action now returns
+  a `PublicFormOutcome`, a fixed `content/` sentence plus a submission count,
+  and the paragraph is keyed on that count so it remounts. Same measurement
+  after: **2 mutations** (the old paragraph out, the new one in) and focus on
+  the new answer, on both forms.
+
+  **What was measured is the mutation count, not the announcement**, and the
+  distinction is the point of the paragraph above rather than a caveat on it.
+  No screen reader was run: there is none in this environment, and that is a
+  standing gap on this work, not something these changes closed. That a
+  childList change inside an `aria-atomic` `role="status"` region is spoken is
+  read off the specification and off what the mutation observer recorded — it
+  was not heard. `tests/forms.test.tsx` and `tests/build-and-serve.test.ts`
+  say the same thing where they assert the mechanism, and the WCAG 2.2 AA
+  ledger row this work feeds stays open for exactly this reason: it closes on
+  a human assistive-technology pass and on nothing else.
+
+  **The Turnstile widget renders at Cloudflare's `compact` size.** It
+  defaulted to `flexible`, which Cloudflare documents as *100% wide with a
+  300px minimum* — a floor, not a target. The `.turnstile` box measures 174px
+  on the newsletter and 222px on the checkout at a 320px viewport, and 244px
+  on the newsletter at 390px, so the widget was wider than its own container
+  on five of nine measured viewport/form combinations. Both `.turnstile`
+  rules also carried `overflow: hidden`, so it was **clipped rather than
+  overflowing** and three page-level sweeps read clean over it. `compact`
+  (150x140) fits every container this site produces, and the clipping
+  declaration is gone from both stylesheets so a future oversize is
+  measurable rather than silently cut off.
+
+  **How much that buys is worth stating exactly, because it is less than "a
+  sweep".** `src/styles/global.css` keeps `overflow-x: hidden` on `html` and
+  `body` for the reason recorded further down this file, so
+  `document.documentElement.scrollWidth <= clientWidth` can never fail on
+  this site whatever overflows — removing the clip from `.turnstile` does not
+  change that. Measured at a 320px viewport with a 300px stand-in (the
+  `flexible` floor) in the real container:
+  `documentElement.scrollWidth` 305 against a `clientWidth` of 305, still
+  clean, while `body.scrollWidth` reads **365** and the stand-in's right edge
+  sits 141px past its container's. So what the removal restores is
+  detectability to a **box-level `getBoundingClientRect()` or a
+  `body.scrollWidth`** measurement — which is exactly what
+  `tests/mockup-layout.test.ts` already says a browser-driven harness must
+  do, and not to a root-scroll-width sweep.
+
+  **`--accent-fill` can no longer be used as a text colour.**
+  `tests/mockup-layout.test.ts` now scans every `.module.css` under `src/` for
+  it. That token is a background — `design/tokens.css` says so itself — and as
+  text it measures 2.91:1 on the contact form's surface and 3.19:1 on the
+  newsletter's, against WCAG 1.4.3's 4.5:1. It shipped in two stylesheets and
+  survived a fix pass in one of them, because nothing in the repository could
+  see it.
+
   **`ConsentManager` is styled.** It was inherited unstyled — a raw
   paragraph and two default `<button>`s below the footer of every page —
   which was invisible while every route was a placeholder and is not now that

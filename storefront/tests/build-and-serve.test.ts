@@ -49,7 +49,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { newsletter as newsletterCopy } from "../../content/publisher.js";
 import { checkout as checkoutCopy, unavailableFigure } from "../../content/shop.js";
+import { contact as contactCopy, contactForm as contactFormCopy } from "../../content/support.js";
 import {
   CHECKOUT_ORDER_POST_PATH,
   ORDER_NOT_PLACED,
@@ -1058,6 +1060,399 @@ describe("the checkout form cannot put a delivery address in a URL", () => {
     const response = await requestWithHost(server.port, CHECKOUT_ORDER_POST_PATH, MOCK_HOST);
     expect(response.status).toBe(405);
   });
+});
+
+/**
+ * The same defect, on the two **public** forms, and the same requirement: no
+ * field value from either form reaches a URL in any state of the page,
+ * including unhydrated.
+ *
+ * The checkout answers it with a route and a `303`. These two answer it with a
+ * Server Function as the form's `action`, because the route shape needs files
+ * outside the unit that fixed them — see
+ * `src/components/forms/public-form-actions.ts`. What that produces is a real
+ * `method="POST"` form pointing at the page's own URL, with React's own
+ * `$ACTION_*` hidden fields, and a POST response that is the re-rendered page
+ * carrying the answer in its HTML.
+ *
+ * **Only a real build can show that.** `react-dom/server` on its own has no
+ * server reference to resolve and renders a `javascript:` neutraliser instead
+ * (see `tests/forms.test.tsx`), so this is the only place in the repository
+ * where the fix is actually exercised: a built server, the served form parsed
+ * as a browser would parse it, and every hidden field sent back exactly as a
+ * browser would send it.
+ */
+describe("neither public form can put a field value in a URL", () => {
+  const LIVE_HOST = RUNTIME_ENV.SITE_CANONICAL_HOST;
+
+  const PUBLIC_FORMS = [
+    {
+      route: "/",
+      label: newsletterCopy.heading,
+      answer: newsletterCopy.notSentMessage,
+      copy: newsletterCopy,
+      /**
+       * The sentence this route must never paint, because painting it would
+       * be a lie about a form that sends nothing.
+       *
+       * **`null` because the newsletter copy has no success sentence at
+       * all**, deliberately: nothing in this build can succeed, so
+       * `content/publisher.ts`'s `newsletter` object never had one to
+       * fabricate. The test below pins that absence instead. It used to
+       * assert that the *contact* form's success line was missing from the
+       * homepage — which a page that never had that string passes for free,
+       * and which said nothing about the newsletter at all. Give the
+       * newsletter a success sentence and this fixture has to gain the string
+       * to look for, or the suite reddens.
+       */
+      fabricatedAnswer: null,
+      typed: { email: "unhydrated-subscriber@example.com" },
+    },
+    {
+      route: "/support/lunar-base",
+      label: contactCopy.heading,
+      answer: contactFormCopy.notSentMessage,
+      copy: contactFormCopy,
+      fabricatedAnswer: contactFormCopy.successMessage,
+      typed: {
+        name: "Unhydrated Person",
+        email: "unhydrated-writer@example.com",
+        subject: "A subject line",
+        message: "A message body that must never appear in a URL.",
+      },
+    },
+  ] as const;
+
+  /** The one `<form …>…</form>` carrying this accessible name. */
+  function formMarkup(html: string, label: string): string {
+    const marker = html.indexOf(`aria-label="${label}"`);
+    if (marker === -1) return "";
+    return html.slice(html.lastIndexOf("<form", marker), html.indexOf("</form>", marker));
+  }
+
+  /**
+   * The submission count the served answer carries, or `null` if this
+   * response painted no answer at all. See the form components' `alertAnchor`
+   * block for why the count is on the element as well as in the React key.
+   */
+  function outcomeSubmission(html: string, label: string): string | null {
+    return /data-submission="([^"]*)"/.exec(formMarkup(html, label))?.[1] ?? null;
+  }
+
+  /**
+   * The hidden control React's progressive enhancement uses to carry the
+   * previous action state back to the server on the next press.
+   *
+   * Named rather than sniffed out by shape on purpose. If React ever renames
+   * it, the assertions below must fail loudly instead of quietly checking a
+   * control that is no longer there — which is the failure mode that would
+   * turn this whole guarantee back into something nobody is watching.
+   */
+  const PREVIOUS_STATE_FIELD = "$ACTION_1:1";
+
+  /** The raw serialised previous state this page would resubmit, if any. */
+  function serialisedPreviousState(html: string, label: string): string | undefined {
+    return hiddenFields(formMarkup(html, label)).find(
+      ([name]) => name === PREVIOUS_STATE_FIELD,
+    )?.[1];
+  }
+
+  /** Every hidden control a browser would resubmit, in document order. */
+  function hiddenFields(form: string): readonly (readonly [string, string])[] {
+    return [...form.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)].flatMap((match) => {
+      const tag = match[0];
+      const name = /name="([^"]*)"/.exec(tag)?.[1];
+      if (name === undefined) return [];
+      const raw = /value="([^"]*)"/.exec(tag)?.[1] ?? "";
+      const value = raw
+        .replaceAll("&quot;", '"')
+        .replaceAll("&#x27;", "'")
+        .replaceAll("&lt;", "<")
+        .replaceAll("&gt;", ">")
+        .replaceAll("&amp;", "&");
+      return [[name, value] as const];
+    });
+  }
+
+  /**
+   * A multipart/form-data POST, which is what React's own progressive
+   * enhancement makes the browser send: the form it renders carries
+   * `enctype="multipart/form-data"`, and a urlencoded body does not reach the
+   * Server Function at all (verified — it answers 200 without running it).
+   */
+  function postMultipartWithHost(
+    port: number,
+    path: string,
+    host: string,
+    fields: readonly (readonly [string, string])[],
+  ): Promise<HostRequestResult> {
+    const boundary = `----plepicTestBoundary${randomDigits(16)}`;
+    const body = Buffer.from(
+      `${fields
+        .map(
+          ([name, value]) =>
+            `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+        )
+        .join("")}--${boundary}--\r\n`,
+      "utf8",
+    );
+
+    return new Promise((resolve, reject) => {
+      const request = http.request(
+        {
+          hostname: "127.0.0.1",
+          port,
+          path,
+          method: "POST",
+          headers: {
+            Host: host,
+            "Content-Type": `multipart/form-data; boundary=${boundary}`,
+            "Content-Length": body.byteLength,
+          },
+        },
+        (response) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk: Buffer) => chunks.push(chunk));
+          response.on("end", () =>
+            resolve({
+              status: response.statusCode ?? 0,
+              headers: response.headers,
+              body: Buffer.concat(chunks).toString("utf8"),
+            }),
+          );
+        },
+      );
+      request.on("error", reject);
+      request.write(body);
+      request.end();
+    });
+  }
+
+  for (const form of PUBLIC_FORMS) {
+    describe(form.route, () => {
+      it("serves a form that posts, before anything hydrates", async () => {
+        const response = await requestWithHost(server.port, form.route, LIVE_HOST);
+        expect(response.status).toBe(200);
+
+        const markup = formMarkup(response.body, form.label);
+        expect(markup, `no form labelled "${form.label}" was served`).not.toBe("");
+
+        const tag = /<form\b[^>]*>/.exec(markup)?.[0] ?? "";
+        expect(tag, "a form with no method is a GET, and a GET puts every value in the URL").toMatch(
+          /method="post"/i,
+        );
+        // React's client-action neutraliser. Its presence would mean the
+        // Server Function did not resolve and an unhydrated press does nothing.
+        expect(tag).not.toContain("javascript:");
+        // It posts to the page's own URL, and that URL carries no query.
+        const action = /\saction="([^"]*)"/.exec(tag)?.[1] ?? "";
+        expect([form.route, ""]).toContain(action);
+        expect(action).not.toContain("?");
+      });
+
+      it("answers an unhydrated submission without putting one value in the URL", async () => {
+        const served = await requestWithHost(server.port, form.route, LIVE_HOST);
+        const markup = formMarkup(served.body, form.label);
+        const fields = [...hiddenFields(markup), ...Object.entries(form.typed)];
+
+        // A browser sends every hidden control the form declares. If React
+        // stopped emitting them this submission would stop reaching the
+        // Server Function, and the answer assertion below would fail.
+        expect(fields.some(([name]) => name.startsWith("$ACTION"))).toBe(true);
+
+        const response = await postMultipartWithHost(
+          server.port,
+          form.route,
+          LIVE_HOST,
+          fields,
+        );
+
+        expect(response.status).toBe(200);
+        // No redirect at all, so nothing can carry a value in a Location.
+        expect(response.headers.location).toBeUndefined();
+
+        for (const [field, value] of Object.entries(form.typed)) {
+          expect(response.body, `"${field}" came back in the response`).not.toContain(value);
+          expect(response.body).not.toContain(encodeURIComponent(value));
+        }
+      });
+
+      it("says plainly that nothing was sent, in the first paint, with no script involved", async () => {
+        const served = await requestWithHost(server.port, form.route, LIVE_HOST);
+        const fields = [
+          ...hiddenFields(formMarkup(served.body, form.label)),
+          ...Object.entries(form.typed),
+        ];
+        const response = await postMultipartWithHost(server.port, form.route, LIVE_HOST, fields);
+
+        // Read with every <script> stripped: this sentence is in the HTML the
+        // server sent, not something hydration produced.
+        expect(paintedText(response.body).replaceAll(/\s+/g, " ")).toContain(
+          form.answer.replaceAll(/\s+/g, " "),
+        );
+      });
+
+      it("does not fabricate a success message anywhere on the route", async () => {
+        const response = await requestWithHost(server.port, form.route, LIVE_HOST);
+
+        if (form.fabricatedAnswer === null) {
+          // See the fixture: this form has no success copy to fabricate, and
+          // the check with teeth is that it still has none.
+          expect(
+            Object.keys(form.copy),
+            "this form now has success copy; give the fixture the string to look for",
+          ).not.toContain("successMessage");
+          return;
+        }
+
+        expect(paintedText(response.body)).not.toContain(form.fabricatedAnswer);
+      });
+
+      /**
+       * MIN-4 of review pass 1, end to end: a second consecutive submission
+       * must be its own answer and not a repaint of the first.
+       *
+       * React's progressive enhancement binds the previous state into the
+       * form it serves back (`$ACTION_1:1`), so resubmitting the form from a
+       * POST response — exactly what a browser does on a second press — is
+       * the same sequence a hydrated visitor produces. Before the fix the
+       * action returned the bare sentence, there was no counter and no
+       * `data-submission` attribute, and the hydrated case produced zero
+       * mutations in the live region on the second press.
+       *
+       * The attribute is the observable; the React `key` built from the same
+       * number is the mechanism that remounts the paragraph, and a key is
+       * invisible in markup. This file cannot hydrate, so it proves the
+       * counter reaches the render and increments; the live-region mutation
+       * count itself was measured in a browser and is recorded in the unit's
+       * report.
+       */
+      it("answers a second consecutive submission as its own event", async () => {
+        const typed = Object.entries(form.typed);
+        const served = await requestWithHost(server.port, form.route, LIVE_HOST);
+
+        const first = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
+          ...hiddenFields(formMarkup(served.body, form.label)),
+          ...typed,
+        ]);
+        expect(first.status).toBe(200);
+        expect(outcomeSubmission(first.body, form.label)).toBe("1");
+
+        // The identical press again, on the page the first press produced.
+        const second = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
+          ...hiddenFields(formMarkup(first.body, form.label)),
+          ...typed,
+        ]);
+        expect(second.status).toBe(200);
+        expect(
+          outcomeSubmission(second.body, form.label),
+          "the second submission is indistinguishable from the first",
+        ).toBe("2");
+
+        // And it is the same fixed sentence from content/, both times.
+        for (const body of [first.body, second.body]) {
+          expect(paintedText(body).replaceAll(/\s+/g, " ")).toContain(
+            form.answer.replaceAll(/\s+/g, " "),
+          );
+        }
+      });
+
+      /**
+       * MIN-11 of review pass 2 — **the unit's central guarantee, and until
+       * now the one nothing in this repository checked.**
+       *
+       * The forms answer in place rather than redirecting, so the whole case
+       * that no field value escapes rests on what React serialises back into
+       * the form: `$ACTION_1:1` is the previous outcome, in plaintext, in the
+       * markup, and a browser reposts it on the next press. If a field value
+       * ever reached the returned outcome it would travel out in that control
+       * and straight back in — and every other assertion in this file would
+       * still pass, because the response *body* check above only ever looked
+       * at the first press, where `previous` is `[null]` and therefore the
+       * least informative moment there is.
+       *
+       * So: three consecutive presses, retyping every field each time, with
+       * the state read off the form the previous press served. `toEqual`
+       * fails on an unexpected key, so the shape assertion is "these two
+       * fields and nothing else"; the message must be the fixed `content/`
+       * sentence and the count must be that press's integer.
+       *
+       * Mutation-proved by making the action put a submitted field into the
+       * message it returns: this test reddens on both forms, on every press,
+       * while the response-body test above stays green on press 1.
+       */
+      it("serialises back the fixed sentence and an integer, and nothing else, on every press", async () => {
+        const typed = Object.entries(form.typed);
+        const served = await requestWithHost(server.port, form.route, LIVE_HOST);
+
+        // Before any press at all. If this control is absent the loop below
+        // would be asserting `undefined` is fine forever.
+        expect(
+          serialisedPreviousState(served.body, form.label),
+          `the served form declares no ${PREVIOUS_STATE_FIELD} — React renamed it, and this test is no longer looking at the previous state`,
+        ).toBe("[null]");
+
+        let page = served.body;
+        for (const press of [1, 2, 3]) {
+          const response = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
+            ...hiddenFields(formMarkup(page, form.label)),
+            ...typed,
+          ]);
+          expect(response.status).toBe(200);
+          expect(outcomeSubmission(response.body, form.label)).toBe(String(press));
+
+          const state = serialisedPreviousState(response.body, form.label);
+          expect(state, `press ${String(press)} served back no ${PREVIOUS_STATE_FIELD}`).toBeDefined();
+
+          expect(
+            JSON.parse(state ?? "null"),
+            `press ${String(press)} serialised something other than the fixed sentence and a count`,
+          ).toEqual([{ message: form.answer, submissions: press }]);
+
+          // Said the other way round, against the raw string: not one thing
+          // the visitor typed is in there, in any of the encodings this
+          // control can carry it in.
+          for (const [field, value] of Object.entries(form.typed)) {
+            expect(
+              state,
+              `"${field}" is in the state press ${String(press)} serialises back`,
+            ).not.toContain(value);
+            expect(state).not.toContain(encodeURIComponent(value));
+            expect(state).not.toContain(JSON.stringify(value).slice(1, -1));
+          }
+
+          page = response.body;
+        }
+      });
+    });
+  }
+});
+
+/**
+ * Cloudflare's documented widget sizes: `normal` 300x65, `flexible` 100% with
+ * a **300px minimum**, `compact` 150x140 for space-constrained layouts. The
+ * `.turnstile` box measures 174px on the newsletter and 222px on the checkout
+ * at a 320px viewport, so anything but `compact` is wider than its container —
+ * and it was clipped rather than visibly overflowing, which is how three
+ * page-level sweeps read clean over it.
+ */
+describe("every Turnstile widget is served at a size that fits its container", () => {
+  const routes = ["/", "/support/lunar-base", "/checkout?mock=filled"] as const;
+
+  for (const route of routes) {
+    it(`${route} renders the compact widget`, async () => {
+      const response = await requestWithHost(server.port, route, MOCK_HOST);
+      expect(response.status).toBe(200);
+
+      const widgets = [...response.body.matchAll(/<div\b[^>]*class="cf-turnstile"[^>]*>/g)].map(
+        (match) => match[0],
+      );
+      expect(widgets.length, `no Turnstile widget on ${route}`).toBeGreaterThan(0);
+      for (const widget of widgets) {
+        expect(widget).toContain('data-size="compact"');
+      }
+    });
+  }
 });
 
 /**

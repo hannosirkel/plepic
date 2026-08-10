@@ -144,6 +144,18 @@ export const newsletter = {
   submitLabel: "Subscribe",
   consentNote:
     "By subscribing you agree to receive occasional email from us. You can unsubscribe from any message.",
+  /**
+   * What the form says once it has been submitted and this build cannot act
+   * on it — which is every submission, until the provider integration lands
+   * in Task 5. It is shown identically whether the page had hydrated or not;
+   * see `storefront/src/components/forms/public-form-actions.ts`.
+   *
+   * It says nothing happened, because nothing did. A form that swallows an
+   * address and then looks pleased with itself is the failure mode this
+   * sentence exists to prevent.
+   */
+  notSentMessage:
+    "Nothing was sent. Subscriptions are not connected to this form, so your address was not stored and you have not been added to a list. Please try again another day.",
 } as const;
 
 /** Homepage hero calls to action, in order of intended emphasis. */
