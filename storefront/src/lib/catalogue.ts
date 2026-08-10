@@ -10,9 +10,13 @@
  * the second qualified read struck the same claim off `/legal/shipping`
  * (Minor 2) — leaving the product page asserting unqualified what the legal
  * page had just qualified. The operator supplied the replacement, and it is
- * used **here** rather than only on the legal page precisely so the two cannot
- * drift: the purchase panel, the product hero and the shipping FAQ all read
- * this one string, and `/legal/shipping` carries the same words as content.
+ * resolved **here** rather than only on the legal page precisely so the two
+ * cannot drift: every surface that qualifies the price reads those words out
+ * of this one function — the purchase panel and the product hero through
+ * {@link ResolvedCatalogue.priceTaxQualifier}, the basket and checkout
+ * summaries through {@link ResolvedCatalogue.priceQualifiers}, the shipping
+ * FAQ through {@link ResolvedCatalogue.priceLine} — and `/legal/shipping`
+ * carries the same words as content.
  *
  * The same answer removed `taxNote`. It resolved to the bare "VAT included"
  * alone, nothing rendered it, and a live resolver for a string we have decided
@@ -130,10 +134,14 @@ export interface ResolvedCatalogue {
    * `tests/legal-pages.test.tsx` pins `content/legal/shipping.ts`'s resolved
    * callout lead against this exact value.
    *
-   * Components render it in **two elements** — the figure at display size,
-   * the separator and qualification at reading size, in one inline flow —
-   * because the wrap this format would otherwise cause is a typographic
-   * problem and gets a typographic answer. See `purchase-panel.module.css`.
+   * **No component renders this string itself.** Both surfaces compose its
+   * two halves as **two elements** — the figure at display size, the
+   * separator and qualification at reading size, in one inline flow — because
+   * the wrap this format would otherwise cause is a typographic problem and
+   * gets a typographic answer. What the field is for is that the composed
+   * markup and the pinned line cannot disagree:
+   * `tests/price-presentation.test.tsx` reads the emphasised element's text
+   * back and compares it to this value. See `purchase-panel.module.css`.
    */
   readonly priceHeadline: string;
   /**

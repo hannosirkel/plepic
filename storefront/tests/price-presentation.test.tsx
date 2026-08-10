@@ -53,12 +53,12 @@
  * Neither half sees a *rendered layout*: `renderToStaticMarkup` has no layout
  * engine and this package has no browser. The wrap this presentation had to
  * solve was measured out of band, in Chromium 151 against a real `next build`
- * on `127.0.0.1` with the stylesheets confirmed loaded (301 rules,
+ * on `127.0.0.1` with the stylesheets confirmed loaded (303 rules,
  * `MADE Evolve Sans` computed on `body`); the numbers and the method are
  * recorded in `purchase-panel.module.css` and `README.md`.
  */
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -66,6 +66,7 @@ import { describe, expect, it } from "vitest";
 import { PurchasePanelMockup } from "../src/components/PurchasePanelMockup.js";
 import { LunarBaseMockup } from "../src/components/mockups/LunarBaseMockup.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
+import { listSourceFiles } from "./helpers/source-files.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const catalogue = resolveCatalogue();
@@ -116,6 +117,13 @@ function textOfElementWithClass(html: string, token: string): string {
 
 const SURFACES: readonly {
   readonly name: string;
+  /**
+   * The component's path relative to `storefront/`, in POSIX form. The
+   * enumeration below holds the `src/` walk to exactly this list, so a new
+   * headline surface costs an entry here — and therefore the markup and
+   * emphasis assertions that come with one — rather than nothing.
+   */
+  readonly file: string;
   readonly html: string;
   /** The commercial block the price is presented inside. */
   readonly block: string;
@@ -125,6 +133,7 @@ const SURFACES: readonly {
 }[] = [
   {
     name: "the purchase panel",
+    file: "src/components/PurchasePanelMockup.tsx",
     html: renderToStaticMarkup(<PurchasePanelMockup />),
     block: "panel",
     headline: "priceHeadline",
@@ -133,6 +142,7 @@ const SURFACES: readonly {
   },
   {
     name: "the product hero",
+    file: "src/components/mockups/LunarBaseMockup.tsx",
     html: renderToStaticMarkup(<LunarBaseMockup />),
     block: "heroPurchase",
     headline: "heroPriceHeadline",
@@ -183,22 +193,90 @@ describe("every headline price presents the operator's two lines", () => {
  * surface that promotes the figure into a slot of its own has to carry the
  * qualification with it, and this is what says so before a reviewer has to
  * notice.
+ *
+ * **It has to walk `src/` to say that.** The first revision of this block
+ * asserted the property against a hand-written two-element array of the two
+ * files already known to satisfy it — which is a restatement of the markup
+ * assertions above, not a guard, because a list nobody adds a file to cannot
+ * fail on a file nobody added. Review pass 1 established it by building the
+ * defect: a third component rendering a display-sized bare figure above the
+ * concatenated qualifier string — precisely what this unit removed from the
+ * panel and the hero — and this file and `no-hardcoded-price.test.ts` between
+ * them reported 93 tests passed, green.
+ *
+ * So the walk is real, and it is `tests/helpers/source-files.ts`'s
+ * `listSourceFiles`, the same one `tests/no-hardcoded-price.test.ts` scans the
+ * tree with rather than a second implementation of it. Two ways to fail:
+ *
+ * 1. **A file names the bare figure without the tax qualification beside it.**
+ *    That is the defect itself, reappearing on a new surface.
+ * 2. **A file names the bare figure and is not in `SURFACES`.** It may well
+ *    render the operator's format correctly, but nothing here has looked at
+ *    its markup or its stylesheet, so the answer is to add it above — where it
+ *    picks up the boundary and emphasis assertions — not to let the walk widen
+ *    silently.
+ *
+ * What it cannot see: a component that binds the figure to a local name first
+ * (`const { price } = catalogue`) reads as no match. It is a source scan, and
+ * the honest statement of its reach is "names `catalogue.price`", which is how
+ * both surfaces and any straightforward third one are written.
  */
 describe("no surface renders the bare figure without the operator's qualification", () => {
-  const componentFiles = ["src/components/PurchasePanelMockup.tsx", "src/components/mockups/LunarBaseMockup.tsx"];
+  /**
+   * The **bare** figure: `catalogue.price` and not `catalogue.priceLine`,
+   * `priceQualifiers`, `priceHeadline`, `priceTaxQualifier` or
+   * `priceShippingNote`, every one of which already carries a qualification
+   * with it. The trailing `\b` is what draws that line — there is no word
+   * boundary between `price` and `Line` — and it is the load-bearing
+   * character in this file, so it gets its own assertion below.
+   */
+  const BARE_FIGURE = /\bcatalogue\.price\b/;
+
+  /**
+   * `src/lib/catalogue.ts` names the bare figure without rendering it: it is
+   * the resolver that produces it, and its `{price}` placeholder entry reads
+   * `catalogue.price`. Exempted by name, visibly, like
+   * `no-hardcoded-price.test.ts` exempts the same file for the same reason.
+   */
+  const RESOLVER = join(storefrontDir, "src", "lib", "catalogue.ts");
+
+  const walked = listSourceFiles(join(storefrontDir, "src"));
+  const rendering = walked
+    .filter((file) => file !== RESOLVER && BARE_FIGURE.test(readFileSync(file, "utf8")))
+    .map((file) => relative(storefrontDir, file).split(sep).join("/"))
+    .sort();
+
+  it("walked the real tree, so an empty result would be a broken walk rather than a clean one", () => {
+    expect(walked.length, "the src/ walk found almost nothing — the walk is broken, not the tree").toBeGreaterThan(20);
+    expect(walked, "src/lib/catalogue.ts was not walked, so exempting it proves nothing").toContain(RESOLVER);
+  });
+
+  it("distinguishes the bare figure from the fields that carry a qualification", () => {
+    expect(BARE_FIGURE.test("<span>{catalogue.price}</span>")).toBe(true);
+    for (const carrier of ["priceLine", "priceQualifiers", "priceHeadline", "priceTaxQualifier", "priceShippingNote"]) {
+      expect(BARE_FIGURE.test(`<p>{catalogue.${carrier}}</p>`), `${carrier} read as the bare figure`).toBe(false);
+    }
+  });
 
   it("names every file in src/ that renders catalogue.price as a slot of its own", () => {
-    const sources = new Map(
-      componentFiles.map((file) => [file, readFileSync(join(storefrontDir, file), "utf8")]),
-    );
-    for (const [file, source] of sources) {
+    expect(
+      rendering,
+      "a file in src/ renders the bare catalogue figure and is not one of the surfaces this file asserts on — " +
+        "add it to SURFACES so its markup and its emphasis are checked, or render catalogue.priceHeadline",
+    ).toEqual([...SURFACES.map((surface) => surface.file)].sort());
+  });
+
+  for (const file of rendering) {
+    it(`${file} carries the operator's tax qualification beside the figure`, () => {
+      const source = readFileSync(join(storefrontDir, file), "utf8");
       expect(source, `${file} no longer renders catalogue.price`).toContain("{catalogue.price}");
       expect(
         source,
-        `${file} renders the figure without the tax qualification beside it`,
+        `${file} promotes the figure into a slot of its own without the operator's tax qualification beside it — ` +
+          "the small-print demotion this unit removed, on a new surface",
       ).toContain("catalogue.priceTaxQualifier");
-    }
-  });
+    });
+  }
 });
 
 /**

@@ -40,11 +40,15 @@
  *   here; it resolves from `storefront/mock/catalogue.json` through
  *   `storefront/src/lib/catalogue.ts`, and `content.test.ts` fails on a
  *   currency symbol or an amount in this file either way.
- * - **The same wording reaches the product page**, because the catalogue's
- *   `priceQualifiers` — which the purchase panel and the hero render — carries
- *   the identical qualification. A legal page saying *"where applicable"* over
- *   a product page saying *"VAT included"* flatly would move the contradiction
- *   Minor 2 removed up one level, to the more prominent page.
+ * - **The same wording reaches the product page**, because it resolves from
+ *   one place. `storefront/src/lib/catalogue.ts` composes the qualification
+ *   the purchase panel and the hero render beside the figure
+ *   (`priceTaxQualifier`, the emphasised half of this callout's own line) and
+ *   the one the basket and checkout summaries render under a summary
+ *   (`priceQualifiers`) out of those same words. A legal page saying *"where
+ *   applicable"* over a product page saying *"VAT included"* flatly would move
+ *   the contradiction Minor 2 removed up one level, to the more prominent
+ *   page.
  *
  * ## The duplication the first revision left, and how it was removed
  *

@@ -11,26 +11,18 @@
  * mechanically authoritative rather than a convention someone could quietly
  * break in a future edit.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
+import { listSourceFiles } from "./helpers/source-files.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const srcDir = join(storefrontDir, "src");
 
 /** The only file allowed to know the catalogue's literal price figures. */
 const ALLOWED_SOURCE = join(srcDir, "lib", "catalogue.ts");
-
-function listSourceFiles(dir: string): readonly string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...listSourceFiles(path));
-    else if (/\.(ts|tsx)$/.test(entry.name)) files.push(path);
-  }
-  return files;
-}
 
 /**
  * Price-shaped literals: a euro sign followed by digits, "25.00" (the

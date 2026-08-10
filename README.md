@@ -147,7 +147,7 @@ Next.js storefront and, later, a Medusa backend.
   the values Task 5's live Medusa catalogue will be seeded with — one
   product, EUR 25.00 VAT included, in stock, 2–6 players, ~30 minutes, 90
   cards, age 10+. `src/lib/catalogue.ts` resolves `content/`'s catalogue
-  placeholders (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`)
+  placeholders (`{price}`, `{priceLine}`, `{productName}`)
   against it at render time — the two previous units correctly left those
   placeholders literal, because `content/` was not theirs to resolve against a
   catalogue that did not exist yet. `tests/no-hardcoded-price.test.ts` fails
@@ -190,7 +190,7 @@ Next.js storefront and, later, a Medusa backend.
   browser breaks where the words fit instead of being forced to break between
   the figure and the separator. Measured in Chromium 151 against a real
   `next build` served on `127.0.0.1` — a trustworthy origin, so the stylesheets
-  actually load; confirmed at 301 rules with `MADE Evolve Sans` computed on
+  actually load; confirmed at 303 rules with `MADE Evolve Sans` computed on
   `body`, because a measurement taken on a page rendering in the UA serif is a
   measurement of a page that no longer exists. Purchase panel, whose column
   (384 / 276 / 206 CSS px) is the narrower of the two:
