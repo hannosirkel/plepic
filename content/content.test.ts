@@ -34,11 +34,19 @@ import {
   NOT_PUBLISHABLE,
   SOURCES,
 } from "./evidence.js";
-import { legalPages } from "./legal/index.js";
+import { pagesByLocale } from "./index.js";
+import { legalPages, legalPagesByLocale } from "./legal/index.js";
 import { pages } from "./pages.js";
 import { proofStrip, quotations } from "./proof.js";
-import { ROUTE_PATHS } from "./routes.js";
 import {
+  DEFAULT_LOCALE,
+  LOCALES,
+  LOCALE_DEFINITIONS,
+  ROUTE_PATHS,
+} from "./routes.js";
+import {
+  contentFor,
+  isLocale,
   isPlaceholderToken,
   LEGAL_ELEMENTS,
   placeholderTokensIn,
@@ -570,213 +578,227 @@ function legalProseIn(page: (typeof legalPages)[number]): readonly string[] {
   ]);
 }
 
-describe("legal pages", () => {
-  it("cover every required element between them", () => {
-    const covered = new Set<LegalElement>(legalPages.flatMap((page) => page.covers));
-    const missing = LEGAL_ELEMENTS.filter((element) => !covered.has(element));
-    expect(missing).toEqual([]);
-  });
+/**
+ * The closed-list guarantees, **per edition**.
+ *
+ * Coverage of `LEGAL_ELEMENTS`, one section per obligation, a caption on
+ * every table and one cell per column in every row are properties of a set
+ * of legal pages, not of the content package — so they are checked once per
+ * locale rather than once for the default one. An edition that translated
+ * four of the five notices would otherwise satisfy every check in this file
+ * while covering four fifths of the obligations.
+ */
+for (const locale of LOCALES) {
+  const edition = contentFor(legalPagesByLocale, locale);
 
-  it("claim no element twice, so each obligation has one home", () => {
-    const seen = new Set<LegalElement>();
-    const duplicated: LegalElement[] = [];
+  describe(`legal pages (${locale})`, () => {
+    it("cover every required element between them", () => {
+      const covered = new Set<LegalElement>(edition.flatMap((page) => page.covers));
+      const missing = LEGAL_ELEMENTS.filter((element) => !covered.has(element));
+      expect(missing).toEqual([]);
+    });
 
-    for (const page of legalPages) {
-      for (const element of page.covers) {
-        if (seen.has(element)) duplicated.push(element);
-        seen.add(element);
-      }
-    }
+    it("claim no element twice, so each obligation has one home", () => {
+      const seen = new Set<LegalElement>();
+      const duplicated: LegalElement[] = [];
 
-    expect(duplicated).toEqual([]);
-  });
-
-  /**
-   * The teeth the closed list did not have.
-   *
-   * `covers` used to be a page-level array that no prose had to justify, so a
-   * page could keep claiming an obligation whose section had been deleted, and
-   * the two tests above would stay green. Coverage is now declared per section
-   * and the page's array must equal the union — which means deleting a section
-   * fails **here** (the page claims what nothing carries), and deleting it from
-   * the page's array as well fails the closed-list test **above** (the site no
-   * longer covers `LEGAL_ELEMENTS`). There is no edit that removes a required
-   * disclosure and leaves the suite green.
-   */
-  it("derive every page's coverage from the sections that actually carry it", () => {
-    for (const page of legalPages) {
-      const fromSections = [...new Set(page.body.flatMap((section) => section.covers))].toSorted();
-      expect(
-        [...page.covers].toSorted(),
-        `${page.route}'s covers does not match the union of its sections' covers — ` +
-          "either a section carrying an obligation was deleted, or the page claims one no section carries",
-      ).toEqual(fromSections);
-    }
-  });
-
-  it("give every element exactly one section, so deleting that section is the only way to lose it", () => {
-    const homes = new Map<LegalElement, string[]>();
-
-    for (const page of legalPages) {
-      for (const section of page.body) {
-        for (const element of section.covers) {
-          homes.set(element, [...(homes.get(element) ?? []), `${page.route}#${section.anchor}`]);
+      for (const page of edition) {
+        for (const element of page.covers) {
+          if (seen.has(element)) duplicated.push(element);
+          seen.add(element);
         }
       }
-    }
 
-    for (const element of LEGAL_ELEMENTS) {
-      expect(homes.get(element), `${element} has no section carrying it`).toBeDefined();
-      expect(homes.get(element), `${element} is claimed by more than one section`).toHaveLength(1);
-    }
-  });
+      expect(duplicated).toEqual([]);
+    });
 
-  it("never let a section claim an obligation while carrying no prose", () => {
-    for (const page of legalPages) {
-      for (const section of page.body) {
-        if (section.covers.length === 0) continue;
-        const words = [
-          ...section.body,
-          ...(section.callout === undefined ? [] : [section.callout.lead, section.callout.detail]),
-          ...(section.items ?? []).map((item) => item.detail),
-          ...(section.table === undefined
-            ? []
-            : [...section.table.rows.flat(), ...(section.table.notes ?? [])]),
-        ]
-          .join(" ")
-          .split(/\s+/)
-          .filter((word) => word.length > 0);
+    /**
+     * The teeth the closed list did not have.
+     *
+     * `covers` used to be a page-level array that no prose had to justify, so a
+     * page could keep claiming an obligation whose section had been deleted, and
+     * the two tests above would stay green. Coverage is now declared per section
+     * and the page's array must equal the union — which means deleting a section
+     * fails **here** (the page claims what nothing carries), and deleting it from
+     * the page's array as well fails the closed-list test **above** (the site no
+     * longer covers `LEGAL_ELEMENTS`). There is no edit that removes a required
+     * disclosure and leaves the suite green.
+     */
+    it("derive every page's coverage from the sections that actually carry it", () => {
+      for (const page of edition) {
+        const fromSections = [...new Set(page.body.flatMap((section) => section.covers))].toSorted();
         expect(
-          words.length,
-          `${page.route}#${section.anchor} claims ${section.covers.join(", ")} but has almost no prose`,
-        ).toBeGreaterThan(20);
+          [...page.covers].toSorted(),
+          `${page.route}'s covers does not match the union of its sections' covers — ` +
+            "either a section carrying an obligation was deleted, or the page claims one no section carries",
+        ).toEqual(fromSections);
       }
-    }
-  });
+    });
 
-  /**
-   * The identity set the second qualified read found short by one (M1, the
-   * telephone number). Pinned by name rather than left to prose, because the
-   * failure mode is an omission and an omission is invisible to a scan of what
-   * *is* written.
-   */
-  it("state the whole trader identity set on the imprint, telephone number included", () => {
-    const imprintPage = legalPages.find((page) => page.route === "legalImprint");
-    expect(imprintPage).toBeDefined();
-    const prose = legalProseIn(imprintPage!).join("\n");
+    it("give every element exactly one section, so deleting that section is the only way to lose it", () => {
+      const homes = new Map<LegalElement, string[]>();
 
-    for (const token of [
-      "merchantLegalName",
-      "merchantRegisteredAddress",
-      "merchantRegistrationNumber",
-      "merchantVatNumber",
-      "merchantContactAddress",
-      "merchantPhoneNumber",
-    ] as const) {
-      expect(prose, `the imprint does not state {${token}}`).toContain(`{${token}}`);
-    }
-  });
+      for (const page of edition) {
+        for (const section of page.body) {
+          for (const element of section.covers) {
+            homes.set(element, [...(homes.get(element) ?? []), `${page.route}#${section.anchor}`]);
+          }
+        }
+      }
 
-  /**
-   * Regulation 524/2013 was repealed by Regulation (EU) 2024/3228 and the ODR
-   * platform was dismantled in July 2025. The second read flagged its absence
-   * as *correct*, and as exactly the thing a checklist reviewer would wrongly
-   * "fix". This is that flag, mechanised.
-   */
-  it("offer no link to the dismantled ODR platform", () => {
-    const corpus = legalPages.flatMap((page) => legalProseIn(page)).join("\n").toLowerCase();
-    for (const phrase of ["odr platform", "online dispute resolution platform", "ec.europa"]) {
-      expect(corpus, `${phrase} names a platform that no longer exists`).not.toContain(phrase);
-    }
-  });
+      for (const element of LEGAL_ELEMENTS) {
+        expect(homes.get(element), `${element} has no section carrying it`).toBeDefined();
+        expect(homes.get(element), `${element} is claimed by more than one section`).toHaveLength(1);
+      }
+    });
 
-  it("keeps the consent obligations on the privacy page", () => {
-    const privacyPage = legalPages.find((page) => page.route === "legalPrivacy");
-    expect(privacyPage?.covers).toContain("analytics-lawful-basis");
-    expect(privacyPage?.covers).toContain("third-party-processors");
-  });
+    it("never let a section claim an obligation while carrying no prose", () => {
+      for (const page of edition) {
+        for (const section of page.body) {
+          if (section.covers.length === 0) continue;
+          const words = [
+            ...section.body,
+            ...(section.callout === undefined ? [] : [section.callout.lead, section.callout.detail]),
+            ...(section.items ?? []).map((item) => item.detail),
+            ...(section.table === undefined
+              ? []
+              : [...section.table.rows.flat(), ...(section.table.notes ?? [])]),
+          ]
+            .join(" ")
+            .split(/\s+/)
+            .filter((word) => word.length > 0);
+          expect(
+            words.length,
+            `${page.route}#${section.anchor} claims ${section.covers.join(", ")} but has almost no prose`,
+          ).toBeGreaterThan(20);
+        }
+      }
+    });
 
-  it("are not marked approved while the merchant's details are still placeholders", () => {
-    for (const page of legalPages) {
-      const unresolved = legalProseIn(page).flatMap((paragraph) =>
-        unresolvedPlaceholdersIn(paragraph),
+    /**
+     * The identity set the second qualified read found short by one (M1, the
+     * telephone number). Pinned by name rather than left to prose, because the
+     * failure mode is an omission and an omission is invisible to a scan of what
+     * *is* written.
+     */
+    it("state the whole trader identity set on the imprint, telephone number included", () => {
+      const imprintPage = edition.find((page) => page.route === "legalImprint");
+      expect(imprintPage).toBeDefined();
+      const prose = legalProseIn(imprintPage!).join("\n");
+
+      for (const token of [
+        "merchantLegalName",
+        "merchantRegisteredAddress",
+        "merchantRegistrationNumber",
+        "merchantVatNumber",
+        "merchantContactAddress",
+        "merchantPhoneNumber",
+      ] as const) {
+        expect(prose, `the imprint does not state {${token}}`).toContain(`{${token}}`);
+      }
+    });
+
+    /**
+     * Regulation 524/2013 was repealed by Regulation (EU) 2024/3228 and the ODR
+     * platform was dismantled in July 2025. The second read flagged its absence
+     * as *correct*, and as exactly the thing a checklist reviewer would wrongly
+     * "fix". This is that flag, mechanised.
+     */
+    it("offer no link to the dismantled ODR platform", () => {
+      const corpus = edition.flatMap((page) => legalProseIn(page)).join("\n").toLowerCase();
+      for (const phrase of ["odr platform", "online dispute resolution platform", "ec.europa"]) {
+        expect(corpus, `${phrase} names a platform that no longer exists`).not.toContain(phrase);
+      }
+    });
+
+    it("keeps the consent obligations on the privacy page", () => {
+      const privacyPage = edition.find((page) => page.route === "legalPrivacy");
+      expect(privacyPage?.covers).toContain("analytics-lawful-basis");
+      expect(privacyPage?.covers).toContain("third-party-processors");
+    });
+
+    it("are not marked approved while the merchant's details are still placeholders", () => {
+      for (const page of edition) {
+        const unresolved = legalProseIn(page).flatMap((paragraph) =>
+          unresolvedPlaceholdersIn(paragraph),
+        );
+
+        if (unresolved.length > 0) {
+          expect(
+            page.reviewStatus,
+            `${page.route} still needs ${unresolved.join(", ")}`,
+          ).toBe("draft-pending-operator-input");
+        }
+      }
+    });
+
+    /**
+     * A table with a short row does not throw: it renders as a grid with a hole
+     * in it, under whichever column heading the browser happens to line the cell
+     * up with. That is a disclosure saying the wrong thing rather than a crash,
+     * and it is invisible to a test that only asks whether the words are on the
+     * page — which is exactly what the render assertions in
+     * `storefront/tests/legal-pages.test.tsx` do.
+     */
+    it("give every table row exactly one cell per column", () => {
+      const tables = edition.flatMap((page) =>
+        page.body.flatMap((section) =>
+          section.table === undefined ? [] : [{ page: page.route, section, table: section.table }],
+        ),
       );
 
-      if (unresolved.length > 0) {
+      expect(tables.length, "no legal page carries a table any more").toBeGreaterThan(0);
+
+      for (const { page, section, table } of tables) {
+        expect(table.columns.length, `${page}#${section.anchor} has fewer than three columns — use items`).toBeGreaterThan(2);
+        expect(table.caption.length, `${page}#${section.anchor}'s table has no caption`).toBeGreaterThan(3);
+        for (const [index, row] of table.rows.entries()) {
+          expect(
+            row.length,
+            `${page}#${section.anchor} row ${String(index)} has ${String(row.length)} cells for ${String(table.columns.length)} columns`,
+          ).toBe(table.columns.length);
+        }
+      }
+    });
+
+    /**
+     * The operator supplied the cookie table on 2026-08-10, and two properties of
+     * it are the answer rather than the phrasing: the durations are **hedged**
+     * rather than asserted about other companies' products, and the consent
+     * status of each cookie is stated rather than left to be inferred from the
+     * section around it. An agent had previously asserted both.
+     */
+    it("hedge every cookie duration and state every cookie's consent status", () => {
+      const privacyPage = edition.find((page) => page.route === "legalPrivacy");
+      const table = privacyPage?.body.find((section) => section.anchor === "consent")?.table;
+
+      expect(table, "the cookie table is gone from the privacy page").toBeDefined();
+      expect(table?.columns).toEqual(["Cookie", "Provider", "Purpose", "Duration"]);
+
+      const durations = (table?.rows ?? []).map((row) => row[row.length - 1] ?? "");
+      expect(durations.length).toBeGreaterThan(0);
+      for (const duration of durations) {
         expect(
-          page.reviewStatus,
-          `${page.route} still needs ${unresolved.join(", ")}`,
-        ).toBe("draft-pending-operator-input");
+          /^(?:Up to |Varies)/.test(duration),
+          `"${duration}" asserts a third party's cookie lifetime rather than hedging it`,
+        ).toBe(true);
       }
-    }
-  });
 
-  /**
-   * A table with a short row does not throw: it renders as a grid with a hole
-   * in it, under whichever column heading the browser happens to line the cell
-   * up with. That is a disclosure saying the wrong thing rather than a crash,
-   * and it is invisible to a test that only asks whether the words are on the
-   * page — which is exactly what the render assertions in
-   * `storefront/tests/legal-pages.test.tsx` do.
-   */
-  it("give every table row exactly one cell per column", () => {
-    const tables = legalPages.flatMap((page) =>
-      page.body.flatMap((section) =>
-        section.table === undefined ? [] : [{ page: page.route, section, table: section.table }],
-      ),
-    );
+      const notes = (table?.notes ?? []).join(" ");
+      expect(notes).toContain("only with your consent");
+      expect(notes).toContain("do not require consent");
+    });
 
-    expect(tables.length, "no legal page carries a table any more").toBeGreaterThan(0);
-
-    for (const { page, section, table } of tables) {
-      expect(table.columns.length, `${page}#${section.anchor} has fewer than three columns — use items`).toBeGreaterThan(2);
-      expect(table.caption.length, `${page}#${section.anchor}'s table has no caption`).toBeGreaterThan(3);
-      for (const [index, row] of table.rows.entries()) {
-        expect(
-          row.length,
-          `${page}#${section.anchor} row ${String(index)} has ${String(row.length)} cells for ${String(table.columns.length)} columns`,
-        ).toBe(table.columns.length);
+    it("declare every section they say they contain", () => {
+      for (const page of edition) {
+        const anchors = page.body.map((section) => section.anchor);
+        for (const anchor of page.sections) {
+          expect(anchors, `${page.route} is missing section ${anchor}`).toContain(anchor);
+        }
       }
-    }
+    });
   });
-
-  /**
-   * The operator supplied the cookie table on 2026-08-10, and two properties of
-   * it are the answer rather than the phrasing: the durations are **hedged**
-   * rather than asserted about other companies' products, and the consent
-   * status of each cookie is stated rather than left to be inferred from the
-   * section around it. An agent had previously asserted both.
-   */
-  it("hedge every cookie duration and state every cookie's consent status", () => {
-    const privacyPage = legalPages.find((page) => page.route === "legalPrivacy");
-    const table = privacyPage?.body.find((section) => section.anchor === "consent")?.table;
-
-    expect(table, "the cookie table is gone from the privacy page").toBeDefined();
-    expect(table?.columns).toEqual(["Cookie", "Provider", "Purpose", "Duration"]);
-
-    const durations = (table?.rows ?? []).map((row) => row[row.length - 1] ?? "");
-    expect(durations.length).toBeGreaterThan(0);
-    for (const duration of durations) {
-      expect(
-        /^(?:Up to |Varies)/.test(duration),
-        `"${duration}" asserts a third party's cookie lifetime rather than hedging it`,
-      ).toBe(true);
-    }
-
-    const notes = (table?.notes ?? []).join(" ");
-    expect(notes).toContain("only with your consent");
-    expect(notes).toContain("do not require consent");
-  });
-
-  it("declare every section they say they contain", () => {
-    for (const page of legalPages) {
-      const anchors = page.body.map((section) => section.anchor);
-      for (const anchor of page.sections) {
-        expect(anchors, `${page.route} is missing section ${anchor}`).toContain(anchor);
-      }
-    }
-  });
-});
+}
 
 describe("the page registry", () => {
   it("has exactly one page per declared route", () => {
@@ -812,4 +834,155 @@ describe("the page registry", () => {
     const productPages = pages.filter((page) => page.route === "lunarBase");
     expect(productPages).toHaveLength(1);
   });
+});
+
+/**
+ * The locale dimension.
+ *
+ * Everything here is written over `LOCALES` rather than over the literal
+ * `"en"`, so it states what a published edition must be rather than what
+ * today's single edition happens to be — with one deliberate exception, the
+ * count, which is pinned because a second locale arriving without a decision
+ * is a failure rather than progress.
+ */
+describe("the locale dimension", () => {
+  it("has exactly one locale today, and it is the default one", () => {
+    expect([...LOCALES]).toEqual([DEFAULT_LOCALE]);
+  });
+
+  it("names no locale twice, and knows its own members", () => {
+    expect(new Set(LOCALES).size).toBe(LOCALES.length);
+    for (const locale of LOCALES) expect(isLocale(locale)).toBe(true);
+    expect(isLocale("not-a-locale")).toBe(false);
+  });
+
+  it("defines every locale it declares, and declares every locale it defines", () => {
+    expect(Object.keys(LOCALE_DEFINITIONS).toSorted()).toEqual([...LOCALES].toSorted());
+  });
+
+  it("includes the default locale in the declared set", () => {
+    expect((LOCALES as readonly string[]).includes(DEFAULT_LOCALE)).toBe(true);
+  });
+
+  /**
+   * The unprefixed URLs are a single, scarce resource: two editions sharing
+   * them would be two pages competing for one canonical, which is the exact
+   * failure a locale dimension exists to prevent. Exactly one edition holds
+   * them, and it is the one everything else calls the default.
+   */
+  it("gives the unprefixed paths to exactly one locale, the default one", () => {
+    const unprefixed = LOCALES.filter(
+      (locale) => LOCALE_DEFINITIONS[locale].pathPrefix === "",
+    );
+    expect(unprefixed).toEqual([DEFAULT_LOCALE]);
+  });
+
+  it("gives every other locale a distinct single-segment lowercase prefix", () => {
+    const prefixes = LOCALES.map((locale) => LOCALE_DEFINITIONS[locale].pathPrefix);
+    expect(new Set(prefixes).size).toBe(prefixes.length);
+
+    for (const locale of LOCALES) {
+      if (locale === DEFAULT_LOCALE) continue;
+      const { pathPrefix } = LOCALE_DEFINITIONS[locale];
+      expect(pathPrefix, `${locale} has no path prefix`).toMatch(/^\/[a-z0-9-]+$/);
+    }
+  });
+
+  it("gives every locale a distinct, non-empty language tag", () => {
+    const tags = LOCALES.map((locale) => LOCALE_DEFINITIONS[locale].languageTag);
+    expect(new Set(tags).size).toBe(tags.length);
+    for (const tag of tags) expect(tag).toMatch(/^[a-z]{2,3}(-[A-Za-z0-9]+)*$/);
+  });
+
+  /**
+   * The registration surface, enumerated.
+   *
+   * `Record<Locale, T>` is total, so these cannot fail while the code
+   * compiles — and they are asserted anyway, because `Object.keys` is what a
+   * reader of this file can check against `LOCALES`, and because a registry
+   * built with a spread or a cast would compile and be wrong.
+   */
+  it("registers every locale in every locale-keyed registry", () => {
+    for (const [name, registry] of [
+      ["pagesByLocale", pagesByLocale],
+      ["legalPagesByLocale", legalPagesByLocale],
+    ] as const) {
+      expect(Object.keys(registry).toSorted(), name).toEqual([...LOCALES].toSorted());
+    }
+  });
+
+  it("returns the registered entry for a locale", () => {
+    for (const locale of LOCALES) {
+      expect(contentFor(pagesByLocale, locale)).toBe(pagesByLocale[locale]);
+    }
+    expect(contentFor(legalPagesByLocale, DEFAULT_LOCALE)).toBe(legalPages);
+  });
+
+  /**
+   * The default edition is the one served at the bare paths, so a route it
+   * does not publish has no URL without a prefix — which would be a route
+   * this site declares and cannot serve.
+   */
+  it("publishes every declared route in the default edition", () => {
+    const routes = contentFor(pagesByLocale, DEFAULT_LOCALE)
+      .map((page) => page.route)
+      .toSorted();
+    expect(routes).toEqual(Object.keys(ROUTE_PATHS).toSorted());
+  });
+
+  for (const locale of LOCALES) {
+    describe(`the ${locale} edition`, () => {
+      const edition = contentFor(pagesByLocale, locale);
+
+      it("publishes only declared routes, each at most once", () => {
+        const routes = edition.map((page) => page.route);
+        expect(new Set(routes).size).toBe(routes.length);
+        for (const route of routes) {
+          expect(Object.hasOwn(ROUTE_PATHS, route), `${route} is not a declared route`).toBe(true);
+        }
+      });
+
+      /**
+       * Uniqueness is a property *within* an edition. Two editions may
+       * legitimately share a title — an untranslated proper noun, a brand —
+       * and asserting across the whole registry would forbid that while
+       * catching nothing a crawler cares about.
+       */
+      it("gives every page a unique title and a unique description", () => {
+        const titles = edition.map((page) => page.title);
+        const descriptions = edition.map((page) => page.description);
+        expect(new Set(titles).size).toBe(titles.length);
+        expect(new Set(descriptions).size).toBe(descriptions.length);
+      });
+
+      it("keeps the basket and the checkout out of the index wherever it publishes them", () => {
+        for (const route of ["cart", "checkout"] as const) {
+          const page = edition.find((candidate) => candidate.route === route);
+          if (page === undefined) continue;
+          expect(page.indexable).toBe(false);
+        }
+      });
+
+      it("has at most one canonical product page", () => {
+        expect(edition.filter((page) => page.route === "lunarBase").length).toBeLessThanOrEqual(1);
+      });
+
+      /**
+       * A legal page that exists in an edition but is not in that edition's
+       * page registry has no title, no description, no canonical and no
+       * sitemap entry — it is content nothing can serve. The reverse (a
+       * registered legal route with no page behind it) is the render-time
+       * 404 that `storefront/tests/locale-routing.test.ts` covers.
+       */
+      it("registers every legal page it carries in its own page registry", () => {
+        const registered = new Set(edition.map((page) => page.route));
+        for (const page of contentFor(legalPagesByLocale, locale)) {
+          expect(
+            registered.has(page.route),
+            `${locale} carries ${page.route} but does not publish it`,
+          ).toBe(true);
+        }
+      });
+    });
+  }
 });

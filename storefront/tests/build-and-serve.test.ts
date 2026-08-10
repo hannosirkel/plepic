@@ -72,6 +72,14 @@ import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
+import {
+  DEFAULT_LOCALE,
+  LOCALES,
+  LOCALE_DEFINITIONS,
+  ROUTE_PATHS,
+} from "../../content/routes.js";
+import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
+import { localizedPath } from "../src/lib/urls.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(storefrontDir);
@@ -1882,5 +1890,119 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     // The safety information itself needs no configuration and must be intact.
     expect(response.body).toContain("SHAH01338706");
     expect(response.body).toContain("Flammability");
+  });
+});
+
+/**
+ * The locale dimension, as a browser is actually served it.
+ *
+ * Everything else about it is proved against pure functions and a source
+ * scan. This is the part that only a running server can answer: whether the
+ * document that reaches a reader declares its language, whether the
+ * `hreflang` annotations survive Next's metadata emitter, and whether the URL
+ * shapes a locale dimension must *not* create are genuinely absent rather
+ * than merely unimplemented.
+ */
+describe("the served document declares its language and its alternates", () => {
+  const HOST = "runtime.example.com";
+
+  it("declares the default edition's language tag on every served page", async () => {
+    const expected = LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag;
+
+    for (const page of pagesIn(DEFAULT_LOCALE)) {
+      const path = localizedPath(DEFAULT_LOCALE, ROUTE_PATHS[page.route]);
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(200);
+
+      const match = /<html[^>]*\slang="([^"]*)"/.exec(response.body);
+      expect(match?.[1], `${path} does not declare a language`).toBe(expected);
+    }
+  });
+
+  it("emits the whole hreflang set, self-reference and x-default included", async () => {
+    const entries = buildSitemapEntries(RUNTIME_ENV.SITE_BASE_URL);
+    expect(entries.length).toBeGreaterThan(0);
+
+    for (const entry of entries) {
+      const response = await requestWithHost(server.port, entry.path, HOST);
+      expect(response.status, entry.path).toBe(200);
+
+      const served = new Map(
+        [...response.body.matchAll(/<link rel="alternate" hrefLang="([^"]+)" href="([^"]+)"\/>/g)].map(
+          (match) => [match[1] ?? "", match[2] ?? ""],
+        ),
+      );
+
+      const expected = alternateLinksFor(RUNTIME_ENV.SITE_BASE_URL, entry.routeId);
+      expect(
+        Object.fromEntries(served),
+        `${entry.path} serves the wrong hreflang set`,
+      ).toEqual(expected);
+      expect(served.size, `${entry.path} serves no alternates at all`).toBeGreaterThan(0);
+    }
+  });
+
+  it("lists the same alternates in the sitemap as in the documents", async () => {
+    const response = await requestWithHost(server.port, "/sitemap.xml", HOST);
+    expect(response.status).toBe(200);
+
+    for (const entry of buildSitemapEntries(RUNTIME_ENV.SITE_BASE_URL)) {
+      for (const [tag, href] of Object.entries(entry.alternates)) {
+        expect(
+          response.body,
+          `${entry.url} has no ${tag} alternate in the sitemap`,
+        ).toContain(`hreflang="${tag}" href="${href}"`);
+      }
+    }
+  });
+
+  /**
+   * The default edition's identifier is not a URL prefix of this site. If it
+   * were, every page would have two URLs and one canonical — the duplicate a
+   * locale dimension exists to prevent.
+   *
+   * This one is live: making `localeForPathSegment` return a locale whose
+   * prefix is empty turns `/en/legal/imprint` into a 200 and this red. What is
+   * deliberately **not** asserted anywhere is the shape of the 404 document —
+   * `notFound()` discards this application's metadata and renders the
+   * framework's own error page, so an assertion about a 404's canonical passes
+   * whatever `generateMetadata` returns. That was checked by making
+   * `generateMetadata` return a real page's metadata and watching the
+   * assertion stay green; it is in `src/app/not-found-content.tsx` as a
+   * finding rather than here as a guard that cannot fail.
+   */
+  it("404s the default edition's own identifier as a prefix", async () => {
+    for (const path of ["/en", "/en/legal/imprint", "/en/about"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+    }
+  });
+
+  /*
+   * `/en/` is not a fourth case. Next normalises a trailing slash with a 308
+   * before routing, so the assertion above would have been satisfied by a
+   * redirect rather than by the route table — which is exactly the kind of
+   * pass that means nothing. The normalisation is checked as itself, and its
+   * destination is checked to 404 like the rest.
+   */
+  it("normalises a trailing slash before routing, and the destination still 404s", async () => {
+    const response = await requestWithHost(server.port, "/en/", HOST);
+    expect(response.status).toBe(308);
+    expect(response.headers.location).toBe("/en");
+
+    const followed = await requestWithHost(server.port, "/en", HOST);
+    expect(followed.status).toBe(404);
+  });
+
+  it("404s a prefix no locale claims, at every depth", async () => {
+    const claimed = new Set(
+      LOCALES.map((locale) => LOCALE_DEFINITIONS[locale].pathPrefix).filter((p) => p !== ""),
+    );
+    expect(claimed.has("/zz")).toBe(false);
+
+    for (const path of ["/zz", "/zz/legal/imprint", "/zz/legal", "/nonsense/deep/path"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+    }
   });
 });
