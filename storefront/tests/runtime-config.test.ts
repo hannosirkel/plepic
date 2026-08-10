@@ -253,25 +253,61 @@ describe("RUNTIME_ENV_VARS is the complete set of variables src/ reads", () => {
  * one means holding approval for an input that was ruled optional.
  *
  * A green rendering suite could not catch that, because nothing in it reads
- * prose. This does — narrowly. It fails on the specific false claim, in the
- * specific files that carried it, rather than policing how the variable is
- * described in general.
+ * prose. This does. It fails on the specific false claim, in the specific files
+ * that carried it, rather than policing how the variable is described in
+ * general.
+ *
+ * ## A fourth record, and what it changed about this guard's reach
+ *
+ * The first version of this guard covered three files and keyed on the name of
+ * the address. Review then found a **fourth** copy of the same false claim, in
+ * the `externalTargets` prop doc comment of
+ * `src/components/pages/LegalPageContent.tsx` — *"Absent is the same as
+ * unconfigured, which for a required target is a named gap rather than a
+ * dropped link"* — in a file whose own main doc comment, two paragraphs above,
+ * already stated the correct rule. The module contradicted itself.
+ *
+ * That is evidence about the guard rather than just another line to fix, and it
+ * says two things:
+ *
+ * 1. **The file list was too short**, so the fourth file is in `RECORDS`.
+ * 2. **More importantly, the claim does not need the address to be made.** The
+ *    three original records named the variable or its target id; this one said
+ *    *"a required target"* and named nothing, which is why a selector keyed on
+ *    the address could never have reached it however many files it covered. The
+ *    selector now also matches passages about external targets generally, which
+ *    is the actual class the false claim belongs to.
+ *
+ * The blocklist stays exact phrases rather than becoming a pattern that hunts
+ * paraphrase — that decision is argued at the assertion itself, and a fifth
+ * unrelated wording would still escape it. The positive check below is the
+ * counterweight, and is why "say nothing at all" is not a way to pass.
  */
-describe("no record claims the dispute-committee address gates page completeness", () => {
+describe("no record claims an unconfigured external target gates page completeness", () => {
   const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
   const RECORDS = [
     join("storefront", "src", "config", "runtime-env.ts"),
     join("storefront", "src", "config", "runtime-config.ts"),
     join("content", "content-document.md"),
+    join("storefront", "src", "components", "pages", "LegalPageContent.tsx"),
   ] as const;
 
-  /** The paragraphs, table rows and list items that mention the address. */
-  function passagesNamingTheAddress(record: string): readonly string[] {
+  /**
+   * The paragraphs, table rows and list items that discuss the address — or
+   * external destinations as a class, since the fourth record made the claim
+   * without naming anything.
+   *
+   * A `.tsx` block comment has no blank line in it (its separator lines carry a
+   * `*`), so a doc comment arrives here as one passage rather than several.
+   * That costs precision in the failure message and nothing in correctness: the
+   * claims below are exact strings, and a wider passage cannot manufacture one.
+   */
+  function passagesAboutExternalTargets(record: string): readonly string[] {
     return readFileSync(join(repoRoot, record), "utf8")
       .split(/\n\s*\n|\n(?=\|)/)
       .filter((block) =>
-        /EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE|consumer-disputes-committee|Consumer Disputes Committee/.test(
+        /EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE|consumer-disputes-committee|Consumer Disputes Committee|external target|externalTargets|ExternalTargetUrls/.test(
           block,
         ),
       );
@@ -280,13 +316,13 @@ describe("no record claims the dispute-committee address gates page completeness
   it("found the passages to check in every record", () => {
     for (const record of RECORDS) {
       expect(
-        passagesNamingTheAddress(record).length,
-        `${record} no longer discusses the address, so this guard is inert for it`,
+        passagesAboutExternalTargets(record).length,
+        `${record} no longer discusses external destinations, so this guard is inert for it`,
       ).toBeGreaterThan(0);
     }
   });
 
-  it("says nowhere that an unset address produces a gap or the incompleteness notice", () => {
+  it("says nowhere that an unset destination produces a gap or the incompleteness notice", () => {
     /*
      * Exact phrases, not paraphrase-catching patterns, and deliberately so.
      * The first draft of this guard matched "page shows … incompleteness
@@ -295,8 +331,8 @@ describe("no record claims the dispute-committee address gates page completeness
      * it duly failed on the corrected prose. A pattern that cannot tell a claim
      * from its negation is not a weaker guard, it is a wrong one.
      *
-     * These five are the wordings the three records actually carried, verbatim
-     * from the revision this unit corrects. Restoring any of them — which is
+     * These six are the wordings the four records actually carried, verbatim
+     * from the revisions this unit corrects. Restoring any of them — which is
      * what reverting the fix does — turns this red.
      */
     const FALSE_CLAIMS: readonly string[] = [
@@ -305,17 +341,18 @@ describe("no record claims the dispute-committee address gates page completeness
       "treated like an unset registration number",
       "the page names the gap and shows the incompleteness notice",
       "the same treatment as an unset registration number",
+      "for a required target is a named gap",
     ];
 
     for (const record of RECORDS) {
-      for (const passage of passagesNamingTheAddress(record)) {
+      for (const passage of passagesAboutExternalTargets(record)) {
         for (const claim of FALSE_CLAIMS) {
           expect(
             passage.toLowerCase().includes(claim.toLowerCase()),
-            `${record} says "${claim}" of the dispute-committee address. The operator ruled on ` +
+            `${record} says "${claim}" of an external destination. The operator ruled on ` +
               "2026-08-10 that naming the forum without an access method satisfies Article " +
-              "6(1)(t) CRD, and the enforcing mechanism was deleted: an unset address renders " +
-              `one link fewer and nothing else. Passage:\n${passage.trim()}`,
+              "6(1)(t) CRD, and the enforcing mechanism was deleted: an unset destination " +
+              `renders one link fewer and nothing else. Passage:\n${passage.trim()}`,
           ).toBe(false);
         }
       }
@@ -333,11 +370,12 @@ describe("no record claims the dispute-committee address gates page completeness
       /no (?:gap marker|incompleteness notice)|not(?:hing)? (?:gate|change)|does not gate|enhancement, not|an enhancement/i;
 
     for (const record of RECORDS) {
-      const passages = passagesNamingTheAddress(record).join("\n");
+      const passages = passagesAboutExternalTargets(record).join("\n");
       expect(
         SAYS_IT_IS_OPTIONAL.test(passages),
-        `${record} no longer states that an unset dispute-committee address leaves the page ` +
-          "complete. Silence is what let the deleted mechanism be believed in for two units.",
+        `${record} no longer states that an unset external destination leaves the page ` +
+          "complete. Silence is what let the deleted mechanism be believed in for two units, " +
+          "and is what let a fourth copy of the claim sit two paragraphs below the correct rule.",
       ).toBe(true);
     }
   });
