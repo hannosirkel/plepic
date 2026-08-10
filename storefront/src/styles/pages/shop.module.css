@@ -1,0 +1,588 @@
+/*
+ * The basket and the checkout share one stylesheet because they share one
+ * composition: a page column of cards, a summary list of term/value rows, and
+ * one primary control at the end. Two files would have meant two definitions
+ * of the same row, and Task 5 has to preserve this layout exactly — a shifted
+ * screenshot baseline is an integration bug by that task's own rule, which is
+ * only checkable if there is one place the layout is decided.
+ *
+ * `box-sizing: border-box` appears on every control that takes a width. There
+ * is no global reset in this repository (see `styles/global.css`, which
+ * carries four rules and explains why each is a property of the document), and
+ * `forms.module.css` already records what the default `content-box` did to a
+ * full-width field at a 320px viewport: `width: 100%` plus `padding-inline`
+ * measured 306px inside a 272px container.
+ */
+
+.page {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space-tight);
+}
+
+.intro {
+  max-width: var(--content-measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--step-5);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-display);
+}
+
+.lede {
+  margin: 0;
+  font-size: var(--step-1);
+  color: var(--text-muted);
+  line-height: var(--line-height-body);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Cards                                                                    */
+/* ----------------------------------------------------------------------- */
+
+.card,
+.summaryCard,
+.orderCard {
+  box-sizing: border-box;
+  background: var(--card-bg);
+  color: var(--card-fg);
+  border: var(--card-border-width) solid var(--card-border-color);
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+}
+
+/*
+ * The order card is the one Article 8(2) cares about, so it is the one the eye
+ * lands on: a heavier border on the same token palette, no new colour.
+ */
+.orderCard {
+  border-width: var(--border-width-thick);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.sectionHeading {
+  margin: 0;
+  font-size: var(--step-3);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+}
+
+.subHeading {
+  margin: var(--space-2xs) 0 0;
+  font-size: var(--step-1);
+  font-weight: var(--font-weight-medium);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--step-0);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+  max-width: var(--content-measure);
+}
+
+.note {
+  margin: 0;
+  font-size: var(--step--1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+  max-width: var(--content-measure);
+}
+
+/*
+ * A plain list rather than a flex column: the anchors inside it would then be
+ * flex items whose automatic minimum size floors them at their own content
+ * width, which `tests/mockup-layout.test.ts` flags and which a long link label
+ * turns into an overflow at 320px. Spacing comes from the list items.
+ */
+.linkList {
+  margin: 0;
+  padding-inline-start: var(--space-md);
+  font-size: var(--step-0);
+}
+
+/*
+ * Spacing lives on the list item, not on the anchor. `display: inline-block`
+ * on the anchor was tried first and is wrong here: a link long enough to wrap
+ * (Returns and your 14-day right to withdraw, at 320 and 390) becomes a
+ * two-line block box, and the list marker then aligns to the middle of that
+ * box rather than to its first line — a bullet sitting beside the *second*
+ * line of its own item. The gap gives each item a target box comfortably over
+ * the 24px SC 2.5.8 minimum without changing the anchor's inline flow.
+ */
+.linkList li + li {
+  margin-block-start: var(--space-2xs);
+}
+
+.linkList a {
+  color: var(--accent);
+}
+
+.linkList a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin-top: var(--space-2xs);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Basket layout                                                            */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * Lines beside the summary above 60rem, stacked below it. `minmax(0, …)` on
+ * the first track is load-bearing: a grid item's default `min-width: auto`
+ * floors it at min-content, which is how a long product name would push the
+ * summary column off a narrow screen.
+ */
+.basketLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+@media (min-width: 60rem) {
+  .basketLayout {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+}
+
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  padding-block-end: var(--space-md);
+  border-block-end: var(--border-width) solid var(--border);
+}
+
+.line:last-child {
+  padding-block-end: 0;
+  border-block-end: none;
+}
+
+.lineHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2xs);
+}
+
+.lineName {
+  margin: 0;
+  font-size: var(--step-2);
+  font-weight: var(--font-weight-medium);
+}
+
+.lineUnitPrice,
+.lineTotal {
+  margin: 0;
+  font-size: var(--step-0);
+  color: var(--text);
+}
+
+.rowLabel {
+  color: var(--text-muted);
+  font-size: var(--step--1);
+}
+
+.lineUnavailable {
+  margin: 0;
+  font-size: var(--step--1);
+  line-height: var(--line-height-body);
+  color: var(--text);
+  background: var(--surface-decor);
+  border-radius: var(--radius-md);
+  padding: var(--space-2xs) var(--space-xs);
+}
+
+.lineControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2xs);
+}
+
+.quantityField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+
+.quantityInput {
+  box-sizing: border-box;
+  width: 5.5rem;
+  min-height: var(--button-min-height);
+  padding-inline: var(--space-2xs);
+  border: var(--border-width) solid var(--border-interactive);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.quantityInput:focus-visible,
+.field:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.pending {
+  margin: 0;
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Summary rows — used by the basket summary, the delivery block and the     */
+/* Article 8(2) disclosure set                                              */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * Capped rather than filling the card. A term/value row whose value is
+ * right-aligned reads as a pair only while the two are near each other: at
+ * 1280 an uncapped row put "Total" at x=52 and its figure at x=1200, which is
+ * two unrelated columns rather than a summary. The cap is above the prose
+ * measure because these rows carry a label *and* a value.
+ */
+.summary {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  width: 100%;
+  max-width: 46rem;
+}
+
+.summaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2xs);
+  font-size: var(--step-0);
+  line-height: var(--line-height-body);
+}
+
+.summaryRow dt {
+  /*
+   * The label never shrinks and never wraps mid-word; the value beside it is
+   * the one that grows, shrinks and wraps. `purchase-panel.module.css` records
+   * why the symmetric `min-width: 0` on both was wrong: it squeezed the label
+   * to a few pixels and wrapped it across two colliding lines.
+   */
+  flex: 0 0 auto;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+}
+
+.summaryRow dd {
+  margin: 0;
+  flex: 1 1 12rem;
+  min-width: 0;
+  text-align: right;
+  color: var(--text);
+}
+
+/*
+ * A row whose value is a sentence rather than a figure. Right alignment is
+ * right for money and wrong for the delivery estimate, which is two lines of
+ * prose: it produced a ragged left edge under a left-aligned label.
+ */
+.summaryProse {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.summaryProse dd {
+  text-align: start;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.summaryTotal {
+  border-block-start: var(--border-width) solid var(--border);
+  padding-block-start: var(--space-2xs);
+  font-size: var(--step-1);
+}
+
+.summaryTotal dt,
+.summaryTotal dd {
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Checkout                                                                 */
+/* ----------------------------------------------------------------------- */
+
+.checkoutForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: var(--content-measure);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+
+.fieldLabel {
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+.fieldHint {
+  margin: 0;
+  font-size: var(--step--2);
+  color: var(--text-muted);
+}
+
+.field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--button-min-height);
+  padding-inline: var(--space-sm);
+  border: var(--border-width) solid var(--border-interactive);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.fieldError {
+  margin: 0;
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  /* `--accent-fill` is the orange used for error text elsewhere in this
+     repository (`forms.module.css`); it is a text-weight token on the
+     publisher layer. */
+  color: var(--accent-fill);
+}
+
+/*
+ * The live region is always in the document so an error announced into it is
+ * announced rather than merely appearing. It has no box of its own until it
+ * has something in it.
+ */
+.alertAnchor {
+  display: contents;
+}
+
+/*
+ * Programmatic focus, so `:focus-visible` would not match — an error summary
+ * that takes focus with no visible indicator is a keyboard user losing their
+ * place, which is the opposite of what moving focus there is for.
+ */
+.error:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.error {
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border: var(--border-width-thick) solid var(--accent-fill);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--step-0);
+  line-height: var(--line-height-body);
+}
+
+.errorHeading {
+  margin: 0 0 var(--space-2xs);
+  font-size: var(--step-1);
+  font-weight: var(--font-weight-bold);
+}
+
+.error ul {
+  margin: 0;
+  padding-inline-start: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+}
+
+.error a {
+  color: var(--accent);
+}
+
+.error li + li {
+  margin-block-start: var(--space-2xs);
+}
+
+.error a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/*
+ * The card step. A labelled, obviously-empty region: Stripe elements are
+ * deferred, and a placeholder that looked like a card field would be worse
+ * than one that plainly is not.
+ */
+.cardPlaceholder {
+  box-sizing: border-box;
+  border: var(--border-width-thick) dashed var(--border-interactive);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-height: 6rem;
+}
+
+.cardPlaceholderLabel {
+  margin: 0;
+  font-size: var(--step-0);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+.turnstile {
+  margin-top: var(--space-2xs);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.consentLine {
+  margin: 0;
+  font-size: var(--step-0);
+  line-height: var(--line-height-body);
+  color: var(--text);
+  max-width: var(--content-measure);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Controls                                                                 */
+/* ----------------------------------------------------------------------- */
+
+.primaryButton,
+.secondaryButton,
+.quietButton,
+.orderButton {
+  /* A `<button>` does not inherit the document font — see
+     `styles/global.css`. */
+  font-family: inherit;
+  font-size: var(--button-font-size);
+  font-weight: var(--button-font-weight);
+  min-height: var(--button-min-height);
+  padding-block: var(--button-padding-block);
+  padding-inline: var(--button-padding-inline);
+  border-radius: var(--button-radius);
+  border-width: var(--button-border-width);
+  border-style: solid;
+  cursor: pointer;
+  transition: var(--button-transition);
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.quietButton:focus-visible,
+.orderButton:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.primaryButton {
+  background: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+  border-color: var(--button-primary-border);
+}
+
+.secondaryButton {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  border-color: var(--button-secondary-border);
+}
+
+.quietButton {
+  background: var(--button-quiet-bg);
+  color: var(--button-quiet-fg);
+  border-color: var(--button-quiet-border);
+  text-decoration: underline;
+}
+
+/*
+ * A control with an action in flight. `aria-disabled`, not `disabled` — see
+ * `BasketPageContent.tsx` for the two reasons, of which the load-bearing one
+ * is that a `disabled` attribute applied to a focused control drops focus to
+ * the body. It keeps its own colours: the `--button-disabled-*` pair measures
+ * 4.12:1, which WCAG 1.4.3 exempts for an inactive component but which there
+ * is no reason to take on when the `role="status"` line beside it is what
+ * actually says the control is busy.
+ */
+.primaryButton[aria-disabled="true"],
+.secondaryButton[aria-disabled="true"],
+.quietButton[aria-disabled="true"],
+.orderButton[aria-disabled="true"] {
+  cursor: progress;
+}
+
+/*
+ * The Article 8(2) control. Full width of its card and the largest control on
+ * the page, because the label has to be read in full — shortening it to fit is
+ * the defect the label exists to prevent.
+ */
+.orderButton {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-fg);
+  border-color: var(--button-primary-border);
+  font-size: var(--step-1);
+  min-height: 3.25rem;
+}
+
+.orderButton:hover:not(:disabled) {
+  background: var(--button-primary-bg-hover);
+  color: var(--button-primary-fg-hover);
+}

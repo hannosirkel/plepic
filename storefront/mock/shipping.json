@@ -1,0 +1,9 @@
+{
+  "$comment": "The declared shipping method the basket and the checkout price against. ONE method with ONE flat charge per order, never a rate table: the plan's Global Constraints forbid calculated carrier rates, and the packet for this unit says shipping is 'a declared method with a flat figure, not a generated rate table'. THE AMOUNT IS THE ONE FIGURE IN THIS UNIT THAT IS NOT AN OPERATOR-FROZEN COMMERCIAL FACT. Every value in catalogue.json comes from Task 1's migration-inputs manifest; this one does not appear there, in content/, or anywhere else in the repository, so it is a provisional placeholder chosen only so that the checkout's Article 8(2) disclosure set (goods, price of goods, shipping charge, total, delivery address, delivery estimate) has a shipping charge and a total to display. The operator must confirm it, and Task 5 must seed the live shipping option to match, exactly as it does for catalogue.json. The dispatch and delivery estimates are NOT here: they are read verbatim from content/legal/shipping.ts, which is where they already exist.",
+  "method": {
+    "id": "standard",
+    "name": "Standard delivery",
+    "amount": 590,
+    "currency": "EUR"
+  }
+}

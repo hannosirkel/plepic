@@ -15,8 +15,49 @@ Next.js storefront and, later, a Medusa backend.
   server-side and handed to the browser — never a `NEXT_PUBLIC_*` variable. See
   [`storefront/src/config/runtime-config.ts`](./storefront/src/config/runtime-config.ts)
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
-  for the redirect map's documented shape. The cart and checkout flows are a
-  later PR unit; every other route is real.
+  for the redirect map's documented shape. Every route is real; the basket and
+  checkout flows run against mock cart actions, and only Stripe elements,
+  server-side Turnstile verification and real totals are deferred.
+
+  **The basket and the checkout, and the legal page that specifies them.**
+  `src/app/cart/page.tsx` and `src/app/checkout/page.tsx` render
+  `src/components/shop/`, against the mock cart actions in
+  `src/lib/mock-cart-actions.ts` and the state in `src/lib/cart-store.tsx`.
+  `content/legal/terms.ts` is merged, live and says its checkout section "is
+  written to match the checkout screen exactly", so it is the specification:
+  the consent line, the contract-formation sentence, the confirmation promise
+  and the card-number statement are **read out of that content object** by
+  `src/components/shop/checkout-terms.ts` and rendered verbatim, along with the
+  return-postage sentence from `content/legal/returns.ts` and the delivery
+  estimate from `content/legal/shipping.ts`. There is no second copy to drift,
+  and a reworded legal paragraph is a loud failure rather than a checkout that
+  quietly stops disclosing something.
+
+  Article 8(2) CRD is what the checkout's layout is for: the final control is
+  labelled **"Order with obligation to pay"**, and immediately above it, in one
+  block with only the consent line between, are the six disclosures the legal
+  page lists — the goods, the price of the goods, the shipping charge, the
+  total, the delivery address and the delivery estimate. Everything else a
+  buyer must be told before being bound sits above that block, never below the
+  button. There is no consent tick box, because the consent line says the
+  confirmation is given *by placing the order*.
+
+  The shipping charge and the total are `null` until a delivery address is
+  complete, because `content/legal/shipping.ts` says shipping is calculated at
+  checkout once an address has been entered — so the basket says "Calculated at
+  checkout" rather than showing a figure that does not exist yet.
+  [`storefront/mock/shipping.json`](./storefront/mock/shipping.json) declares
+  one method with one flat charge (the plan forbids calculated carrier rates);
+  its `$comment` records that the amount is the one figure in this area that is
+  **not** an operator-frozen commercial fact and still needs confirming.
+
+  The card step is a labelled placeholder region and nothing else — no card
+  field, no fabricated instrument — and pressing the order button reports that
+  nothing was charged and no order was placed, which is true while Stripe is
+  deferred. `?mock=` requests either route in a given state
+  (`filled`, `updating`, `removing`, `unavailable`, `error`, `placing`) so the
+  loading and error layouts can be inspected on a real device; it belongs to
+  the mock data layer and leaves with it.
 
   **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
   `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and

@@ -49,6 +49,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  CARD_STATEMENT,
+  CONFIRMATION_PROMISE,
+  CONSENT_LINE,
+  CONTRACT_FORMATION,
+  DELIVERY_ESTIMATE,
+  RETURN_POSTAGE,
+} from "../src/components/shop/checkout-terms.js";
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
 import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
@@ -747,6 +755,127 @@ describe("the legal pages serve their content, resolved from the runtime environ
     expect(response.body).toContain(RUNTIME_ENV.MERCHANT_PHONE_NUMBER);
     expect(response.body).toContain("SHAH01338706");
     expect(response.body).not.toContain("product-safety-incomplete-notice");
+  });
+});
+
+/**
+ * The basket and the checkout, as a browser is actually served them.
+ *
+ * Both routes rendered `RoutePlaceholder` — a heading and a meta description —
+ * for three merged pull requests, and every test stayed green because each
+ * asked whether the route answered 200 with a canonical, and it did. These ask
+ * what is on it, and in particular whether the screen `content/legal/terms.ts`
+ * describes is the screen this server sends: the Article 8(2) button label, the
+ * six disclosures immediately above it, the consent line, the confirmation
+ * promise, the card statement and the return-postage disclosure.
+ *
+ * `?mock=` is the mock data layer's state parameter — see
+ * `src/lib/mock-cart-actions.ts`. Without it, an empty basket is the default,
+ * which is asserted first because it is what an ordinary first visit renders.
+ */
+describe("the basket and the checkout serve their real composition", () => {
+  it("renders an empty basket by default, not a placeholder heading", async () => {
+    const response = await requestWithHost(server.port, "/cart", "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text).toContain("Your basket is empty");
+    expect(text).toContain("Add Lunar Base to your basket");
+    // The route used to render its own meta description as body copy.
+    expect(text).not.toContain("What you are about to buy, and what it will cost delivered.");
+  });
+
+  it("renders an empty checkout by default", async () => {
+    const response = await requestWithHost(server.port, "/checkout", "runtime.example.com");
+    expect(response.status).toBe(200);
+    expect(paintedText(response.body)).toContain("There is nothing to check out.");
+  });
+
+  it("prices a filled basket from the mock catalogue, and defers shipping to checkout", async () => {
+    const response = await requestWithHost(
+      server.port,
+      "/cart?mock=filled",
+      "runtime.example.com",
+    );
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+    expect(text).toContain(resolveCatalogue().price);
+    expect(text).toContain("Calculated at checkout");
+    expect(response.body).toContain('href="/checkout"');
+  });
+
+  it("serves the checkout screen content/legal/terms.ts describes", async () => {
+    const response = await requestWithHost(
+      server.port,
+      "/checkout?mock=filled",
+      "runtime.example.com",
+    );
+    expect(response.status).toBe(200);
+
+    const text = paintedText(response.body);
+
+    // Article 8(2): the label, and the six disclosures above it.
+    expect(text).toContain("Order with obligation to pay");
+    for (const label of [
+      "The goods",
+      "Price of the goods",
+      "Shipping charge",
+      "Total",
+      "Delivery address",
+      "Delivery estimate",
+    ]) {
+      expect(text, `the served order block is missing "${label}"`).toContain(label);
+    }
+
+    // The four sentences, verbatim from the legal page.
+    for (const sentence of [
+      CONSENT_LINE,
+      CONFIRMATION_PROMISE,
+      CARD_STATEMENT,
+      CONTRACT_FORMATION,
+      RETURN_POSTAGE,
+      DELIVERY_ESTIMATE,
+    ]) {
+      expect(text, `the served checkout is missing "${sentence.slice(0, 48)}…"`).toContain(sentence);
+    }
+
+    // Article 6(1)(h): reachable here, and reachable earlier.
+    expect(response.body).toContain('href="/legal/returns#withdrawal-form"');
+  });
+
+  it("reaches the withdrawal conditions and the model form from the basket too", async () => {
+    const response = await requestWithHost(server.port, "/cart", "runtime.example.com");
+    expect(response.body).toContain('href="/legal/returns#withdrawal"');
+    expect(response.body).toContain('href="/legal/returns#withdrawal-form"');
+  });
+
+  it("serves no card field and no payment script on either route", async () => {
+    for (const path of ["/cart?mock=filled", "/checkout?mock=filled"]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.body).not.toMatch(/autocomplete="cc-/i);
+      expect(response.body.toLowerCase()).not.toContain("js.stripe");
+    }
+  });
+
+  it("leaves no unresolved placeholder on either route, in any state", async () => {
+    for (const path of [
+      "/cart",
+      "/cart?mock=filled",
+      "/cart?mock=updating",
+      "/cart?mock=error",
+      "/cart?mock=unavailable",
+      "/checkout",
+      "/checkout?mock=filled",
+      "/checkout?mock=placing",
+      "/checkout?mock=error",
+    ]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(paintedText(response.body), `${path} rendered an unresolved placeholder`).not.toMatch(
+        /\{[A-Za-z][A-Za-z0-9]*\}/,
+      );
+    }
   });
 });
 
