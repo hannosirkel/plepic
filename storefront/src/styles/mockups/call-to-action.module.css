@@ -9,12 +9,28 @@
   border-radius: var(--button-radius);
   border-width: var(--button-border-width);
   border-style: solid;
+  /* `<button>` does not inherit the page font; `<a>` does. This class is worn
+     by both (see ConsentManager), so it has to say so. */
+  font-family: inherit;
   font-size: var(--button-font-size);
   font-weight: var(--button-font-weight);
   letter-spacing: var(--button-letter-spacing);
   text-decoration: none;
   transition: var(--button-transition);
   cursor: pointer;
+}
+
+/*
+ * Every call to action on the site — "Add to basket" included — fell back to
+ * the user agent's own focus ring, while `forms.module.css` used the 3px
+ * `--focus-ring` token on its fields and its submit button. The UA ring is
+ * visible, so this was never an AA failure; it was two different focus
+ * indicators on the same page depending on which control a keyboard user had
+ * reached. The token wins, here as there.
+ */
+.cta:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .primary {

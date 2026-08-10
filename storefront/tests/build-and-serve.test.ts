@@ -10,9 +10,11 @@
  *    time, which is exactly what this unit exists to prevent.
  * 2. **Start the built app** with a *different* set of env values the build
  *    never saw, and confirm the server actually serves them.
- * 3. **Start it a second time** with no catalogue price configured at all,
- *    and confirm the product page publishes no price rather than a defaulted
- *    one.
+ * 3. **Start it a second time** with nothing configured but the two host
+ *    variables — the state every deployment is actually in — and confirm the
+ *    product page publishes the same price to a crawler that it renders to a
+ *    person, and that copy quoting an unconfigured merchant address is
+ *    suppressed rather than rendered with a brace in it.
  *
  * ## Why the CSP assertions are here and nowhere else
  *
@@ -48,6 +50,8 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
+import { resolveCatalogue } from "../src/lib/catalogue.js";
+import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -185,10 +189,7 @@ const SHAPED: Partial<Record<RuntimeEnvVar, string>> = {
   SITE_BASE_URL: `https://build-canary-${uuid}.example.com`,
   SITE_CANONICAL_HOST: `build-canary-${uuid}.example.com`,
   SITE_TEST_HOSTNAMES: `test-build-canary-${uuid}.example.com`,
-  CATALOGUE_MOCK_PRICE_AMOUNT: randomDigits(18),
-  // XTS is ISO 4217's code reserved for testing. See NOT_UNIQUELY_SCANNABLE.
-  CATALOGUE_MOCK_PRICE_CURRENCY: "XTS",
-  CATALOGUE_MOCK_AVAILABILITY: "PreOrder",
+  MERCHANT_CONTACT_ADDRESS: `build-canary-${randomDigits(18)}@example.com`,
   REDIRECT_MAP_PATH: join(scratchDir, `build-canary-${uuid}`, "redirect-map.json"),
 };
 
@@ -197,26 +198,20 @@ const BUILD_TIME_ENV = Object.fromEntries(
 ) as Record<RuntimeEnvVar, string>;
 
 /**
- * Two variables whose value cannot be made unique, so scanning a minified
- * bundle for it proves nothing either way.
+ * Variables whose value cannot be made unique, so scanning a minified bundle
+ * for it proves nothing either way.
  *
- * `CATALOGUE_MOCK_PRICE_CURRENCY` is a three-letter ISO 4217 code and
- * `CATALOGUE_MOCK_AVAILABILITY` is one of four schema.org tokens that appear
- * in this package's own source by necessity — `src/config/runtime-config.ts`
- * validates against them. A three-character or dictionary-word needle matches
- * a large minified bundle by coincidence, so a passing scan would be luck and
- * a failing one would be noise.
- *
- * They are not unguarded. Both still get a *distinct* build-time value above,
- * and "the running server reflects the runtime environment" below asserts the
- * served product page carries the runtime currency and availability rather
- * than the build-time ones — which is the property the scan is a proxy for,
- * observed directly instead.
+ * **Currently empty, and that is the improvement.** The two entries that used
+ * to be here were `CATALOGUE_MOCK_PRICE_CURRENCY` (a three-letter ISO 4217
+ * code) and `CATALOGUE_MOCK_AVAILABILITY` (one of four schema.org tokens the
+ * source validates against, so the needle appears in the bundle by
+ * necessity). Both variables are gone: the price, currency, availability and
+ * product name are identical in every environment and are read from
+ * `storefront/mock/catalogue.json`, not from configuration — see
+ * `src/config/runtime-config.ts`. An exemption removed by deleting the thing
+ * that needed it is worth more than an exemption argued for.
  */
-const NOT_UNIQUELY_SCANNABLE: readonly RuntimeEnvVar[] = [
-  "CATALOGUE_MOCK_PRICE_CURRENCY",
-  "CATALOGUE_MOCK_AVAILABILITY",
-];
+const NOT_UNIQUELY_SCANNABLE: readonly RuntimeEnvVar[] = [];
 
 /**
  * The operator redirect map the *running* server uses, at a path the build
@@ -233,10 +228,7 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   SITE_TEST_HOSTNAMES: "test.runtime.example.com,test-admin.runtime.example.com",
   ANALYTICS_MEASUREMENT_ID: "G-RUNTIMEVALUE",
   TURNSTILE_SITE_KEY: "0xRUNTIMEVALUE",
-  CATALOGUE_MOCK_PRODUCT_NAME: "Lunar Base",
-  CATALOGUE_MOCK_PRICE_AMOUNT: "4200",
-  CATALOGUE_MOCK_PRICE_CURRENCY: "EUR",
-  CATALOGUE_MOCK_AVAILABILITY: "InStock",
+  MERCHANT_CONTACT_ADDRESS: "runtime-value@example.com",
   REDIRECT_MAP_PATH: runtimeRedirectMapPath,
 };
 
@@ -327,6 +319,10 @@ describe("the canary set is complete", () => {
     const declared: readonly string[] = RUNTIME_ENV_VARS;
     expect(NOT_UNIQUELY_SCANNABLE.every((name) => declared.includes(name))).toBe(true);
     expect(NOT_UNIQUELY_SCANNABLE.length).toBeLessThan(RUNTIME_ENV_VARS.length / 2);
+  });
+
+  it("declares no catalogue variable, so no environment can move the published price", () => {
+    expect(RUNTIME_ENV_VARS.filter((name) => name.startsWith("CATALOGUE_"))).toEqual([]);
   });
 });
 
@@ -474,17 +470,34 @@ describe("the running server reflects the runtime environment, not the build-tim
     }
   });
 
-  it("gives the canonical product page Product/Offer JSON-LD sourced from the runtime configuration", async () => {
-    const response = await requestWithHost(server.port, "/games/lunar-base", "runtime.example.com");
-    expect(response.body).toContain('"@type":"Product"');
-    expect(response.body).toContain('"priceCurrency":"EUR"');
-    expect(response.body).toContain('"price":"42.00"');
-    expect(response.body).toContain('"availability":"https://schema.org/InStock"');
+  it("resolves the merchant contact address from the runtime environment, not the build-time one", async () => {
+    const response = await requestWithHost(server.port, "/support/lunar-base", "runtime.example.com");
+    expect(response.status).toBe(200);
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.MERCHANT_CONTACT_ADDRESS);
+    // And never as a brace: this route shipped "You can also reach us at
+    // {merchantContactAddress}." in plain body type to every visitor.
+    expect(response.body).not.toContain("{merchantContactAddress}");
+  });
 
-    // The build-time currency and availability were XTS and PreOrder. Neither
-    // is scannable in a minified bundle; both are observable right here.
-    expect(response.body).not.toContain('"priceCurrency":"XTS"');
-    expect(response.body).not.toContain("PreOrder");
+  /**
+   * The other half of the same fact. The serialized runtime-config blob goes
+   * into the HTML of every route, and it was built by spreading
+   * `RuntimeConfig` wholesale, so the merchant's address was in the markup of
+   * `/cart`, `/checkout` and every legal page — routes that never quote it and
+   * whose client-side code never reads it. `src/lib/client-runtime-config.ts`
+   * now names the fields it publishes; this is that assertion made against a
+   * running server rather than against the projection function, because the
+   * failure was in what the *page* served.
+   */
+  it("publishes the merchant address only on the route that quotes it, never in the config blob", async () => {
+    for (const path of ["/", "/cart", "/checkout", "/legal/terms", "/games/lunar-base"]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(response.body, `${path} serialized the merchant contact address`).not.toContain(
+        RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS,
+      );
+    }
   });
 });
 
@@ -555,47 +568,79 @@ describe("test hostnames", () => {
 });
 
 /**
- * The same build, served by a second process that configures no catalogue
- * price at all — the state an unconfigured deployment is actually in.
+ * The same build, served by a second process with nothing configured beyond
+ * the two host variables — the state every deployment is actually in today.
  *
- * The previous revision defaulted the price to 3900, the currency to EUR and
- * the availability to InStock, so an unconfigured deployment published
- * `"price":"39.00"` as `Offer` structured data to search engines and nothing
- * failed, warned, or tested for it. There is no reserved price the way RFC
- * 2606 reserves `example.com`, so the only truthful thing to publish is
- * nothing.
+ * This is the finding that made the whole arrangement worth changing. The
+ * price used to come from `CATALOGUE_MOCK_*`, so an unconfigured deployment
+ * published a visible €25.00 to a person and, in the JSON-LD, **no offer at
+ * all** to a search engine; a *mis*configured one published a different price
+ * to each, with nothing failing or warning. Both facts now come from
+ * `storefront/mock/catalogue.json`, so the default state is the correct state
+ * and there is no environment that can separate them.
  */
-describe("an unconfigured deployment publishes no price", () => {
-  let unpriced: RunningServer;
+describe("an unconfigured deployment publishes the same price it renders", () => {
+  let unconfigured: RunningServer;
 
   beforeAll(async () => {
-    unpriced = await startServer({
-      SITE_BASE_URL: "https://unpriced.example.com",
-      SITE_CANONICAL_HOST: "unpriced.example.com",
+    unconfigured = await startServer({
+      SITE_BASE_URL: "https://unconfigured.example.com",
+      SITE_CANONICAL_HOST: "unconfigured.example.com",
     });
   }, 120_000);
 
   afterAll(() => {
-    unpriced?.process.kill();
+    unconfigured?.process.kill();
   });
 
   it("still serves the product page", async () => {
-    const response = await requestWithHost(unpriced.port, "/games/lunar-base", "unpriced.example.com");
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/games/lunar-base",
+      "unconfigured.example.com",
+    );
     expect(response.status).toBe(200);
     expect(response.body).toContain('"@type":"Product"');
   });
 
-  it("publishes no Offer, no price, no currency and no availability", async () => {
-    const response = await requestWithHost(unpriced.port, "/games/lunar-base", "unpriced.example.com");
-    expect(response.body).not.toContain('"@type":"Offer"');
-    expect(response.body).not.toContain('"price"');
-    expect(response.body).not.toContain('"priceCurrency"');
-    expect(response.body).not.toContain('"availability"');
+  it("publishes an Offer whose price, currency and availability are the catalogue's own", async () => {
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/games/lunar-base",
+      "unconfigured.example.com",
+    );
+    const expected = buildProductJsonLd({
+      url: "https://unconfigured.example.com/games/lunar-base",
+      description: "",
+    });
+    const offer = expected.offers as Record<string, unknown>;
+
+    expect(response.body).toContain('"@type":"Offer"');
+    expect(response.body).toContain(`"priceCurrency":"${String(offer.priceCurrency)}"`);
+    expect(response.body).toContain(`"price":"${String(offer.price)}"`);
+    expect(response.body).toContain(`"availability":"${String(offer.availability)}"`);
   });
 
-  it("publishes none of the previous revision's fabricated defaults", async () => {
-    const response = await requestWithHost(unpriced.port, "/games/lunar-base", "unpriced.example.com");
-    expect(response.body).not.toContain("39.00");
-    expect(response.body).not.toContain("schema.org/InStock");
+  it("shows a human the same price it tells a crawler", async () => {
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/games/lunar-base",
+      "unconfigured.example.com",
+    );
+    const rendered = resolveCatalogue();
+    expect(response.body).toContain(rendered.price);
+    expect(response.body).toContain(rendered.availabilityLabel);
+    expect(response.body).toContain(rendered.productName);
+  });
+
+  it("suppresses the copy that quotes an unconfigured merchant address, rather than rendering the brace", async () => {
+    const response = await requestWithHost(
+      unconfigured.port,
+      "/support/lunar-base",
+      "unconfigured.example.com",
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).not.toContain("{merchantContactAddress}");
+    expect(response.body).not.toContain("You can also reach us at");
   });
 });

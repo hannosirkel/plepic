@@ -3,21 +3,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { ConfigError } from "../src/config/env.js";
 import { getRuntimeConfig } from "../src/config/runtime-config.js";
 import { RUNTIME_ENV_VARS } from "../src/config/runtime-env.js";
-
-const OFFER_ENV = {
-  CATALOGUE_MOCK_PRICE_AMOUNT: "1234",
-  CATALOGUE_MOCK_PRICE_CURRENCY: "usd",
-  CATALOGUE_MOCK_AVAILABILITY: "OutOfStock",
-};
+import {
+  CLIENT_RUNTIME_CONFIG_KEYS,
+  toClientRuntimeConfig,
+} from "../src/lib/client-runtime-config.js";
 
 describe("getRuntimeConfig", () => {
-  it("has a null analytics measurement ID and turnstile site key when unconfigured, never a literal", () => {
+  it("has a null analytics measurement ID, turnstile site key and merchant address when unconfigured, never a literal", () => {
     const config = getRuntimeConfig({});
     expect(config.analytics.measurementId).toBeNull();
     expect(config.turnstile.siteKey).toBeNull();
+    expect(config.merchant.contactAddress).toBeNull();
   });
 
   it("reads every field from the environment given to it, not from process.env of the test runner", () => {
@@ -26,8 +24,7 @@ describe("getRuntimeConfig", () => {
       SITE_CANONICAL_HOST: "canonical.example.net",
       ANALYTICS_MEASUREMENT_ID: "G-EXAMPLE1",
       TURNSTILE_SITE_KEY: "0x0000000000000000000AA",
-      CATALOGUE_MOCK_PRODUCT_NAME: "Test Product",
-      ...OFFER_ENV,
+      MERCHANT_CONTACT_ADDRESS: "hello@canonical.example.net",
     });
 
     expect(config).toEqual({
@@ -35,14 +32,7 @@ describe("getRuntimeConfig", () => {
       canonicalHost: "canonical.example.net",
       analytics: { measurementId: "G-EXAMPLE1" },
       turnstile: { siteKey: "0x0000000000000000000AA" },
-      catalogueMock: {
-        productName: "Test Product",
-        offer: {
-          priceAmount: 1234,
-          priceCurrency: "USD",
-          availability: "OutOfStock",
-        },
-      },
+      merchant: { contactAddress: "hello@canonical.example.net" },
     });
   });
 
@@ -55,53 +45,92 @@ describe("getRuntimeConfig", () => {
 });
 
 /**
- * The offer is published as machine-readable `Product`/`Offer` structured
- * data to search engines. A default price there is not a placeholder, it is a
- * claim — and unlike the reserved example hostnames `config/hosts.ts` falls
- * back to, no price is reserved for the purpose. So: all three, or none.
+ * `src/app/layout.tsx` serializes this object into the HTML of **every**
+ * route. It used to build it by spreading `RuntimeConfig` wholesale, so every
+ * field the configuration object had — and every field it would ever gain —
+ * was published to the browser on `/cart`, `/checkout` and every legal page by
+ * default. `merchant.contactAddress` was already in it, and nothing
+ * client-side read it: `curl https://<canonical-host>/checkout | grep @`
+ * returned the merchant's address from a page that never quotes it.
+ *
+ * The address is a public business address that must appear on the Imprint by
+ * law, so that was not a leak. The **default** was the defect, and
+ * `RuntimeConfig` is exactly where Task 5's Stripe and Medusa configuration
+ * lands. So the assertion is the key set, not one omitted field: a field added
+ * to `RuntimeConfig` reaches the browser only when somebody adds it here too.
  */
-describe("the catalogue offer is never defaulted", () => {
-  it("is null when nothing at all is configured, so the page can publish no price", () => {
-    expect(getRuntimeConfig({}).catalogueMock.offer).toBeNull();
+describe("only a named subset of the runtime config is published to the browser", () => {
+  const config = getRuntimeConfig({
+    SITE_BASE_URL: "https://canonical.example.net",
+    SITE_CANONICAL_HOST: "canonical.example.net",
+    ANALYTICS_MEASUREMENT_ID: "G-EXAMPLE1",
+    TURNSTILE_SITE_KEY: "0x0000000000000000000AA",
+    MERCHANT_CONTACT_ADDRESS: "hello@canonical.example.net",
+  });
+  const client = toClientRuntimeConfig(config, true);
+
+  it("publishes exactly the declared key set and nothing else", () => {
+    expect(Object.keys(client).sort()).toEqual([...CLIENT_RUNTIME_CONFIG_KEYS].sort());
   });
 
-  it("publishes no fabricated amount, currency or availability in that case", () => {
-    const serialized = JSON.stringify(getRuntimeConfig({}));
-    expect(serialized).not.toContain("3900");
-    expect(serialized).not.toContain("EUR");
-    expect(serialized).not.toContain("InStock");
+  it("carries no merchant contact address, in any nesting, anywhere in the blob", () => {
+    expect(JSON.stringify(client)).not.toContain("hello@canonical.example.net");
+    expect(JSON.stringify(client)).not.toContain("merchant");
   });
 
-  for (const omitted of Object.keys(OFFER_ENV)) {
-    it(`throws when ${omitted} is the only one missing, rather than silently defaulting it`, () => {
-      const env: Record<string, string> = { ...OFFER_ENV };
-      delete env[omitted];
-
-      expect(() => getRuntimeConfig(env)).toThrow(ConfigError);
-      expect(() => getRuntimeConfig(env)).toThrow(new RegExp(omitted));
+  it("still carries every value a browser genuinely needs", () => {
+    expect(client).toEqual({
+      baseUrl: "https://canonical.example.net",
+      canonicalHost: "canonical.example.net",
+      analytics: { measurementId: "G-EXAMPLE1" },
+      turnstile: { siteKey: "0x0000000000000000000AA" },
+      isTestHost: true,
     });
-  }
-
-  it("throws on an unrecognised availability token instead of coercing it to InStock", () => {
-    expect(() =>
-      getRuntimeConfig({ ...OFFER_ENV, CATALOGUE_MOCK_AVAILABILITY: "SoldOutForever" }),
-    ).toThrow(ConfigError);
   });
 
-  it("throws on a price amount that is not a whole number of minor units", () => {
-    for (const amount of ["39.00", "-3900", "free", "3 900", ""]) {
-      expect(() => getRuntimeConfig({ ...OFFER_ENV, CATALOGUE_MOCK_PRICE_AMOUNT: amount })).toThrow(
-        ConfigError,
-      );
-    }
+  it("is a projection and not a spread — a new configuration field is not published by default", () => {
+    const widened = { ...config, futureSecret: "must-not-be-published" };
+    expect(JSON.stringify(toClientRuntimeConfig(widened, false))).not.toContain("must-not-be-published");
+  });
+});
+
+/**
+ * The catalogue used to live here, as `CATALOGUE_MOCK_PRICE_AMOUNT`,
+ * `_PRICE_CURRENCY`, `_AVAILABILITY` and `_PRODUCT_NAME`, feeding the product
+ * page's `Product`/`Offer` structured data while the visible page read
+ * `storefront/mock/catalogue.json`. Two sources for one fact, and they
+ * disagreed in practice — one page served `"price":"29.00"`,
+ * `"priceCurrency":"USD"` and `"availability":"OutOfStock"` to a crawler
+ * beside "€25.00 / In stock" for a person, with nothing failing.
+ *
+ * The old tests here proved the *configuration* layer never defaulted a
+ * price. That property is now structural rather than tested: there is no
+ * configuration layer for the price at all, and no environment variable that
+ * can move it away from the committed, reviewed catalogue.
+ * `tests/product-jsonld.test.ts` imports the JSON-LD builder and the page's
+ * own catalogue and asserts they agree.
+ */
+describe("no environment variable can change what price this site publishes", () => {
+  it("declares no catalogue variable at all", () => {
+    expect(RUNTIME_ENV_VARS.filter((name) => name.startsWith("CATALOGUE_"))).toEqual([]);
   });
 
-  it("throws on a currency that is not a three-letter ISO 4217 code", () => {
-    for (const currency of ["EURO", "E", "€", "12"]) {
-      expect(() =>
-        getRuntimeConfig({ ...OFFER_ENV, CATALOGUE_MOCK_PRICE_CURRENCY: currency }),
-      ).toThrow(ConfigError);
-    }
+  it("publishes the same configuration whether or not the retired variables are set", () => {
+    const retired = {
+      CATALOGUE_MOCK_PRICE_AMOUNT: "2900",
+      CATALOGUE_MOCK_PRICE_CURRENCY: "USD",
+      CATALOGUE_MOCK_AVAILABILITY: "OutOfStock",
+      CATALOGUE_MOCK_PRODUCT_NAME: "Lunar Base Deluxe",
+    };
+    expect(getRuntimeConfig(retired)).toEqual(getRuntimeConfig({}));
+  });
+
+  it("carries no price, currency, availability or product name in the serialized runtime config", () => {
+    const serialized = JSON.stringify(getRuntimeConfig({}));
+    expect(serialized).not.toContain("price");
+    expect(serialized).not.toContain("Currency");
+    expect(serialized).not.toContain("availability");
+    expect(serialized).not.toContain("Lunar Base");
   });
 });
 

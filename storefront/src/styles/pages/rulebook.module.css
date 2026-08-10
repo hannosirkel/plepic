@@ -1,0 +1,54 @@
+.page {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  padding-block: var(--section-space);
+}
+
+.intro {
+  max-width: var(--content-measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--step-6);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-display);
+}
+
+.lede {
+  margin: 0;
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/*
+ * `.viewer` and `.fallback` are deleted, not disabled. They styled an inline
+ * `<object>` PDF viewer this application's own CSP (`object-src 'none'`)
+ * blocked outright — see RulebookPageContent.tsx. Leaving dead rules behind
+ * would have left the next reader believing the page still has a viewer.
+ */
+.note {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--text-subtle);
+}

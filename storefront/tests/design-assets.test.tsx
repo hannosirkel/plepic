@@ -254,15 +254,24 @@ describe("LunarBaseMockup", () => {
   });
 
   /**
-   * This page carries three of the five informative images in the unit and
-   * had no non-empty-alt assertion of its own at all — the blanket
-   * "has an alt attribute" check above passes on `alt=""`, which is correct
-   * markup for the decorative header wordmark and wrong for a photograph of
-   * the product someone is deciding whether to buy.
+   * This page carries several of the informative images in the unit and had
+   * no non-empty-alt assertion of its own at all — the blanket "has an alt
+   * attribute" check above passes on `alt=""`, which is correct markup for
+   * the decorative header wordmark and wrong for a photograph of the product
+   * someone is deciding whether to buy.
+   *
+   * `t2-pages` added a fourth: the "table photography" beat the decision-
+   * order checkbox names, between "why it travels well" and the quotations —
+   * reusing the same layout-base render already shown small in "what is in
+   * the box", because no second distinct table photograph exists in this
+   * repository and the plan forbids fabricating one, shown here large.
    */
-  it("gives the three informative photographs real, non-empty alt text", () => {
+  it("gives the four informative photographs real, non-empty alt text", () => {
     const photographs = (html.match(/<img\b[^>]*>/g) ?? []).filter((tag) => /\bsrc="\/images\//.test(tag));
-    expect(photographs.length, "expected the box render and the two component photographs").toBe(3);
+    expect(
+      photographs.length,
+      "expected the box render, the two component photographs, and the table-photography render",
+    ).toBe(4);
     for (const tag of photographs) {
       const alt = /\balt="([^"]*)"/.exec(tag)?.[1] ?? "";
       expect(alt.length, `${/\bsrc="([^"]*)"/.exec(tag)?.[1]} has no usable alt text`).toBeGreaterThan(30);

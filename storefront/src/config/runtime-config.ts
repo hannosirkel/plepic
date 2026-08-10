@@ -13,68 +13,54 @@
  * once, as a single serialized blob (`RuntimeConfigScript`), never spread
  * across several `NEXT_PUBLIC_*` variables.
  *
- * `catalogueMock` is exactly what its name says: Task 2 has no catalogue —
- * Medusa lands in Task 5 — so the product's price, currency and availability
- * are mock values read from configuration the same way every other
- * per-environment value is, precisely so the JSON-LD and the runtime-config
- * plumbing this unit builds do not need to change shape when Task 5 replaces
- * the mock with a real catalogue lookup.
+ * ## The catalogue is not configuration, and no longer pretends to be
  *
- * ## Why the offer has no default
+ * This module used to carry a `catalogueMock` built from
+ * `CATALOGUE_MOCK_PRICE_AMOUNT`, `_PRICE_CURRENCY`, `_AVAILABILITY` and
+ * `_PRODUCT_NAME`, feeding the product page's `Product`/`Offer` JSON-LD,
+ * while the *visible* page read `storefront/mock/catalogue.json`. Those are
+ * two sources for one fact, and they disagreed in practice: one request to
+ * one page served a different amount, a different currency,
+ * `"availability":"OutOfStock"` and a different product name to a search
+ * engine while showing a human the catalogue's own amount and name, in
+ * stock. Nothing failed and nothing warned. In the **default** state —
+ * nothing configured — `offers` was omitted entirely, so the page advertised
+ * a price to people and no price at all to search engines.
  *
- * The mock *values* are sanctioned; a silent fallback for them is not. Price,
- * currency and availability are published as machine-readable `Product` /
- * `Offer` structured data on the canonical product page, so a default here is
- * not a placeholder a developer sees and replaces — it is a **price claim
- * made to search engines**, and the completion criterion this feeds says that
- * data must be truthful. `config/hosts.ts` may fall back safely because
- * RFC 2606 reserves `example.com` for the purpose. There is no reserved
- * price.
+ * The price, currency, availability and product name are the same in every
+ * environment: it is one product at one advertised price worldwide. They
+ * never met this file's own admission criterion ("nothing that *differs*
+ * between environments"), and the indirection bought nothing but the
+ * opportunity to disagree. They are gone from here.
+ * `storefront/mock/catalogue.json`, read through `src/lib/catalogue.ts`, is
+ * now the single source for both the rendered page and the structured data —
+ * see `src/lib/product-jsonld.ts` and `tests/product-jsonld.test.ts`, which
+ * imports both and fails if the two ever differ. Task 5 replaces that one
+ * module with a Medusa lookup and both consumers follow it.
  *
- * So {@link loadCatalogueOffer} takes all three or none:
+ * ## What stays configuration
  *
- * - **none set** — `offer` is `null` and `buildProductJsonLd` omits `offers`
- *   entirely. The page publishes no price rather than a wrong one.
- * - **all three set** — each is validated, and an unparsable amount, a
- *   non-ISO currency or an unknown availability token throws rather than
- *   being coerced. Coercing an unrecognised availability to `InStock` is the
- *   same fabrication in a smaller costume.
- * - **some set** — throws, naming the missing ones. Partial configuration is
- *   a deployment mistake, and failing loudly at the first request is the only
- *   way an operator finds out.
+ * `merchantContactAddress` does differ, and does not exist yet: it is the
+ * address customers write to, `content/schema.ts` marks it `unresolved`, and
+ * `content/` (read-only here) carries it as the literal template string
+ * `{merchantContactAddress}`. Until an operator sets
+ * `MERCHANT_CONTACT_ADDRESS`, `null` is the honest value, and the copy that
+ * needs it is **suppressed rather than rendered with a brace in it** — see
+ * `src/lib/configuration-placeholders.ts`. Every visitor to
+ * `/support/lunar-base` previously read, in plain body type, "You can also
+ * reach us at {merchantContactAddress}."
  */
 
-import { ConfigError, optionalEnv, readEnv, type EnvRecord } from "./env.js";
+import { readEnv, type EnvRecord } from "./env.js";
 import { loadSiteHostConfig, type SiteHostConfig } from "./hosts.js";
 
-export type ProductAvailability = "InStock" | "OutOfStock" | "PreOrder" | "SoldOut";
-
-const AVAILABILITY_VALUES: readonly ProductAvailability[] = [
-  "InStock",
-  "OutOfStock",
-  "PreOrder",
-  "SoldOut",
-];
-
-/** Non-negative integer, no sign, no decimal point: minor units or nothing. */
-const MINOR_UNITS_PATTERN = /^\d+$/;
-const ISO_4217_PATTERN = /^[A-Za-z]{3}$/;
-
-export interface CatalogueOffer {
-  /** Minor currency units (cents), never a float. */
-  readonly priceAmount: number;
-  /** ISO 4217, e.g. "EUR". */
-  readonly priceCurrency: string;
-  readonly availability: ProductAvailability;
-}
-
-export interface CatalogueMock {
-  readonly productName: string;
+export interface MerchantConfig {
   /**
-   * `null` when the deployment configures no price at all. Never a default —
-   * see this module's "Why the offer has no default".
+   * The customer contact address, or `null` when this deployment has not
+   * configured one. Never a placeholder and never a fabricated address: copy
+   * that needs it is dropped when it is `null`.
    */
-  readonly offer: CatalogueOffer | null;
+  readonly contactAddress: string | null;
 }
 
 export interface RuntimeConfig {
@@ -82,75 +68,7 @@ export interface RuntimeConfig {
   readonly canonicalHost: string;
   readonly analytics: { readonly measurementId: string | null };
   readonly turnstile: { readonly siteKey: string | null };
-  readonly catalogueMock: CatalogueMock;
-}
-
-function isAvailability(value: string): value is ProductAvailability {
-  return (AVAILABILITY_VALUES as readonly string[]).includes(value);
-}
-
-function loadCatalogueOffer(env: EnvRecord): CatalogueOffer | null {
-  const amountRaw = readEnv("CATALOGUE_MOCK_PRICE_AMOUNT", env);
-  const currencyRaw = readEnv("CATALOGUE_MOCK_PRICE_CURRENCY", env);
-  const availabilityRaw = readEnv("CATALOGUE_MOCK_AVAILABILITY", env);
-
-  const missing: string[] = [];
-  if (amountRaw === undefined) missing.push("CATALOGUE_MOCK_PRICE_AMOUNT");
-  if (currencyRaw === undefined) missing.push("CATALOGUE_MOCK_PRICE_CURRENCY");
-  if (availabilityRaw === undefined) missing.push("CATALOGUE_MOCK_AVAILABILITY");
-
-  // None configured: publish no price claim at all.
-  if (missing.length === 3) return null;
-
-  if (missing.length > 0) {
-    throw new ConfigError(
-      `incomplete catalogue offer configuration: ${missing.join(", ")} ` +
-        `${missing.length === 1 ? "is" : "are"} unset while the others are set. ` +
-        `Set all three, or none of them — a partially configured offer would publish ` +
-        `a price this deployment cannot stand behind.`,
-    );
-  }
-
-  if (amountRaw === undefined || currencyRaw === undefined || availabilityRaw === undefined) {
-    // Unreachable: missing.length is 0 here. Present so the narrowing is the
-    // compiler's, not a comment's.
-    throw new ConfigError("catalogue offer configuration disappeared between reads");
-  }
-
-  if (!MINOR_UNITS_PATTERN.test(amountRaw)) {
-    throw new ConfigError(
-      `CATALOGUE_MOCK_PRICE_AMOUNT must be a non-negative integer number of minor ` +
-        `currency units (3900 means 39.00) — got ${JSON.stringify(amountRaw)}.`,
-    );
-  }
-  if (!ISO_4217_PATTERN.test(currencyRaw)) {
-    throw new ConfigError(
-      `CATALOGUE_MOCK_PRICE_CURRENCY must be a three-letter ISO 4217 code — got ` +
-        `${JSON.stringify(currencyRaw)}.`,
-    );
-  }
-  if (!isAvailability(availabilityRaw)) {
-    throw new ConfigError(
-      `CATALOGUE_MOCK_AVAILABILITY must be one of ${AVAILABILITY_VALUES.join(", ")} — got ` +
-        `${JSON.stringify(availabilityRaw)}. It is published as schema.org availability, ` +
-        `so an unrecognised value is not defaulted.`,
-    );
-  }
-
-  return {
-    priceAmount: Number.parseInt(amountRaw, 10),
-    priceCurrency: currencyRaw.toUpperCase(),
-    availability: availabilityRaw,
-  };
-}
-
-function loadCatalogueMock(env: EnvRecord): CatalogueMock {
-  return {
-    // The product's name is not a price claim and is identical in every
-    // environment, so it keeps a default. The offer does not.
-    productName: optionalEnv("CATALOGUE_MOCK_PRODUCT_NAME", "Lunar Base", env),
-    offer: loadCatalogueOffer(env),
-  };
+  readonly merchant: MerchantConfig;
 }
 
 /**
@@ -167,6 +85,6 @@ export function getRuntimeConfig(env: EnvRecord = process.env): RuntimeConfig {
     canonicalHost: hostConfig.canonicalHost,
     analytics: { measurementId: readEnv("ANALYTICS_MEASUREMENT_ID", env) ?? null },
     turnstile: { siteKey: readEnv("TURNSTILE_SITE_KEY", env) ?? null },
-    catalogueMock: loadCatalogueMock(env),
+    merchant: { contactAddress: readEnv("MERCHANT_CONTACT_ADDRESS", env) ?? null },
   };
 }

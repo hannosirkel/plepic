@@ -1,0 +1,17 @@
+{
+  "$comment": "The mock catalogue — a contract, not a fixture. Every value here mirrors what Task 5's live Medusa catalogue will be seeded with: same price, same stock state, same product name and copy. The frozen commercial facts (Task 1, the operator's migration-inputs manifest, 2026-08-09): one physical copy of Lunar Base, EUR 25.00 VAT included as one advertised price worldwide (shipping calculated at checkout, never altered by destination), stock unmanaged (a statement, never a count), 2-6 players, about 30 minutes to play, about a minute to set up, 90 cards. Task 5 either derives its CI seed fixture from this file or a test asserts equality between the two — see storefront/tests/catalogue.test.ts.",
+  "product": {
+    "name": "Lunar Base",
+    "price": {
+      "amount": 2500,
+      "currency": "EUR",
+      "taxIncluded": true
+    },
+    "availability": "InStock",
+    "players": { "min": 2, "max": 6 },
+    "playtimeMinutes": 30,
+    "setupMinutes": 1,
+    "cardCount": 90,
+    "ageRange": "10+"
+  }
+}

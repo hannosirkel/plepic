@@ -47,6 +47,7 @@
   text-decoration: underline;
   text-underline-offset: 0.2em;
   opacity: 0.85;
+  min-width: 0;
 }
 
 .legal a:hover,

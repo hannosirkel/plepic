@@ -1,13 +1,61 @@
 /**
- * The Lunar Base page mockup — one of the plan's exactly-two mockups. A
- * single responsive design answering both desktop and mobile through CSS
- * (see `styles/mockups/lunar-base.module.css`), not two separate files.
+ * The Lunar Base page — developed from `t2-design-assets`'s `LunarBaseMockup`
+ * into the real, canonical product route (`src/app/games/lunar-base/page.tsx`
+ * renders this directly). A single responsive design answering both desktop
+ * and mobile through CSS (see `styles/mockups/lunar-base.module.css`).
  *
- * This renders every section `content/pages.ts` lists for the `lunarBase`
- * route, in that order, so the next unit (`t2-pages`) can lift each section
- * wholesale into `src/app/games/lunar-base/page.tsx`. It deliberately is
- * **not** imported by that route file — see the migration report for how
- * separability from the route tree is arranged.
+ * Renders every section `content/pages.ts` lists for the `lunarBase` route,
+ * in that order, plus two beats the decision-order checkbox names that the
+ * page registry does not carry its own anchor for:
+ *
+ * - **Table photography**, between "why it travels well" and the
+ *   quotations — the printed-component render already used in "what is in
+ *   the box" (`layout-base-*.webp`), shown large rather than paired small,
+ *   because no second distinct table photograph exists in this repository
+ *   and the plan forbids fabricating one.
+ * - **The tutorial video**, inside the same `id="video_trailer"` section as
+ *   the trailer rather than a separate anchor: `content/routes.ts`'s
+ *   `AnchorId` union (read-only to this unit) has no `video_tutorial` member,
+ *   and the existing `video_trailer` fragment is load-bearing (existing
+ *   backlinks carry it) so it stays exactly where it is. One section, two
+ *   videos, is a legitimate reading of "one trailer and one tutorial video"
+ *   that needs no new anchor.
+ *
+ * **What changed to become the real route, beyond wiring:** every catalogue
+ * placeholder (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`) in the
+ * purchase panel and its calls to action is resolved against
+ * `storefront/mock/catalogue.json` — see `src/lib/catalogue.ts` — rather
+ * than rendered literally, and the rulebook is linked from the "what is in
+ * the box" section rather than only named in prose.
+ *
+ * **Every `content/` string this component renders goes through `resolve`,
+ * not only the ones a reviewer happened to look at.** The first revision
+ * threaded the resolver into the purchase panel and the calls to action and
+ * rendered `productFaq` verbatim, so "How much is shipping?" answered "…the
+ * same everywhere: {priceLine}" on the shipping product page — inside a
+ * closed `<details>`, which is exactly why every test missed it.
+ * `tests/no-unresolved-placeholder.test.tsx` now fails on any `{token}`
+ * reaching rendered text on any real route, open or closed `<details>`
+ * included.
+ *
+ * **The hero carries the commercial facts, per the decision order** ("hero
+ * with box, price, stock, player count, playtime and Buy"). It shipped with
+ * pitch, differentiator, two facts and the box only: a visitor arriving on
+ * an `#aboutgame` backlink had to scroll the whole page — 8,603 CSS px at
+ * 320 — before meeting a price, a stock statement or any way to buy. The
+ * price, stock and player count are read from the resolved catalogue, and
+ * the Buy action is the *same* `content/lunar-base.ts` call to action the
+ * purchase panel renders, not a second one invented for the hero.
+ *
+ * Measured in a real Chromium build, the price now sits at y=546 (1280),
+ * y=699 (390) and y=772 (320), and the Buy action directly under it. At
+ * 1280 both are above the fold outright. At 390 and 320 they are not, and
+ * saying so is more useful than claiming otherwise: the `<h1>` is the
+ * product's own 100-character pitch sentence, which is 257px of type at 390
+ * and 282px at 320, and shortening it is `content/`'s decision rather than
+ * this component's. What changed is the distance — from 8,603px to under
+ * 800 — and the fact that everything a buyer needs is now in one place
+ * instead of at opposite ends of the page.
  */
 import {
   differentiator,
@@ -19,20 +67,61 @@ import {
   influenceVariantNote,
   pitch,
   productFaq,
+  purchase,
   travelsWell,
   victoryPaths,
   victoryPathsIntro,
   victoryPathsNote,
 } from "../../../../content/lunar-base.js";
+import type { CallToAction } from "../../../../content/schema.js";
+import { rulebookLink } from "../../../../content/support.js";
+import {
+  resolveCatalogue,
+  resolveCataloguePlaceholders,
+  type ResolvedCatalogue,
+} from "../../lib/catalogue.js";
 import { FeatureSpecStrip } from "../FeatureSpecStrip.js";
 import { ReviewComposite } from "../ReviewComposite.js";
 import { SectionDivider } from "../decor/SectionDivider.js";
 import { PurchasePanelMockup } from "../PurchasePanelMockup.js";
 import { SiteFooter } from "../SiteFooter.js";
 import { SiteHeader } from "../SiteHeader.js";
+import { VideoEmbed } from "../video/VideoEmbed.js";
+import { CallToActionLink } from "./CallToActionLink.js";
 import styles from "../../styles/mockups/lunar-base.module.css";
 
-export function LunarBaseMockup() {
+export interface LunarBaseMockupProps {
+  /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
+  readonly catalogue?: ResolvedCatalogue;
+}
+
+/**
+ * The hero's Buy action, taken from `content/lunar-base.ts` rather than
+ * written here, so the page has exactly one set of product copy and the hero
+ * and the purchase panel cannot drift apart.
+ *
+ * Asserted at module scope in the same style as `FeatureSpecStrip`'s icon
+ * pairing: if a future content edit removed the primary call to action, a
+ * silent hero with no way to buy is exactly the regression the checkbox
+ * exists to prevent, so it throws at import time — caught by any test that
+ * renders this component — rather than rendering nothing.
+ */
+function requirePrimaryPurchaseAction(): CallToAction {
+  const action = purchase.callsToAction.find((candidate) => candidate.emphasis === "primary");
+  if (action === undefined) {
+    throw new Error(
+      "content/lunar-base.ts's purchase.callsToAction declares no primary action, so the Lunar Base " +
+        "hero has no Buy action to render — the decision order requires one in the hero",
+    );
+  }
+  return action;
+}
+
+const heroBuyAction: CallToAction = requirePrimaryPurchaseAction();
+
+export function LunarBaseMockup({ catalogue = resolveCatalogue() }: LunarBaseMockupProps = {}) {
+  const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
+
   return (
     <div data-layer="lunar" className={styles.page}>
       <SiteHeader wordmark="dark" />
@@ -44,13 +133,28 @@ export function LunarBaseMockup() {
                 page — `--step-5`, bold — and it is the product's own pitch, so
                 the structure a sighted visitor sees and the structure exposed
                 to assistive technology have to be the same one. */}
-            <h1 className={styles.pitch}>{pitch.text}</h1>
-            <p className={styles.differentiator}>{differentiator.text}</p>
+            <h1 className={styles.pitch}>{resolve(pitch.text)}</h1>
+            <p className={styles.differentiator}>{resolve(differentiator.text)}</p>
             <ul className={styles.heroFacts}>
               {heroFacts.map((fact) => (
-                <li key={fact.text}>{fact.text}</li>
+                <li key={fact.text}>{resolve(fact.text)}</li>
               ))}
+              <li>{catalogue.playerCount}</li>
             </ul>
+
+            {/* Price, stock and Buy inside the hero, immediately under the
+                pitch — see this file's doc comment. The figure is the
+                headline and its qualifiers sit under it at note size, the
+                same split the purchase panel uses, so the two never read as
+                two different prices. */}
+            <div className={styles.heroPurchase}>
+              <p className={styles.heroPrice}>{catalogue.price}</p>
+              <p className={styles.heroPriceNote}>{catalogue.priceQualifiers}</p>
+              <p className={styles.heroAvailability}>{catalogue.availabilityLabel}</p>
+              <div className={styles.heroActions}>
+                <CallToActionLink action={heroBuyAction} resolveLabel={resolve} />
+              </div>
+            </div>
           </div>
           <img
             className={styles.heroImage}
@@ -72,36 +176,36 @@ export function LunarBaseMockup() {
         <SectionDivider className={styles.divider} />
 
         <section id="how-it-plays" className={styles.section}>
-          <h2 className={styles.heading}>{howItPlays.heading}</h2>
+          <h2 className={styles.heading}>{resolve(howItPlays.heading)}</h2>
           <ol className={styles.steps}>
             {howItPlays.body.map((step) => (
-              <li key={step}>{step}</li>
+              <li key={step}>{resolve(step)}</li>
             ))}
           </ol>
         </section>
 
         <section id="victory-paths" className={styles.section}>
           <h2 className={styles.heading}>Four ways to win</h2>
-          <p className={styles.body}>{victoryPathsIntro.text}</p>
+          <p className={styles.body}>{resolve(victoryPathsIntro.text)}</p>
           <dl className={styles.victoryList}>
             {victoryPaths.map((path) => (
               <div key={path.term} className={styles.victoryItem}>
-                <dt>{path.term}</dt>
-                <dd>{path.detail}</dd>
+                <dt>{resolve(path.term)}</dt>
+                <dd>{resolve(path.detail)}</dd>
               </div>
             ))}
           </dl>
-          <p className={styles.note}>{victoryPathsNote.text}</p>
-          <p className={styles.note}>{influenceVariantNote.text}</p>
+          <p className={styles.note}>{resolve(victoryPathsNote.text)}</p>
+          <p className={styles.note}>{resolve(influenceVariantNote.text)}</p>
         </section>
 
         <section id="in-the-box" className={styles.section}>
           <h2 className={styles.heading}>What is in the box</h2>
-          <p className={styles.body}>{inTheBoxSummary.text}</p>
+          <p className={styles.body}>{resolve(inTheBoxSummary.text)}</p>
           <ul className={styles.boxList}>
             {inTheBox.map((item) => (
               <li key={item.term}>
-                <strong>{item.term}</strong> — {item.detail}
+                <strong>{resolve(item.term)}</strong> — {resolve(item.detail)}
               </li>
             ))}
           </ul>
@@ -132,32 +236,66 @@ export function LunarBaseMockup() {
             <dl className={styles.victoryList}>
               {factions.map((faction) => (
                 <div key={faction.term} className={styles.victoryItem}>
-                  <dt>{faction.term}</dt>
-                  <dd>{faction.detail}</dd>
+                  <dt>{resolve(faction.term)}</dt>
+                  <dd>{resolve(faction.detail)}</dd>
                 </div>
               ))}
             </dl>
           </details>
+          <p className={styles.body}>
+            <CallToActionLink
+              action={{ label: rulebookLink.label, emphasis: "quiet", target: rulebookLink.target, accessibleLabel: rulebookLink.accessibleLabel }}
+              resolveLabel={resolve}
+            />
+          </p>
         </section>
 
         <section id="travels-well" className={styles.travelsSection}>
-          <h2 className={styles.headingOnDark}>{travelsWell.heading}</h2>
+          <h2 className={styles.headingOnDark}>{resolve(travelsWell.heading)}</h2>
           {travelsWell.body.map((paragraph) => (
             <p key={paragraph} className={styles.bodyOnDark}>
-              {paragraph}
+              {resolve(paragraph)}
             </p>
           ))}
         </section>
 
+        <section id="table-photography" className={styles.section}>
+          <h2 className={styles.heading}>On the table</h2>
+          <img
+            className={styles.tablePhoto}
+            src="/images/components/layout-base-960.webp"
+            srcSet="/images/components/layout-base-480.webp 480w, /images/components/layout-base-960.webp 960w"
+            sizes="(max-width: 720px) 92vw, 40rem"
+            width={960}
+            height={611}
+            loading="lazy"
+            decoding="async"
+            alt="A player's base laid out with a station and several module cards attached."
+          />
+        </section>
+
         <section id="video_trailer" className={styles.section}>
-          <h2 className={styles.heading}>Watch the trailer</h2>
-          {/* The trailer lives on YouTube per the plan's "keep video on YouTube"
-              instruction. Its URL is runtime configuration (an ExternalTargetId),
-              not content, so this mockup has no href to render yet — see
-              components/mockups/link-target.ts. */}
-          <p className={styles.body}>
-            <span className={styles.pendingLink}>Watch the Lunar Base trailer on YouTube</span>
-          </p>
+          <h2 className={styles.heading}>Watch</h2>
+          {/* Both videos live on YouTube per the plan's "keep video on YouTube"
+              instruction; this unit embeds, it does not host one. Neither has a
+              published YouTube id yet (see VideoEmbed.tsx's doc comment), so
+              both render the honest pending state rather than a fabricated
+              embed. This section keeps the id="video_trailer" fragment
+              existing backlinks carry — see content/routes.ts. */}
+          <VideoEmbed
+            heading="Trailer"
+            title="Lunar Base trailer"
+            youTubeId={null}
+            aspectRatio={16 / 9}
+            captionStatus="not-yet-available"
+          />
+          <VideoEmbed
+            heading="Tutorial"
+            title="Lunar Base tutorial"
+            youTubeId={null}
+            aspectRatio={1184 / 720}
+            captionStatus="not-yet-available"
+          />
         </section>
 
         <section id="reviews" className={styles.section}>
@@ -170,9 +308,9 @@ export function LunarBaseMockup() {
           <div className={styles.faq}>
             {productFaq.map((entry) => (
               <details key={entry.question}>
-                <summary>{entry.question}</summary>
+                <summary>{resolve(entry.question)}</summary>
                 {entry.answer.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
+                  <p key={paragraph}>{resolve(paragraph)}</p>
                 ))}
               </details>
             ))}
@@ -180,7 +318,7 @@ export function LunarBaseMockup() {
         </section>
 
         <section id="buy" className={styles.buySection}>
-          <PurchasePanelMockup />
+          <PurchasePanelMockup catalogue={catalogue} />
         </section>
       </main>
 

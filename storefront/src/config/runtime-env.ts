@@ -23,14 +23,18 @@
 export const RUNTIME_ENV_VARS = [
   /** GA4 measurement ID. Absent means the analytics loader never mounts. */
   "ANALYTICS_MEASUREMENT_ID",
-  /** schema.org availability token for the mock catalogue's offer. */
-  "CATALOGUE_MOCK_AVAILABILITY",
-  /** Mock catalogue price, in minor currency units. */
-  "CATALOGUE_MOCK_PRICE_AMOUNT",
-  /** ISO 4217 code for the mock catalogue's price. */
-  "CATALOGUE_MOCK_PRICE_CURRENCY",
-  /** Display name of the one product. */
-  "CATALOGUE_MOCK_PRODUCT_NAME",
+  /**
+   * Customer contact address. Absent means the copy that quotes it is
+   * suppressed — never rendered with an unresolved `{merchantContactAddress}`
+   * in it, and never given a fabricated address.
+   *
+   * The four `CATALOGUE_MOCK_*` variables that used to sit here are gone: the
+   * price, currency, availability and product name are identical in every
+   * environment, so configuring them per environment only made it possible
+   * for the structured data and the rendered page to disagree — which they
+   * did. See `src/config/runtime-config.ts`.
+   */
+  "MERCHANT_CONTACT_ADDRESS",
   /** Path to the operator's redirect map; absent means the committed fixture. */
   "REDIRECT_MAP_PATH",
   /** Canonical origin, no trailing slash. */

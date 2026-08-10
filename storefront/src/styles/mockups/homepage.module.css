@@ -111,75 +111,71 @@
   max-width: var(--content-measure);
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
-  margin-top: var(--space-2xs);
-}
-
-.fieldLabel {
-  font-size: var(--step--1);
-  font-weight: var(--font-weight-medium);
-  color: var(--text);
-}
-
-.fieldRow {
-  display: flex;
-  /*
-   * Wrapping is the other half of the `min-width: 0` below. Letting the
-   * field shrink stops the row overflowing, but on its own it shrinks it to
-   * whatever is left after `Subscribe` — 55px of usable email field at a
-   * 320px viewport. With a 12rem basis the button drops to its own line
-   * before that happens, so the narrow layout degrades to stacked rather
-   * than to a field nobody can type in. Desktop is unaffected: the row has
-   * ~576px there and never reaches the wrap point.
-   */
-  flex-wrap: wrap;
-  gap: var(--space-2xs);
-}
-
 /*
- * `min-width: 0` is load-bearing, not tidiness. A flex item's default
- * `min-width: auto` floors it at its own min-content width, and an <input>'s
- * min-content width is its `size` attribute — 211px, measured. The floor won
- * over `flex-shrink`, so on a 390px viewport the document's `scrollWidth`
- * was 403 and `Subscribe` sat at x=292→403: off the right edge of the phone,
- * with the whole page scrolling sideways to reach it. `min-width: 0`
- * restores the shrink and returns `scrollWidth` to 390 exactly. A
- * `box-sizing` reset does not — it was measured too, and changes nothing.
- * See `mockup-layout.test.ts`, which now holds every growable flex item to
- * this.
+ * The immersive featured-game section — deliberately not a product card.
+ * Switches to the Lunar Base token layer for one section
+ * (`data-layer="lunar"` in the markup) so it reads as a distinct, cinematic
+ * moment on an otherwise light publisher page, the same mechanism
+ * `design/tokens.css` documents for a section switching layers without
+ * forking a component.
  */
-.field {
-  flex: 1 1 12rem;
-  min-width: 0;
-  min-height: var(--button-min-height);
-  padding-inline: var(--space-sm);
-  border: var(--border-width) solid var(--border-interactive);
-  border-radius: var(--radius-md);
+.featured {
+  display: grid;
+  /*
+   * Named "featured-copy"/"featured-image", not "copy"/"image" — `.hero`
+   * above already claims those names. A `grid-template-areas` name is scoped
+   * to its own `display: grid` container in a browser, but
+   * `tests/mockup-layout.test.ts`'s overlap check reads area claims per
+   * *file*, not per container, because a real duplicate mistake (the
+   * defect it exists to catch) has no way to tell "two different grids" from
+   * "one grid, two overlapping items" without a layout engine. Distinct
+   * names sidestep the ambiguity entirely rather than asking the check to
+   * resolve it.
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  grid-template-areas: "featured-copy featured-image";
+  gap: var(--space-xl);
+  align-items: center;
   background: var(--surface);
   color: var(--text);
+  border-radius: var(--radius-xl);
+  padding: var(--space-2xl) var(--space-xl);
 }
 
-.field:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring);
-  outline-offset: var(--focus-ring-offset);
+@media (max-width: 860px) {
+  .featured {
+    grid-template-columns: 1fr;
+    grid-template-areas: "featured-image" "featured-copy";
+    padding: var(--space-xl) var(--space-md);
+  }
 }
 
-.submit {
-  min-height: var(--button-min-height);
-  padding-inline: var(--space-md);
-  border-radius: var(--button-radius);
-  border: var(--button-border-width) solid var(--button-primary-border);
-  background: var(--button-primary-bg);
-  color: var(--button-primary-fg);
-  font-weight: var(--button-font-weight);
-  cursor: pointer;
+.featuredCopy {
+  grid-area: featured-copy;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-sm);
 }
 
-.consentNote {
+.featuredHeading {
   margin: 0;
-  font-size: var(--step--2);
-  color: var(--text-subtle);
+  font-size: var(--step-4);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+}
+
+.featuredBody {
+  margin: 0;
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+.featuredImage {
+  grid-area: featured-image;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
