@@ -10,9 +10,13 @@
  * the second qualified read struck the same claim off `/legal/shipping`
  * (Minor 2) — leaving the product page asserting unqualified what the legal
  * page had just qualified. The operator supplied the replacement, and it is
- * used **here** rather than only on the legal page precisely so the two cannot
- * drift: the purchase panel, the product hero and the shipping FAQ all read
- * this one string, and `/legal/shipping` carries the same words as content.
+ * resolved **here** rather than only on the legal page precisely so the two
+ * cannot drift: every surface that qualifies the price reads those words out
+ * of this one function — the purchase panel and the product hero through
+ * {@link ResolvedCatalogue.priceTaxQualifier}, the basket and checkout
+ * summaries through {@link ResolvedCatalogue.priceQualifiers}, the shipping
+ * FAQ through {@link ResolvedCatalogue.priceLine} — and `/legal/shipping`
+ * carries the same words as content.
  *
  * The same answer removed `taxNote`. It resolved to the bare "VAT included"
  * alone, nothing rendered it, and a live resolver for a string we have decided
@@ -20,6 +24,26 @@
  * `content/schema.ts`, its resolver below and the set-equality pin in
  * `tests/catalogue.test.ts` were removed together, so no guard had to be
  * weakened to let one of the three go first.
+ *
+ * ## The operator's *format* is part of the answer too — 2026-08-10
+ *
+ * Carrying the operator's **words** into `priceQualifiers` was only half of
+ * it. The supplied wording is two lines, the first emphasised:
+ *
+ * > **{price} · VAT included where applicable**
+ * > Shipping calculated at checkout. Non-EU taxes and duties, if any, are not
+ * > included.
+ *
+ * One string cannot express a line break that is also a change of emphasis,
+ * so a component handed `priceQualifiers` and a price had no way to put the
+ * boundary where the operator put it — and both product surfaces put it
+ * somewhere else, with the tax qualification in the same small print as the
+ * shipping note. {@link ResolvedCatalogue.priceHeadline},
+ * {@link ResolvedCatalogue.priceTaxQualifier} and
+ * {@link ResolvedCatalogue.priceShippingNote} are the operator's own three
+ * parts, so the boundary is data rather than each component's reading of it.
+ * `priceQualifiers` stays, unchanged, for the surfaces that present no
+ * headline price at all.
  *
  * Two previous reviewers correctly declined to resolve these: `content/` was
  * not theirs, so the mockups render the literal placeholder text. Resolving
@@ -71,19 +95,69 @@ export const mockCatalogue: CatalogueProduct = (catalogueSource as CatalogueFile
 
 export interface ResolvedCatalogue {
   readonly productName: string;
-  /** Formatted with currency, e.g. "€25.00". A bare figure and nothing else: this is the headline slot. */
+  /** Formatted with currency, e.g. "€25.00". A bare figure and nothing else. */
   readonly price: string;
+  /**
+   * The tax qualification alone, in the operator's words — the half of
+   * {@link priceHeadline} that follows the figure.
+   *
+   * It is a **separate field from {@link priceShippingNote} because the
+   * operator's format puts a line break and a change of emphasis between the
+   * two**, and a component cannot honour a boundary it is handed as one
+   * string. See {@link priceHeadline}.
+   */
+  readonly priceTaxQualifier: string;
+  /**
+   * The shipping and duties sentence, in the operator's words — the
+   * unemphasised second line of the operator's format.
+   */
+  readonly priceShippingNote: string;
+  /**
+   * The operator's emphasised line, whole:
+   * `${price}${PRICE_HEADLINE_SEPARATOR}${priceTaxQualifier}` — e.g.
+   * "€25.00 · VAT included where applicable".
+   *
+   * **This is the operator's boundary, and it is not the one the page used to
+   * draw.** The supplied wording of 2026-08-10 is two lines, the first
+   * emphasised: the figure *and* the tax qualification above, the shipping
+   * and duties sentence below. `/legal/shipping` rendered that correctly from
+   * the first revision (its `callout` carries `lead` and `detail`
+   * separately); the purchase panel and the product hero did not — they put
+   * the figure in the emphasised slot and {@link priceQualifiers}, tax note
+   * and all, in the small print. So "VAT included where applicable" was
+   * small print on the two most prominent surfaces on the site and an
+   * emphasised line on the least prominent one.
+   *
+   * Composed here rather than in each component so the two surfaces cannot
+   * drift from each other or from the legal page:
+   * `tests/catalogue.test.ts` pins this string against its three parts, and
+   * `tests/legal-pages.test.tsx` pins `content/legal/shipping.ts`'s resolved
+   * callout lead against this exact value.
+   *
+   * **No component renders this string itself.** Both surfaces compose its
+   * two halves as **two elements** — the figure at display size, the
+   * separator and qualification at reading size, in one inline flow — because
+   * the wrap this format would otherwise cause is a typographic problem and
+   * gets a typographic answer. What the field is for is that the composed
+   * markup and the pinned line cannot disagree:
+   * `tests/price-presentation.test.tsx` reads the emphasised element's text
+   * back and compares it to this value. See `purchase-panel.module.css`.
+   */
+  readonly priceHeadline: string;
   /**
    * Everything that qualifies the price without being the figure — the tax
    * qualification, the shipping note and the non-EU duties disclosure, in the
-   * operator's own words.
+   * operator's own words, as one string.
    *
-   * It exists because {@link priceLine} is a *sentence*. That is right where
-   * prose quotes the price mid-paragraph, and wrong in a display-sized
-   * headline slot, where it wrapped over five lines at 1280 and six at 320
-   * and was then followed by a second line repeating the tax note on its
-   * own. A price component renders {@link price} large and this small; prose
-   * renders {@link priceLine}.
+   * **This is the shape for a surface that presents no headline price**, and
+   * after the price-presentation unification that is exactly the two it is
+   * still used on: the basket and checkout summaries, where the qualifiers
+   * are a note under a `<dl>` of goods, shipping and total rather than
+   * something beside a display figure. A surface that *does* present a
+   * headline price renders {@link priceHeadline} and
+   * {@link priceShippingNote} instead, so the operator's emphasis boundary
+   * survives; prose that quotes the price mid-paragraph renders
+   * {@link priceLine}.
    */
   readonly priceQualifiers: string;
   /** The full line the checkout-facing copy quotes: the price and its qualifiers together. */
@@ -108,6 +182,22 @@ function formatPrice(amount: number, currency: string): string {
 }
 
 /**
+ * What sits between the figure and the tax qualification on the operator's
+ * emphasised line — a spaced middle dot, exactly as the operator wrote it and
+ * exactly as `content/legal/shipping.ts`'s callout `lead` carries it.
+ *
+ * Exported because a component that renders the figure at display size and
+ * the qualification at reading size needs the two halves as separate nodes,
+ * and the separator therefore has to be written somewhere other than inside
+ * either half. `tests/catalogue.test.ts` pins
+ * {@link ResolvedCatalogue.priceHeadline} against
+ * `price + PRICE_HEADLINE_SEPARATOR + priceTaxQualifier`, so a component that
+ * splits the line and this constant cannot disagree about what the whole line
+ * says.
+ */
+export const PRICE_HEADLINE_SEPARATOR = " · ";
+
+/**
  * Resolves the mock catalogue into the display strings `content/`'s
  * placeholders stand in for. A pure function of the parsed catalogue, not a
  * singleton, so a test can resolve a different fixture without touching
@@ -130,12 +220,16 @@ export function resolveCatalogue(product: CatalogueProduct = mockCatalogue): Res
   const shippingNote =
     "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.";
   const priceQualifiers = `${taxQualifier}. ${shippingNote}`;
+  const priceHeadline = `${price}${PRICE_HEADLINE_SEPARATOR}${taxQualifier}`;
   const priceLine = `${price}, ${priceQualifiers}`;
   const inStock = product.availability === "InStock";
 
   return {
     productName: product.name,
     price,
+    priceTaxQualifier: taxQualifier,
+    priceShippingNote: shippingNote,
+    priceHeadline,
     priceQualifiers,
     priceLine,
     availability: product.availability,

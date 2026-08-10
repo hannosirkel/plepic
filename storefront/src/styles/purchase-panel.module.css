@@ -17,12 +17,60 @@
   font-weight: var(--font-weight-medium);
 }
 
-.price {
+/*
+ * The operator's emphasised line: the figure **and** the tax qualification,
+ * above the unemphasised shipping and duties sentence in `.note`. That
+ * boundary is the operator's, supplied 2026-08-10, and `/legal/shipping`'s
+ * `.callout` has drawn it correctly since the wording arrived; this panel and
+ * the product hero drew it one clause further up, leaving "VAT included where
+ * applicable" in the small print on the two most prominent surfaces on the
+ * site.
+ *
+ * **The wrap that was traded away for that, answered typographically.** The
+ * whole line set as one run at `--purchase-price-size` is what shipped first,
+ * and it is a wall: measured in Chromium 151 against a real build served on
+ * `127.0.0.1`, with the stylesheets confirmed loaded (303 rules,
+ * `MADE Evolve Sans` computed on `body`), one display-sized run is 3 lines /
+ * 145px in this panel at 1280 and 4 lines / 141px at 320. The operator's
+ * words are not available to shorten, so the **type** is what moves.
+ *
+ * Three decisions, each measured rather than assumed:
+ *
+ * 1. **Only the figure is promoted.** The paragraph is set at the reading
+ *    size and `.priceFigure` alone carries `--purchase-price-size`, so the
+ *    display figure costs one line box instead of the whole qualification.
+ * 2. **One inline flow, not a flex row.** A flex row forces a break between
+ *    the figure and the separator when the qualification will not fit beside
+ *    it, which strands the `·` at the end of a line as debris. Inline text
+ *    breaks wherever it fits, and the separator travels with the words.
+ * 3. **`--step--1`, not `--step-0`.** Measured at both. `--step-0` is 2
+ *    lines / 66px in this panel at 1280, 2 / 54px at 390 and 3 / 70px at 320;
+ *    `--step--1` is **1 line / 48px, 2 / 52px, 2 / 51px** — one line fewer at
+ *    the two widths that matter most, and the wide case fits the operator's
+ *    whole line on one row. It is the same size as `.note` below, and the
+ *    emphasis is carried by weight and colour instead, which is a real
+ *    distinction: bold `--purchase-price-color` against regular
+ *    `--purchase-note-color`, on the same baseline as a 44px figure.
+ *
+ * `text-wrap: balance` was tried and **removed**. It equalises line lengths,
+ * which in a 206px column at 320 moved "VAT" down and left the `·` alone at
+ * the end of the figure's line. Greedy wrapping keeps the separator inside
+ * the line it belongs to.
+ *
+ * `line-height` is the price token, not a body leading: a display figure and
+ * the words beside it share one line box, and 1.6 would open a gap inside the
+ * emphasised block wide enough to read as two.
+ */
+.priceHeadline {
   margin: 0;
-  font-size: var(--purchase-price-size);
+  font-size: var(--step--1);
   font-weight: var(--purchase-price-weight);
   color: var(--purchase-price-color);
   line-height: var(--purchase-price-leading);
+}
+
+.priceFigure {
+  font-size: var(--purchase-price-size);
 }
 
 .note {

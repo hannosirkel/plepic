@@ -28,6 +28,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PRICE_HEADLINE_SEPARATOR,
   mockCatalogue,
   resolveCatalogue,
   resolveCataloguePlaceholders,
@@ -88,6 +89,44 @@ describe("resolveCatalogue", () => {
     ).toBe(false);
   });
 
+  /**
+   * The operator's *format*, not only their words: two lines, the first
+   * emphasised, with the figure and the tax qualification above and the
+   * shipping and duties sentence below.
+   *
+   * The three fields are pinned **against each other** rather than only
+   * against literals, because the failure that actually shipped is a
+   * component drawing the boundary somewhere the operator did not. A surface
+   * renders `priceHeadline` in two nodes — the figure at display size, the
+   * rest at reading size — so the whole line it paints is
+   * `price + PRICE_HEADLINE_SEPARATOR + priceTaxQualifier`; if that stops
+   * equalling `priceHeadline`, the string the tests assert against and the
+   * string a reader sees have parted company.
+   */
+  it("composes the operator's emphasised line from its three parts", () => {
+    expect(resolved.priceTaxQualifier).toBe("VAT included where applicable");
+    expect(resolved.priceShippingNote).toBe(
+      "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.",
+    );
+    expect(resolved.priceHeadline).toBe(
+      `${resolved.price}${PRICE_HEADLINE_SEPARATOR}${resolved.priceTaxQualifier}`,
+    );
+    expect(resolved.priceHeadline).toBe("€25.00 · VAT included where applicable");
+  });
+
+  /**
+   * The unemphasised line is the shipping and duties sentence and **nothing
+   * else**. The demoted arrangement this unit replaced put the tax
+   * qualification in here too, which is how "VAT included where applicable"
+   * came to be small print on the two most prominent surfaces on the site
+   * while `/legal/shipping` emphasised it.
+   */
+  it("keeps the tax qualification out of the unemphasised line", () => {
+    expect(resolved.priceShippingNote).not.toContain("VAT");
+    expect(resolved.priceQualifiers).toContain(resolved.priceShippingNote);
+    expect(resolved.priceQualifiers).toContain(resolved.priceTaxQualifier);
+  });
+
   it("carries the product name and a readable availability flag", () => {
     expect(resolved.productName).toBe("Lunar Base");
     expect(resolved.inStock).toBe(true);
@@ -107,6 +146,8 @@ describe("resolveCatalogue", () => {
     expect(otherwise.productName).toBe("Other Game");
     expect(otherwise.price).toBe("US$9.99");
     expect(otherwise.priceQualifiers).toContain("VAT calculated at checkout");
+    // The emphasised line follows the tax state too, not just the qualifier string.
+    expect(otherwise.priceHeadline).toBe("US$9.99 · VAT calculated at checkout");
     expect(otherwise.inStock).toBe(false);
   });
 });

@@ -155,6 +155,38 @@ function paintedText(html: string): string {
 }
 
 /**
+ * The served markup of the first element carrying a CSS-module class built
+ * from `token`. A production `next build` names them
+ * `<stylesheet>_<class>__<hash>`, e.g. `lunar-base_heroPurchase__xzBhj`, so
+ * the distinctive part is the authored name between an underscore and a
+ * doubled one. (The vitest/Vite transform spells the same class
+ * `_heroPurchase_f620b6`; nothing here should be reused against that.)
+ *
+ * Depth-aware over the element's own tag name, because the blocks this is
+ * asked for nest same-tag children and a "first closing tag" cut would
+ * silently return a prefix — a test that passes because it looked at less
+ * than it meant to. Throws rather than returning `""` if the class is not
+ * there at all, so a renamed class fails loudly instead of making every
+ * assertion about the block vacuously true.
+ */
+function servedBlock(html: string, token: string): string {
+  const opening = new RegExp(`<(\\w+)\\b[^>]*class="[^"]*_${token}__[^"]*"[^>]*>`).exec(html);
+  if (opening === null) throw new Error(`no element carrying the class "${token}" in the served markup`);
+
+  const tag = opening[1] ?? "";
+  const from = opening.index + opening[0].length;
+  const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, "g");
+  tags.lastIndex = from;
+
+  let depth = 1;
+  for (let match = tags.exec(html); match !== null; match = tags.exec(html)) {
+    depth += match[1] === "/" ? -1 : 1;
+    if (depth === 0) return html.slice(from, match.index);
+  }
+  throw new Error(`unterminated <${tag}> for the class "${token}"`);
+}
+
+/**
  * The details a legal page's incompleteness notice enumerates, as a list.
  *
  * Parsed out rather than compared as one joined string: the joined form was
@@ -732,8 +764,18 @@ describe("the legal pages serve their content, resolved from the runtime environ
     expect(text, "the shipping page asserts VAT is included, unqualified").not.toMatch(
       /VAT included(?! where applicable)/,
     );
-    expect(text).toContain(
-      "Where VAT is due on your order, it is contained within that figure rather than added to it",
+    /*
+     * Unified to the operator's wording on 2026-08-10, and unify was not
+     * delete: the callout states the qualification once, and the body still
+     * says how the tax sits in the figure and that the figure is unchanged
+     * where none is due. `tests/legal-pages.test.tsx` carries that property in
+     * full; this is its served-page half.
+     */
+    const collapsed = text.replaceAll(/\s+/g, " ");
+    expect(collapsed).toContain("contained within that figure rather than added to it");
+    expect(collapsed).toMatch(/does not change[^.]*including where no VAT is due at all/);
+    expect(collapsed, "the body restates the callout's conditional one line below it").not.toMatch(
+      /[Ww]here VAT is due/,
     );
   });
 
@@ -741,9 +783,18 @@ describe("the legal pages serve their content, resolved from the runtime environ
    * The same wording, one page up, and this is why the finding named the
    * product page as well: a legal page saying *"where applicable"* over a
    * purchase panel saying *"VAT included"* flatly moves the contradiction to
-   * the more prominent of the two. Both read `priceQualifiers`.
+   * the more prominent of the two.
+   *
+   * **And the same *format*.** The operator supplied two lines with the first
+   * emphasised; the product surfaces put the tax qualification in the small
+   * print beside the shipping note. So the assertion is on the emphasised line
+   * as a whole — `resolveCatalogue().priceHeadline`, the identical string
+   * `/legal/shipping`'s callout `lead` resolves to — and on the *absence* of
+   * the concatenated qualifier string that used to carry it. Whitespace is
+   * collapsed because `paintedText` turns every tag into a space and the
+   * figure is a `<span>` inside the emphasised paragraph.
    */
-  it("presents the price identically on the product page", async () => {
+  it("presents the price identically on the product page, in the operator's two lines", async () => {
     const response = await requestWithHost(
       server.port,
       "/games/lunar-base",
@@ -751,12 +802,31 @@ describe("the legal pages serve their content, resolved from the runtime environ
     );
     expect(response.status).toBe(200);
 
-    const text = paintedText(response.body);
-    expect(text).toContain(resolveCatalogue().price);
-    expect(text).toContain(resolveCatalogue().priceQualifiers);
+    const catalogue = resolveCatalogue();
+    const text = paintedText(response.body).replaceAll(/\s+/g, " ");
+    expect(text).toContain(catalogue.priceHeadline);
+    expect(text).toContain(catalogue.priceShippingNote);
     expect(text, "the product page asserts VAT is included, unqualified").not.toMatch(
       /VAT included(?! where applicable)/,
     );
+
+    /*
+     * Scoped to the two commercial blocks, and it has to be: the same page
+     * carries the shipping FAQ, whose answer quotes `{priceLine}` — the price
+     * and the qualifiers as one sentence — and that is the right shape for
+     * prose quoting a price mid-paragraph. The defect is the concatenated form
+     * appearing where a headline price is presented.
+     */
+    for (const block of ["heroPurchase", "panel"] as const) {
+      const served = paintedText(servedBlock(response.body, block)).replaceAll(/\s+/g, " ");
+      expect(served, `${block} lost the operator's emphasised line`).toContain(
+        catalogue.priceHeadline,
+      );
+      expect(
+        served,
+        `${block} has the tax qualification back in the small print beside the shipping note`,
+      ).not.toContain(catalogue.priceQualifiers);
+    }
   });
 
   /**

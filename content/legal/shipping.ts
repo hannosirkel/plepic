@@ -12,7 +12,8 @@
  * - **Minor 2** — *"that figure is inclusive of value added tax"* was untrue
  *   for exports, where no EU VAT is due at all. The replacement wording is true
  *   of both cases, and it also survives the day the distance-sales OSS
- *   threshold is crossed without needing an edit.
+ *   threshold is crossed without needing an edit. Its *substance* is still
+ *   here; its *phrasing* was superseded on 2026-08-10 — see below.
  * - **Minor 3** — "estimates, not guarantees" was one-sided. Article 18 CRD
  *   gives the buyer a cancellation right after a further reasonable deadline,
  *   and the page now says so.
@@ -39,19 +40,54 @@
  *   here; it resolves from `storefront/mock/catalogue.json` through
  *   `storefront/src/lib/catalogue.ts`, and `content.test.ts` fails on a
  *   currency symbol or an amount in this file either way.
- * - **The same wording reaches the product page**, because the catalogue's
- *   `priceQualifiers` — which the purchase panel and the hero render — carries
- *   the identical qualification. A legal page saying *"where applicable"* over
- *   a product page saying *"VAT included"* flatly would move the contradiction
- *   Minor 2 removed up one level, to the more prominent page.
+ * - **The same wording reaches the product page**, because it resolves from
+ *   one place. `storefront/src/lib/catalogue.ts` composes the qualification
+ *   the purchase panel and the hero render beside the figure
+ *   (`priceTaxQualifier`, the emphasised half of this callout's own line) and
+ *   the one the basket and checkout summaries render under a summary
+ *   (`priceQualifiers`) out of those same words. A legal page saying *"where
+ *   applicable"* over a product page saying *"VAT included"* flatly would move
+ *   the contradiction Minor 2 removed up one level, to the more prominent
+ *   page.
  *
- * **The callout and the reader's Minor 2 sentence both stay, and they do not
- * say the same thing twice.** The callout is the *presentation*: what the
- * figure is and what is outside it. The sentence under it is the *rule*: that
- * where VAT is due it is inside the figure, where it is not due the figure is
- * unchanged, and which tax applies is settled from the delivery address. It is
- * what makes "where applicable" mean something, and deleting either would
- * leave the section worse.
+ * ## The duplication the first revision left, and how it was removed
+ *
+ * That first revision kept the callout *and* Minor 2's replacement sentence
+ * verbatim, one line apart, on the reasoning that one was the presentation and
+ * the other was the rule:
+ *
+ * > **Callout:** {price} · VAT included where applicable
+ * > **Body:** *"Where VAT is due on your order, it is contained within that
+ * > figure rather than added to it; where it is not due, the price is the
+ * > same."*
+ *
+ * The operator read both and answered **"unify to my wording"** on 2026-08-10.
+ * They do restate one qualification twice — the callout's *"where
+ * applicable"* and the sentence's *"where it is due … where it is not due"*
+ * are the same conditional in two vocabularies, and a reader meeting them a
+ * line apart has to work out whether the second is narrowing the first.
+ *
+ * **Unifying is not deleting, and what the sentence carried beyond the
+ * callout is still on the page.** Minor 2's substance was two things the
+ * callout compresses into two words, and both survive in the body's second
+ * paragraph:
+ *
+ * - **How the tax sits in the figure** — *"Included means contained within
+ *   that figure rather than added to it."* This is the inclusive-pricing
+ *   claim, which "included" alone does not make: it says the figure is not a
+ *   net price with tax to follow. It now reads as a gloss on the operator's
+ *   own word rather than as a second, differently-worded qualification.
+ * - **That the figure is identical where no tax is due** — *"It is the same
+ *   figure for every visitor, in every country, and it does not change
+ *   according to where you are or where you ask us to send the parcel —
+ *   including where no VAT is due at all."* The sentence was already there and
+ *   already said the general case; the closing clause is what makes it say the
+ *   export case Minor 2 was written for, explicitly, without reopening the
+ *   conditional the callout has already stated.
+ *
+ * The delivery-address rule and the business-buyer paragraph are untouched.
+ * Nothing else on this page, and no other legal page, was edited on this
+ * decision.
  */
 
 import type { LegalPage } from "../schema.js";
@@ -91,7 +127,7 @@ export const shipping: LegalPage = {
       },
       body: [
         "That is the price shown on the product page and in the basket, and it is the price a consumer pays for the goods.",
-        "Where VAT is due on your order, it is contained within that figure rather than added to it; where it is not due, the price is the same. It is the same figure for every visitor, in every country, and it does not change according to where you are or where you ask us to send the parcel. Where tax is due, which tax applies is worked out from the confirmed delivery address at checkout.",
+        "Included means contained within that figure rather than added to it. It is the same figure for every visitor, in every country, and it does not change according to where you are or where you ask us to send the parcel — including where no VAT is due at all. Where tax is due, which tax applies is worked out from the confirmed delivery address at checkout.",
         "Shipping is the only amount added at checkout, and it is shown to you before you commit to the order.",
         "Business buyers: the displayed price is a consumer price, with any tax that is due contained within it. If you need an invoice with the tax treatment stated for your own accounting, write to us at {merchantContactAddress} before ordering.",
       ],

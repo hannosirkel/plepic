@@ -76,6 +76,7 @@ import {
 import type { CallToAction } from "../../../../content/schema.js";
 import { rulebookLink } from "../../../../content/support.js";
 import {
+  PRICE_HEADLINE_SEPARATOR,
   resolveCatalogue,
   resolveCataloguePlaceholders,
   type ResolvedCatalogue,
@@ -155,13 +156,18 @@ export function LunarBaseMockup({
             </ul>
 
             {/* Price, stock and Buy inside the hero, immediately under the
-                pitch — see this file's doc comment. The figure is the
-                headline and its qualifiers sit under it at note size, the
-                same split the purchase panel uses, so the two never read as
-                two different prices. */}
+                pitch — see this file's doc comment. The emphasised line
+                carries the figure *and* the tax qualification and the note
+                under it carries shipping and duties: the operator's boundary
+                of 2026-08-10, and the same split the purchase panel uses, so
+                the two never read as two different prices or two different
+                tax claims. */}
             <div className={styles.heroPurchase}>
-              <p className={styles.heroPrice}>{catalogue.price}</p>
-              <p className={styles.heroPriceNote}>{catalogue.priceQualifiers}</p>
+              <p className={styles.heroPriceHeadline}>
+                <span className={styles.heroPriceFigure}>{catalogue.price}</span>
+                {`${PRICE_HEADLINE_SEPARATOR}${catalogue.priceTaxQualifier}`}
+              </p>
+              <p className={styles.heroPriceNote}>{catalogue.priceShippingNote}</p>
               <p className={styles.heroAvailability}>{catalogue.availabilityLabel}</p>
               <div className={styles.heroActions}>
                 <CallToActionLink action={heroBuyAction} resolveLabel={resolve} />

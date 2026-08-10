@@ -147,7 +147,7 @@ Next.js storefront and, later, a Medusa backend.
   the values Task 5's live Medusa catalogue will be seeded with — one
   product, EUR 25.00 VAT included, in stock, 2–6 players, ~30 minutes, 90
   cards, age 10+. `src/lib/catalogue.ts` resolves `content/`'s catalogue
-  placeholders (`{price}`, `{priceLine}`, `{taxNote}`, `{productName}`)
+  placeholders (`{price}`, `{priceLine}`, `{productName}`)
   against it at render time — the two previous units correctly left those
   placeholders literal, because `content/` was not theirs to resolve against a
   catalogue that did not exist yet. `tests/no-hardcoded-price.test.ts` fails
@@ -167,6 +167,76 @@ Next.js storefront and, later, a Medusa backend.
   and the page composition now read the same catalogue in the same request,
   and `tests/product-jsonld.test.ts` imports both and compares them rather
   than repeating figures.
+
+  **Every headline price presents the operator's two lines, and the wrap that
+  once argued against it is a typography problem with a typography answer.**
+  The operator supplied the price presentation on 2026-08-10 as two lines with
+  the first emphasised — `{price} · VAT included where applicable`, then
+  *"Shipping calculated at checkout. Non-EU taxes and duties, if any, are not
+  included."* `/legal/shipping` rendered that boundary from the day the wording
+  arrived; the purchase panel and the product hero did not. They rendered the
+  figure large and the **whole** qualifier string small, so *"VAT included
+  where applicable"* was small print on the two most prominent surfaces on the
+  site and an emphasised line on the least prominent one. `src/lib/catalogue.ts`
+  now resolves the operator's three parts separately (`priceHeadline`,
+  `priceTaxQualifier`, `priceShippingNote`), because one concatenated string
+  cannot express a line break that is also a change of emphasis, and a
+  component handed one had no boundary to honour.
+
+  The demotion existed to stop a wrap, and shortening the operator's words to
+  restore the emphasis was not available, so the **type** moved instead: the
+  emphasised paragraph is set at `--step--1` and only the figure is promoted to
+  `--purchase-price-size`, in one inline flow rather than a flex row, so the
+  browser breaks where the words fit instead of being forced to break between
+  the figure and the separator. Measured in Chromium 151 against a real
+  `next build` served on `127.0.0.1` — a trustworthy origin, so the stylesheets
+  actually load; confirmed at 303 rules with `MADE Evolve Sans` computed on
+  `body`, because a measurement taken on a page rendering in the UA serif is a
+  measurement of a page that no longer exists. Purchase panel, whose column
+  (384 / 276 / 206 CSS px) is the narrower of the two:
+
+  | the emphasised line alone | 1280 | 390 | 320 |
+  |---|---|---|---|
+  | as one display-sized run — the wall the demotion avoided | 3 lines, 145px | 3 lines, 110px | 4 lines, 141px |
+  | figure promoted, qualification at `--step--1` — as shipped | **1 line, 48px** | **2 lines, 52px** | **2 lines, 51px** |
+
+  | the whole presentation, emphasised line **and** plain line | 1280 | 390 | 320 |
+  |---|---|---|---|
+  | before: figure, then the whole qualifier string demoted to the note | 4 lines, 115px | 5 lines, 121px | 6 lines, 136px |
+  | after: the operator's two lines | 3 lines, 98px | 5 lines, 119px | 6 lines, 135px |
+
+  So the emphasis is recovered at no vertical cost at all — shorter at 1280 and
+  within 2px at 390 and 320, on both surfaces. Two things were tried and
+  rejected on the measurements: `--step-0` for the qualification (2 / 2 / 3
+  lines, one more than `--step--1` at both ends) and `text-wrap: balance`,
+  which equalises line lengths and in a 206px column stranded the `·` alone at
+  the end of the figure's line.
+
+  **The property, and where it stops.** *Wherever the price is presented as a
+  headline, the emphasised line carries the price and the VAT qualifier and the
+  unemphasised line carries the shipping and duties sentence.* It reaches the
+  purchase panel and the product hero. It does **not** reach the basket and
+  checkout summaries: those present no headline price — the goods figure is a
+  `<dd>` inside a `<dl>` of goods, shipping and total, `/cart`'s total is a
+  pending statement rather than a figure at all, and the note beneath qualifies
+  the summary rather than any one figure in it — so they keep rendering
+  `priceQualifiers` as one string, and splitting it there would either restate
+  the price to have something to attach the qualification to or emphasise a tax
+  note above an order total. `tests/price-presentation.test.tsx` pins the
+  boundary in the markup **and** the emphasis in the stylesheets, and
+  `tests/legal-pages.test.tsx` pins the legal page's callout lead
+  character-for-character against the string the product surfaces render.
+
+  **`/legal/shipping` states the VAT qualification once.** Its callout and the
+  second qualified read's Minor 2 replacement sentence sat one line apart and
+  qualified VAT in different words; the operator answered "unify to my wording"
+  on the same date. The operator's phrasing governs, and unify was not delete:
+  the body now glosses their word — *"Included means contained within that
+  figure rather than added to it"* — instead of restating their conditional,
+  and the sentence that follows carries the export case explicitly (*"…
+  including where no VAT is due at all"*). Both halves of what the qualified
+  reader put there survive, and `tests/legal-pages.test.tsx` fails if either
+  leaves the page or if the conditional comes back.
 
   **No `{token}` reaches a visitor.** Two did:
   `{priceLine}` in the product page's "How much is shipping?" answer, inside
