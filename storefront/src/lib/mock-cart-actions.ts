@@ -4,10 +4,23 @@
  *
  * The checkbox this unit implements says Task 5 "swaps the data layer
  * underneath and changes no page composition", which is only a meaningful rule
- * if the data layer is one seam rather than a habit. It is this file plus
- * `storefront/mock/catalogue.json` and `storefront/mock/shipping.json`. No
+ * if the data layer is small and named rather than a habit. It is this file
+ * plus `storefront/mock/catalogue.json` and `storefront/mock/shipping.json`. No
  * component calls a network, computes a total, or knows how long an action
- * takes; they call these four functions and render whatever comes back.
+ * takes; they call these functions and render whatever comes back.
+ *
+ * **It is not a single import seam, and claiming otherwise would be wrong.**
+ * `src/lib/cart-store.tsx` consumes the four basket actions, which is the seam
+ * proper — but `src/components/shop/CheckoutPageContent.tsx` imports
+ * {@link placeMockOrder}, {@link MockScenario} and {@link OrderOutcome}
+ * directly, because the order attempt is the checkout's own submission and
+ * belongs to that component's state rather than to the basket's. So Task 5
+ * edits one composition component as well as this file. What that task is
+ * actually held to is its screenshot baseline, and that survives: the
+ * disclosure block, the consent line and the button are rendered from
+ * `content/` and the totals in every case, so replacing the call changes no
+ * layout. The two page files, `src/app/{cart,checkout}/page.tsx`, also import
+ * from here, for `?mock=` and its gate.
  *
  * ## The actions are asynchronous on purpose, and slower than they need to be
  *
@@ -40,11 +53,26 @@
  * is in the first paint rather than appearing after hydration.
  *
  * It is part of the mock data layer and leaves with it: `/cart` and
- * `/checkout` are `noindex` and `Disallow`ed in `robots.txt`, the parameter
- * affects nothing but this module's own fixtures, and Task 5 deletes the file
- * that reads it. **Page composition does not depend on it** — the same
- * components render the same layout whether a state arrived through the
- * parameter or through a button press.
+ * `/checkout` are `noindex` and `Disallow`ed in `robots.txt`, and Task 5
+ * deletes the file that reads it. **Page composition does not depend on it** —
+ * the same components render the same layout whether a state arrived through
+ * the parameter or through a button press.
+ *
+ * ### It is inert in production, and that is enforced rather than documented
+ *
+ * A scenario is not free of consequence: `src/lib/cart-store.tsx` writes the
+ * requested basket into `sessionStorage`, deliberately, so that
+ * `/cart?mock=filled` and the `/checkout` a developer navigates to next agree.
+ * That is right where the parameter belongs and wrong everywhere else — a link
+ * of the form `https://<the live site>/cart?mock=filled` sent to a stranger
+ * would put an item in their basket. This module used to say the parameter
+ * "affects nothing but this module's own fixtures"; it wrote to a real
+ * visitor's session, so the sentence was false.
+ *
+ * {@link isMockLayerEnabled} is the sentence made true. The two page files ask
+ * it before they parse the parameter at all, so on the live site there is no
+ * scenario to honour, nothing is written, and `?mock=filled` is exactly a
+ * `/cart` with an ignored query string.
  */
 
 import { catalogueLine, clampQuantity, type CartLine } from "./cart.js";
@@ -84,8 +112,63 @@ export function parseMockScenario(value: string | readonly string[] | undefined)
     : null;
 }
 
+/**
+ * Development hostnames, where a browser is talking to a server somebody is
+ * running by hand. `127.0.0.1` and `*.localhost` are the two origins this
+ * repository's own rendering notes call trustworthy (the CSP sends
+ * `upgrade-insecure-requests`, so plain HTTP anywhere else loads no
+ * stylesheets); `localhost` is what `next dev` prints.
+ */
+const DEVELOPMENT_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** The `Host` header without its port, lower-cased. Keeps a bracketed IPv6 literal whole. */
+function bareHost(host: string): string {
+  const normalized = host.trim().toLowerCase();
+  if (normalized.startsWith("[")) {
+    const end = normalized.indexOf("]");
+    return end === -1 ? normalized : normalized.slice(0, end + 1);
+  }
+  return normalized.split(":")[0] ?? "";
+}
+
+/**
+ * Whether `?mock=` is honoured for a request to `host`.
+ *
+ * **Default deny.** The parameter is a development and review affordance, and
+ * the answer is "no" unless the request is demonstrably not to a live public
+ * site:
+ *
+ * - a hostname this deployment has declared to be a test hostname, which is
+ *   the same validated `SITE_TEST_HOSTNAMES` set `src/proxy.ts` uses to send
+ *   `X-Robots-Tag: noindex` and `robots.txt` uses to disallow everything. The
+ *   test environment is behind Cloudflare Access with an explicit list of
+ *   named accounts, so it has no passing strangers to send a link to; or
+ * - a development host — see {@link DEVELOPMENT_HOSTS}.
+ *
+ * It takes the hostname set rather than the whole `SiteHostConfig` on purpose.
+ * This module is imported by a client component, and `src/config/hosts.ts`
+ * reaches `process.env`; passing the resolved list keeps the per-environment
+ * *reading* on the server, in the two page files, where every other
+ * per-environment value in this application is already read. Nothing is baked
+ * into the image: the list arrives at runtime, exactly as the base URL and the
+ * Turnstile site key do.
+ */
+export function isMockLayerEnabled(
+  host: string | undefined,
+  testHostnames: readonly string[],
+): boolean {
+  if (host === undefined) return false;
+
+  const requested = bareHost(host);
+  if (requested === "") return false;
+
+  if (testHostnames.some((candidate) => bareHost(candidate) === requested)) return true;
+
+  return DEVELOPMENT_HOSTS.has(requested) || requested.endsWith(".localhost");
+}
+
 /** What a line is currently doing. Drives the pending affordances and `aria-busy`. */
-export type LinePending = "updating" | "removing";
+export type LinePending = "adding" | "updating" | "removing";
 
 export interface MockBasketState {
   readonly lines: readonly CartLine[];

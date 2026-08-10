@@ -49,6 +49,17 @@ export interface AddressFieldCopy {
   readonly label: string;
   readonly type: "text" | "email";
   readonly autoComplete: string;
+  /**
+   * Whether this field is part of the **postal** address.
+   *
+   * Article 8(2) CRD names "the delivery address" as one of the six
+   * disclosures immediately above the order button, and an email address is
+   * not part of one. The form collects both in a single section because a
+   * buyer types them together; the disclosure block composes its value from
+   * the fields marked here, so the email cannot be concatenated into the
+   * address the way a `FIELDS.map(...)` over the whole set once did.
+   */
+  readonly inDeliveryAddress: boolean;
   /** Shown under the label where the field needs one line of explanation. */
   readonly hint?: string;
 }
@@ -83,7 +94,35 @@ export const basket = {
   removeLabel: "Remove",
   removeAccessibleLabel: "Remove {productName} from your basket",
   updatingLabel: "Updating the quantity…",
+  addingLabel: "Adding it to your basket…",
   removingLabel: "Removing this item…",
+
+  /**
+   * What the basket says when a typed quantity is not one a basket can hold —
+   * an empty field, something that is not a whole number, or a number outside
+   * the accepted range.
+   *
+   * **It is composed at render, and the range is not written here.** The limit
+   * is `MAX_QUANTITY_PER_LINE` in `storefront/src/lib/cart.ts`, which is the
+   * one place it exists; repeating it in copy would create a second figure to
+   * disagree with. `BasketPageContent.tsx` builds
+   * "Enter a whole number of copies, from 1 to 10. Your basket has not been
+   * changed." exactly as `checkout.errors.missingFieldPrefix` is composed with
+   * a field label, and for the same reason: the content model's
+   * brace-placeholder grammar is reserved for the catalogue and the merchant
+   * identity, and `content.test.ts` rejects any other token.
+   *
+   * One message covers all three rejections because it is true of all three
+   * and it states the accepted range, which is what a reader needs to correct
+   * the entry. What it must never do is *reinterpret* the entry: a cleared
+   * field is not "one", and a negative number is not "empty the basket".
+   */
+  quantityError: {
+    prefix: "Enter a whole number of copies, from ",
+    rangeSeparator: " to ",
+    suffix: ". Your basket has not been changed.",
+  },
+
   unavailableLabel: "Not available",
   unavailableNote:
     "We cannot supply this at the moment, so it is not counted in the total. Remove it to carry on.",
@@ -150,20 +189,40 @@ export const checkout = {
     heading: "Delivery address",
     body: "Where the parcel goes, and where the confirmation is sent.",
     fields: [
-      { name: "fullName", label: "Full name", type: "text", autoComplete: "name" },
+      {
+        name: "fullName",
+        label: "Full name",
+        type: "text",
+        autoComplete: "name",
+        inDeliveryAddress: true,
+      },
       {
         name: "streetAddress",
         label: "Street and number",
         type: "text",
         autoComplete: "street-address",
+        inDeliveryAddress: true,
       },
-      { name: "postalCode", label: "Postcode", type: "text", autoComplete: "postal-code" },
-      { name: "city", label: "Town or city", type: "text", autoComplete: "address-level2" },
+      {
+        name: "postalCode",
+        label: "Postcode",
+        type: "text",
+        autoComplete: "postal-code",
+        inDeliveryAddress: true,
+      },
+      {
+        name: "city",
+        label: "Town or city",
+        type: "text",
+        autoComplete: "address-level2",
+        inDeliveryAddress: true,
+      },
       {
         name: "country",
         label: "Country",
         type: "text",
         autoComplete: "country-name",
+        inDeliveryAddress: true,
         hint: "We ship to every country.",
       },
       {
@@ -171,6 +230,8 @@ export const checkout = {
         label: "Email address",
         type: "email",
         autoComplete: "email",
+        // Not part of the postal address — see `AddressFieldCopy`.
+        inDeliveryAddress: false,
         hint: "Your order confirmation goes here.",
       },
     ] satisfies readonly AddressFieldCopy[],

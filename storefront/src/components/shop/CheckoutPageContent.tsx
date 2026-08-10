@@ -17,12 +17,34 @@
  * > total, the delivery address and the delivery estimate."
  *
  * The "Your order" section is exactly those six disclosures, in exactly that
- * order, in one block whose last two elements are the consent line and the
- * button. Nothing is interposed between them. Everything else a buyer must be
- * told before being bound — how the contract forms, who pays return postage,
- * where the withdrawal conditions and the model form are, what happens to a
- * card number — sits **above** that block, in "Before you order", rather than
- * below the button where a reader could be bound without having passed it.
+ * order, in one block whose last elements are the price qualification, the
+ * consent line and the button. Everything else a buyer must be told **before
+ * being bound** — how the contract forms, who pays return postage, where the
+ * withdrawal conditions and the model form are, what happens to a card
+ * number — sits above that block, in "Before you order", rather than below the
+ * button where a reader could be bound without having passed it.
+ *
+ * Two things are between the last disclosure and the button, and both belong
+ * there. The **price qualification** ("VAT included where applicable. Shipping
+ * calculated at checkout. Non-EU taxes and duties, if any, are not included.")
+ * is the catalogue's own qualifier on the two figures directly above it, which
+ * is where a qualification has to be to qualify anything;
+ * `tests/shop-pages.test.tsx` pins the set of what may appear here to exactly
+ * that sentence, so a third thing cannot arrive unnoticed. The **consent
+ * line** is next, immediately above the control it describes.
+ *
+ * ## One paragraph is below the button, deliberately
+ *
+ * The rule above is about **pre-contract** prose: a disclosure a buyer is
+ * entitled to have read before pressing a button that binds them. The
+ * confirmation promise — "You will receive a confirmation by email containing
+ * the order, the total paid and these terms" — is not one. It is Article 8(7)
+ * CRD, a statement about what happens **after** the contract is formed, and
+ * nothing about it changes what pressing the button means. It renders below
+ * the button, where it reads as the next thing that will happen rather than as
+ * a condition of ordering, and it is the last element of the block. So the
+ * button is not the final element on the page, and this file no longer claims
+ * it is.
  *
  * ## There is no consent tick box, and that is the legal page's decision
  *
@@ -48,6 +70,12 @@
  * the real validation, then reports that nothing was charged and no order was
  * placed, because that is true. The alternative — a fabricated confirmation —
  * would tell a person a contract exists when none does.
+ *
+ * That holds when nothing has hydrated, too. The form carries `method="post"`
+ * and an `action`, so a press before hydration — or with JavaScript off —
+ * sends the delivery address in a request body and gets the same answer back,
+ * rather than putting name, street, postcode, town, country and email into the
+ * URL. See `./checkout-order-post.ts`.
  */
 
 import { useId, useMemo, useRef, useState } from "react";
@@ -68,6 +96,7 @@ import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { CHECKOUT_ORDER_POST_PATH } from "./checkout-order-post.js";
 import {
   CARD_STATEMENT,
   CONFIRMATION_PROMISE,
@@ -115,14 +144,30 @@ export interface CheckoutPageContentProps {
   readonly nonce: string | undefined;
   /** The `?mock=` state this route was requested in — see `src/lib/mock-cart-actions.ts`. */
   readonly scenario: MockScenario | null;
+  /**
+   * True when this render follows a submission the browser made itself,
+   * before hydration or with JavaScript off — see `./checkout-order-post.ts`.
+   * The outcome is then in the first paint, with no script involved.
+   */
+  readonly unhydratedOrderAttempt?: boolean;
   /** Overridden to `0` by tests so the order attempt resolves without a timer. */
   readonly latencyMs?: number;
+}
+
+function initialOutcome(
+  scenario: MockScenario | null,
+  unhydratedOrderAttempt: boolean,
+): OrderOutcome | null {
+  if (scenario === "error") return { ok: false, reason: "order-failed" };
+  if (unhydratedOrderAttempt) return { ok: false, reason: "payment-not-connected" };
+  return null;
 }
 
 export function CheckoutPageContent({
   turnstileSiteKey,
   nonce,
   scenario,
+  unhydratedOrderAttempt = false,
   latencyMs,
 }: CheckoutPageContentProps) {
   const catalogue = resolveCatalogue();
@@ -134,8 +179,8 @@ export function CheckoutPageContent({
   const [values, setValues] = useState<AddressValues>(EMPTY_ADDRESS);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [placing, setPlacing] = useState(scenario === "placing");
-  const [outcome, setOutcome] = useState<OrderOutcome | null>(
-    scenario === "error" ? { ok: false, reason: "order-failed" } : null,
+  const [outcome, setOutcome] = useState<OrderOutcome | null>(() =>
+    initialOutcome(scenario, unhydratedOrderAttempt),
   );
 
   const addressComplete = isComplete(values);
@@ -171,12 +216,34 @@ export function CheckoutPageContent({
     });
   }
 
+  const outcomeMessage =
+    outcome === null
+      ? null
+      : outcome.reason === "order-failed"
+        ? checkout.errors.orderFailed
+        : checkout.errors.paymentNotConnected;
+
   if (lines.length === 0) {
     return (
       <>
         <div className={styles.intro}>
           <h1 className={styles.heading}>{checkout.heading}</h1>
+          {/* The empty basket keeps its lede on `/cart`; this dropped its own,
+              which was the only inconsistency between the two empty states. */}
+          <p className={styles.lede}>{checkout.lede}</p>
         </div>
+
+        {/* An unhydrated submission lands here: without JavaScript there is no
+            restored basket, so the answer has to be legible on the empty
+            checkout as well, or it would look like the order went through. */}
+        <div className={styles.alertAnchor} role="alert">
+          {outcomeMessage === null ? null : (
+            <p className={styles.error} ref={outcomeRef} tabIndex={-1}>
+              {outcomeMessage}
+            </p>
+          )}
+        </div>
+
         <section className={styles.card} aria-labelledby="checkout-empty-heading">
           <h2 id="checkout-empty-heading" className={styles.sectionHeading}>
             {checkout.empty.heading}
@@ -189,13 +256,6 @@ export function CheckoutPageContent({
       </>
     );
   }
-
-  const outcomeMessage =
-    outcome === null
-      ? null
-      : outcome.reason === "order-failed"
-        ? checkout.errors.orderFailed
-        : checkout.errors.paymentNotConnected;
 
   return (
     <>
@@ -228,7 +288,17 @@ export function CheckoutPageContent({
         {unavailable ? <p className={styles.error}>{checkout.errors.unavailableLine}</p> : null}
       </div>
 
-      <form className={styles.checkoutForm} onSubmit={handleSubmit} noValidate>
+      {/* `method` and `action` are load-bearing, not decoration: without them a
+          press before hydration is a GET that puts the delivery address in the
+          URL. See `./checkout-order-post.ts`. `handleSubmit` calls
+          `preventDefault()` first, so a hydrated page never navigates. */}
+      <form
+        className={styles.checkoutForm}
+        method="post"
+        action={CHECKOUT_ORDER_POST_PATH}
+        onSubmit={handleSubmit}
+        noValidate
+      >
         <section className={styles.card} aria-labelledby="checkout-address-heading">
           <h2 id="checkout-address-heading" className={styles.sectionHeading}>
             {checkout.address.heading}
@@ -352,8 +422,10 @@ export function CheckoutPageContent({
           </ul>
         </section>
 
-        {/* Article 8(2): the six disclosures, the consent line, the button.
-            Nothing is inserted between them. */}
+        {/* Article 8(2): the six disclosures, the catalogue's qualification of
+            the two figures in them, the consent line, the button — and then
+            the Article 8(7) confirmation promise, which is post-contract. See
+            this file's doc comment for why each of those is where it is. */}
         <section className={styles.orderCard} aria-labelledby="checkout-order-heading">
           <h2 id="checkout-order-heading" className={styles.sectionHeading}>
             {checkout.order.heading}
@@ -391,8 +463,14 @@ export function CheckoutPageContent({
             <div className={`${styles.summaryRow} ${styles.summaryProse}`}>
               <dt>{checkout.order.addressLabel}</dt>
               <dd>
+                {/* The postal address only. `FIELDS.map(...)` over the whole
+                    set concatenated the email address into the value Article
+                    8(2) names as "the delivery address"; `inDeliveryAddress`
+                    in `content/shop.ts` is what separates them. */}
                 {addressComplete
-                  ? FIELDS.map((field) => values[field.name]).join(", ")
+                  ? FIELDS.filter((field) => field.inDeliveryAddress)
+                      .map((field) => values[field.name])
+                      .join(", ")
                   : checkout.address.missingValue}
               </dd>
             </div>

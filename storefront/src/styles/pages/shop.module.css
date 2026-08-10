@@ -126,8 +126,16 @@
  * (Returns and your 14-day right to withdraw, at 320 and 390) becomes a
  * two-line block box, and the list marker then aligns to the middle of that
  * box rather than to its first line — a bullet sitting beside the *second*
- * line of its own item. The gap gives each item a target box comfortably over
- * the 24px SC 2.5.8 minimum without changing the anchor's inline flow.
+ * line of its own item.
+ *
+ * **How this passes SC 2.5.8, precisely.** Measured: each link is 16px tall
+ * with an 11px gap, so the targets are 27px apart centre to centre. That is
+ * the success criterion's **spacing exception** — an undersized target passes
+ * if a 24px circle centred on it overlaps no other target — and it clears it
+ * by 3px. It is *not* the 24-by-24 target-size minimum, which a 16px-tall
+ * inline link does not meet and this gap does not give it. Reducing the gap
+ * below 24px centre-to-centre would fail the criterion outright; that is the
+ * number this rule is holding.
  */
 .linkList li + li {
   margin-block-start: var(--space-2xs);
@@ -396,14 +404,36 @@
   font: inherit;
 }
 
+/*
+ * A field's error text.
+ *
+ * **The orange is a marker, not the text colour.** This rule read
+ * `color: var(--accent-fill)`, copying `forms.module.css`, and that is wrong
+ * on two counts that only became visible once a test drove a control into an
+ * error state: `design/tokens.css` says of that token, in its own comment,
+ * that it "is a background and is not readable as text", and `design/README.md`
+ * names `--plepic-orange-deep` as the colour for orange text on light. Measured
+ * in the browser it is **3.19:1** on a white card and 2.91:1 on the off-white
+ * surface — under WCAG 1.4.3's 4.5:1 for text this size, at `--step--1` and
+ * weight 500.
+ *
+ * The fix stays inside the semantic layer rather than reaching for a Layer-0
+ * primitive (`design/tokens.css` is not this unit's to add a semantic alias
+ * to): navy text at 16.4:1, with the orange carried by a marker rule down the
+ * inline start, which is what a fill token is for. It is the same idiom
+ * `.error` below already uses — `--text` on a surface, `--accent-fill` as the
+ * border — so the two error presentations now agree instead of disagreeing.
+ * The error is never signalled by colour alone in any case: it is positioned
+ * under its field, referenced by `aria-describedby`, and the input carries
+ * `aria-invalid`.
+ */
 .fieldError {
   margin: 0;
   font-size: var(--step--1);
   font-weight: var(--font-weight-medium);
-  /* `--accent-fill` is the orange used for error text elsewhere in this
-     repository (`forms.module.css`); it is a text-weight token on the
-     publisher layer. */
-  color: var(--accent-fill);
+  color: var(--text);
+  border-inline-start: var(--border-width-thick) solid var(--accent-fill);
+  padding-inline-start: var(--space-2xs);
 }
 
 /*
@@ -552,18 +582,21 @@
 }
 
 /*
- * A control with an action in flight. `aria-disabled`, not `disabled` — see
- * `BasketPageContent.tsx` for the two reasons, of which the load-bearing one
- * is that a `disabled` attribute applied to a focused control drops focus to
- * the body. It keeps its own colours: the `--button-disabled-*` pair measures
- * 4.12:1, which WCAG 1.4.3 exempts for an inactive component but which there
- * is no reason to take on when the `role="status"` line beside it is what
- * actually says the control is busy.
+ * A basket control with an action in flight. `aria-disabled`, not `disabled` —
+ * see `BasketPageContent.tsx` for the two reasons, of which the load-bearing
+ * one is that a `disabled` attribute applied to a focused control drops focus
+ * to the body. It keeps its own colours: the `--button-disabled-*` pair
+ * measures 4.12:1, which WCAG 1.4.3 exempts for an inactive component but
+ * which there is no reason to take on when the `role="status"` line beside it
+ * is what actually says the control is busy.
+ *
+ * The order button is not in this list. It never takes `aria-disabled` — it
+ * reports a submission in flight with `aria-busy` and its own label — so the
+ * selector matched nothing and said otherwise.
  */
 .primaryButton[aria-disabled="true"],
 .secondaryButton[aria-disabled="true"],
-.quietButton[aria-disabled="true"],
-.orderButton[aria-disabled="true"] {
+.quietButton[aria-disabled="true"] {
   cursor: progress;
 }
 
@@ -582,7 +615,9 @@
   min-height: 3.25rem;
 }
 
-.orderButton:hover:not(:disabled) {
+/* No `:not(:disabled)` guard: `<button … disabled>` appears nowhere in this
+   unit, deliberately, so the guard described a state that cannot occur. */
+.orderButton:hover {
   background: var(--button-primary-bg-hover);
   color: var(--button-primary-fg-hover);
 }

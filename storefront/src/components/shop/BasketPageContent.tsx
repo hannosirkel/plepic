@@ -35,6 +35,48 @@
  *   It is excluded from the goods figure and blocks checkout rather than being
  *   quietly priced into a total we could not honour.
  *
+ * ## The quantity field never disagrees with the basket
+ *
+ * A basket that says one thing while the field above it says another is a
+ * misdisclosure, not a cosmetic bug: these figures feed the Article 8(2)
+ * disclosure block on `/checkout`, and the two screens read the same state.
+ * So the field is bound to a small reducer in `src/lib/cart.ts` with three
+ * jobs, and this component is a binding over it rather than the place the
+ * rules live:
+ *
+ * - **it resynchronises.** Whenever the line's quantity changes — an update
+ *   landing, a scenario arriving, another tab — the field is set back to what
+ *   the basket holds. The field showing `99` beside a line total for `10` is
+ *   the state this removes;
+ * - **it rejects rather than reinterprets.** A cleared field is not "one" and
+ *   `-4` is not "empty the basket". An entry that is not a whole number in
+ *   range is refused, the basket is left exactly as it was, and the message
+ *   says so;
+ * - **it says so the way this unit already says things.** The refusal is a
+ *   `role="alert"` region wrapping the same `.fieldError` paragraph the
+ *   checkout's per-field errors use, with `aria-invalid` and `aria-describedby`
+ *   on the input — the pattern `CheckoutPageContent` and `ContactForm` already
+ *   use, not a new one.
+ *
+ * One case is deliberately not a resynchronisation: when an accepted entry is
+ * sent and the *action* fails, the field keeps what was asked for while the
+ * basket keeps what it had. The basket-level `role="alert"` says "That did not
+ * work. Nothing has changed. Try again in a moment.", every figure on both
+ * screens still comes from the basket rather than the field, and retrying is
+ * one press rather than retyping. `tests/shop-pages.test.tsx` records it.
+ *
+ * `min`, `max` and `step` stay on the input: they drive the spinner and are
+ * read by assistive technology. They are not the enforcement — the control is
+ * a button, not a form submit, so constraint validation never fires — and
+ * `parseQuantityInput` is.
+ *
+ * The control stays a button rather than becoming a real submit inside a
+ * per-line `<form>`, which would have made `min`/`max` live. A form here with
+ * no `method` is the defect this unit's checkout form was failed for: before
+ * hydration it would GET the typed quantity into the URL. Enter in the field
+ * is wired to the same handler as the button instead, so a keyboard user loses
+ * nothing.
+ *
  * ## Shipping is not priced here, deliberately
  *
  * `content/legal/shipping.ts` says shipping "is calculated at checkout once
@@ -53,26 +95,62 @@ import { resolveCatalogue, resolveCataloguePlaceholders } from "../../lib/catalo
 import {
   cartTotals,
   formatAmount,
+  initialQuantityField,
   isAvailable,
   lineAmount,
   MAX_QUANTITY_PER_LINE,
+  MIN_QUANTITY_PER_LINE,
+  quantityFieldReducer,
   type CartLine,
+  type QuantityFieldEvent,
 } from "../../lib/cart.js";
 import { useCart } from "../../lib/cart-store.js";
+import type { LinePending } from "../../lib/mock-cart-actions.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import styles from "../../styles/pages/shop.module.css";
+
+/**
+ * The one message a refused entry gets, composed with the accepted range —
+ * see `basket.quantityError` in `content/shop.ts` for why the two numbers are
+ * not written into the copy.
+ */
+const QUANTITY_ERROR_MESSAGE =
+  `${basket.quantityError.prefix}${String(MIN_QUANTITY_PER_LINE)}` +
+  `${basket.quantityError.rangeSeparator}${String(MAX_QUANTITY_PER_LINE)}` +
+  `${basket.quantityError.suffix}`;
 
 function BasketLine({ line }: { readonly line: CartLine }) {
   const catalogue = resolveCatalogue();
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
   const { pending, updateQuantity, remove } = useCart();
   const fieldId = useId();
-  const [draft, setDraft] = useState(String(line.quantity));
+  const errorId = `${fieldId}-error`;
+  const [field, setField] = useState(() => initialQuantityField(line.quantity));
+
+  /*
+   * Resynchronise during render, not in an effect.
+   *
+   * This is React's documented way to adjust state when a prop changes: the
+   * component re-renders immediately with the corrected value and the browser
+   * never paints the stale one. An effect would paint `99` beside a basket
+   * holding `10` for a frame, which is the very disagreement this exists to
+   * remove. `field.settled` is the quantity the field was last synchronised
+   * to, so this fires exactly once per landed change.
+   */
+  if (field.settled !== line.quantity) {
+    setField(quantityFieldReducer(field, { kind: "settle", quantity: line.quantity }).state);
+  }
 
   const state = pending[line.id];
   const busy = state !== undefined;
   const available = isAvailable(line);
+
+  function dispatch(event: QuantityFieldEvent): void {
+    const transition = quantityFieldReducer(field, event);
+    setField(transition.state);
+    if (transition.request !== null) updateQuantity(line.id, transition.request);
+  }
 
   return (
     <li className={styles.line} aria-busy={busy}>
@@ -100,13 +178,26 @@ function BasketLine({ line }: { readonly line: CartLine }) {
             className={styles.quantityInput}
             type="number"
             inputMode="numeric"
-            min={1}
+            min={MIN_QUANTITY_PER_LINE}
             max={MAX_QUANTITY_PER_LINE}
             step={1}
-            value={draft}
+            value={field.draft}
             readOnly={busy}
             aria-label={resolve(basket.quantityAccessibleLabel)}
-            onChange={(event) => setDraft(event.currentTarget.value)}
+            aria-invalid={field.rejection !== null}
+            aria-describedby={field.rejection === null ? undefined : errorId}
+            onChange={(event) => {
+              dispatch({ kind: "type", value: event.currentTarget.value });
+            }}
+            onKeyDown={(event) => {
+              // Enter in a lone field would submit a form if there were one.
+              // There is not — see this module's doc comment — so it is wired
+              // to the same handler the button uses.
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              if (busy) return;
+              dispatch({ kind: "submit" });
+            }}
           />
         </div>
 
@@ -117,7 +208,7 @@ function BasketLine({ line }: { readonly line: CartLine }) {
           aria-label={resolve(basket.updateAccessibleLabel)}
           onClick={() => {
             if (busy) return;
-            updateQuantity(line.id, Number.parseInt(draft, 10));
+            dispatch({ kind: "submit" });
           }}
         >
           {basket.updateLabel}
@@ -137,6 +228,17 @@ function BasketLine({ line }: { readonly line: CartLine }) {
         </button>
       </div>
 
+      {/* Always in the document, so a refusal is announced rather than merely
+          appearing — the same `display: contents` anchor the checkout uses for
+          its error summary. */}
+      <div className={styles.alertAnchor} role="alert">
+        {field.rejection === null ? null : (
+          <p id={errorId} className={styles.fieldError}>
+            {QUANTITY_ERROR_MESSAGE}
+          </p>
+        )}
+      </div>
+
       <p className={styles.lineTotal}>
         <span className={styles.rowLabel}>{basket.columns.lineTotal}</span>{" "}
         <strong>{available ? formatAmount(lineAmount(line), line.currency) : "—"}</strong>
@@ -144,11 +246,23 @@ function BasketLine({ line }: { readonly line: CartLine }) {
 
       {busy ? (
         <p className={styles.pending} role="status">
-          {state === "removing" ? basket.removingLabel : basket.updatingLabel}
+          {pendingLabel(state)}
         </p>
       ) : null}
     </li>
   );
+}
+
+/** What the `role="status"` line says while an action is in flight. */
+function pendingLabel(state: LinePending | undefined): string {
+  switch (state) {
+    case "removing":
+      return basket.removingLabel;
+    case "adding":
+      return basket.addingLabel;
+    default:
+      return basket.updatingLabel;
+  }
 }
 
 export function BasketPageContent() {
@@ -194,7 +308,9 @@ export function BasketPageContent() {
           </div>
           {busy ? (
             <p className={styles.pending} role="status">
-              {basket.updatingLabel}
+              {/* A line is being created, not updated. This said "Updating the
+                  quantity…" while an empty basket gained its first item. */}
+              {basket.addingLabel}
             </p>
           ) : null}
         </section>

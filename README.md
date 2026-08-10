@@ -35,12 +35,27 @@ Next.js storefront and, later, a Medusa backend.
 
   Article 8(2) CRD is what the checkout's layout is for: the final control is
   labelled **"Order with obligation to pay"**, and immediately above it, in one
-  block with only the consent line between, are the six disclosures the legal
-  page lists — the goods, the price of the goods, the shipping charge, the
-  total, the delivery address and the delivery estimate. Everything else a
-  buyer must be told before being bound sits above that block, never below the
-  button. There is no consent tick box, because the consent line says the
-  confirmation is given *by placing the order*.
+  block, are the six disclosures the legal page lists — the goods, the price of
+  the goods, the shipping charge, the total, the delivery address and the
+  delivery estimate. Two things sit between the last of them and the button:
+  the catalogue's price qualification, which qualifies the two figures directly
+  above it, and then the consent line. Everything a buyer must be told **before
+  being bound** sits above that block. One paragraph is below the button — the
+  Article 8(7) confirmation promise, which is a statement about what happens
+  *after* the contract is formed and changes nothing about what pressing the
+  button means; it is the last element of the block, so the button is not. There
+  is no consent tick box, because the consent line says the confirmation is
+  given *by placing the order*.
+
+  The checkout form posts. A `<form>` with no `method` is a GET, so a press
+  before hydration — or with JavaScript switched off — would put the delivery
+  address into the URL, the browser history, the `Referer` header and every
+  access log on the path. It carries `method="post"` and an action instead:
+  `src/app/checkout/order/route.ts` reads nothing out of the body and answers
+  `303` back to the checkout with a fixed marker, and the page says in its
+  first paint that no order was placed and nothing was charged — which is true,
+  with or without JavaScript, while Stripe is deferred. See
+  [`storefront/src/components/shop/checkout-order-post.ts`](./storefront/src/components/shop/checkout-order-post.ts).
 
   The shipping charge and the total are `null` until a delivery address is
   complete, because `content/legal/shipping.ts` says shipping is calculated at
@@ -58,6 +73,21 @@ Next.js storefront and, later, a Medusa backend.
   (`filled`, `updating`, `removing`, `unavailable`, `error`, `placing`) so the
   loading and error layouts can be inspected on a real device; it belongs to
   the mock data layer and leaves with it.
+
+  **`?mock=` is inert in production, and that is enforced rather than
+  promised.** Requesting a scenario writes the requested basket into
+  `sessionStorage` — deliberately, so `/cart?mock=filled` and the `/checkout`
+  you navigate to next agree — which means a link of that shape sent to a
+  stranger would put an item in their basket. `isMockLayerEnabled`
+  (`src/lib/mock-cart-actions.ts`) is asked before the parameter is parsed at
+  all, and answers **no by default**: yes only for a hostname the deployment
+  declared in `SITE_TEST_HOSTNAMES` — the same validated set that drives
+  `X-Robots-Tag: noindex` and the disallow-all `robots.txt` — or for a
+  development host (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`). The
+  hostname set is read from the process environment per request, like every
+  other per-environment value here, so nothing about the gate is baked into an
+  image. On a live hostname `?mock=filled` is a `/cart` with an ignored query
+  string.
 
   **The real routes.** `src/app/page.tsx`, `src/app/games/lunar-base/page.tsx`,
   `src/app/about/page.tsx`, `src/app/support/lunar-base/page.tsx` and

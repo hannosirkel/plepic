@@ -104,7 +104,6 @@ export interface CartContextValue extends MockBasketState {
   readonly add: () => void;
   readonly updateQuantity: (id: string, quantity: number) => void;
   readonly remove: (id: string) => void;
-  readonly dismissFailure: () => void;
   /** True while any line has an action in flight. */
   readonly busy: boolean;
 }
@@ -136,7 +135,10 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
   const options = useMemo(() => ({ latencyMs, failing }), [latencyMs, failing]);
 
   // Restore before the first paint; see this module's doc comment. A scenario
-  // is an explicit request for a particular state and wins over the session.
+  // is an explicit request for a particular state and wins over the session —
+  // which is a write to somebody's basket, so it is deliberately unreachable in
+  // production: `src/app/{cart,checkout}/page.tsx` resolve `?mock=` through
+  // `isMockLayerEnabled` and hand this provider `null` everywhere else.
   useIsomorphicLayoutEffect(() => {
     if (restored.current) return;
     restored.current = true;
@@ -149,7 +151,6 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
   }, [scenario, initial.lines]);
 
   useEffect(() => {
-    if (!restored.current) return;
     writeStoredLines(lines);
   }, [lines]);
 
@@ -176,7 +177,10 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
   );
 
   const add = useCallback(() => {
-    void run("lunar-base", "updating", (current) => addCatalogueLineAction(current, options));
+    // "adding", not "updating": nothing is being updated when the first line
+    // of an empty basket is created, and the status line says what is
+    // happening rather than what is usually happening.
+    void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options));
   }, [run, options]);
 
   const updateQuantity = useCallback(
@@ -195,8 +199,6 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     [run, options],
   );
 
-  const dismissFailure = useCallback(() => setFailure(null), []);
-
   const value = useMemo<CartContextValue>(
     () => ({
       lines,
@@ -205,10 +207,9 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
       add,
       updateQuantity,
       remove,
-      dismissFailure,
       busy: Object.keys(pending).length > 0,
     }),
-    [lines, pending, failure, add, updateQuantity, remove, dismissFailure],
+    [lines, pending, failure, add, updateQuantity, remove],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

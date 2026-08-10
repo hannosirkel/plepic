@@ -24,6 +24,12 @@ import { shipping } from "../../content/legal/shipping.js";
 import { terms } from "../../content/legal/terms.js";
 import { basket, checkout } from "../../content/shop.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
+import {
+  CHECKOUT_ORDER_POST_PATH,
+  isOrderNotPlaced,
+  ORDER_NOT_PLACED,
+  ORDER_NOT_PLACED_LOCATION,
+} from "../src/components/shop/checkout-order-post.js";
 import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.js";
 import {
   CARD_STATEMENT,
@@ -39,13 +45,19 @@ import {
   clampQuantity,
   declaredShippingMethod,
   formatAmount,
+  initialQuantityField,
   isAvailable,
   MAX_QUANTITY_PER_LINE,
+  MIN_QUANTITY_PER_LINE,
+  parseQuantityInput,
+  quantityFieldReducer,
   type CartLine,
+  type QuantityFieldEvent,
 } from "../src/lib/cart.js";
 import { CartProvider } from "../src/lib/cart-store.js";
 import {
   basketForScenario,
+  isMockLayerEnabled,
   placeMockOrder,
   removeLineAction,
   updateLineQuantityAction,
@@ -315,6 +327,11 @@ describe("empty is the default state", () => {
     expect(text).not.toContain(checkout.orderButtonLabel);
   });
 
+  it("keeps its lede on both empty states, not on one of them", () => {
+    expect(visibleText(renderBasket(null))).toContain(basket.lede);
+    expect(visibleText(renderCheckout(null))).toContain(checkout.lede);
+  });
+
   it("starts every delivery-address field empty, with no invented person in it", () => {
     const html = renderCheckout("filled");
     for (const field of checkout.address.fields) {
@@ -339,6 +356,15 @@ describe("the loading state", () => {
 
   it("says something different while a line is being removed", () => {
     expect(visibleText(renderBasket("removing"))).toContain(basket.removingLabel);
+  });
+
+  /**
+   * Adding the first item to an empty basket announced "Updating the
+   * quantity…". Nothing was being updated; a line was being created.
+   */
+  it("distinguishes adding a line from updating one", () => {
+    expect(basket.addingLabel).not.toBe(basket.updatingLabel);
+    expect(basket.addingLabel).not.toContain("quantity");
   });
 
   /**
@@ -460,12 +486,321 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     );
   });
 
-  it("clamps a quantity into what a basket may hold", () => {
+  it("clamps an already-numeric quantity into what a basket may hold", () => {
     expect(clampQuantity(0)).toBe(0);
     expect(clampQuantity(-3)).toBe(0);
     expect(clampQuantity(2.7)).toBe(2);
     expect(clampQuantity(MAX_QUANTITY_PER_LINE + 5)).toBe(MAX_QUANTITY_PER_LINE);
-    expect(clampQuantity(Number.NaN)).toBe(1);
+  });
+
+  /**
+   * It answered `1`, which is how an unparseable entry became "one" and
+   * destroyed four copies of a game. A value that is not a number is not a
+   * quantity, and the honest answer is "nothing".
+   */
+  it("answers nothing, not one, for a value that is not a number", () => {
+    expect(clampQuantity(Number.NaN)).toBe(0);
+    expect(clampQuantity(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  /**
+   * `cartTotals` adds a catalogue figure to a `shipping.json` figure and
+   * formats the result in one currency. `shipping.json` carries the one amount
+   * in this unit still waiting on the operator, so it is the file most likely
+   * to be edited — and an edit that moved its currency alone would otherwise
+   * produce a wrong total on the screen Article 8(2) requires to be right.
+   */
+  it("refuses to add two currencies rather than producing a wrong total", () => {
+    const inAnotherCurrency = { ...catalogueLine(1), currency: "SEK" };
+    expect(() => cartTotals([inAnotherCurrency], { hasDeliveryAddress: true })).toThrow(
+      /shipping\.json/,
+    );
+    // The disagreement is caught before the address exists too — the basket
+    // page shows a goods figure with `hasDeliveryAddress: false`.
+    expect(() => cartTotals([inAnotherCurrency], { hasDeliveryAddress: false })).toThrow();
+    // And an unavailable line, which contributes nothing to the sum, is still
+    // checked: it is priced on the screen beside the ones that do.
+    expect(() =>
+      cartTotals([{ ...inAnotherCurrency, availability: "OutOfStock" }], {
+        hasDeliveryAddress: true,
+      }),
+    ).toThrow();
+    expect(cartTotals([catalogueLine(1)], { hasDeliveryAddress: true }).currency).toBe(
+      declaredShippingMethod.currency,
+    );
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The quantity control, driven                                              */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The control that was failed, driven as a sequence of interactions rather
+ * than looked at as markup.
+ *
+ * **Why it is driven here and not through a DOM.** Every component assertion
+ * in this unit is `renderToStaticMarkup`, and that is what let a control that
+ * displayed `99` beside a basket holding `10` ship under a green suite. This
+ * package has no DOM in its test environment — no `jsdom`, no browser
+ * runner — and adding one is a dependency change outside this pass's grant, so
+ * it is named in the fix report rather than done quietly. What is done instead
+ * is to put the control's decisions in a reducer (`src/lib/cart.ts`) that
+ * `BasketPageContent` is a thin binding over, and drive *that* through the
+ * exact sequences the reviewer performed in a browser. A future edit to the
+ * component cannot restore the defect without first removing the reducer,
+ * which these tests would notice.
+ *
+ * The three rows below are the reviewer's own reproduction table, verbatim.
+ */
+describe("the quantity control: typed, cleared, submitted, settled", () => {
+  /** Presses the given sequence against a line the basket holds `settled` of. */
+  function drive(
+    settled: number,
+    events: readonly QuantityFieldEvent[],
+  ): { state: ReturnType<typeof initialQuantityField>; requests: readonly number[] } {
+    let state = initialQuantityField(settled);
+    const requests: number[] = [];
+    for (const event of events) {
+      const transition = quantityFieldReducer(state, event);
+      state = transition.state;
+      if (transition.request !== null) requests.push(transition.request);
+    }
+    return { state, requests };
+  }
+
+  it("typed 99 and pressed Update: refuses it, and asks the basket for nothing", () => {
+    const { state, requests } = drive(5, [{ kind: "type", value: "99" }, { kind: "submit" }]);
+    expect(requests, "99 must not become an update at all").toEqual([]);
+    expect(state.rejection).toBe("out-of-range");
+    expect(state.settled, "the basket was changed by a refused entry").toBe(5);
+  });
+
+  it("cleared the field and pressed Update: refuses it — an empty field is not one", () => {
+    const { state, requests } = drive(5, [{ kind: "type", value: "" }, { kind: "submit" }]);
+    expect(requests, "clearing the field silently rewrote a basket of 5 to 1").toEqual([]);
+    expect(state.rejection).toBe("empty");
+    expect(state.settled).toBe(5);
+  });
+
+  it("typed -4 and pressed Update: refuses it — a negative number is not 'empty the basket'", () => {
+    const { state, requests } = drive(5, [{ kind: "type", value: "-4" }, { kind: "submit" }]);
+    expect(requests, "-4 emptied the basket").toEqual([]);
+    expect(state.rejection).toBe("out-of-range");
+    expect(state.settled).toBe(5);
+  });
+
+  it("refuses anything that is not a whole number", () => {
+    for (const typed of ["2.5", "abc", "1e3", " ", "٣", "3 copies", "0"]) {
+      const { requests } = drive(5, [{ kind: "type", value: typed }, { kind: "submit" }]);
+      expect(requests, `"${typed}" was interpreted rather than refused`).toEqual([]);
+    }
+  });
+
+  it("accepts a whole number in range and asks for exactly that", () => {
+    for (const quantity of [MIN_QUANTITY_PER_LINE, 4, MAX_QUANTITY_PER_LINE]) {
+      const { state, requests } = drive(1, [
+        { kind: "type", value: String(quantity) },
+        { kind: "submit" },
+      ]);
+      expect(requests).toEqual([quantity]);
+      expect(state.rejection).toBeNull();
+    }
+  });
+
+  /** MAJ-1's headline property, as one assertion. */
+  it("shows what the basket holds once an action lands, never what was typed", () => {
+    const { state } = drive(5, [
+      { kind: "type", value: "99" },
+      { kind: "submit" },
+      // The reviewer's basket became 10 because `clampQuantity` clamped it.
+      // It cannot now, but whatever a data layer answers, the field follows.
+      { kind: "settle", quantity: 10 },
+    ]);
+    expect(state.draft).toBe("10");
+    expect(state.settled).toBe(10);
+    expect(state.rejection, "a stale refusal survived the action that resolved it").toBeNull();
+  });
+
+  it("keeps the refused text on screen so a reader can correct it", () => {
+    const { state } = drive(5, [{ kind: "type", value: "99" }, { kind: "submit" }]);
+    expect(state.draft).toBe("99");
+  });
+
+  it("drops the message the moment the field is edited again", () => {
+    const { state } = drive(5, [
+      { kind: "type", value: "99" },
+      { kind: "submit" },
+      { kind: "type", value: "9" },
+    ]);
+    expect(state.rejection).toBeNull();
+  });
+
+  /**
+   * A judgment call, recorded rather than left implicit.
+   *
+   * When an accepted entry is sent and the *action* then fails (`?mock=error`),
+   * no `settle` arrives, so the field keeps the requested quantity while the
+   * basket keeps the old one. That is deliberate and it is not the defect
+   * MAJ-1 named: the basket-level `role="alert"` says "That did not work.
+   * Nothing has changed. Try again in a moment.", every figure on both screens
+   * is still derived from the basket rather than the field, and retrying is
+   * pressing Update again — which is only possible if the entry is still
+   * there. Reverting the field would make "try again" mean "retype it".
+   */
+  it("keeps an accepted entry in the field when the action itself fails, so a retry is one press", () => {
+    const { state, requests } = drive(1, [{ kind: "type", value: "7" }, { kind: "submit" }]);
+    expect(requests).toEqual([7]);
+    expect(state.draft).toBe("7");
+    // No settle: the basket is still whatever it was, and the field is an
+    // unsettled intention, not a claim about the basket.
+    expect(state.settled).toBe(1);
+    // Pressing Update again asks for the same thing rather than something else.
+    expect(quantityFieldReducer(state, { kind: "submit" }).request).toBe(7);
+  });
+
+  it("normalises an accepted entry, so '05' does not linger beside a basket of 5", () => {
+    const { state, requests } = drive(1, [{ kind: "type", value: "05" }, { kind: "submit" }]);
+    expect(requests).toEqual([5]);
+    expect(state.draft).toBe("5");
+  });
+
+  it("parses the same way the field does, at the boundaries", () => {
+    expect(parseQuantityInput(String(MIN_QUANTITY_PER_LINE))).toEqual({
+      ok: true,
+      quantity: MIN_QUANTITY_PER_LINE,
+    });
+    expect(parseQuantityInput(String(MAX_QUANTITY_PER_LINE))).toEqual({
+      ok: true,
+      quantity: MAX_QUANTITY_PER_LINE,
+    });
+    expect(parseQuantityInput(String(MAX_QUANTITY_PER_LINE + 1))).toEqual({
+      ok: false,
+      reason: "out-of-range",
+    });
+    expect(parseQuantityInput(String(MIN_QUANTITY_PER_LINE - 1))).toEqual({
+      ok: false,
+      reason: "out-of-range",
+    });
+    expect(parseQuantityInput("  7  ")).toEqual({ ok: true, quantity: 7 });
+  });
+
+  it("renders the field bound to that state, with the announcement machinery attached", () => {
+    const html = renderBasket("filled");
+    // The refusal lives in a live region that is always present, so a message
+    // put into it is announced — the same anchor the checkout uses.
+    expect(html).toContain('role="alert"');
+    expect(html).toMatch(/<input[^>]*type="number"[^>]*>/);
+    expect(html).toContain(`max="${String(MAX_QUANTITY_PER_LINE)}"`);
+    expect(html).toContain(`min="${String(MIN_QUANTITY_PER_LINE)}"`);
+    // The field shows the quantity the basket holds, at first paint.
+    expect(html).toMatch(/<input[^>]*value="1"/);
+    // And no refusal is asserted before anything has been typed.
+    expect(html).not.toContain('aria-invalid="true"');
+  });
+
+  it("states the accepted range in one place, and composes it into the message", () => {
+    // The limit is not written into `content/`: a second copy of an operator
+    // input is a second thing to disagree with `MAX_QUANTITY_PER_LINE`.
+    for (const piece of Object.values(basket.quantityError)) {
+      expect(piece, `"${piece}" writes the range into content`).not.toMatch(/\d/);
+    }
+    const message =
+      `${basket.quantityError.prefix}${String(MIN_QUANTITY_PER_LINE)}` +
+      `${basket.quantityError.rangeSeparator}${String(MAX_QUANTITY_PER_LINE)}` +
+      `${basket.quantityError.suffix}`;
+    expect(message).toBe("Enter a whole number of copies, from 1 to 10. Your basket has not been changed.");
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Where ?mock= counts                                                       */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * MAJ-3. Requesting a scenario writes the requested basket into
+ * `sessionStorage`, so the parameter is not free of consequence and the two
+ * page files ask this before parsing it. Default deny.
+ */
+describe("?mock= is honoured only where there is nobody to surprise", () => {
+  const testHostnames = ["test.example.com", "test-admin.example.com"];
+
+  it("is inert on a live hostname", () => {
+    for (const host of [
+      "example.com",
+      "www.example.com",
+      "example.com:443",
+      "some-other-brand.example.org",
+      "",
+      "   ",
+    ]) {
+      expect(isMockLayerEnabled(host, testHostnames), `${host} honoured ?mock=`).toBe(false);
+    }
+    expect(isMockLayerEnabled(undefined, testHostnames)).toBe(false);
+  });
+
+  it("is honoured on a hostname the deployment declared as a test hostname", () => {
+    for (const host of ["test.example.com", "TEST.EXAMPLE.COM", "test.example.com:8111"]) {
+      expect(isMockLayerEnabled(host, testHostnames), `${host} did not honour ?mock=`).toBe(true);
+    }
+  });
+
+  it("is honoured where a developer runs the server by hand", () => {
+    for (const host of ["localhost:3000", "127.0.0.1:4311", "shop.localhost", "[::1]:3000"]) {
+      expect(isMockLayerEnabled(host, testHostnames), `${host} did not honour ?mock=`).toBe(true);
+    }
+  });
+
+  it("denies by default: a deployment that declares no test hostname honours nothing", () => {
+    expect(isMockLayerEnabled("example.com", [])).toBe(false);
+    expect(isMockLayerEnabled("test.example.com", [])).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The unhydrated checkout                                                   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * MAJ-2. The form's `method` and `action` are the whole fix, and the redirect
+ * marker is what keeps the answer honest rather than a silent no-op. The
+ * running-server half of this is in `tests/build-and-serve.test.ts`.
+ */
+describe("a submission the browser makes itself puts nothing in a URL", () => {
+  it("declares a POST and an action, so the default GET can never happen", () => {
+    const html = renderCheckout("filled");
+    const form = /<form\b[^>]*>/.exec(html)?.[0] ?? "";
+    expect(form).toContain('method="post"');
+    expect(form).toContain(`action="${CHECKOUT_ORDER_POST_PATH}"`);
+  });
+
+  it("says no order was placed, in the markup, when the redirect brings a visitor back", () => {
+    const html = renderToStaticMarkup(
+      <CartProvider scenario={null} latencyMs={0}>
+        <CheckoutPageContent
+          turnstileSiteKey={null}
+          nonce={undefined}
+          scenario={null}
+          unhydratedOrderAttempt
+          latencyMs={0}
+        />
+      </CartProvider>,
+    );
+    // Without JavaScript there is no restored basket, so this is the *empty*
+    // checkout — and it must still say what happened, or the submission would
+    // look like it worked.
+    const text = visibleText(html);
+    expect(text).toContain(checkout.empty.heading);
+    expect(text).toContain(checkout.errors.paymentNotConnected);
+    expect(html).toContain('role="alert"');
+  });
+
+  it("recognises only its own fixed marker, and never a value a visitor typed", () => {
+    expect(isOrderNotPlaced(ORDER_NOT_PLACED)).toBe(true);
+    expect(isOrderNotPlaced([ORDER_NOT_PLACED, "ignored"])).toBe(true);
+    expect(isOrderNotPlaced(undefined)).toBe(false);
+    expect(isOrderNotPlaced("Street and number")).toBe(false);
+    expect(ORDER_NOT_PLACED_LOCATION).toBe("/checkout?order=not-placed");
   });
 });
 
@@ -530,5 +865,28 @@ describe("no invented customer exists anywhere in this unit", () => {
 
   it("renders no address on either route until a visitor types one", () => {
     expect(visibleText(renderCheckout("filled"))).toContain(checkout.address.missingValue);
+  });
+
+  /**
+   * Article 8(2) names "the delivery address", and an email address is not
+   * part of one. The disclosure value was `FIELDS.map(...).join(", ")` over
+   * the whole set, which read "…, Estonia, example@example.com".
+   */
+  it("keeps the email address out of the field Article 8(2) calls the delivery address", () => {
+    const postal = checkout.address.fields.filter((field) => field.inDeliveryAddress);
+    const rest = checkout.address.fields.filter((field) => !field.inDeliveryAddress);
+
+    expect(postal.map((field) => field.name)).toEqual([
+      "fullName",
+      "streetAddress",
+      "postalCode",
+      "city",
+      "country",
+    ]);
+    expect(rest.map((field) => field.name)).toEqual(["email"]);
+    expect(
+      postal.map((field) => field.type),
+      "an email field is marked as part of the postal address",
+    ).not.toContain("email");
   });
 });
