@@ -24,6 +24,14 @@
  * price cannot reach a total), never an address, never anything about a
  * person.
  *
+ * **That sentence is also on `/legal/privacy`, as operator-approved copy: the
+ * basket store "records nothing but which game you chose and how many".
+ * Storing anything more here — a shipping address, an email address, an order
+ * draft — makes a legal page false, and no test will fail.** The guard walks
+ * store *kinds*, not keys, so a second `sessionStorage` key is invisible to it.
+ * Read the hazard in `README.md` before adding one; this is the checkout's
+ * shape, so Task 5 is where it lands.
+ *
  * ## Why the read is a layout effect and not a render
  *
  * Reading `sessionStorage` during render would make the client's first render
