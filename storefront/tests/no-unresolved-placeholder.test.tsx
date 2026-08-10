@@ -2,7 +2,7 @@
  * No `{token}` ever reaches a visitor's eyes.
  *
  * `content/` carries its variable parts as literal template strings —
- * `{price}`, `{priceLine}`, `{taxNote}`, `{productName}` from the catalogue,
+ * `{price}`, `{priceLine}`, `{productName}` from the catalogue,
  * `{merchantContactAddress}` and the rest of the merchant identity from
  * configuration (`content/schema.ts`'s `PLACEHOLDERS`). Resolving them at
  * render is this unit's job. **Nothing in this repository failed when one was
@@ -30,7 +30,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { legalPages } from "../../content/legal/index.js";
 import { PLACEHOLDERS } from "../../content/schema.js";
+import { ROUTE_PATHS } from "../../content/routes.js";
+import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
+import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { AboutPageContent } from "../src/components/pages/AboutPageContent.js";
 import { RulebookPageContent } from "../src/components/pages/RulebookPageContent.js";
 import { SupportPageContent } from "../src/components/pages/SupportPageContent.js";
@@ -86,6 +90,21 @@ const ROUTES: readonly { readonly path: string; readonly html: string }[] = [
     ),
   },
   { path: "/support/lunar-base/rulebook", html: renderToStaticMarkup(<RulebookPageContent />) },
+  /*
+   * The five legal routes, in the unconfigured state.
+   *
+   * They were absent from this list because they rendered `RoutePlaceholder`
+   * — a heading and a meta description — and so had no `content/` prose to
+   * leave a brace in. They render their pages now, and every one of them
+   * quotes the merchant identity, which makes them the routes with the most
+   * placeholders on the site and the ones this scan most needed.
+   */
+  ...legalPages.map((page) => ({
+    path: ROUTE_PATHS[page.route],
+    html: renderToStaticMarkup(
+      <LegalPageContent page={page} values={NO_CONFIGURATION_VALUES} />,
+    ),
+  })),
 ];
 
 describe("no unresolved placeholder reaches rendered text on any real route", () => {

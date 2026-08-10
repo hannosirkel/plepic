@@ -1,7 +1,25 @@
 /**
  * Resolves `content/`'s catalogue placeholders (`{price}`, `{priceLine}`,
- * `{taxNote}`, `{productName}` — see `content/schema.ts`'s `PLACEHOLDERS`)
- * against `storefront/mock/catalogue.json`.
+ * `{productName}` — see `content/schema.ts`'s `PLACEHOLDERS`) against
+ * `storefront/mock/catalogue.json`.
+ *
+ * ## The tax qualification is the operator's wording, 2026-08-10
+ *
+ * {@link ResolvedCatalogue.priceQualifiers} used to open with a flat *"VAT
+ * included"*. That is untrue of an export, where no EU VAT is due, which is why
+ * the second qualified read struck the same claim off `/legal/shipping`
+ * (Minor 2) — leaving the product page asserting unqualified what the legal
+ * page had just qualified. The operator supplied the replacement, and it is
+ * used **here** rather than only on the legal page precisely so the two cannot
+ * drift: the purchase panel, the product hero and the shipping FAQ all read
+ * this one string, and `/legal/shipping` carries the same words as content.
+ *
+ * The same answer removed `taxNote`. It resolved to the bare "VAT included"
+ * alone, nothing rendered it, and a live resolver for a string we have decided
+ * is misleading is a hazard rather than an asset. Its declaration in
+ * `content/schema.ts`, its resolver below and the set-equality pin in
+ * `tests/catalogue.test.ts` were removed together, so no guard had to be
+ * weakened to let one of the three go first.
  *
  * Two previous reviewers correctly declined to resolve these: `content/` was
  * not theirs, so the mockups render the literal placeholder text. Resolving
@@ -15,7 +33,7 @@
  * against it composes identically once Task 5 swaps the data layer
  * underneath — see that file's own `$comment` and `tests/catalogue.test.ts`.
  *
- * Only the four **catalogue**-sourced placeholders are resolved here.
+ * Only the three **catalogue**-sourced placeholders are resolved here.
  * `content/schema.ts`'s `PLACEHOLDERS` also declares several
  * **configuration**-sourced ones (`merchantContactAddress`,
  * `merchantLegalName`, …) that belong to the legal pages this unit does not
@@ -57,7 +75,8 @@ export interface ResolvedCatalogue {
   readonly price: string;
   /**
    * Everything that qualifies the price without being the figure — the tax
-   * note and the shipping note, as one short pair of sentences.
+   * qualification, the shipping note and the non-EU duties disclosure, in the
+   * operator's own words.
    *
    * It exists because {@link priceLine} is a *sentence*. That is right where
    * prose quotes the price mid-paragraph, and wrong in a display-sized
@@ -67,10 +86,8 @@ export interface ResolvedCatalogue {
    * renders {@link priceLine}.
    */
   readonly priceQualifiers: string;
-  /** The full line the checkout-facing copy quotes: price, tax note and shipping note together. */
+  /** The full line the checkout-facing copy quotes: the price and its qualifiers together. */
   readonly priceLine: string;
-  /** The short tax presentation note that accompanies the price on its own. */
-  readonly taxNote: string;
   readonly availability: CatalogueAvailability;
   /** True when {@link availability} is `"InStock"` — the only state this catalogue is ever seeded with today. */
   readonly inStock: boolean;
@@ -100,9 +117,19 @@ function formatPrice(amount: number, currency: string): string {
  */
 export function resolveCatalogue(product: CatalogueProduct = mockCatalogue): ResolvedCatalogue {
   const price = formatPrice(product.price.amount, product.price.currency);
-  const taxNote = product.price.taxIncluded ? "VAT included" : "VAT calculated at checkout";
-  const shippingNote = "Shipping calculated at checkout.";
-  const priceQualifiers = `${taxNote}. ${shippingNote}`;
+  /*
+   * "where applicable", not a flat assertion: the same figure is charged to a
+   * buyer in the EU, where VAT is due and is inside it, and to a buyer outside
+   * it, where no EU VAT is due at all. The operator supplied both halves —
+   * this and the duties sentence — on 2026-08-10, and `/legal/shipping`'s VAT
+   * section carries the identical words as content.
+   */
+  const taxQualifier = product.price.taxIncluded
+    ? "VAT included where applicable"
+    : "VAT calculated at checkout";
+  const shippingNote =
+    "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.";
+  const priceQualifiers = `${taxQualifier}. ${shippingNote}`;
   const priceLine = `${price}, ${priceQualifiers}`;
   const inStock = product.availability === "InStock";
 
@@ -111,7 +138,6 @@ export function resolveCatalogue(product: CatalogueProduct = mockCatalogue): Res
     price,
     priceQualifiers,
     priceLine,
-    taxNote,
     availability: product.availability,
     inStock,
     availabilityLabel: inStock ? "In stock" : "Out of stock",
@@ -125,11 +151,15 @@ export function resolveCatalogue(product: CatalogueProduct = mockCatalogue): Res
  * `content/schema.ts`'s `PLACEHOLDERS` — a subset of it, the catalogue-
  * sourced quarter. See this module's doc comment for why the configuration-
  * sourced remainder is deliberately left alone.
+ *
+ * `tests/catalogue.test.ts` asserts this table's keys are **exactly** the
+ * placeholders `content/schema.ts` marks `source: "catalogue"`, in both
+ * directions. That is what stopped `taxNote` being removed here and left
+ * declared there, or the reverse.
  */
 const CATALOGUE_PLACEHOLDER_RESOLVERS: Readonly<Record<string, (catalogue: ResolvedCatalogue) => string>> = {
   price: (catalogue) => catalogue.price,
   priceLine: (catalogue) => catalogue.priceLine,
-  taxNote: (catalogue) => catalogue.taxNote,
   productName: (catalogue) => catalogue.productName,
 };
 

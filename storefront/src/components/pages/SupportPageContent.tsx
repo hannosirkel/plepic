@@ -23,7 +23,7 @@
  */
 import { inTheBox, inTheBoxSummary } from "../../../../content/lunar-base.js";
 import { contact, printedRulebookNote, rulebookLink, rulesFaq, supportIntro } from "../../../../content/support.js";
-import { placeholderValuesFrom, resolvedParagraphs } from "../../lib/configuration-placeholders.js";
+import { NO_CONFIGURATION_VALUES, resolvedParagraphs } from "../../lib/configuration-placeholders.js";
 import { ContactForm } from "../forms/ContactForm.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { SiteFooter } from "../SiteFooter.js";
@@ -43,10 +43,10 @@ export function SupportPageContent({
   nonce,
   merchantContactAddress,
 }: SupportPageContentProps) {
-  const contactBody = resolvedParagraphs(
-    contact.body,
-    placeholderValuesFrom({ contactAddress: merchantContactAddress }),
-  );
+  const contactBody = resolvedParagraphs(contact.body, {
+    ...NO_CONFIGURATION_VALUES,
+    merchantContactAddress,
+  });
 
   return (
     <div data-layer="publisher" className={styles.page}>

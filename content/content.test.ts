@@ -42,6 +42,7 @@ import {
   isPlaceholderToken,
   LEGAL_ELEMENTS,
   placeholderTokensIn,
+  PLACEHOLDER_TABLE,
   PLACEHOLDERS,
   unresolvedPlaceholdersIn,
   type LegalElement,
@@ -356,7 +357,7 @@ describe("substitutions", () => {
   });
 
   it("every price-bearing placeholder resolves from the catalogue, not from content", () => {
-    for (const token of ["price", "priceLine", "taxNote"] as const) {
+    for (const token of ["price", "priceLine"] as const) {
       expect(PLACEHOLDERS[token].source).toBe("catalogue");
     }
   });
@@ -368,9 +369,35 @@ describe("substitutions", () => {
       "merchantRegistrationNumber",
       "merchantVatNumber",
       "merchantContactAddress",
+      "merchantPhoneNumber",
       "returnAddress",
     ] as const) {
       expect(PLACEHOLDERS[token].source).toBe("configuration");
+    }
+  });
+
+  /**
+   * Every configuration-sourced placeholder is a legally required disclosure,
+   * and the flag is what tells the renderer to show a named gap instead of
+   * dropping the sentence. A new configuration placeholder that is *not* one —
+   * a future social handle, say — is a deliberate decision, and this test is
+   * where it gets made rather than inherited.
+   */
+  it("marks every configuration-sourced placeholder as a legally required disclosure", () => {
+    const configured = Object.entries(PLACEHOLDER_TABLE).filter(
+      ([, placeholder]) => placeholder.source === "configuration",
+    );
+    expect(configured.length).toBeGreaterThan(5);
+
+    for (const [token, placeholder] of configured) {
+      expect(placeholder.legallyRequired, `${token} has no legallyRequired decision`).toBe(true);
+    }
+  });
+
+  it("marks no catalogue placeholder as a legally required disclosure", () => {
+    for (const [token, placeholder] of Object.entries(PLACEHOLDER_TABLE)) {
+      if (placeholder.source !== "catalogue") continue;
+      expect(placeholder.legallyRequired ?? false, `${token}`).toBe(false);
     }
   });
 });
@@ -514,6 +541,35 @@ describe("the proof strip is chosen, not accumulated", () => {
   });
 });
 
+/**
+ * Every string a legal page will actually render: its paragraphs, the emphasised
+ * `callout` above them, the term/detail pairs of any list, and every cell,
+ * caption and note of any table.
+ *
+ * The list is exhaustive over `LegalSection` on purpose. `items` was added for
+ * the browser-storage disclosure and `callout` and `table` for the operator's
+ * price presentation and cookie table, and each time, a check written against
+ * `body` alone silently stopped covering the new field — which is how a check
+ * for the dismantled ODR platform, or for the trader identity, would go quietly
+ * blind to the half of a page that a reader actually reads.
+ */
+function legalProseIn(page: (typeof legalPages)[number]): readonly string[] {
+  return page.body.flatMap((section) => [
+    section.heading,
+    ...section.body,
+    ...(section.callout === undefined ? [] : [section.callout.lead, section.callout.detail]),
+    ...(section.items ?? []).flatMap((item) => [item.term, item.detail]),
+    ...(section.table === undefined
+      ? []
+      : [
+          section.table.caption,
+          ...section.table.columns,
+          ...section.table.rows.flat(),
+          ...(section.table.notes ?? []),
+        ]),
+  ]);
+}
+
 describe("legal pages", () => {
   it("cover every required element between them", () => {
     const covered = new Set<LegalElement>(legalPages.flatMap((page) => page.covers));
@@ -535,6 +591,105 @@ describe("legal pages", () => {
     expect(duplicated).toEqual([]);
   });
 
+  /**
+   * The teeth the closed list did not have.
+   *
+   * `covers` used to be a page-level array that no prose had to justify, so a
+   * page could keep claiming an obligation whose section had been deleted, and
+   * the two tests above would stay green. Coverage is now declared per section
+   * and the page's array must equal the union — which means deleting a section
+   * fails **here** (the page claims what nothing carries), and deleting it from
+   * the page's array as well fails the closed-list test **above** (the site no
+   * longer covers `LEGAL_ELEMENTS`). There is no edit that removes a required
+   * disclosure and leaves the suite green.
+   */
+  it("derive every page's coverage from the sections that actually carry it", () => {
+    for (const page of legalPages) {
+      const fromSections = [...new Set(page.body.flatMap((section) => section.covers))].toSorted();
+      expect(
+        [...page.covers].toSorted(),
+        `${page.route}'s covers does not match the union of its sections' covers — ` +
+          "either a section carrying an obligation was deleted, or the page claims one no section carries",
+      ).toEqual(fromSections);
+    }
+  });
+
+  it("give every element exactly one section, so deleting that section is the only way to lose it", () => {
+    const homes = new Map<LegalElement, string[]>();
+
+    for (const page of legalPages) {
+      for (const section of page.body) {
+        for (const element of section.covers) {
+          homes.set(element, [...(homes.get(element) ?? []), `${page.route}#${section.anchor}`]);
+        }
+      }
+    }
+
+    for (const element of LEGAL_ELEMENTS) {
+      expect(homes.get(element), `${element} has no section carrying it`).toBeDefined();
+      expect(homes.get(element), `${element} is claimed by more than one section`).toHaveLength(1);
+    }
+  });
+
+  it("never let a section claim an obligation while carrying no prose", () => {
+    for (const page of legalPages) {
+      for (const section of page.body) {
+        if (section.covers.length === 0) continue;
+        const words = [
+          ...section.body,
+          ...(section.callout === undefined ? [] : [section.callout.lead, section.callout.detail]),
+          ...(section.items ?? []).map((item) => item.detail),
+          ...(section.table === undefined
+            ? []
+            : [...section.table.rows.flat(), ...(section.table.notes ?? [])]),
+        ]
+          .join(" ")
+          .split(/\s+/)
+          .filter((word) => word.length > 0);
+        expect(
+          words.length,
+          `${page.route}#${section.anchor} claims ${section.covers.join(", ")} but has almost no prose`,
+        ).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  /**
+   * The identity set the second qualified read found short by one (M1, the
+   * telephone number). Pinned by name rather than left to prose, because the
+   * failure mode is an omission and an omission is invisible to a scan of what
+   * *is* written.
+   */
+  it("state the whole trader identity set on the imprint, telephone number included", () => {
+    const imprintPage = legalPages.find((page) => page.route === "legalImprint");
+    expect(imprintPage).toBeDefined();
+    const prose = legalProseIn(imprintPage!).join("\n");
+
+    for (const token of [
+      "merchantLegalName",
+      "merchantRegisteredAddress",
+      "merchantRegistrationNumber",
+      "merchantVatNumber",
+      "merchantContactAddress",
+      "merchantPhoneNumber",
+    ] as const) {
+      expect(prose, `the imprint does not state {${token}}`).toContain(`{${token}}`);
+    }
+  });
+
+  /**
+   * Regulation 524/2013 was repealed by Regulation (EU) 2024/3228 and the ODR
+   * platform was dismantled in July 2025. The second read flagged its absence
+   * as *correct*, and as exactly the thing a checklist reviewer would wrongly
+   * "fix". This is that flag, mechanised.
+   */
+  it("offer no link to the dismantled ODR platform", () => {
+    const corpus = legalPages.flatMap((page) => legalProseIn(page)).join("\n").toLowerCase();
+    for (const phrase of ["odr platform", "online dispute resolution platform", "ec.europa"]) {
+      expect(corpus, `${phrase} names a platform that no longer exists`).not.toContain(phrase);
+    }
+  });
+
   it("keeps the consent obligations on the privacy page", () => {
     const privacyPage = legalPages.find((page) => page.route === "legalPrivacy");
     expect(privacyPage?.covers).toContain("analytics-lawful-basis");
@@ -543,9 +698,9 @@ describe("legal pages", () => {
 
   it("are not marked approved while the merchant's details are still placeholders", () => {
     for (const page of legalPages) {
-      const unresolved = page.body
-        .flatMap((section) => section.body)
-        .flatMap((paragraph) => unresolvedPlaceholdersIn(paragraph));
+      const unresolved = legalProseIn(page).flatMap((paragraph) =>
+        unresolvedPlaceholdersIn(paragraph),
+      );
 
       if (unresolved.length > 0) {
         expect(
@@ -554,6 +709,63 @@ describe("legal pages", () => {
         ).toBe("draft-pending-operator-input");
       }
     }
+  });
+
+  /**
+   * A table with a short row does not throw: it renders as a grid with a hole
+   * in it, under whichever column heading the browser happens to line the cell
+   * up with. That is a disclosure saying the wrong thing rather than a crash,
+   * and it is invisible to a test that only asks whether the words are on the
+   * page — which is exactly what the render assertions in
+   * `storefront/tests/legal-pages.test.tsx` do.
+   */
+  it("give every table row exactly one cell per column", () => {
+    const tables = legalPages.flatMap((page) =>
+      page.body.flatMap((section) =>
+        section.table === undefined ? [] : [{ page: page.route, section, table: section.table }],
+      ),
+    );
+
+    expect(tables.length, "no legal page carries a table any more").toBeGreaterThan(0);
+
+    for (const { page, section, table } of tables) {
+      expect(table.columns.length, `${page}#${section.anchor} has fewer than three columns — use items`).toBeGreaterThan(2);
+      expect(table.caption.length, `${page}#${section.anchor}'s table has no caption`).toBeGreaterThan(3);
+      for (const [index, row] of table.rows.entries()) {
+        expect(
+          row.length,
+          `${page}#${section.anchor} row ${String(index)} has ${String(row.length)} cells for ${String(table.columns.length)} columns`,
+        ).toBe(table.columns.length);
+      }
+    }
+  });
+
+  /**
+   * The operator supplied the cookie table on 2026-08-10, and two properties of
+   * it are the answer rather than the phrasing: the durations are **hedged**
+   * rather than asserted about other companies' products, and the consent
+   * status of each cookie is stated rather than left to be inferred from the
+   * section around it. An agent had previously asserted both.
+   */
+  it("hedge every cookie duration and state every cookie's consent status", () => {
+    const privacyPage = legalPages.find((page) => page.route === "legalPrivacy");
+    const table = privacyPage?.body.find((section) => section.anchor === "consent")?.table;
+
+    expect(table, "the cookie table is gone from the privacy page").toBeDefined();
+    expect(table?.columns).toEqual(["Cookie", "Provider", "Purpose", "Duration"]);
+
+    const durations = (table?.rows ?? []).map((row) => row[row.length - 1] ?? "");
+    expect(durations.length).toBeGreaterThan(0);
+    for (const duration of durations) {
+      expect(
+        /^(?:Up to |Varies)/.test(duration),
+        `"${duration}" asserts a third party's cookie lifetime rather than hedging it`,
+      ).toBe(true);
+    }
+
+    const notes = (table?.notes ?? []).join(" ");
+    expect(notes).toContain("only with your consent");
+    expect(notes).toContain("do not require consent");
   });
 
   it("declare every section they say they contain", () => {

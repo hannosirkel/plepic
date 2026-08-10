@@ -17,7 +17,7 @@ test makes the rest **loud**.
 |---|---|
 | An absolute URL | There is no `href`, `url` or `link` field of type `string` anywhere in `schema.ts`. A link is a `LinkTarget`: an internal `RouteId`, an `AnchorId`, or a named `ExternalTargetId` that runtime configuration resolves to a URL. There is no slot to put a URL in. |
 | A hostname | Nothing accepts a host. The canonical host, the base URL and every external URL come from configuration. `content.test.ts` additionally fails on any hostname-shaped string a content module *exports*, and on one in its source text. |
-| A price | There is no amount field, no currency field and no numeric price anywhere. Copy that must state a price writes `{price}`, `{priceLine}` or `{taxNote}`, all declared as resolving from the **catalogue**. The scan fails on a currency symbol, a currency code, the word *euro*, or a decimal money amount. |
+| A price | There is no amount field, no currency field and no numeric price anywhere. Copy that must state a price writes `{price}` or `{priceLine}`, both declared as resolving from the **catalogue**. The scan fails on a currency symbol, a currency code, the word *euro*, or a decimal money amount. (A third such placeholder, `taxNote`, was declared until 2026-08-10; resolving to the unqualified "VAT included" the second legal read removed from `/legal/shipping`. nothing used it, and on the operator's answer the declaration, its resolver in `storefront/src/lib/catalogue.ts` and the set-equality pin in `storefront/tests/catalogue.test.ts` were removed together, so no guard was weakened to let one of the three go first.) |
 | An unkeyed proof claim | `Quotation` and `ProofItem` both require a `SourceId`, and `SourceId` is a closed union of ids that exist in the evidence manifest. A claim with no source does not compile. |
 | Our own commitments passed off as proof | The dispatch window, delivery estimates and return terms are `CommercialTermId`s, a **separate union**. `ProofItem` and `Quotation` take a `SourceId`, so "dispatched within 3 business days" cannot enter the proof strip at all. A test also fails on a commercial term nothing cites — an uncited promise is one the site does not actually make. |
 | A weakly-provenanced figure leading the page | A `Source` may be marked `supportingOnly`. `ProofItem.source` may not name one, so it can appear in a detail line and nowhere else. |
@@ -27,8 +27,10 @@ test makes the rest **loud**.
 | More than three proof items | `ProofStripItems` is a tuple type: exactly two or exactly three. A fourth is a compile error, not a review comment. |
 | Campaign-state language | `CAMPAIGN_STATE_PHRASES` in `evidence.ts` is checked against every content file. |
 | A claim the manifest excludes | `NOT_PUBLISHABLE` in `evidence.ts`, same mechanism. |
-| A legal obligation quietly dropped | `LEGAL_ELEMENTS` is a closed list of ten — eight from EU distance selling, two from the plan's consent constraint — and a test asserts the five legal pages cover all of it, exactly once each. |
+| A legal obligation quietly dropped | `LEGAL_ELEMENTS` is a closed list, and coverage is declared **per section**: a page's `covers` must equal the union of its sections' `covers`, and every element must have exactly one section carrying it. Deleting a section fails because the page claims what nothing carries; tidying the claim away too fails because the site no longer covers the closed list. |
 | Publishing a legal page with placeholder identity | A test refuses `operator-approved` on any page whose prose still contains an unresolved placeholder. |
+| A legally required disclosure silently disappearing at render | Every configuration-sourced placeholder is marked `legallyRequired`. `storefront/src/lib/configuration-placeholders.ts` renders a named, visible gap for an unconfigured one and the page carries a notice, rather than dropping the sentence the way optional prose is dropped. `storefront/tests/build-and-serve.test.ts` builds, serves all five routes from a real configured environment and fails on any gap marker or notice appearing there, and `storefront/tests/runtime-config.test.ts` fails on a placeholder with no runtime variable behind it. (`storefront/tests/legal-pages.test.tsx` proves the two render states, but against a fixture that supplies every value, so it is not the check that catches an unsupplied one.) |
+| An optional link making a complete page announce itself incomplete | A `LinkTarget` names an `ExternalTargetId`; the URL is deployment configuration, and an unconfigured one is simply not rendered. **Every** external destination is in that class, `consumer-disputes-committee` included: the operator, with the qualified reviewer's manual verification on 2026-08-10, confirmed that naming the Consumer Disputes Committee in prose satisfies Article 6(1)(t) CRD without an access method, so the address is an enhancement. The row above is the opposite case and keeps the opposite treatment: there the missing **value** *is* the disclosure. `storefront/src/components/mockups/link-target.ts` states where the line falls and why nothing is on the other side of it today. |
 
 ### The scan reads values, not source text
 
@@ -107,3 +109,23 @@ makes the sitemap contract in a later unit checkable rather than aspirational.
 Two anchor names are deliberately ugly: `aboutgame` and `video_trailer`. Old
 backlinks carry those fragments, and a fragment never reaches the server, so no
 redirect can repair them. They are load-bearing. Do not tidy them.
+
+## The legal pages, and the two failure modes
+
+The five legal pages are not hand-written React. `storefront/src/components/
+pages/LegalPageContent.tsx` projects `legal/*` section for section, so a
+section deleted here disappears from the page rather than lingering as markup
+nobody updated. Before that existed, every `/legal/*` route rendered a heading
+and a meta description and **none** of this directory reached a visitor.
+
+Two of `PLACEHOLDERS`' sources have opposite failure modes, and the difference
+is deliberate:
+
+- **`source: "catalogue"`** — resolved from `storefront/mock/catalogue.json`.
+- **`source: "configuration"`** — the merchant identity, all seven fields, and
+  every one of them `legallyRequired`. On optional prose (the Support page's
+  "You can also reach us at …") an unconfigured value drops the sentence. On a
+  legal page or the product page's GPSR block it renders as
+  `[not configured: company registration number]` with a notice at the top of
+  the page, because an imprint that quietly loses a disclosure looks complete
+  and is not.

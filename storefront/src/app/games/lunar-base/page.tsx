@@ -2,7 +2,9 @@ import { JsonLdScript } from "../../../components/JsonLdScript.js";
 import { LunarBaseMockup } from "../../../components/mockups/LunarBaseMockup.js";
 import { loadSiteHostConfig } from "../../../config/hosts.js";
 import { ROUTE_PATHS } from "../../../../../content/routes.js";
+import { getRuntimeConfig } from "../../../config/runtime-config.js";
 import { mockCatalogue, resolveCatalogue } from "../../../lib/catalogue.js";
+import { placeholderValuesFrom } from "../../../lib/configuration-placeholders.js";
 import { absoluteUrl } from "../../../lib/urls.js";
 import { buildProductJsonLd } from "../../../lib/product-jsonld.js";
 import { getRequestNonce } from "../../../lib/nonce.js";
@@ -48,7 +50,10 @@ export default async function LunarBasePage() {
 
   return (
     <>
-      <LunarBaseMockup catalogue={catalogue} />
+      <LunarBaseMockup
+        catalogue={catalogue}
+        merchant={placeholderValuesFrom(getRuntimeConfig().merchant)}
+      />
       <JsonLdScript data={jsonLd} nonce={nonce} />
     </>
   );

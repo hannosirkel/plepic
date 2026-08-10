@@ -16,8 +16,16 @@
  * 1280 and six at 320, with `.note` beneath repeating the tax note. The
  * data binding was right and the string was wrong for its slot: `.price` now
  * holds `catalogue.price` (the bare amount, which is what a display figure
- * is for) and `.note` holds `catalogue.priceQualifiers` (the tax and shipping
- * notes, stated exactly once).
+ * is for) and `.note` holds `catalogue.priceQualifiers` (the tax, shipping and
+ * duties notes, stated exactly once).
+ *
+ * **`.note` is where the operator's tax wording lands on this page, and it has
+ * to be the same wording `/legal/shipping` carries.** It read a flat "VAT
+ * included", which is untrue of an export and is the claim the second qualified
+ * read struck off the legal page (Minor 2). Leaving it here would only have
+ * moved the contradiction to the more prominent page. Both now read "VAT
+ * included where applicable", from the one string in `src/lib/catalogue.ts` —
+ * so does the hero, which renders the same field.
  *
  * `availability` is likewise never a resolved placeholder in
  * `content/lunar-base.ts` (it is the literal string "In stock") — this
