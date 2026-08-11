@@ -116,6 +116,20 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
       readonly imprintMarkers: readonly string[];
       readonly returnsMarker: string;
       readonly noticeHeading: string;
+      /**
+       * A distinctive fragment of the notice *body* -- the sentence following
+       * the heading that carries the disclaimer itself.
+       *
+       * Pinned because review pass 3 replaced the Estonian `noticeBody` with
+       * the English function verbatim and all 1865 tests stayed green. An
+       * unconfigured Estonian imprint could therefore serve the Estonian
+       * heading "See teade on puudulik." above an English paragraph, and the
+       * suite written in this unit to prevent exactly that would not have
+       * noticed. The heading and the draft note either side of it were already
+       * pinned; this is the longest reader-facing string between them, and the
+       * one that says the page is not a complete legal notice.
+       */
+      readonly noticeBodyFragment: string;
       readonly draftNote: string;
     }
   >
@@ -132,6 +146,8 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
     ],
     returnsMarker: "[not configured: return address]",
     noticeHeading: "This notice is incomplete.",
+    noticeBodyFragment:
+      "this page is not a complete legal notice and should not be relied on as one",
     draftNote: "Draft, pending the operator’s approval.",
   },
   et: {
@@ -146,6 +162,8 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
     ],
     returnsMarker: "[seadistamata: tagastusaadress]",
     noticeHeading: "See teade on puudulik.",
+    noticeBodyFragment:
+      "ei ole see leht täielik õiguslik teade ja sellele ei saa sellisena tugineda",
     draftNote: "Mustand, ootab haldaja heakskiitu.",
   },
 };
@@ -398,6 +416,7 @@ describe("each edition fails loudly in its own language", () => {
       const imprint = edition.find((page) => page.route === "legalImprint");
       const text = visibleText(render(imprint!, NO_CONFIGURATION_VALUES, {}, locale));
       expect(text).toContain(language.noticeHeading);
+      expect(text).toContain(language.noticeBodyFragment);
       expect(text).toContain(language.draftNote);
     });
   }

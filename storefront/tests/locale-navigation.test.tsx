@@ -277,28 +277,79 @@ describe("every non-default edition has inbound links, via the language switcher
  * note — are pinned the same way in `legal-pages.test.tsx`, where the
  * unconfigured state is rendered.
  */
-describe("the Estonian chrome is Estonian", () => {
-  const html = renderedPage("et", "legalReturns");
-
-  it("labels the header in Estonian", () => {
-    for (const label of [">Meist<", ">Klienditugi<", ">Menüü<", ">Ostukorv<"]) {
-      expect(html, `the et header does not carry ${label}`).toContain(label);
-    }
-    expect(html).toContain('aria-label="Peamenüü"');
-    expect(html).toContain('aria-label="Plepic Games, avaleht"');
-  });
-
-  it("labels the footer's legal navigation in Estonian", () => {
-    expect(html).toContain('aria-label="Juriidiline teave"');
-    expect(html).toContain('aria-label="Keel"');
-    for (const label of [
+/**
+ * Total over `Locale`, and that is the point — review pass 3's Minor B.
+ *
+ * The first version of this pin was written for `"et"` by name. It closed the
+ * finding for the edition that existed and gave a **third** edition no pressure
+ * at all: `CHROME_STRINGS` is a total `Record<Locale, …>`, so a new locale must
+ * supply the *keys* to compile, but nothing would demand the *values* be in
+ * that language — and the third edition would ship in exactly the state pass 2
+ * filed against the second.
+ *
+ * Written as a table, adding a locale is a compile error until someone types
+ * that edition's chrome out as literals. The `en` column is pinned too: a
+ * literal table with a hole where the default edition should be is the same
+ * mistake one column over.
+ */
+const EXPECTED_CHROME: Readonly<
+  Record<Locale, { readonly header: readonly string[]; readonly footer: readonly string[] }>
+> = {
+  en: {
+    header: [
+      ">About<",
+      ">Support<",
+      ">Menu<",
+      ">Basket<",
+      'aria-label="Primary"',
+      'aria-label="Plepic Games, home"',
+    ],
+    footer: [
+      'aria-label="Legal"',
+      'aria-label="Language"',
+      ">Imprint<",
+      ">Terms<",
+      ">Shipping<",
+      ">Returns<",
+      ">Privacy<",
+    ],
+  },
+  et: {
+    header: [
+      ">Meist<",
+      ">Klienditugi<",
+      ">Menüü<",
+      ">Ostukorv<",
+      'aria-label="Peamenüü"',
+      'aria-label="Plepic Games, avaleht"',
+    ],
+    footer: [
+      'aria-label="Juriidiline teave"',
+      'aria-label="Keel"',
       ">Õigusteave<",
       ">Müügitingimused<",
       ">Saatmine<",
       ">Tagastamine<",
       ">Privaatsus<",
-    ]) {
-      expect(html, `the et footer does not carry ${label}`).toContain(label);
-    }
-  });
+    ],
+  },
+};
+
+describe("each edition's chrome is in its own language", () => {
+  for (const locale of LOCALES) {
+    const html = renderedPage(locale, "legalReturns");
+    const expected = EXPECTED_CHROME[locale];
+
+    it(`${locale}: labels the header in its own language`, () => {
+      for (const label of expected.header) {
+        expect(html, `the ${locale} header does not carry ${label}`).toContain(label);
+      }
+    });
+
+    it(`${locale}: labels the footer's legal navigation in its own language`, () => {
+      for (const label of expected.footer) {
+        expect(html, `the ${locale} footer does not carry ${label}`).toContain(label);
+      }
+    });
+  }
 });

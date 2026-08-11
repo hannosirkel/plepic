@@ -58,8 +58,15 @@ export interface SiteFooterProps {
   /**
    * The edition this footer is chrome for. Labels come from
    * `CHROME_STRINGS[locale]`; the legal links stay inside the edition, per
-   * `localizedHrefFor`. Defaults to the default locale so the English pages
-   * render exactly what they always have.
+   * `localizedLinkFor`. Defaults to the default locale, so an English page's
+   * labels and link targets are unchanged.
+   *
+   * **Not "the English pages render exactly what they always have".** That
+   * sentence stood here through a review pass and was wrong: this is the
+   * component that adds the language-switcher `<nav>`, so the five English
+   * legal pages each gained ten lines of markup. No URL moved and nothing else
+   * changed — but the claim as written overstated it, which is precisely the
+   * error the switcher's own doc four lines below does not make.
    */
   readonly locale?: Locale;
   /**
