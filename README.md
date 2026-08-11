@@ -828,6 +828,33 @@ history, using a pinned and checksum-verified `gitleaks` release. Every
 GitHub Action is pinned by commit SHA, and the workflow is granted
 `contents: read` only.
 
+### Browser screenshots
+
+The browser suite covers real Chromium interaction and the eight committed
+screenshots (home, Lunar Base, basket, and checkout at desktop and mobile).
+CI runs it in this exact immutable image:
+
+```text
+mcr.microsoft.com/playwright:v1.57.0-noble@sha256:8fb7af3bb488c51364d6554876a8eddf377736608327dbdf4177b4901faf7bc9
+```
+
+Never create or refresh snapshot files from a bare workstation: browser fonts
+and anti-aliasing are evidence, and must match CI. To create the first baseline
+or deliberately refresh an approved change, run the same pinned image from the
+repository root:
+
+```bash
+docker run --rm --init --ipc=host --network host --user "$(id -u):$(id -g)" \
+  -v "$PWD:/w" -w /w \
+  mcr.microsoft.com/playwright:v1.57.0-noble@sha256:8fb7af3bb488c51364d6554876a8eddf377736608327dbdf4177b4901faf7bc9 \
+  sh -lc 'npm ci && npm -w storefront exec -- playwright test --update-snapshots'
+```
+
+The normal verification command is `npm -w storefront exec -- playwright test`.
+Each visual test captures the default visible consent banner and proves that no
+Google Tag Manager request has loaded before consent; the explicit
+`maxDiffPixelRatio` belongs in `storefront/playwright.config.ts`.
+
 ## Repository boundaries
 
 No application source, Dockerfile, image build, or Kubernetes manifest lives
