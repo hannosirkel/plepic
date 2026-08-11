@@ -2,5 +2,10 @@
 set -euo pipefail
 
 npm run lint
+# The root tsconfig covers content/, design/ and scripts/ only, so the
+# storefront's program is typechecked explicitly -- otherwise the seam's
+# promise that the type checker enumerates a new locale's work is only
+# enforced by CI for the content/ half.
 npm run typecheck
+npm run typecheck --workspace storefront
 npm run test:unit

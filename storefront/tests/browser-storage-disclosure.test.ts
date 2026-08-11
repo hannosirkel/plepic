@@ -135,6 +135,19 @@ const COOKIE_TABLE_CAPTIONS: Readonly<Record<Locale, string>> = {
 };
 
 /**
+ * The exact column headings, per edition. `content/content.test.ts` pins the
+ * same names in its `COOKIE_TABLE_LANGUAGE` — deliberately duplicated rather
+ * than shared, because a first revision replaced this file's exact-name pin
+ * with a bare length check when the names moved there, leaving one file's
+ * future edit able to remove the last check instead of the second one. Two
+ * suites, two pins, and a rename must answer to both.
+ */
+const COOKIE_TABLE_COLUMNS: Readonly<Record<Locale, readonly string[]>> = {
+  en: ["Cookie", "Provider", "Purpose", "Duration"],
+  et: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
+};
+
+/**
  * The cookie-writing forms this scan knows, each with the name it reports.
  *
  * The first revision knew only the client-side assignment, and review pass 2
@@ -274,7 +287,7 @@ describe("the privacy notice accounts for every browser store this site writes",
       expect(table?.caption, "the caption a second reader relied on moved").toBe(
         COOKIE_TABLE_CAPTIONS[locale],
       );
-      expect(table?.columns).toHaveLength(4);
+      expect(table?.columns).toEqual(COOKIE_TABLE_COLUMNS[locale]);
 
       const tableText = [...(table?.rows ?? []).flat(), ...(table?.notes ?? [])].join("\n");
       expect(tableText).not.toMatch(

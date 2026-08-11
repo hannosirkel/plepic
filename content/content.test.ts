@@ -891,6 +891,87 @@ for (const locale of LOCALES) {
   });
 }
 
+/**
+ * Edition parity: a translated legal page carries the default edition's exact
+ * structure, and the default edition carries the translation's.
+ *
+ * The `et/` file headers state as fact that anchors, `covers`, sources and
+ * every placeholder token are identical to the English pages. That was true
+ * and asserted by nobody: the review of this unit demonstrated that deleting
+ * a line of the Annex I(B) model withdrawal form — from **either** edition —
+ * left all 1798 tests green. Translation loss is a defect class that only
+ * exists once a second edition does, and it is exactly the thing a
+ * structural comparison catches mechanically: prose is the translator's, but
+ * the skeleton under it is the law's.
+ *
+ * Compared per page against the default edition: section anchors in order,
+ * per-section `covers`, `source`, link targets, paragraph count, each
+ * paragraph's placeholder-token multiset, callout presence and its tokens,
+ * item count, and the table's exact shape. Deliberately *not* compared:
+ * titles, headings, prose and `reviewStatus` — the first three are the
+ * translation, and approval is a per-edition operator act.
+ */
+describe("edition parity", () => {
+  const tokensIn = (text: string): readonly string[] => placeholderTokensIn(text).toSorted();
+
+  function skeletonOf(page: (typeof legalPages)[number]) {
+    return {
+      route: page.route,
+      indexable: page.indexable,
+      sections: [...page.sections],
+      covers: [...page.covers].toSorted(),
+      body: page.body.map((section) => ({
+        anchor: section.anchor,
+        covers: [...section.covers].toSorted(),
+        source: section.source ?? null,
+        paragraphs: section.body.length,
+        paragraphTokens: section.body.map(tokensIn),
+        callout:
+          section.callout === undefined
+            ? null
+            : { lead: tokensIn(section.callout.lead), detail: tokensIn(section.callout.detail) },
+        items: (section.items ?? []).length,
+        table:
+          section.table === undefined
+            ? null
+            : {
+                columns: section.table.columns.length,
+                rows: section.table.rows.map((row) => row.length),
+                notes: (section.table.notes ?? []).length,
+              },
+        links: (section.links ?? []).map((link) => link.target),
+      })),
+    };
+  }
+
+  const reference = contentFor(legalPagesByLocale, DEFAULT_LOCALE);
+
+  for (const locale of LOCALES) {
+    if (locale === DEFAULT_LOCALE) continue;
+
+    it(`${locale} publishes exactly the default edition's legal routes, in its order`, () => {
+      expect(contentFor(legalPagesByLocale, locale).map((page) => page.route)).toEqual(
+        reference.map((page) => page.route),
+      );
+    });
+
+    for (const referencePage of reference) {
+      it(`${locale}:${referencePage.route} mirrors the default edition's structure exactly`, () => {
+        const counterpart = contentFor(legalPagesByLocale, locale).find(
+          (page) => page.route === referencePage.route,
+        );
+        expect(counterpart, `${locale} does not carry ${referencePage.route}`).toBeDefined();
+        expect(
+          skeletonOf(counterpart!),
+          "a structural difference between editions is either content lost in translation " +
+            "or content lost from the source — both are a legally required disclosure " +
+            "existing in one language and not the other",
+        ).toEqual(skeletonOf(referencePage));
+      });
+    }
+  }
+});
+
 describe("the page registry", () => {
   it("has exactly one page per declared route", () => {
     const routes = pages.map((page) => page.route).toSorted();

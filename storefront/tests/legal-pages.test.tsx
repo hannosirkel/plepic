@@ -23,9 +23,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { legalPages, legalPagesByLocale } from "../../content/legal/index.js";
-import { LOCALES } from "../../content/routes.js";
+import { LOCALES, type Locale } from "../../content/routes.js";
 import type { ExternalTargetUrls } from "../src/config/runtime-config.js";
-import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
+import {
+  mockCatalogue,
+  PRICE_HEADLINE_SEPARATOR,
+  resolveCatalogue,
+  resolveCataloguePlaceholders,
+} from "../src/lib/catalogue.js";
 import { contentFor, PLACEHOLDER_TABLE } from "../../content/schema.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { ProductSafetyBlock } from "../src/components/ProductSafetyBlock.js";
@@ -428,9 +433,96 @@ describe("the dispute-resolution section names the body, and the link only enhan
  * the placeholder mechanism exists — `tests/no-hardcoded-price.test.ts` and
  * `content/content.test.ts` hold up the other two corners of that.
  */
+/**
+ * The words each edition's VAT callout must be made of, per tax treatment.
+ *
+ * This table is what binds the **Estonian** callout to data. The English one
+ * was pinned character-for-character to `catalogue.priceHeadline` from the
+ * start; the Estonian one could be edited into a flat "sisaldab käibemaksu" —
+ * the exact unqualified claim the English page is forbidden from making, and
+ * false for a non-EU buyer — with every test green, because the edition
+ * boundary hid it from the pin rather than containing the hazard: an Estonian
+ * reader buys from the same English product page, so a legal/product
+ * contradiction crosses editions freely.
+ *
+ * Total over `Locale` and selected on `product.price.taxIncluded`, so a
+ * third edition does not compile until its wording for **both** tax states is
+ * written down, and flipping the catalogue's tax treatment goes red in every
+ * language at once. The English column is itself pinned to
+ * `src/lib/catalogue.ts`'s own composition below, so this table cannot drift
+ * from the operator's wording either.
+ */
+const VAT_CALLOUT_LANGUAGE: Readonly<
+  Record<
+    Locale,
+    {
+      readonly taxIncluded: string;
+      readonly taxExcluded: string;
+      readonly shippingNote: string;
+    }
+  >
+> = {
+  en: {
+    taxIncluded: "VAT included where applicable",
+    taxExcluded: "VAT calculated at checkout",
+    shippingNote: "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.",
+  },
+  et: {
+    taxIncluded: "sisaldab käibemaksu, kui see kuulub tasumisele",
+    taxExcluded: "käibemaks arvutatakse tellimuse vormistamisel",
+    shippingNote:
+      "Saatekulu arvutatakse tellimuse vormistamisel. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, kui neid on, hinnas ei sisaldu.",
+  },
+};
+
 describe("the VAT section makes one statement about tax", () => {
   const shipping = legalPages.find((page) => page.route === "legalShipping");
   const vat = shipping?.body.find((candidate) => candidate.anchor === "vat");
+
+  /**
+   * The language table's English column is the catalogue's own words, in both
+   * tax states — so the per-edition binding below and the catalogue cannot
+   * disagree about what either state says, and the `taxExcluded` variant is
+   * proved against the resolver rather than trusted.
+   */
+  it("keeps the language table's English column identical to the catalogue's composition", () => {
+    const included = resolveCatalogue({
+      ...mockCatalogue,
+      price: { ...mockCatalogue.price, taxIncluded: true },
+    });
+    const excluded = resolveCatalogue({
+      ...mockCatalogue,
+      price: { ...mockCatalogue.price, taxIncluded: false },
+    });
+
+    expect(included.priceTaxQualifier).toBe(VAT_CALLOUT_LANGUAGE.en.taxIncluded);
+    expect(excluded.priceTaxQualifier).toBe(VAT_CALLOUT_LANGUAGE.en.taxExcluded);
+    expect(included.priceShippingNote).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
+    expect(excluded.priceShippingNote).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
+  });
+
+  /**
+   * Every edition's callout states the catalogue's **current** tax treatment,
+   * in its own language. Removing the conditional from the Estonian lead, or
+   * flipping `taxIncluded` in the catalogue while any edition's callout still
+   * asserts the old treatment, goes red here.
+   */
+  for (const locale of LOCALES) {
+    it(`${locale}: states the catalogue's tax treatment, and no other`, () => {
+      const language = VAT_CALLOUT_LANGUAGE[locale];
+      const page = contentFor(legalPagesByLocale, locale).find(
+        (candidate) => candidate.route === "legalShipping",
+      );
+      const callout = page?.body.find((candidate) => candidate.anchor === "vat")?.callout;
+      const qualifier = mockCatalogue.price.taxIncluded
+        ? language.taxIncluded
+        : language.taxExcluded;
+
+      expect(callout, `${locale}'s VAT callout is gone`).toBeDefined();
+      expect(callout?.lead).toBe(`{price}${PRICE_HEADLINE_SEPARATOR}${qualifier}`);
+      expect(callout?.detail).toBe(language.shippingNote);
+    });
+  }
 
   it("carries the operator's price presentation as an emphasised line and a plain one", () => {
     expect(vat?.callout, "the VAT section's price presentation is gone").toBeDefined();
