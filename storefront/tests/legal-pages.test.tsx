@@ -23,7 +23,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { legalPages, legalPagesByLocale } from "../../content/legal/index.js";
-import { LOCALES, type Locale } from "../../content/routes.js";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../content/routes.js";
 import type { ExternalTargetUrls } from "../src/config/runtime-config.js";
 import {
   mockCatalogue,
@@ -80,15 +80,75 @@ const CONFIGURED_TARGETS: ExternalTargetUrls = {
   "consumer-disputes-committee": "https://disputes.example.org/committee",
 };
 
+/*
+ * `locale` matters: pass 2 of this unit's review found the per-edition loops
+ * rendering Estonian content through the default edition's renderer -- English
+ * chrome, English marker word, English notice, English collation -- so they
+ * proved their properties of the Estonian *content* and assumed them of the
+ * Estonian *render*. Every per-edition loop below passes its own locale.
+ */
 function render(
   page: (typeof legalPages)[number],
   values: ConfigurationPlaceholderValues,
   externalTargets: ExternalTargetUrls = CONFIGURED_TARGETS,
+  locale: Locale = DEFAULT_LOCALE,
 ): string {
   return renderToStaticMarkup(
-    <LegalPageContent page={page} values={values} externalTargets={externalTargets} />,
+    <LegalPageContent page={page} locale={locale} values={values} externalTargets={externalTargets} />,
   );
 }
+
+/**
+ * Each edition's failure-mode strings, as **literals**. The renderer takes
+ * them from `chrome-strings.ts` and `configuration-placeholders.ts`; pass 2
+ * demonstrated that every Estonian entry there could be reverted to English
+ * with the suite green, because nothing pinned the values -- the total
+ * `Record<Locale, ...>` types enforce that an `et` key exists, not what is in
+ * it. These are the strings a reader meets when a deployment is
+ * misconfigured, interpolated into the middle of legal sentences, so they are
+ * pinned in the reader's own language here.
+ */
+const EDITION_FAILURE_LANGUAGE: Readonly<
+  Record<
+    Locale,
+    {
+      readonly markerPrefix: string;
+      readonly imprintMarkers: readonly string[];
+      readonly returnsMarker: string;
+      readonly noticeHeading: string;
+      readonly draftNote: string;
+    }
+  >
+> = {
+  en: {
+    markerPrefix: "[not configured: ",
+    imprintMarkers: [
+      "[not configured: registered company name]",
+      "[not configured: registered address]",
+      "[not configured: company registration number]",
+      "[not configured: VAT identification number]",
+      "[not configured: contact email address]",
+      "[not configured: telephone number]",
+    ],
+    returnsMarker: "[not configured: return address]",
+    noticeHeading: "This notice is incomplete.",
+    draftNote: "Draft, pending the operator’s approval.",
+  },
+  et: {
+    markerPrefix: "[seadistamata: ",
+    imprintMarkers: [
+      "[seadistamata: registreeritud ärinimi]",
+      "[seadistamata: registrijärgne aadress]",
+      "[seadistamata: registrikood]",
+      "[seadistamata: käibemaksukohustuslasena registreerimise number]",
+      "[seadistamata: e-posti kontaktaadress]",
+      "[seadistamata: telefoninumber]",
+    ],
+    returnsMarker: "[seadistamata: tagastusaadress]",
+    noticeHeading: "See teade on puudulik.",
+    draftNote: "Mustand, ootab haldaja heakskiitu.",
+  },
+};
 
 describe("the resolver knows exactly the tokens content/ declares from configuration", () => {
   it("resolves every configuration-sourced placeholder and no others", () => {
@@ -136,21 +196,24 @@ describe("configured, the legal pages carry every required disclosure", () => {
   for (const locale of LOCALES) {
   for (const page of contentFor(legalPagesByLocale, locale)) {
     it(`${locale}:${page.route} resolves everything and shows no notice`, () => {
-      const html = render(page, CONFIGURED);
+      const html = render(page, CONFIGURED, CONFIGURED_TARGETS, locale);
       const text = visibleText(html);
 
       expect(text, "an unresolved placeholder reached a visitor").not.toMatch(
         /\{[A-Za-z][A-Za-z0-9]*\}/,
       );
-      expect(text, "a legally required value is unconfigured in the configured case").not.toContain(
-        "[not configured",
-      );
+      for (const edition of LOCALES) {
+        expect(
+          text,
+          "a legally required value is unconfigured in the configured case",
+        ).not.toContain(EDITION_FAILURE_LANGUAGE[edition].markerPrefix);
+      }
       expect(html).not.toContain("legal-incomplete-notice");
       expect(text.trim().length, `${page.route} rendered nothing`).toBeGreaterThan(600);
     });
 
     it(`${locale}:${page.route} renders every string its content declares`, () => {
-      const text = visibleText(render(page, CONFIGURED));
+      const text = visibleText(render(page, CONFIGURED, CONFIGURED_TARGETS, locale));
       const served = (source: string): string =>
         resolveRequiredProse(
           [resolveCataloguePlaceholders(source, resolveCatalogue())],
@@ -198,7 +261,7 @@ describe("configured, the legal pages carry every required disclosure", () => {
 
     it(`${locale}: states the whole trader identity on the imprint, telephone number included`, () => {
       const imprint = edition.find((page) => page.route === "legalImprint");
-      const text = visibleText(render(imprint!, CONFIGURED));
+      const text = visibleText(render(imprint!, CONFIGURED, CONFIGURED_TARGETS, locale));
 
       for (const value of [
         CONFIGURED.merchantLegalName,
@@ -214,7 +277,9 @@ describe("configured, the legal pages carry every required disclosure", () => {
 
     it(`${locale}: states the return address on the returns page`, () => {
       const returnsPage = edition.find((page) => page.route === "legalReturns");
-      expect(visibleText(render(returnsPage!, CONFIGURED))).toContain(CONFIGURED.returnAddress);
+      expect(
+        visibleText(render(returnsPage!, CONFIGURED, CONFIGURED_TARGETS, locale)),
+      ).toContain(CONFIGURED.returnAddress);
     });
   }
 });
@@ -223,8 +288,8 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
   for (const locale of LOCALES) {
   for (const page of contentFor(legalPagesByLocale, locale)) {
     it(`${locale}:${page.route} drops no paragraph and shows no brace`, () => {
-      const configured = visibleText(render(page, CONFIGURED));
-      const unconfigured = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
+      const configured = visibleText(render(page, CONFIGURED, CONFIGURED_TARGETS, locale));
+      const unconfigured = visibleText(render(page, NO_CONFIGURATION_VALUES, {}, locale));
 
       expect(unconfigured, "a brace reached a visitor").not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
 
@@ -283,7 +348,7 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
   it("never fabricates a value, and never renders an empty one", () => {
     for (const locale of LOCALES) {
       for (const page of contentFor(legalPagesByLocale, locale)) {
-        const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
+        const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}, locale));
         // No sentence ends up with a dangling ", ." or "at ." where a value
         // went — nor the Estonian equivalent, "aadressil ." and kin.
         expect(text, `${locale}:${page.route} rendered an empty value`).not.toMatch(
@@ -292,6 +357,50 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
       }
     }
   });
+});
+
+/**
+ * The failure-mode strings, per edition, against the literal table above.
+ * This is what stops `CHROME_STRINGS.et`, `MARKER_WORDS.et` or `LABELS.et`
+ * quietly reverting to English: the rendered Estonian page must carry the
+ * Estonian marker, label set, notice heading and draft note, character for
+ * character, and the English page the English ones.
+ */
+describe("each edition fails loudly in its own language", () => {
+  for (const locale of LOCALES) {
+    const language = EDITION_FAILURE_LANGUAGE[locale];
+    const edition = contentFor(legalPagesByLocale, locale);
+
+    it(`${locale}: marks every missing imprint detail with its own marker and labels`, () => {
+      const imprint = edition.find((page) => page.route === "legalImprint");
+      const text = visibleText(render(imprint!, NO_CONFIGURATION_VALUES, {}, locale));
+
+      for (const marker of language.imprintMarkers) {
+        expect(text, `the ${locale} imprint does not carry ${marker}`).toContain(marker);
+      }
+      for (const other of LOCALES) {
+        if (other === locale) continue;
+        expect(
+          text,
+          `the ${locale} imprint carries another edition's marker word`,
+        ).not.toContain(EDITION_FAILURE_LANGUAGE[other].markerPrefix);
+      }
+    });
+
+    it(`${locale}: marks the missing return address on the returns page`, () => {
+      const returnsPage = edition.find((page) => page.route === "legalReturns");
+      expect(
+        visibleText(render(returnsPage!, NO_CONFIGURATION_VALUES, {}, locale)),
+      ).toContain(language.returnsMarker);
+    });
+
+    it(`${locale}: announces incompleteness and draft status in its own words`, () => {
+      const imprint = edition.find((page) => page.route === "legalImprint");
+      const text = visibleText(render(imprint!, NO_CONFIGURATION_VALUES, {}, locale));
+      expect(text).toContain(language.noticeHeading);
+      expect(text).toContain(language.draftNote);
+    });
+  }
 });
 
 describe("the two failure modes stay distinct", () => {

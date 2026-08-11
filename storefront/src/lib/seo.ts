@@ -93,8 +93,21 @@ export function localesPublishing(routeId: RouteId): readonly Locale[] {
   return LOCALES.filter((locale) => lookupPage(routeId, locale) !== undefined);
 }
 
+export interface LocalizedLink {
+  /** The path the anchor points at. */
+  readonly href: string;
+  /**
+   * The linked document's language tag -- set exactly when the link had to
+   * cross into another edition, `undefined` when it stays in its own. The
+   * chrome puts it on the anchor as `hreflang`, the same annotation the
+   * language switcher carries, so an Estonian label pointing at an English
+   * document says so instead of discarding what this function knew.
+   */
+  readonly hrefLang?: string;
+}
+
 /**
- * The path a page served in `locale` links to `routeId` at.
+ * The link a page served in `locale` renders for `routeId`.
  *
  * The rule, and the reason it lives beside the page registry rather than in
  * `urls.ts` (which deliberately knows no pages): **a link stays inside its
@@ -104,13 +117,27 @@ export function localesPublishing(routeId: RouteId): readonly Locale[] {
  * of the Estonian edition was a set of five exits -- because the chrome built
  * links from bare `ROUTE_PATHS`. Linking a route the edition does *not*
  * publish at the edition's own prefix would be worse: a nav link that 404s.
- * So the edition's own URL where one exists, the default edition's where
- * not, and nothing else -- `tests/locale-navigation.test.tsx` holds every
- * rendered anchor to exactly this function's answer.
+ *
+ * **How this is verified, stated precisely** -- the first revision claimed
+ * "every rendered anchor is held to this function's answer", which was true
+ * of the wiring and vacuous about the function, since the chrome builds its
+ * anchors by calling it. `tests/locale-navigation.test.tsx` now asserts two
+ * independent things instead: this function's answer over every
+ * `(locale, route)` pair against a table that names both branches without
+ * calling it, and that every href a page actually renders resolves to a
+ * route the target edition publishes and can serve.
  */
-export function localizedHrefFor(locale: Locale, routeId: RouteId): string {
+export function localizedLinkFor(locale: Locale, routeId: RouteId): LocalizedLink {
   const target = lookupPage(routeId, locale) !== undefined ? locale : DEFAULT_LOCALE;
-  return localizedPath(target, ROUTE_PATHS[routeId]);
+  return {
+    href: localizedPath(target, ROUTE_PATHS[routeId]),
+    hrefLang: target === locale ? undefined : LOCALE_DEFINITIONS[target].languageTag,
+  };
+}
+
+/** {@link localizedLinkFor}'s path alone, for callers that need no annotation. */
+export function localizedHrefFor(locale: Locale, routeId: RouteId): string {
+  return localizedLinkFor(locale, routeId).href;
 }
 
 /**

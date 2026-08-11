@@ -1,30 +1,41 @@
 /**
- * A rendered page in edition X links within edition X — the guard Major 1 of
- * this unit's code review found missing, and the reason the finding was a
- * Major rather than a nit.
+ * A rendered page in edition X links within edition X — and the function
+ * that decides where a link goes is verified against data, not against
+ * itself.
  *
- * The Estonian edition exists to discharge a Language Act § 16 exposure by
- * giving an Estonian consumer the consumer-facing terms in Estonian. As
- * first registered it was a one-way door: every anchor on `/et/legal/*`
- * pointed at the unprefixed English URL, and no page anywhere linked into
- * `/et` — the edition was reachable only from a search result or a typed
- * URL, and the first click took the reader back out. A consumer who cannot
- * navigate to their terms is not served by their existence.
+ * ## The two-pass history this file carries
  *
- * Three properties, each of which failed before the fix:
+ * Pass 1 of this unit's review found the Estonian edition was a one-way
+ * door: every anchor on `/et/legal/*` pointed at the unprefixed English URL,
+ * and nothing anywhere linked into `/et`. The first fix made the chrome
+ * build every link through `localizedHrefFor` and asserted every rendered
+ * anchor equals that function's answer. Pass 2 found the tautology in that:
+ * the chrome builds its anchors *by calling the same function*, so the
+ * assertion proved the wiring and nothing about the function — deleting its
+ * fallback branch turned every chrome link on every `/et` page into a 404
+ * with the whole suite green.
  *
- * 1. **Containment** — every internal anchor a page renders obeys
- *    `localizedHrefFor`'s rule: the rendering edition's own URL wherever
- *    that edition publishes the target, the default edition's URL where it
- *    does not, never a third thing. This is asserted against every anchor,
- *    not a cherry-picked list, so a new chrome link is born covered.
- * 2. **Edition-internal navigation** — an Estonian legal page links to every
- *    other Estonian legal page, so the edition can be walked without leaving
- *    it.
- * 3. **Inbound links** — every page a non-default edition publishes is
- *    linked from its default-edition counterpart, via the language switcher,
- *    labelled in the target's own language and carrying `lang`/`hreflang`
- *    for it. The switcher on the non-default page links back the same way.
+ * So the guard is now two independent halves, neither of which can be
+ * satisfied by the producer agreeing with itself:
+ *
+ * 1. **The function, against a table.** `localizedLinkFor` is asserted over
+ *    every `(locale, route)` pair against an expectation built from the page
+ *    registry and `localizedPath` directly, with both branches named and
+ *    both proved non-empty.
+ * 2. **The render, against the router.** Every href a page actually renders
+ *    must resolve to a route the *target* edition publishes and can serve —
+ *    `resolveLocalizedRoute` non-null for a prefixed URL, registry
+ *    membership for an unprefixed one. That is the property a reader cares
+ *    about (the link answers 200), and no comparison against the producer
+ *    can give it.
+ *
+ * Plus the reachability properties from pass 1, which stand: the non-default
+ * edition can be walked without leaving it, and every page it publishes has
+ * an inbound language-switcher link from its default-edition counterpart.
+ * The switcher labels and the Estonian chrome labels are pinned as
+ * **literals** here, not read from `chrome-strings.ts` — a pin that imports
+ * its expectation from the code under test is the same tautology at lower
+ * stakes (pass 2's Minors 1 and 3).
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -36,19 +47,35 @@ import {
   LOCALE_DEFINITIONS,
   ROUTE_PATHS,
   type Locale,
+  type RouteId,
 } from "../../content/routes.js";
 import { contentFor } from "../../content/schema.js";
-import { LANGUAGE_SWITCHER_LABELS } from "../src/lib/chrome-strings.js";
+import { resolveLocalizedRoute } from "../src/app/localized-routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
-import { localizedHrefFor, pagesIn } from "../src/lib/seo.js";
+import { localizedHrefFor, localizedLinkFor, pagesIn } from "../src/lib/seo.js";
 import { localizedPath, parseLocalizedPath, routeIdForPath } from "../src/lib/urls.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 
-/** Every `href` in `html` that points into this site. */
-function internalHrefsIn(html: string): readonly string[] {
-  return [...html.matchAll(/<a\s[^>]*href="([^"]+)"/g)]
-    .map((match) => match[1] ?? "")
-    .filter((href) => href.startsWith("/"));
+const ROUTE_IDS = Object.keys(ROUTE_PATHS) as readonly RouteId[];
+
+/**
+ * The switcher labels, as literals. `SiteFooter` renders
+ * `LANGUAGE_SWITCHER_LABELS[target]`; asserting against that constant would
+ * let it be edited to anything with the suite green.
+ */
+const EXPECTED_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
+  en: "In English",
+  et: "Eesti keeles",
+};
+
+/** Every anchor tag in `html` that points into this site, with its href. */
+function internalAnchorsIn(html: string): readonly { tag: string; href: string }[] {
+  return [...html.matchAll(/<a\s[^>]*>/g)]
+    .map((match) => ({
+      tag: match[0],
+      href: /href="([^"]+)"/.exec(match[0])?.[1] ?? "",
+    }))
+    .filter((anchor) => anchor.href.startsWith("/"));
 }
 
 function renderedPage(locale: Locale, route: string): string {
@@ -61,15 +88,66 @@ function renderedPage(locale: Locale, route: string): string {
   );
 }
 
+describe("localizedLinkFor answers from the registries, not from itself", () => {
+  /**
+   * The expectation is built without calling the function under test: the
+   * page registry says whether the edition publishes the route, and the two
+   * branch outcomes are written with `localizedPath` and bare `ROUTE_PATHS`.
+   * Both branches are proved non-empty so neither can rot into vacuity.
+   */
+  it("matches the expectation table over every (locale, route) pair, both branches", () => {
+    let ownEdition = 0;
+    let fallback = 0;
+
+    for (const locale of LOCALES) {
+      const published = new Set(pagesIn(locale).map((page) => page.route));
+
+      for (const routeId of ROUTE_IDS) {
+        const expected = published.has(routeId)
+          ? localizedPath(locale, ROUTE_PATHS[routeId])
+          : ROUTE_PATHS[routeId];
+        if (published.has(routeId)) ownEdition += 1;
+        else fallback += 1;
+
+        expect(
+          localizedHrefFor(locale, routeId),
+          `${locale}:${routeId} must link ${expected}`,
+        ).toBe(expected);
+      }
+    }
+
+    expect(ownEdition, "no pair exercised the own-edition branch").toBeGreaterThan(0);
+    expect(fallback, "no pair exercised the fallback branch").toBeGreaterThan(0);
+  });
+
+  it("annotates exactly the links that cross editions, with the target's tag", () => {
+    for (const locale of LOCALES) {
+      const published = new Set(pagesIn(locale).map((page) => page.route));
+
+      for (const routeId of ROUTE_IDS) {
+        const { hrefLang } = localizedLinkFor(locale, routeId);
+        expect(
+          hrefLang,
+          `${locale}:${routeId} ${published.has(routeId) ? "stays home and needs no tag" : "crosses editions and must say so"}`,
+        ).toBe(
+          published.has(routeId)
+            ? undefined
+            : LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag,
+        );
+      }
+    }
+  });
+});
+
 describe("every edition's pages link within the edition", () => {
   for (const locale of LOCALES) {
     for (const page of contentFor(legalPagesByLocale, locale)) {
       it(`${locale}:${page.route} renders no anchor that leaves the rule`, () => {
-        const hrefs = internalHrefsIn(renderedPage(locale, page.route));
+        const anchors = internalAnchorsIn(renderedPage(locale, page.route));
         // The guard must not pass by finding nothing to check.
-        expect(hrefs.length, "the page rendered no internal links at all").toBeGreaterThan(5);
+        expect(anchors.length, "the page rendered no internal links at all").toBeGreaterThan(5);
 
-        for (const href of hrefs) {
+        for (const { href } of anchors) {
           const parsed = parseLocalizedPath(href);
           const routeId = routeIdForPath(parsed.path);
           expect(routeId, `${href} is not a declared route's URL in any locale`).toBeDefined();
@@ -77,20 +155,64 @@ describe("every edition's pages link within the edition", () => {
           /*
            * The one legitimate cross-edition link is the language switcher,
            * which points at another edition's URL *for this same route*.
-           * Everything else must be exactly `localizedHrefFor`'s answer.
+           * Everything else must be exactly the link rule's answer — the
+           * wiring half of the guard; the rule itself is proved above.
            */
-          if (routeId === page.route && parsed.locale !== locale) {
-            const publishes = pagesIn(parsed.locale).some(
-              (candidate) => candidate.route === routeId,
-            );
-            expect(publishes, `${href} advertises an edition that cannot serve it`).toBe(true);
-            continue;
-          }
+          if (routeId === page.route && parsed.locale !== locale) continue;
 
           expect(
             href,
             `${locale}:${page.route} links ${routeId ?? "?"} outside its own edition`,
           ).toBe(localizedHrefFor(locale, routeId!));
+        }
+      });
+
+      /**
+       * The reader's property: the link answers, whatever built it. Every
+       * href must resolve to a page its target edition publishes and can
+       * serve — asked of the router, which is the thing that will actually
+       * answer the request, not of the function that produced the href.
+       */
+      it(`${locale}:${page.route} renders no href its target edition cannot serve`, () => {
+        for (const { href } of internalAnchorsIn(renderedPage(locale, page.route))) {
+          const parsed = parseLocalizedPath(href);
+          const routeId = routeIdForPath(parsed.path);
+          expect(routeId, `${href} is no declared route's URL`).toBeDefined();
+
+          if (parsed.locale === DEFAULT_LOCALE) {
+            expect(
+              pagesIn(DEFAULT_LOCALE).some((candidate) => candidate.route === routeId),
+              `${href} names a route the default edition does not publish`,
+            ).toBe(true);
+          } else {
+            const prefix = LOCALE_DEFINITIONS[parsed.locale].pathPrefix.slice(1);
+            const segments = parsed.path.split("/").filter((segment) => segment !== "");
+            expect(
+              resolveLocalizedRoute(prefix, segments),
+              `${href} would 404: ${parsed.locale} cannot serve ${parsed.path}`,
+            ).not.toBeNull();
+          }
+        }
+      });
+
+      /**
+       * Pass 2's Minor 4: an Estonian label pointing at an English document
+       * must say so, exactly as the switcher beneath it does. Every rendered
+       * anchor whose target lies in another edition carries `hreflang` with
+       * the target's tag; every same-edition anchor carries none.
+       */
+      it(`${locale}:${page.route} annotates every cross-edition anchor with hreflang`, () => {
+        for (const { tag, href } of internalAnchorsIn(renderedPage(locale, page.route))) {
+          const parsed = parseLocalizedPath(href);
+          if (parsed.locale === locale) {
+            expect(tag, `${href} stays in its edition yet claims a language`).not.toContain(
+              "hrefLang=",
+            );
+          } else {
+            expect(tag, `${href} crosses editions and does not say so`).toContain(
+              `hrefLang="${LOCALE_DEFINITIONS[parsed.locale].languageTag}"`,
+            );
+          }
         }
       });
     }
@@ -102,7 +224,9 @@ describe("every edition's pages link within the edition", () => {
       const edition = contentFor(legalPagesByLocale, locale);
 
       for (const page of edition) {
-        const hrefs = new Set(internalHrefsIn(renderedPage(locale, page.route)));
+        const hrefs = new Set(
+          internalAnchorsIn(renderedPage(locale, page.route)).map((anchor) => anchor.href),
+        );
         for (const other of edition) {
           expect(
             hrefs.has(localizedPath(locale, ROUTE_PATHS[other.route])),
@@ -125,7 +249,7 @@ describe("every non-default edition has inbound links, via the language switcher
       it(`${DEFAULT_LOCALE}:${page.route} links to ${localizedHref}, labelled in the target's language`, () => {
         const html = renderedPage(DEFAULT_LOCALE, page.route);
         const anchor = new RegExp(
-          `<a[^>]*href="${localizedHref}"[^>]*>${LANGUAGE_SWITCHER_LABELS[locale]}</a>`,
+          `<a[^>]*href="${localizedHref}"[^>]*>${EXPECTED_SWITCHER_LABELS[locale]}</a>`,
         );
         expect(html, "the default edition never links into the translation").toMatch(anchor);
         expect(html).toContain(`hrefLang="${tag}"`);
@@ -136,10 +260,45 @@ describe("every non-default edition has inbound links, via the language switcher
         const html = renderedPage(locale, page.route);
         const defaultHref = localizedPath(DEFAULT_LOCALE, ROUTE_PATHS[page.route]);
         const anchor = new RegExp(
-          `<a[^>]*href="${defaultHref}"[^>]*>${LANGUAGE_SWITCHER_LABELS[DEFAULT_LOCALE]}</a>`,
+          `<a[^>]*href="${defaultHref}"[^>]*>${EXPECTED_SWITCHER_LABELS[DEFAULT_LOCALE]}</a>`,
         );
         expect(html, "the translation has no way back").toMatch(anchor);
       });
     }
   }
+});
+
+/**
+ * Pass 2's Minor 1, the chrome half: `CHROME_STRINGS.et` could be reverted
+ * to the English values wholesale with the suite green, because every
+ * assertion that touched it read its expectation from the same table. These
+ * are literals, so they pin what the reader of an Estonian page actually
+ * meets. The failure-mode strings — the gap marker, the notice, the draft
+ * note — are pinned the same way in `legal-pages.test.tsx`, where the
+ * unconfigured state is rendered.
+ */
+describe("the Estonian chrome is Estonian", () => {
+  const html = renderedPage("et", "legalReturns");
+
+  it("labels the header in Estonian", () => {
+    for (const label of [">Meist<", ">Klienditugi<", ">Menüü<", ">Ostukorv<"]) {
+      expect(html, `the et header does not carry ${label}`).toContain(label);
+    }
+    expect(html).toContain('aria-label="Peamenüü"');
+    expect(html).toContain('aria-label="Plepic Games, avaleht"');
+  });
+
+  it("labels the footer's legal navigation in Estonian", () => {
+    expect(html).toContain('aria-label="Juriidiline teave"');
+    expect(html).toContain('aria-label="Keel"');
+    for (const label of [
+      ">Õigusteave<",
+      ">Müügitingimused<",
+      ">Saatmine<",
+      ">Tagastamine<",
+      ">Privaatsus<",
+    ]) {
+      expect(html, `the et footer does not carry ${label}`).toContain(label);
+    }
+  });
 });

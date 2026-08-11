@@ -38,7 +38,7 @@ import {
   LANGUAGE_SWITCHER_LABELS,
   type LegalRouteId,
 } from "../lib/chrome-strings.js";
-import { localesPublishing, localizedHrefFor } from "../lib/seo.js";
+import { localesPublishing, localizedLinkFor } from "../lib/seo.js";
 import { localizedPath } from "../lib/urls.js";
 import styles from "../styles/site-footer.module.css";
 
@@ -97,7 +97,7 @@ export function SiteFooter({ locale = DEFAULT_LOCALE, route }: SiteFooterProps) 
 
       <nav className={styles.legal} aria-label={strings.legalNavLabel}>
         {LEGAL_LINK_ORDER.map((legalRoute) => (
-          <a key={legalRoute} href={localizedHrefFor(locale, legalRoute)}>
+          <a key={legalRoute} {...localizedLinkFor(locale, legalRoute)}>
             {strings.legalLinkLabels[legalRoute]}
           </a>
         ))}

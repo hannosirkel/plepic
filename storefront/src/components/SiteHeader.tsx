@@ -63,7 +63,7 @@
  */
 import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import { CHROME_STRINGS } from "../lib/chrome-strings.js";
-import { localizedHrefFor } from "../lib/seo.js";
+import { localizedLinkFor } from "../lib/seo.js";
 import styles from "../styles/site-header.module.css";
 
 export interface SiteHeaderProps {
@@ -77,11 +77,13 @@ export interface SiteHeaderProps {
   readonly instanceId?: string;
   /**
    * The edition this header is chrome for. Labels come from
-   * `CHROME_STRINGS[locale]`, and every link stays inside the edition
-   * wherever the edition publishes its target — `localizedHrefFor` is the
-   * rule, and `tests/locale-navigation.test.tsx` holds every anchor to it.
-   * Defaults to the default locale so the English pages render exactly what
-   * they always have.
+   * `CHROME_STRINGS[locale]`; every link comes from `localizedLinkFor`, so
+   * it stays inside the edition wherever the edition publishes its target
+   * and carries `hreflang` when it has to cross into another. The rule
+   * itself is asserted against an independent expectation table in
+   * `tests/locale-navigation.test.tsx` -- see `localizedLinkFor`'s note on
+   * what is verified and how. Defaults to the default locale so the English
+   * pages render what they always have.
    */
   readonly locale?: Locale;
 }
@@ -99,7 +101,7 @@ export function SiteHeader({
     <header className={styles.header}>
       <a
         className={styles.brand}
-        href={localizedHrefFor(locale, "home")}
+        {...localizedLinkFor(locale, "home")}
         aria-label={strings.brandHomeLabel}
       >
         <img className={styles.wordmark} src={wordmarkSrc} alt="" width={162} height={54} />
@@ -118,13 +120,13 @@ export function SiteHeader({
       <label className={styles.scrim} htmlFor={toggleId} aria-hidden="true" />
 
       <nav className={styles.nav} aria-label={strings.primaryNavLabel}>
-        <a className={styles.link} href={localizedHrefFor(locale, "lunarBase")}>
+        <a className={styles.link} {...localizedLinkFor(locale, "lunarBase")}>
           Lunar Base
         </a>
-        <a className={styles.link} href={localizedHrefFor(locale, "about")}>
+        <a className={styles.link} {...localizedLinkFor(locale, "about")}>
           {strings.navAbout}
         </a>
-        <a className={styles.link} href={localizedHrefFor(locale, "support")}>
+        <a className={styles.link} {...localizedLinkFor(locale, "support")}>
           {strings.navSupport}
         </a>
       </nav>
@@ -133,7 +135,7 @@ export function SiteHeader({
         <label className={styles.menuButton} htmlFor={toggleId}>
           {strings.menuLabel}
         </label>
-        <a className={styles.buy} href={localizedHrefFor(locale, "cart")}>
+        <a className={styles.buy} {...localizedLinkFor(locale, "cart")}>
           {strings.basketLabel}
         </a>
       </div>
