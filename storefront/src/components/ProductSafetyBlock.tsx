@@ -68,7 +68,7 @@ export function ProductSafetyBlock({ values, locale = DEFAULT_LOCALE }: ProductS
    */
   const collation = LOCALE_DEFINITIONS[locale].languageTag;
   const missing = [...new Set([...manufacturer.missing, ...safety.missing])].toSorted((a, b) =>
-    labelFor(a).localeCompare(labelFor(b), collation),
+    labelFor(a, locale).localeCompare(labelFor(b, locale), collation),
   );
 
   return (
@@ -77,7 +77,7 @@ export function ProductSafetyBlock({ values, locale = DEFAULT_LOCALE }: ProductS
 
       {missing.length > 0 ? (
         <p role="alert" className={styles.notice} data-testid="product-safety-incomplete-notice">
-          This manufacturer information is incomplete: {missing.map(labelFor).join(", ")}{" "}
+          This manufacturer information is incomplete: {missing.map((token) => labelFor(token, locale)).join(", ")}{" "}
           {missing.length === 1 ? "has" : "have"} not been configured for this deployment.
         </p>
       ) : null}

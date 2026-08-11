@@ -30,11 +30,25 @@ import { privacy } from "./privacy.js";
 import { returns } from "./returns.js";
 import { shipping } from "./shipping.js";
 import { terms } from "./terms.js";
+import { imprint as imprintEt } from "./et/imprint.js";
+import { privacy as privacyEt } from "./et/privacy.js";
+import { returns as returnsEt } from "./et/returns.js";
+import { shipping as shippingEt } from "./et/shipping.js";
+import { terms as termsEt } from "./et/terms.js";
 
 export { imprint, privacy, returns, shipping, terms };
 
 /** The English edition, in the order a reader meets it. */
 const english: readonly LegalPage[] = [imprint, terms, shipping, returns, privacy];
+
+/**
+ * The Estonian edition — the `et/` sibling directory, in the same reading
+ * order. Its five files are translations of the five above: same anchors,
+ * same `covers`, same placeholders, Estonian prose. Every page is
+ * `draft-pending-operator-input` until the qualified reader's acceptance is
+ * recorded as an operator act.
+ */
+const estonian: readonly LegalPage[] = [imprintEt, termsEt, shippingEt, returnsEt, privacyEt];
 
 /**
  * The legal set, per locale. Total over `Locale`: a new locale does not
@@ -43,6 +57,7 @@ const english: readonly LegalPage[] = [imprint, terms, shipping, returns, privac
  */
 export const legalPagesByLocale: LocalizedContent<readonly LegalPage[]> = {
   en: english,
+  et: estonian,
 };
 
 /**

@@ -30,10 +30,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { legalPages } from "../../content/legal/index.js";
-import { PLACEHOLDERS } from "../../content/schema.js";
-import { ROUTE_PATHS } from "../../content/routes.js";
+import { legalPagesByLocale } from "../../content/legal/index.js";
+import { contentFor, PLACEHOLDERS } from "../../content/schema.js";
+import { LOCALES, ROUTE_PATHS } from "../../content/routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
+import { localizedPath } from "../src/lib/urls.js";
 import { CartProvider } from "../src/lib/cart-store.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
 import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.js";
@@ -130,12 +131,19 @@ const ROUTES: readonly { readonly path: string; readonly html: string }[] = [
    * quotes the merchant identity, which makes them the routes with the most
    * placeholders on the site and the ones this scan most needed.
    */
-  ...legalPages.map((page) => ({
-    path: ROUTE_PATHS[page.route],
-    html: renderToStaticMarkup(
-      <LegalPageContent page={page} values={NO_CONFIGURATION_VALUES} />,
-    ),
-  })),
+  /*
+   * Every edition's legal pages, not the default one's: a brace in the
+   * Estonian returns page reaches an Estonian consumer exactly as a brace in
+   * the English one reaches everyone else.
+   */
+  ...LOCALES.flatMap((locale) =>
+    contentFor(legalPagesByLocale, locale).map((page) => ({
+      path: localizedPath(locale, ROUTE_PATHS[page.route]),
+      html: renderToStaticMarkup(
+        <LegalPageContent page={page} locale={locale} values={NO_CONFIGURATION_VALUES} />,
+      ),
+    })),
+  ),
 ];
 
 describe("no unresolved placeholder reaches rendered text on any real route", () => {

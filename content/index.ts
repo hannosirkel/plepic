@@ -15,6 +15,7 @@
  * that imports this barrel. Anything that genuinely needs the registry imports
  * `./evidence.js` directly and takes that cost knowingly.
  */
+import { legalPagesByLocale } from "./legal/index.js";
 import { pages } from "./pages.js";
 import type { LocalizedContent, Page } from "./schema.js";
 
@@ -54,4 +55,13 @@ export * as legal from "./legal/index.js";
  */
 export const pagesByLocale: LocalizedContent<readonly Page[]> = {
   en: pages,
+  /*
+   * The Estonian edition publishes the legal set and nothing else — the
+   * reason the dimension exists is the legal-language obligation, not a
+   * decision to translate the marketing site. Its page list *is* its legal
+   * set: a `LegalPage` is a `Page`, and registering the same objects both
+   * here and in `legal/index.ts` is what keeps the two registries incapable
+   * of disagreeing about what the edition contains.
+   */
+  et: legalPagesByLocale.et,
 };

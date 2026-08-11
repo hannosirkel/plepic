@@ -97,8 +97,14 @@ describe("buildPageMetadata on a test host", () => {
  * is a failure, not a pass.
  */
 describe("hreflang", () => {
-  it("has exactly one locale registered, and it is the default one", () => {
-    expect([...LOCALES]).toEqual([DEFAULT_LOCALE]);
+  /**
+   * Still pinned, now at two: the English default and the Estonian legal
+   * edition the operator decided to publish on 2026-08-09. A third locale
+   * appearing without anybody deciding to add one is a failure, not a pass.
+   */
+  it("has exactly the two decided locales registered, and the default is the English one", () => {
+    expect([...LOCALES]).toEqual(["en", "et"]);
+    expect(DEFAULT_LOCALE).toBe("en");
   });
 
   it("names every publishing locale by its own language tag, plus x-default", () => {

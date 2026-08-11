@@ -22,10 +22,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { legalPages } from "../../content/legal/index.js";
+import { legalPages, legalPagesByLocale } from "../../content/legal/index.js";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../content/routes.js";
 import type { ExternalTargetUrls } from "../src/config/runtime-config.js";
-import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
-import { PLACEHOLDER_TABLE } from "../../content/schema.js";
+import {
+  mockCatalogue,
+  PRICE_HEADLINE_SEPARATOR,
+  resolveCatalogue,
+  resolveCataloguePlaceholders,
+} from "../src/lib/catalogue.js";
+import { contentFor, PLACEHOLDER_TABLE } from "../../content/schema.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { ProductSafetyBlock } from "../src/components/ProductSafetyBlock.js";
 import {
@@ -74,15 +80,93 @@ const CONFIGURED_TARGETS: ExternalTargetUrls = {
   "consumer-disputes-committee": "https://disputes.example.org/committee",
 };
 
+/*
+ * `locale` matters: pass 2 of this unit's review found the per-edition loops
+ * rendering Estonian content through the default edition's renderer -- English
+ * chrome, English marker word, English notice, English collation -- so they
+ * proved their properties of the Estonian *content* and assumed them of the
+ * Estonian *render*. Every per-edition loop below passes its own locale.
+ */
 function render(
   page: (typeof legalPages)[number],
   values: ConfigurationPlaceholderValues,
   externalTargets: ExternalTargetUrls = CONFIGURED_TARGETS,
+  locale: Locale = DEFAULT_LOCALE,
 ): string {
   return renderToStaticMarkup(
-    <LegalPageContent page={page} values={values} externalTargets={externalTargets} />,
+    <LegalPageContent page={page} locale={locale} values={values} externalTargets={externalTargets} />,
   );
 }
+
+/**
+ * Each edition's failure-mode strings, as **literals**. The renderer takes
+ * them from `chrome-strings.ts` and `configuration-placeholders.ts`; pass 2
+ * demonstrated that every Estonian entry there could be reverted to English
+ * with the suite green, because nothing pinned the values -- the total
+ * `Record<Locale, ...>` types enforce that an `et` key exists, not what is in
+ * it. These are the strings a reader meets when a deployment is
+ * misconfigured, interpolated into the middle of legal sentences, so they are
+ * pinned in the reader's own language here.
+ */
+const EDITION_FAILURE_LANGUAGE: Readonly<
+  Record<
+    Locale,
+    {
+      readonly markerPrefix: string;
+      readonly imprintMarkers: readonly string[];
+      readonly returnsMarker: string;
+      readonly noticeHeading: string;
+      /**
+       * A distinctive fragment of the notice *body* -- the sentence following
+       * the heading that carries the disclaimer itself.
+       *
+       * Pinned because review pass 3 replaced the Estonian `noticeBody` with
+       * the English function verbatim and all 1865 tests stayed green. An
+       * unconfigured Estonian imprint could therefore serve the Estonian
+       * heading "See teade on puudulik." above an English paragraph, and the
+       * suite written in this unit to prevent exactly that would not have
+       * noticed. The heading and the draft note either side of it were already
+       * pinned; this is the longest reader-facing string between them, and the
+       * one that says the page is not a complete legal notice.
+       */
+      readonly noticeBodyFragment: string;
+      readonly draftNote: string;
+    }
+  >
+> = {
+  en: {
+    markerPrefix: "[not configured: ",
+    imprintMarkers: [
+      "[not configured: registered company name]",
+      "[not configured: registered address]",
+      "[not configured: company registration number]",
+      "[not configured: VAT identification number]",
+      "[not configured: contact email address]",
+      "[not configured: telephone number]",
+    ],
+    returnsMarker: "[not configured: return address]",
+    noticeHeading: "This notice is incomplete.",
+    noticeBodyFragment:
+      "this page is not a complete legal notice and should not be relied on as one",
+    draftNote: "Draft, pending the operator’s approval.",
+  },
+  et: {
+    markerPrefix: "[seadistamata: ",
+    imprintMarkers: [
+      "[seadistamata: registreeritud ärinimi]",
+      "[seadistamata: registrijärgne aadress]",
+      "[seadistamata: registrikood]",
+      "[seadistamata: käibemaksukohustuslasena registreerimise number]",
+      "[seadistamata: e-posti kontaktaadress]",
+      "[seadistamata: telefoninumber]",
+    ],
+    returnsMarker: "[seadistamata: tagastusaadress]",
+    noticeHeading: "See teade on puudulik.",
+    noticeBodyFragment:
+      "ei ole see leht täielik õiguslik teade ja sellele ei saa sellisena tugineda",
+    draftNote: "Mustand, ootab haldaja heakskiitu.",
+  },
+};
 
 describe("the resolver knows exactly the tokens content/ declares from configuration", () => {
   it("resolves every configuration-sourced placeholder and no others", () => {
@@ -118,24 +202,36 @@ describe("the resolver knows exactly the tokens content/ declares from configura
   });
 });
 
+/*
+ * Both loops below run over every edition, not over the default one. The two
+ * properties they hold — configured, nothing is missing; unconfigured,
+ * nothing is hidden — are properties of a page as served, and the Estonian
+ * pages are served to exactly the consumer the translation exists for. A
+ * loop over `legalPages` alone would have proved them of the English pages
+ * and assumed them of the Estonian ones.
+ */
 describe("configured, the legal pages carry every required disclosure", () => {
-  for (const page of legalPages) {
-    it(`${page.route} resolves everything and shows no notice`, () => {
-      const html = render(page, CONFIGURED);
+  for (const locale of LOCALES) {
+  for (const page of contentFor(legalPagesByLocale, locale)) {
+    it(`${locale}:${page.route} resolves everything and shows no notice`, () => {
+      const html = render(page, CONFIGURED, CONFIGURED_TARGETS, locale);
       const text = visibleText(html);
 
       expect(text, "an unresolved placeholder reached a visitor").not.toMatch(
         /\{[A-Za-z][A-Za-z0-9]*\}/,
       );
-      expect(text, "a legally required value is unconfigured in the configured case").not.toContain(
-        "[not configured",
-      );
+      for (const edition of LOCALES) {
+        expect(
+          text,
+          "a legally required value is unconfigured in the configured case",
+        ).not.toContain(EDITION_FAILURE_LANGUAGE[edition].markerPrefix);
+      }
       expect(html).not.toContain("legal-incomplete-notice");
       expect(text.trim().length, `${page.route} rendered nothing`).toBeGreaterThan(600);
     });
 
-    it(`${page.route} renders every string its content declares`, () => {
-      const text = visibleText(render(page, CONFIGURED));
+    it(`${locale}:${page.route} renders every string its content declares`, () => {
+      const text = visibleText(render(page, CONFIGURED, CONFIGURED_TARGETS, locale));
       const served = (source: string): string =>
         resolveRequiredProse(
           [resolveCataloguePlaceholders(source, resolveCatalogue())],
@@ -176,34 +272,42 @@ describe("configured, the legal pages carry every required disclosure", () => {
       }
     });
   }
+  }
 
-  it("states the whole trader identity on the imprint, telephone number included", () => {
-    const imprint = legalPages.find((page) => page.route === "legalImprint");
-    const text = visibleText(render(imprint!, CONFIGURED));
+  for (const locale of LOCALES) {
+    const edition = contentFor(legalPagesByLocale, locale);
 
-    for (const value of [
-      CONFIGURED.merchantLegalName,
-      CONFIGURED.merchantRegisteredAddress,
-      CONFIGURED.merchantRegistrationNumber,
-      CONFIGURED.merchantVatNumber,
-      CONFIGURED.merchantContactAddress,
-      CONFIGURED.merchantPhoneNumber,
-    ]) {
-      expect(text).toContain(value);
-    }
-  });
+    it(`${locale}: states the whole trader identity on the imprint, telephone number included`, () => {
+      const imprint = edition.find((page) => page.route === "legalImprint");
+      const text = visibleText(render(imprint!, CONFIGURED, CONFIGURED_TARGETS, locale));
 
-  it("states the return address on the returns page", () => {
-    const returnsPage = legalPages.find((page) => page.route === "legalReturns");
-    expect(visibleText(render(returnsPage!, CONFIGURED))).toContain(CONFIGURED.returnAddress);
-  });
+      for (const value of [
+        CONFIGURED.merchantLegalName,
+        CONFIGURED.merchantRegisteredAddress,
+        CONFIGURED.merchantRegistrationNumber,
+        CONFIGURED.merchantVatNumber,
+        CONFIGURED.merchantContactAddress,
+        CONFIGURED.merchantPhoneNumber,
+      ]) {
+        expect(text).toContain(value);
+      }
+    });
+
+    it(`${locale}: states the return address on the returns page`, () => {
+      const returnsPage = edition.find((page) => page.route === "legalReturns");
+      expect(
+        visibleText(render(returnsPage!, CONFIGURED, CONFIGURED_TARGETS, locale)),
+      ).toContain(CONFIGURED.returnAddress);
+    });
+  }
 });
 
 describe("unconfigured, the legal pages are loud rather than quiet", () => {
-  for (const page of legalPages) {
-    it(`${page.route} drops no paragraph and shows no brace`, () => {
-      const configured = visibleText(render(page, CONFIGURED));
-      const unconfigured = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
+  for (const locale of LOCALES) {
+  for (const page of contentFor(legalPagesByLocale, locale)) {
+    it(`${locale}:${page.route} drops no paragraph and shows no brace`, () => {
+      const configured = visibleText(render(page, CONFIGURED, CONFIGURED_TARGETS, locale));
+      const unconfigured = visibleText(render(page, NO_CONFIGURATION_VALUES, {}, locale));
 
       expect(unconfigured, "a brace reached a visitor").not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
 
@@ -237,6 +341,7 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
       expect(unconfigured.length).toBeGreaterThan(configured.length * 0.9);
     });
   }
+  }
 
   it("names every missing detail on the imprint, in the text and in the notice", () => {
     const imprint = legalPages.find((page) => page.route === "legalImprint");
@@ -259,12 +364,62 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
   });
 
   it("never fabricates a value, and never renders an empty one", () => {
-    for (const page of legalPages) {
-      const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
-      // No sentence ends up with a dangling ", ." or "at ." where a value went.
-      expect(text, `${page.route} rendered an empty value`).not.toMatch(/\b(?:at|to|is)\s+[.,]/);
+    for (const locale of LOCALES) {
+      for (const page of contentFor(legalPagesByLocale, locale)) {
+        const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}, locale));
+        // No sentence ends up with a dangling ", ." or "at ." where a value
+        // went — nor the Estonian equivalent, "aadressil ." and kin.
+        expect(text, `${locale}:${page.route} rendered an empty value`).not.toMatch(
+          /\b(?:at|to|is|aadressil|aadress|on)\s+[.,]/,
+        );
+      }
     }
   });
+});
+
+/**
+ * The failure-mode strings, per edition, against the literal table above.
+ * This is what stops `CHROME_STRINGS.et`, `MARKER_WORDS.et` or `LABELS.et`
+ * quietly reverting to English: the rendered Estonian page must carry the
+ * Estonian marker, label set, notice heading and draft note, character for
+ * character, and the English page the English ones.
+ */
+describe("each edition fails loudly in its own language", () => {
+  for (const locale of LOCALES) {
+    const language = EDITION_FAILURE_LANGUAGE[locale];
+    const edition = contentFor(legalPagesByLocale, locale);
+
+    it(`${locale}: marks every missing imprint detail with its own marker and labels`, () => {
+      const imprint = edition.find((page) => page.route === "legalImprint");
+      const text = visibleText(render(imprint!, NO_CONFIGURATION_VALUES, {}, locale));
+
+      for (const marker of language.imprintMarkers) {
+        expect(text, `the ${locale} imprint does not carry ${marker}`).toContain(marker);
+      }
+      for (const other of LOCALES) {
+        if (other === locale) continue;
+        expect(
+          text,
+          `the ${locale} imprint carries another edition's marker word`,
+        ).not.toContain(EDITION_FAILURE_LANGUAGE[other].markerPrefix);
+      }
+    });
+
+    it(`${locale}: marks the missing return address on the returns page`, () => {
+      const returnsPage = edition.find((page) => page.route === "legalReturns");
+      expect(
+        visibleText(render(returnsPage!, NO_CONFIGURATION_VALUES, {}, locale)),
+      ).toContain(language.returnsMarker);
+    });
+
+    it(`${locale}: announces incompleteness and draft status in its own words`, () => {
+      const imprint = edition.find((page) => page.route === "legalImprint");
+      const text = visibleText(render(imprint!, NO_CONFIGURATION_VALUES, {}, locale));
+      expect(text).toContain(language.noticeHeading);
+      expect(text).toContain(language.noticeBodyFragment);
+      expect(text).toContain(language.draftNote);
+    });
+  }
 });
 
 describe("the two failure modes stay distinct", () => {
@@ -406,9 +561,96 @@ describe("the dispute-resolution section names the body, and the link only enhan
  * the placeholder mechanism exists — `tests/no-hardcoded-price.test.ts` and
  * `content/content.test.ts` hold up the other two corners of that.
  */
+/**
+ * The words each edition's VAT callout must be made of, per tax treatment.
+ *
+ * This table is what binds the **Estonian** callout to data. The English one
+ * was pinned character-for-character to `catalogue.priceHeadline` from the
+ * start; the Estonian one could be edited into a flat "sisaldab käibemaksu" —
+ * the exact unqualified claim the English page is forbidden from making, and
+ * false for a non-EU buyer — with every test green, because the edition
+ * boundary hid it from the pin rather than containing the hazard: an Estonian
+ * reader buys from the same English product page, so a legal/product
+ * contradiction crosses editions freely.
+ *
+ * Total over `Locale` and selected on `product.price.taxIncluded`, so a
+ * third edition does not compile until its wording for **both** tax states is
+ * written down, and flipping the catalogue's tax treatment goes red in every
+ * language at once. The English column is itself pinned to
+ * `src/lib/catalogue.ts`'s own composition below, so this table cannot drift
+ * from the operator's wording either.
+ */
+const VAT_CALLOUT_LANGUAGE: Readonly<
+  Record<
+    Locale,
+    {
+      readonly taxIncluded: string;
+      readonly taxExcluded: string;
+      readonly shippingNote: string;
+    }
+  >
+> = {
+  en: {
+    taxIncluded: "VAT included where applicable",
+    taxExcluded: "VAT calculated at checkout",
+    shippingNote: "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.",
+  },
+  et: {
+    taxIncluded: "sisaldab käibemaksu, kui see kuulub tasumisele",
+    taxExcluded: "käibemaks arvutatakse tellimuse vormistamisel",
+    shippingNote:
+      "Saatekulu arvutatakse tellimuse vormistamisel. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, kui neid on, hinnas ei sisaldu.",
+  },
+};
+
 describe("the VAT section makes one statement about tax", () => {
   const shipping = legalPages.find((page) => page.route === "legalShipping");
   const vat = shipping?.body.find((candidate) => candidate.anchor === "vat");
+
+  /**
+   * The language table's English column is the catalogue's own words, in both
+   * tax states — so the per-edition binding below and the catalogue cannot
+   * disagree about what either state says, and the `taxExcluded` variant is
+   * proved against the resolver rather than trusted.
+   */
+  it("keeps the language table's English column identical to the catalogue's composition", () => {
+    const included = resolveCatalogue({
+      ...mockCatalogue,
+      price: { ...mockCatalogue.price, taxIncluded: true },
+    });
+    const excluded = resolveCatalogue({
+      ...mockCatalogue,
+      price: { ...mockCatalogue.price, taxIncluded: false },
+    });
+
+    expect(included.priceTaxQualifier).toBe(VAT_CALLOUT_LANGUAGE.en.taxIncluded);
+    expect(excluded.priceTaxQualifier).toBe(VAT_CALLOUT_LANGUAGE.en.taxExcluded);
+    expect(included.priceShippingNote).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
+    expect(excluded.priceShippingNote).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
+  });
+
+  /**
+   * Every edition's callout states the catalogue's **current** tax treatment,
+   * in its own language. Removing the conditional from the Estonian lead, or
+   * flipping `taxIncluded` in the catalogue while any edition's callout still
+   * asserts the old treatment, goes red here.
+   */
+  for (const locale of LOCALES) {
+    it(`${locale}: states the catalogue's tax treatment, and no other`, () => {
+      const language = VAT_CALLOUT_LANGUAGE[locale];
+      const page = contentFor(legalPagesByLocale, locale).find(
+        (candidate) => candidate.route === "legalShipping",
+      );
+      const callout = page?.body.find((candidate) => candidate.anchor === "vat")?.callout;
+      const qualifier = mockCatalogue.price.taxIncluded
+        ? language.taxIncluded
+        : language.taxExcluded;
+
+      expect(callout, `${locale}'s VAT callout is gone`).toBeDefined();
+      expect(callout?.lead).toBe(`{price}${PRICE_HEADLINE_SEPARATOR}${qualifier}`);
+      expect(callout?.detail).toBe(language.shippingNote);
+    });
+  }
 
   it("carries the operator's price presentation as an emphasised line and a plain one", () => {
     expect(vat?.callout, "the VAT section's price presentation is gone").toBeDefined();

@@ -53,6 +53,7 @@
  */
 
 import { isPlaceholderToken, PLACEHOLDER_TABLE } from "../../../content/schema.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import type { MerchantConfig } from "../config/runtime-config.js";
 
 /**
@@ -72,21 +73,51 @@ export interface ConfigurationPlaceholderValues {
 }
 
 /**
- * A short human name per token, for the gap marker and the page notice.
+ * A short human name per token, for the gap marker and the page notice —
+ * **per edition**, because the marker is interpolated into the middle of a
+ * legal sentence and inherits that sentence's language. An Estonian imprint
+ * announcing `[not configured: registered company name]` inside an Estonian
+ * paragraph is a disclosure the reader it exists for may not be able to
+ * read, which defeats the entire point of the loud failure mode.
  *
  * `PLACEHOLDERS[token].description` is a sentence written for a developer
  * reading the model ("Registered address of the merchant, as filed."), which
  * reads badly mid-paragraph. These are the same facts in the words a notice
- * would use.
+ * would use. Total over `Locale`: a new edition does not compile until its
+ * labels exist.
  */
-const LABELS: Readonly<Record<keyof ConfigurationPlaceholderValues, string>> = {
-  merchantLegalName: "registered company name",
-  merchantRegisteredAddress: "registered address",
-  merchantRegistrationNumber: "company registration number",
-  merchantVatNumber: "VAT identification number",
-  merchantContactAddress: "contact email address",
-  merchantPhoneNumber: "telephone number",
-  returnAddress: "return address",
+const LABELS: Readonly<
+  Record<Locale, Readonly<Record<keyof ConfigurationPlaceholderValues, string>>>
+> = {
+  en: {
+    merchantLegalName: "registered company name",
+    merchantRegisteredAddress: "registered address",
+    merchantRegistrationNumber: "company registration number",
+    merchantVatNumber: "VAT identification number",
+    merchantContactAddress: "contact email address",
+    merchantPhoneNumber: "telephone number",
+    returnAddress: "return address",
+  },
+  et: {
+    merchantLegalName: "registreeritud ärinimi",
+    merchantRegisteredAddress: "registrijärgne aadress",
+    merchantRegistrationNumber: "registrikood",
+    merchantVatNumber: "käibemaksukohustuslasena registreerimise number",
+    merchantContactAddress: "e-posti kontaktaadress",
+    merchantPhoneNumber: "telefoninumber",
+    returnAddress: "tagastusaadress",
+  },
+};
+
+/**
+ * The gap marker's own framing word, per edition, for the same reason as
+ * {@link LABELS}. The bracketed shape is shared across editions on purpose:
+ * it is what `tests/` and `build-and-serve.test.ts` grep a served page for,
+ * and one recognisable shape in two languages beats two shapes.
+ */
+const MARKER_WORDS: Readonly<Record<Locale, string>> = {
+  en: "not configured",
+  et: "seadistamata",
 };
 
 export type ConfigurationPlaceholderToken = keyof ConfigurationPlaceholderValues;
@@ -135,7 +166,7 @@ export function placeholderValuesFrom(merchant: MerchantConfig): ConfigurationPl
 const PLACEHOLDER_PATTERN = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 
 function isKnownToken(token: string): token is ConfigurationPlaceholderToken {
-  return Object.hasOwn(LABELS, token);
+  return Object.hasOwn(LABELS[DEFAULT_LOCALE], token);
 }
 
 /**
@@ -150,13 +181,19 @@ export function isLegallyRequiredToken(token: string): boolean {
 }
 
 /** The visible stand-in for a legally required value this deployment lacks. */
-export function unconfiguredMarker(token: ConfigurationPlaceholderToken): string {
-  return `[not configured: ${LABELS[token]}]`;
+export function unconfiguredMarker(
+  token: ConfigurationPlaceholderToken,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  return `[${MARKER_WORDS[locale]}: ${LABELS[locale][token]}]`;
 }
 
 /** The human name of a token, for a page-level notice. */
-export function labelFor(token: ConfigurationPlaceholderToken): string {
-  return LABELS[token];
+export function labelFor(
+  token: ConfigurationPlaceholderToken,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  return LABELS[locale][token];
 }
 
 /**
@@ -222,6 +259,7 @@ export interface RequiredProse {
 export function resolveRequiredProse(
   paragraphs: readonly string[],
   values: ConfigurationPlaceholderValues,
+  locale: Locale = DEFAULT_LOCALE,
 ): RequiredProse {
   const missing = new Set<ConfigurationPlaceholderToken>();
 
@@ -232,7 +270,7 @@ export function resolveRequiredProse(
       if (value !== null) return value;
       if (!isLegallyRequiredToken(token)) return whole;
       missing.add(token);
-      return unconfiguredMarker(token);
+      return unconfiguredMarker(token, locale);
     }),
   );
 

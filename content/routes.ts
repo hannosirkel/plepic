@@ -38,18 +38,21 @@ export type RoutePath = (typeof ROUTE_PATHS)[RouteId];
 /**
  * Every locale the site is published in.
  *
- * **There is exactly one today, and that is the point.** The dimension is
- * declared, tested and served now, at one locale, so that the unit which adds
- * a second one is a content change and a registration rather than a
- * refactor — see `LOCALE_DEFINITIONS` for what "a registration" means
- * mechanically.
+ * **There are exactly two: the English default and the Estonian edition.**
+ * The dimension was declared, tested and served at one locale first, so that
+ * adding the second would be a content change and a registration rather than
+ * a refactor — see `LOCALE_DEFINITIONS` for what "a registration" means
+ * mechanically. `et` is that second edition: the legal set translated for
+ * the Estonian consumer, added on the operator's decision of 2026-08-09
+ * after the second qualified legal read found consumer-facing terms in
+ * English only. It publishes the five legal pages and nothing else.
  *
  * A locale is *not* a language: it is a published edition of this site, keyed
  * by an identifier that is also its URL segment. {@link LocaleDefinition}
  * carries the BCP 47 language tag the edition is written in, because the two
  * are different facts and only one of them belongs in a URL.
  */
-export const LOCALES = ["en"] as const;
+export const LOCALES = ["en", "et"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -97,6 +100,13 @@ export interface LocaleDefinition {
  */
 export const LOCALE_DEFINITIONS: Readonly<Record<Locale, LocaleDefinition>> = {
   en: { languageTag: "en", pathPrefix: "" },
+  /*
+   * `en` keeps the unprefixed paths it has always served — every existing
+   * link into this site depends on that — and `et` is declared with its own
+   * prefix rather than deriving one, per the field's own rule that "which
+   * edition gets the unprefixed URLs" is a decision recorded in data.
+   */
+  et: { languageTag: "et", pathPrefix: "/et" },
 };
 
 /**
