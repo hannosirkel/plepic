@@ -56,10 +56,11 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  ROUTE_PATHS,
   type Locale,
   type RouteId,
 } from "../../../content/routes.js";
-import { canonicalUrl } from "./urls.js";
+import { canonicalUrl, localizedPath } from "./urls.js";
 
 /** The pages `locale` publishes. Total over `Locale` by construction. */
 export function pagesIn(locale: Locale): readonly Page[] {
@@ -90,6 +91,26 @@ export function findPage(routeId: RouteId, locale: Locale = DEFAULT_LOCALE): Pag
 /** Every locale that publishes `routeId`, in `LOCALES` order. */
 export function localesPublishing(routeId: RouteId): readonly Locale[] {
   return LOCALES.filter((locale) => lookupPage(routeId, locale) !== undefined);
+}
+
+/**
+ * The path a page served in `locale` links to `routeId` at.
+ *
+ * The rule, and the reason it lives beside the page registry rather than in
+ * `urls.ts` (which deliberately knows no pages): **a link stays inside its
+ * own edition wherever its edition can serve it, and crosses into the
+ * default edition only where it cannot.** Before this existed, every anchor
+ * on `/et/legal/returns` pointed at the unprefixed English URL -- the footer
+ * of the Estonian edition was a set of five exits -- because the chrome built
+ * links from bare `ROUTE_PATHS`. Linking a route the edition does *not*
+ * publish at the edition's own prefix would be worse: a nav link that 404s.
+ * So the edition's own URL where one exists, the default edition's where
+ * not, and nothing else -- `tests/locale-navigation.test.tsx` holds every
+ * rendered anchor to exactly this function's answer.
+ */
+export function localizedHrefFor(locale: Locale, routeId: RouteId): string {
+  const target = lookupPage(routeId, locale) !== undefined ? locale : DEFAULT_LOCALE;
+  return localizedPath(target, ROUTE_PATHS[routeId]);
 }
 
 /**

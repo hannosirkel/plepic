@@ -722,16 +722,29 @@ describe("the legal pages serve their content, resolved from the runtime environ
     expect(response.body).toContain(RUNTIME_ENV.MERCHANT_RETURN_ADDRESS);
   });
 
-  it("leaves no brace, no marker and no incompleteness notice on any of the five", async () => {
-    for (const path of LEGAL_PATHS) {
+  /*
+   * Every edition's legal paths, not the default one's. The gap marker is
+   * per-edition ("[not configured: ...]" / "[seadistamata: ...]"), so the
+   * sweep names both -- a marker needle in only one language is a sweep the
+   * other edition's markers walk straight past.
+   */
+  it("leaves no brace, no marker and no incompleteness notice on any edition's legal pages", async () => {
+    const paths = LOCALES.flatMap((locale) =>
+      pagesIn(locale)
+        .filter((page) => page.route.startsWith("legal"))
+        .map((page) => localizedPath(locale, ROUTE_PATHS[page.route])),
+    );
+    expect(paths.length).toBeGreaterThanOrEqual(LEGAL_PATHS.length * 2);
+
+    for (const path of paths) {
       const response = await requestWithHost(server.port, path, "runtime.example.com");
       expect(response.status, `${path} did not answer 200`).toBe(200);
       expect(paintedText(response.body), `${path} rendered an unresolved placeholder`).not.toMatch(
         /\{[A-Za-z][A-Za-z0-9]*\}/,
       );
-      expect(response.body, `${path} rendered an unconfigured marker`).not.toContain(
-        "[not configured",
-      );
+      for (const marker of ["[not configured", "[seadistamata"]) {
+        expect(response.body, `${path} rendered an unconfigured marker`).not.toContain(marker);
+      }
       expect(response.body, `${path} rendered the incompleteness notice`).not.toContain(
         "legal-incomplete-notice",
       );

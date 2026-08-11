@@ -25,14 +25,69 @@
  * reader user who jumps to it. When the targets resolve, the text becomes
  * anchors and the `<nav>` comes back with them.
  */
-import { ROUTE_PATHS } from "../../../content/routes.js";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_DEFINITIONS,
+  ROUTE_PATHS,
+  type Locale,
+  type RouteId,
+} from "../../../content/routes.js";
 import { publisherShort } from "../../../content/publisher.js";
+import {
+  CHROME_STRINGS,
+  LANGUAGE_SWITCHER_LABELS,
+  type LegalRouteId,
+} from "../lib/chrome-strings.js";
+import { localesPublishing, localizedHrefFor } from "../lib/seo.js";
+import { localizedPath } from "../lib/urls.js";
 import styles from "../styles/site-footer.module.css";
 
 /** Light-on-dark, unconditionally — see the file comment above. */
 export const FOOTER_WORDMARK_SRC = "/brand/plepic-wordmark-dark.svg";
 
-export function SiteFooter() {
+/** The five legal links, in the order a reader meets the pages. */
+const LEGAL_LINK_ORDER: readonly LegalRouteId[] = [
+  "legalImprint",
+  "legalTerms",
+  "legalShipping",
+  "legalReturns",
+  "legalPrivacy",
+];
+
+export interface SiteFooterProps {
+  /**
+   * The edition this footer is chrome for. Labels come from
+   * `CHROME_STRINGS[locale]`; the legal links stay inside the edition, per
+   * `localizedHrefFor`. Defaults to the default locale so the English pages
+   * render exactly what they always have.
+   */
+  readonly locale?: Locale;
+  /**
+   * The route of the page this footer sits on. When given, and when another
+   * edition publishes the same route, the footer renders a language
+   * switcher: one link per other publishing edition, at that edition's own
+   * URL for **this** page, labelled in the target's own language with `lang`
+   * and `hreflang` saying so. This is the one place a reader can cross
+   * editions without retyping a URL — before it existed, `/et` had no
+   * internal inbound link at all and no way back out but the browser bar.
+   */
+  readonly route?: RouteId;
+}
+
+export function SiteFooter({ locale = DEFAULT_LOCALE, route }: SiteFooterProps) {
+  const strings = CHROME_STRINGS[locale];
+  const alternates =
+    route === undefined
+      ? []
+      : localesPublishing(route)
+          .filter((candidate) => candidate !== locale)
+          .map((candidate) => ({
+            locale: candidate,
+            href: localizedPath(candidate, ROUTE_PATHS[route]),
+            label: LANGUAGE_SWITCHER_LABELS[candidate],
+            languageTag: LOCALE_DEFINITIONS[candidate].languageTag,
+          }));
+
   return (
     <footer className={styles.footer}>
       <div className={styles.top}>
@@ -40,13 +95,28 @@ export function SiteFooter() {
         <p className={styles.tagline}>{publisherShort.text}</p>
       </div>
 
-      <nav className={styles.legal} aria-label="Legal">
-        <a href={ROUTE_PATHS.legalImprint}>Imprint</a>
-        <a href={ROUTE_PATHS.legalTerms}>Terms</a>
-        <a href={ROUTE_PATHS.legalShipping}>Shipping</a>
-        <a href={ROUTE_PATHS.legalReturns}>Returns</a>
-        <a href={ROUTE_PATHS.legalPrivacy}>Privacy</a>
+      <nav className={styles.legal} aria-label={strings.legalNavLabel}>
+        {LEGAL_LINK_ORDER.map((legalRoute) => (
+          <a key={legalRoute} href={localizedHrefFor(locale, legalRoute)}>
+            {strings.legalLinkLabels[legalRoute]}
+          </a>
+        ))}
       </nav>
+
+      {alternates.length > 0 ? (
+        <nav className={styles.legal} aria-label={strings.languageNavLabel}>
+          {alternates.map((alternate) => (
+            <a
+              key={alternate.locale}
+              href={alternate.href}
+              lang={alternate.languageTag}
+              hrefLang={alternate.languageTag}
+            >
+              {alternate.label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
 
       {/* Plain text, deliberately outside a <nav> — see the file comment above. */}
       <p className={styles.social}>

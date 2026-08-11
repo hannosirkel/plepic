@@ -72,6 +72,7 @@ import {
   type ConfigurationPlaceholderToken,
   type ConfigurationPlaceholderValues,
 } from "../../lib/configuration-placeholders.js";
+import { CHROME_STRINGS } from "../../lib/chrome-strings.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import { SiteFooter } from "../SiteFooter.js";
 import { SiteHeader } from "../SiteHeader.js";
@@ -129,7 +130,7 @@ export function LegalPageContent({
   const resolveAll = (text: string): string => resolveCataloguePlaceholders(text, catalogue);
 
   const sections = page.body.map((section) => {
-    const prose = resolveRequiredProse(section.body.map(resolveAll), values);
+    const prose = resolveRequiredProse(section.body.map(resolveAll), values, locale);
 
     /*
      * Everything that is not a paragraph — a callout line, a list term, a table
@@ -141,7 +142,7 @@ export function LegalPageContent({
      */
     const missingHere = new Set<ConfigurationPlaceholderToken>();
     const resolveOne = (text: string): string => {
-      const resolved = resolveRequiredProse([resolveAll(text)], values);
+      const resolved = resolveRequiredProse([resolveAll(text)], values, locale);
       for (const token of resolved.missing) missingHere.add(token);
       return resolved.paragraphs[0] ?? text;
     };
@@ -199,7 +200,7 @@ export function LegalPageContent({
        * namespace feeds it — configuration placeholder tokens — so every entry
        * is a disclosure this deployment has not supplied, and nothing else.
        */
-      missing: [...prose.missing, ...missingHere].map(labelFor),
+      missing: [...prose.missing, ...missingHere].map((token) => labelFor(token, locale)),
     };
   });
 
@@ -226,7 +227,7 @@ export function LegalPageContent({
 
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" />
+      <SiteHeader wordmark="primary" locale={locale} />
 
       <main className={styles.main}>
         <div className={styles.intro}>
@@ -236,25 +237,23 @@ export function LegalPageContent({
 
         {missing.length > 0 ? (
           <div role="alert" className={styles.notice} data-testid="legal-incomplete-notice">
-            <p className={styles.noticeHeading}>This notice is incomplete.</p>
+            <p className={styles.noticeHeading}>{CHROME_STRINGS[locale].noticeHeading}</p>
             {/*
               It deliberately does not say "write to us for it": the contact
               address is one of the details that can be missing, so that advice
-              is unusable in exactly the case that produces it.
+              is unusable in exactly the case that produces it. The wording
+              lives in `src/lib/chrome-strings.ts`, per edition, because this
+              notice and the gap markers inside the prose are the disclosure
+              that tells a reader the notice is incomplete -- in the language
+              the reader is reading, or they are not told.
             */}
-            <p className={styles.noticeBody}>
-              {missing.length === 1 ? "This detail has" : "These details have"} not been configured
-              for this deployment, and {missing.length === 1 ? "it is" : "they are"} marked in the
-              text below: {missing.join(", ")}. Until{" "}
-              {missing.length === 1 ? "it is" : "they are"} supplied, this page is not a complete
-              legal notice and should not be relied on as one.
-            </p>
+            <p className={styles.noticeBody}>{CHROME_STRINGS[locale].noticeBody(missing)}</p>
           </div>
         ) : null}
 
         {page.reviewStatus === "draft-pending-operator-input" ? (
           <p className={styles.draftNote} data-testid="legal-draft-note">
-            Draft, pending the operator&rsquo;s approval.
+            {CHROME_STRINGS[locale].draftNote}
           </p>
         ) : null}
 
@@ -399,7 +398,7 @@ export function LegalPageContent({
         ))}
       </main>
 
-      <SiteFooter />
+      <SiteFooter locale={locale} route={page.route} />
     </div>
   );
 }

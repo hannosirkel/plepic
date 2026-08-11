@@ -61,7 +61,9 @@
  * with an `aria-*` attribute that would misdescribe the element to the
  * accessibility tree.
  */
-import { ROUTE_PATHS } from "../../../content/routes.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
+import { CHROME_STRINGS } from "../lib/chrome-strings.js";
+import { localizedHrefFor } from "../lib/seo.js";
 import styles from "../styles/site-header.module.css";
 
 export interface SiteHeaderProps {
@@ -73,43 +75,66 @@ export interface SiteHeaderProps {
    * render). Duplicate ids would make the first header's checkbox drive both.
    */
   readonly instanceId?: string;
+  /**
+   * The edition this header is chrome for. Labels come from
+   * `CHROME_STRINGS[locale]`, and every link stays inside the edition
+   * wherever the edition publishes its target — `localizedHrefFor` is the
+   * rule, and `tests/locale-navigation.test.tsx` holds every anchor to it.
+   * Defaults to the default locale so the English pages render exactly what
+   * they always have.
+   */
+  readonly locale?: Locale;
 }
 
-export function SiteHeader({ wordmark, instanceId = "site-nav" }: SiteHeaderProps) {
+export function SiteHeader({
+  wordmark,
+  instanceId = "site-nav",
+  locale = DEFAULT_LOCALE,
+}: SiteHeaderProps) {
   const wordmarkSrc = wordmark === "dark" ? "/brand/plepic-wordmark-dark.svg" : "/brand/plepic-wordmark-primary.svg";
   const toggleId = `${instanceId}-toggle`;
+  const strings = CHROME_STRINGS[locale];
 
   return (
     <header className={styles.header}>
-      <a className={styles.brand} href={ROUTE_PATHS.home} aria-label="Plepic Games, home">
+      <a
+        className={styles.brand}
+        href={localizedHrefFor(locale, "home")}
+        aria-label={strings.brandHomeLabel}
+      >
         <img className={styles.wordmark} src={wordmarkSrc} alt="" width={162} height={54} />
       </a>
 
       {/* Must precede .scrim and .nav: the sheet is driven by `:checked ~`. */}
-      <input id={toggleId} className={styles.navToggle} type="checkbox" aria-label="Menu" />
+      <input
+        id={toggleId}
+        className={styles.navToggle}
+        type="checkbox"
+        aria-label={strings.menuLabel}
+      />
 
       {/* Tapping outside the sheet closes it. Decorative and unlabelled — the
           same control is reachable as the visible Menu button below. */}
       <label className={styles.scrim} htmlFor={toggleId} aria-hidden="true" />
 
-      <nav className={styles.nav} aria-label="Primary">
-        <a className={styles.link} href={ROUTE_PATHS.lunarBase}>
+      <nav className={styles.nav} aria-label={strings.primaryNavLabel}>
+        <a className={styles.link} href={localizedHrefFor(locale, "lunarBase")}>
           Lunar Base
         </a>
-        <a className={styles.link} href={ROUTE_PATHS.about}>
-          About
+        <a className={styles.link} href={localizedHrefFor(locale, "about")}>
+          {strings.navAbout}
         </a>
-        <a className={styles.link} href={ROUTE_PATHS.support}>
-          Support
+        <a className={styles.link} href={localizedHrefFor(locale, "support")}>
+          {strings.navSupport}
         </a>
       </nav>
 
       <div className={styles.actions}>
         <label className={styles.menuButton} htmlFor={toggleId}>
-          Menu
+          {strings.menuLabel}
         </label>
-        <a className={styles.buy} href={ROUTE_PATHS.cart}>
-          Basket
+        <a className={styles.buy} href={localizedHrefFor(locale, "cart")}>
+          {strings.basketLabel}
         </a>
       </div>
     </header>
