@@ -72,6 +72,15 @@ import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
+import {
+  DEFAULT_LOCALE,
+  LOCALES,
+  LOCALE_DEFINITIONS,
+  ROUTE_PATHS,
+} from "../../content/routes.js";
+import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
+import { localizedPath } from "../src/lib/urls.js";
+import { NOT_FOUND_TITLE } from "../src/app/not-found-content.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(storefrontDir);
@@ -1882,5 +1891,185 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     // The safety information itself needs no configuration and must be intact.
     expect(response.body).toContain("SHAH01338706");
     expect(response.body).toContain("Flammability");
+  });
+});
+
+/**
+ * The locale dimension, as a browser is actually served it.
+ *
+ * Everything else about it is proved against pure functions and a source
+ * scan. This is the part that only a running server can answer: whether the
+ * document that reaches a reader declares its language, whether the
+ * `hreflang` annotations survive Next's metadata emitter, and whether the URL
+ * shapes a locale dimension must *not* create are genuinely absent rather
+ * than merely unimplemented.
+ */
+describe("the served document declares its language and its alternates", () => {
+  const HOST = "runtime.example.com";
+
+  it("declares the default edition's language tag on every served page", async () => {
+    const expected = LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag;
+
+    for (const page of pagesIn(DEFAULT_LOCALE)) {
+      const path = localizedPath(DEFAULT_LOCALE, ROUTE_PATHS[page.route]);
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(200);
+
+      const match = /<html[^>]*\slang="([^"]*)"/.exec(response.body);
+      expect(match?.[1], `${path} does not declare a language`).toBe(expected);
+    }
+  });
+
+  it("emits the whole hreflang set, self-reference and x-default included", async () => {
+    const entries = buildSitemapEntries(RUNTIME_ENV.SITE_BASE_URL);
+    expect(entries.length).toBeGreaterThan(0);
+
+    for (const entry of entries) {
+      const response = await requestWithHost(server.port, entry.path, HOST);
+      expect(response.status, entry.path).toBe(200);
+
+      const served = new Map(
+        [...response.body.matchAll(/<link rel="alternate" hrefLang="([^"]+)" href="([^"]+)"\/>/g)].map(
+          (match) => [match[1] ?? "", match[2] ?? ""],
+        ),
+      );
+
+      const expected = alternateLinksFor(RUNTIME_ENV.SITE_BASE_URL, entry.routeId);
+      expect(
+        Object.fromEntries(served),
+        `${entry.path} serves the wrong hreflang set`,
+      ).toEqual(expected);
+      expect(served.size, `${entry.path} serves no alternates at all`).toBeGreaterThan(0);
+    }
+  });
+
+  it("lists the same alternates in the sitemap as in the documents", async () => {
+    const response = await requestWithHost(server.port, "/sitemap.xml", HOST);
+    expect(response.status).toBe(200);
+
+    for (const entry of buildSitemapEntries(RUNTIME_ENV.SITE_BASE_URL)) {
+      for (const [tag, href] of Object.entries(entry.alternates)) {
+        expect(
+          response.body,
+          `${entry.url} has no ${tag} alternate in the sitemap`,
+        ).toContain(`hreflang="${tag}" href="${href}"`);
+      }
+    }
+  });
+
+  /**
+   * A 404 must never carry a canonical or an alternate.
+   *
+   * `notFound()` does **not** discard this application's metadata — an earlier
+   * revision of this suite deleted this guard believing it did. A canary
+   * canonical placed in the `resolved === null` branch of
+   * `app/[locale]/[[...segments]]/page.tsx` reaches the **hydrated DOM**:
+   * `document.querySelector('link[rel=canonical]')` resolves to it. A
+   * rendering crawler is then told a canonical exists for a URL that answers
+   * 404.
+   *
+   * **Where it is asserted, and why that is honest.** The hydrated DOM is
+   * built from the flight payload, and the flight payload is in the response
+   * body — so that is what this reads, after unescaping, rather than the
+   * rendered HTML. The previous version searched the raw body for
+   * `rel="canonical"`, which never appears on a 404 in that form and so could
+   * not fail. This is not a DOM assertion and does not claim to be; it is an
+   * assertion on the one input the DOM value can come from, in a suite that
+   * has no browser and may not gain one.
+   *
+   * **The needle is proved present, not assumed.** A real page must match the
+   * same patterns this asserts a 404 does not. If the patterns were wrong, the
+   * positive half fails and the negative half cannot quietly pass on a typo.
+   */
+  it("gives a 404 no canonical and no alternates, in the payload hydration reads", async () => {
+    const unescaped = (body: string) => body.replace(/\\/g, "");
+    const CANONICAL = [/rel="canonical"/, /"rel":"canonical"/];
+    const ALTERNATE = [/rel="alternate"/, /"rel":"alternate"/, /hrefLang/];
+
+    const page = unescaped((await requestWithHost(server.port, "/legal/imprint", HOST)).body);
+    expect(
+      CANONICAL.some((pattern) => pattern.test(page)),
+      "no pattern matches a page that does carry a canonical — the needle is wrong",
+    ).toBe(true);
+    expect(
+      ALTERNATE.some((pattern) => pattern.test(page)),
+      "no pattern matches a page that does carry alternates — the needle is wrong",
+    ).toBe(true);
+
+    for (const path of ["/nonsense", "/en/legal/imprint", "/zz/anything"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+
+      const body = unescaped(response.body);
+      for (const pattern of CANONICAL) {
+        expect(pattern.test(body), `${path} carries a canonical (${String(pattern)})`).toBe(false);
+      }
+      for (const pattern of ALTERNATE) {
+        expect(pattern.test(body), `${path} carries an alternate (${String(pattern)})`).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * A 404 still says what it is: one `noindex` and a title, so the browser tab
+   * does not show the raw URL. Both survive without JavaScript — the `<title>`
+   * is server-rendered even though the body is not.
+   */
+  it("gives a 404 a server-rendered title and exactly one robots directive", async () => {
+    for (const path of ["/nonsense", "/en/legal/imprint"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+      expect(response.body, `${path} has no server-rendered title`).toContain(
+        `<title>${NOT_FOUND_TITLE}</title>`,
+      );
+      expect(
+        response.body.match(/<meta name="robots"/g)?.length ?? 0,
+        `${path} does not carry exactly one robots directive`,
+      ).toBe(1);
+      expect(response.body).toContain("noindex");
+    }
+  });
+
+  /**
+   * The default edition's identifier is not a URL prefix of this site. If it
+   * were, every page would have two URLs and one canonical — the duplicate a
+   * locale dimension exists to prevent.
+   *
+   * This one is live: making `localeForPathSegment` return a locale whose
+   * prefix is empty turns `/en/legal/imprint` into a 200 and this red.
+   */
+  it("404s the default edition's own identifier as a prefix", async () => {
+    for (const path of ["/en", "/en/legal/imprint", "/en/about"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+    }
+  });
+
+  /*
+   * `/en/` is not a fourth case. Next normalises a trailing slash with a 308
+   * before routing, so the assertion above would have been satisfied by a
+   * redirect rather than by the route table — which is exactly the kind of
+   * pass that means nothing. The normalisation is checked as itself, and its
+   * destination is checked to 404 like the rest.
+   */
+  it("normalises a trailing slash before routing, and the destination still 404s", async () => {
+    const response = await requestWithHost(server.port, "/en/", HOST);
+    expect(response.status).toBe(308);
+    expect(response.headers.location).toBe("/en");
+
+    const followed = await requestWithHost(server.port, "/en", HOST);
+    expect(followed.status).toBe(404);
+  });
+
+  it("404s a prefix no locale claims, at every depth", async () => {
+    const claimed = new Set(
+      LOCALES.map((locale) => LOCALE_DEFINITIONS[locale].pathPrefix).filter((p) => p !== ""),
+    );
+    expect(claimed.has("/zz")).toBe(false);
+
+    for (const path of ["/zz", "/zz/legal/imprint", "/zz/legal", "/nonsense/deep/path"]) {
+      const response = await requestWithHost(server.port, path, HOST);
+      expect(response.status, path).toBe(404);
+    }
   });
 });

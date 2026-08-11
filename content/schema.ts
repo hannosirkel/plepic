@@ -33,6 +33,41 @@
  */
 
 import type { AnchorId, ExternalTargetId, RouteId } from "./routes.js";
+import { LOCALES, type Locale } from "./routes.js";
+
+/* ------------------------------------------------------------------------
+ * The locale dimension
+ * --------------------------------------------------------------------- */
+
+/**
+ * Content published per locale.
+ *
+ * The whole mechanism is that this is a **total** `Record<Locale, T>` rather
+ * than a partial map or an array of `{ locale, value }` pairs. A partial map
+ * makes an unregistered locale a runtime `undefined` nobody notices until a
+ * page renders blank; a total record makes it a compile error at the one
+ * place the omission actually is. Adding a member to `LOCALES` therefore
+ * produces a list of exactly the registries that still need filling, from the
+ * type checker, on the first build — which is what "adding a locale is a
+ * registration" is supposed to mean.
+ *
+ * **A locale need not carry every page.** {@link LocalizedContent} is
+ * per-registry, so an edition may publish the legal set and not the marketing
+ * set; what it may not do is publish a page whose renderer would silently
+ * serve another locale's words. `storefront/tests/locale-routing.test.ts`
+ * holds that line, because renderers live there and not here.
+ */
+export type LocalizedContent<T> = Readonly<Record<Locale, T>>;
+
+/** The content registered for `locale`. Total by construction — see {@link LocalizedContent}. */
+export function contentFor<T>(registry: LocalizedContent<T>, locale: Locale): T {
+  return registry[locale];
+}
+
+/** True when `value` is a declared locale. */
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === "string" && (LOCALES as readonly string[]).includes(value);
+}
 
 /* ------------------------------------------------------------------------
  * Sources

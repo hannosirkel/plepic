@@ -31,6 +31,7 @@
  * is not satisfied by a page that looks complete.
  */
 import { productSafety } from "../../../content/lunar-base.js";
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../content/routes.js";
 import {
   labelFor,
   resolveRequiredProse,
@@ -41,19 +42,33 @@ import styles from "../styles/product-safety.module.css";
 export interface ProductSafetyBlockProps {
   /** From runtime configuration (`getRuntimeConfig().merchant`), projected. */
   readonly values: ConfigurationPlaceholderValues;
+  /**
+   * The edition this block is served in. It selects the collation for the
+   * incompleteness list below and nothing else.
+   *
+   * It does **not** select the copy. `productSafety` comes from
+   * `content/lunar-base.ts`, which is not locale-registered — the product
+   * page has no localized renderer for exactly that reason, so this block is
+   * only ever served in the default edition today. The parameter exists so
+   * that the day the product page does get one, the sort is already right
+   * rather than pinned to a literal nobody remembers to change.
+   */
+  readonly locale?: Locale;
 }
 
-export function ProductSafetyBlock({ values }: ProductSafetyBlockProps) {
+export function ProductSafetyBlock({ values, locale = DEFAULT_LOCALE }: ProductSafetyBlockProps) {
   const manufacturer = resolveRequiredProse(productSafety.manufacturer.body, values);
   const safety = resolveRequiredProse(productSafety.safety.body, values);
   /*
    * Sorted by the label a reader sees, not by the token behind it — and with
-   * an explicit locale, because `localeCompare` with none takes the runtime's
-   * default and the order then depends on the container's `LANG` rather than
-   * on the page.
+   * an explicit collation, because `localeCompare` with none takes the
+   * runtime's default and the order then depends on the container's `LANG`
+   * rather than on the page. The collation is the served edition's language
+   * tag rather than the literal `"en"` it used to be; see the prop's note.
    */
+  const collation = LOCALE_DEFINITIONS[locale].languageTag;
   const missing = [...new Set([...manufacturer.missing, ...safety.missing])].toSorted((a, b) =>
-    labelFor(a).localeCompare(labelFor(b), "en"),
+    labelFor(a).localeCompare(labelFor(b), collation),
   );
 
   return (

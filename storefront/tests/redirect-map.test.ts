@@ -10,7 +10,13 @@ import {
   redirectMapHosts,
   resolveRedirect,
 } from "../src/config/redirect-map.js";
-import { ROUTE_PATHS } from "../../content/routes.js";
+import {
+  DEFAULT_LOCALE,
+  LOCALES,
+  LOCALE_DEFINITIONS,
+  ROUTE_PATHS,
+} from "../../content/routes.js";
+import { localizedPath } from "../src/lib/urls.js";
 
 describe("redirect map: loading the committed fixture", () => {
   const map = loadRedirectMap({});
@@ -204,5 +210,80 @@ describe("loadRedirectMap: the REDIRECT_MAP_PATH override", () => {
     for (let i = 0; i < 5; i += 1) loadRedirectMap({ REDIRECT_MAP_PATH: path });
 
     expect(error).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * The locale dimension does **not** reach the redirect map.
+ *
+ * The map is derived from the Task 1 URL map and CI reads it from a fixture,
+ * so a locale must not fork it: no `locale` field on an entry, no second map
+ * per edition, and no localized target. A redirect answers with the default
+ * edition's path, which is the same answer it gave before locales existed —
+ * an inbound link from the alternate-brand host carries no statement about
+ * what language its visitor reads, and inventing one from a redirect would be
+ * a guess dressed up as a canonical.
+ *
+ * This is a guard rather than an observation because the natural "improvement"
+ * is exactly the wrong one: adding `"locale": "…"` to an entry looks helpful
+ * and would give one target path two sources of truth.
+ */
+describe("redirects carry no locale", () => {
+  const map = loadRedirectMap({});
+  const routePaths = new Set<string>(Object.values(ROUTE_PATHS));
+
+  it("resolves every host and path to a bare, unprefixed route path", () => {
+    for (const host of redirectMapHosts(map)) {
+      for (const entry of map.hosts[host] ?? []) {
+        const probe = entry.path === "*" ? "/anything-unmapped" : entry.path;
+        const resolved = resolveRedirect(host, probe, map);
+        expect(resolved, `${host}${probe}`).not.toBeNull();
+        expect(
+          routePaths.has(resolved?.targetPath ?? ""),
+          `${host}${probe} resolved to ${resolved?.targetPath ?? "null"}, which is not a bare route path`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("gives a target the same path in the default edition and in the redirect", () => {
+    for (const host of redirectMapHosts(map)) {
+      for (const entry of map.hosts[host] ?? []) {
+        expect(ROUTE_PATHS[entry.target]).toBe(
+          localizedPath(DEFAULT_LOCALE, ROUTE_PATHS[entry.target]),
+        );
+      }
+    }
+  });
+
+  /**
+   * The parser's own vocabulary, pinned. `parseRedirectMap` keeps `path` and
+   * `target` and nothing else; an entry that tried to name an edition would
+   * have to change the parser first, which is the point at which somebody has
+   * to justify the second source of truth.
+   */
+  it("keeps a parsed entry to exactly path and target", () => {
+    const parsed = parseRedirectMap(
+      { hosts: { "operator.example.org": [{ path: "*", target: "home", locale: "en" }] } },
+      "locale-probe",
+    );
+    expect(Object.keys(parsed.hosts["operator.example.org"]?.[0] ?? {}).toSorted()).toEqual([
+      "path",
+      "target",
+    ]);
+  });
+
+  it("carries no locale prefix in the committed fixture's own paths", () => {
+    const prefixes = LOCALES.map((locale) => LOCALE_DEFINITIONS[locale].pathPrefix).filter(
+      (prefix) => prefix !== "",
+    );
+
+    for (const host of redirectMapHosts(map)) {
+      for (const entry of map.hosts[host] ?? []) {
+        for (const prefix of prefixes) {
+          expect(entry.path.startsWith(`${prefix}/`), `${host}${entry.path}`).toBe(false);
+        }
+      }
+    }
   });
 });

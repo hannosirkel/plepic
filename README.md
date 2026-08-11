@@ -628,6 +628,145 @@ Two directories are not workspaces but are consumed by the storefront:
   document beside it. See [`content/README.md`](./content/README.md) for why it
   is TypeScript rather than MDX, and what that makes impossible.
 
+## Locales
+
+The site is published in **one** locale, `en`, and the mechanism for
+publishing it in more is complete. Both halves of that sentence are load
+bearing: there is no Estonian here, and adding it is a content change and a
+registration rather than a refactor.
+
+A locale is an **edition** of this site, not a language. It is declared in
+[`content/routes.ts`](./content/routes.ts) as an entry in `LOCALES` plus a
+`LOCALE_DEFINITIONS` record carrying two facts that are deliberately
+separate — the BCP 47 **language tag** the edition is written in, and the URL
+**path prefix** it is served under.
+
+| Fact | Where it is declared | Who reads it |
+|---|---|---|
+| Which editions exist | `LOCALES` | everything below |
+| Language tag | `LOCALE_DEFINITIONS[locale].languageTag` | `<html lang>`, `hreflang`, `localeCompare` collation |
+| URL prefix | `LOCALE_DEFINITIONS[locale].pathPrefix` | `localizedPath` / `parseLocalizedPath` in `storefront/src/lib/urls.ts` |
+| Which pages an edition publishes | `pagesByLocale` in `content/index.ts` | canonical, sitemap, `hreflang`, the router |
+| Which legal notices an edition carries | `legalPagesByLocale` in `content/legal/index.ts` | `LegalRoute` in `storefront/src/app/localized-routes.tsx` |
+| Which routes can be *rendered* in an edition | `LOCALIZED_ROUTE_VIEWS` in the same file | the router, and the guard that refuses a page nothing can serve |
+
+**Registration is a compile error, not a checklist.** Every registry above is
+a total `Record<Locale, T>` (`LocalizedContent<T>` in `content/schema.ts`), so
+adding a member to `LOCALES` fails the build at each registry that has not
+been filled in. Nothing has to remember to enumerate the work.
+
+### URLs
+
+The default edition holds the unprefixed paths — `/legal/imprint` is what it
+always was, and no existing link, backlink or redirect moves. Every other
+edition is served under its prefix by one optional catch-all,
+`storefront/src/app/[locale]/[[...segments]]/page.tsx`, which maps a path back
+to a `RouteId` through the same `ROUTE_PATHS` table everything else uses;
+there is no mirrored route tree per locale to drift.
+
+`/en/…` is **not** a URL of this site. The default edition's prefix is empty,
+so a page has exactly one canonical rather than two.
+
+### The served document
+
+There are two root layouts, `app/(site)/layout.tsx` and
+`app/[locale]/layout.tsx`, because only a root layout may render `<html>` and
+only one under a dynamic segment can know which edition the request resolved
+to. Both are four lines around `app/site-document.tsx`, which is the document
+itself — so `<html lang>` comes from the locale definition, in one place, and
+the two layouts cannot drift.
+
+### The cost of two root layouts: the 404
+
+Two root layouts are what make `<html lang>` a property of the edition rather
+than a literal, and they are paid for. In Next 16.3 a 404 renders the
+framework's own `<html id="__next_error__">` document, with the
+`not-found.tsx` body in the flight payload rather than in the server-rendered
+HTML.
+
+**At full price: a visitor with JavaScript disabled receives zero characters
+of body.** Not a degraded page — nothing. What they do get is the correct
+`404` status and a server-rendered `<title>`, so the browser tab reads
+"Page not found" rather than the raw URL. With JavaScript the page is
+complete: styled, brand navy, `MADE Evolve Sans`, the heading, the sentence
+and the link, and `<main lang="en" data-layer="publisher">` — the document
+element carries no `lang`, so the content root declares it instead, which is
+valid HTML.
+
+**There was no designed 404 to regress from.** Before this, an unmatched path
+got Next's own `/_not-found` page — the framework's stock *"This page could
+not be found"* — and on `main` its inline styling was blocked by **five CSP
+`style-src` violations**, because this application serves a nonce-based policy
+the framework's error page carries no nonce for. The replacement says more,
+and says it in the site's own voice.
+
+Two things about the trade were established by running it:
+
+- **`notFound()` behaves this way on `main` too**, with its single root layout
+  and a `not-found.tsx` present. `main` never met it because nothing there
+  called `notFound()`; the localized catch-all does.
+- **With multiple root layouts the unmatched-path 404 has no root layout to
+  render into either.** A `not-found.tsx` beside each root layout, one nested
+  under the catch-all, one rendering its own `<html>`, a root-level
+  `app/not-found.tsx`, `app/global-not-found.tsx` (experimental in this
+  version and inert without a `next.config.ts` flag), and
+  `dynamicParams = false` were all tried; all six produce the same document.
+
+**`dynamicParams = false` is rejected because it does not fix the 404
+document, and for no other reason.** An earlier revision of this section also
+claimed it would statically prerender the localized route and bake the
+building environment's base URL into a second edition. That did not reproduce:
+tested with a build-time canary in three configurations — as shipped, with
+`force-dynamic` removed from the page, and removed from the page and the
+layout — the route stayed dynamic and no canary appeared anywhere in `.next/`,
+because `generateMetadata` reads `headers()` and that keeps the segment
+dynamic regardless. The conclusion stood; the reason was an inference written
+down as a measurement, and it is withdrawn.
+
+**A 404 carries no canonical and no alternates, and that is guarded.**
+`notFound()` does *not* discard this application's metadata: a canary
+canonical placed in the 404 branch of the localized route reaches the
+**hydrated DOM**, where a rendering crawler would read it as a claim that the
+URL exists. `storefront/tests/build-and-serve.test.ts` asserts its absence
+against the payload hydration reads, and proves its own needle by requiring a
+real page to match the same patterns.
+
+What would end the trade is a rewrite in `src/proxy.ts` mapping the unprefixed
+paths onto a single dynamic root segment, so there is one root layout again
+and it can still read the locale. That file was outside the authority of the
+unit that added this.
+
+### `hreflang` at one locale
+
+Every page emits `rel="alternate"` links: one per edition that publishes it,
+keyed by that edition's language tag, plus `x-default`. With one edition that
+is a self-referential set of one and an `x-default` pointing at the same URL,
+which is what a correct set of one looks like — the alternative, emitting
+nothing, is indistinguishable from never having computed anything. The same
+map is emitted in the document and in `sitemap.xml`, from one function
+(`alternateLinksFor` in `storefront/src/lib/seo.ts`), so the two cannot
+disagree.
+
+### Redirects carry no locale
+
+`storefront/src/config/redirect-map.ts` is unchanged and stays that way. A
+redirect entry is a `path` and a `RouteId`; it resolves to the default
+edition's bare path, because an inbound link from an alternate host says
+nothing about what language its visitor reads. `storefront/tests/redirect-map.test.ts`
+holds that line — adding a `locale` field to an entry is the "improvement"
+that would give one target two sources of truth.
+
+### What is *not* locale-aware yet, and why that is visible
+
+The legal set is. The marketing pages are not: `AboutPageContent`,
+`SupportPageContent`, `HomepageMockup` and `LunarBaseMockup` read
+`content/publisher.ts`, `content/lunar-base.ts` and `content/support.ts`
+directly, and those modules carry no locale key. That is why
+`LOCALIZED_ROUTE_VIEWS` lists five routes and not twelve, and why an edition
+that registered `/about` would fail
+`storefront/tests/locale-routing.test.ts` rather than serve English words
+under a translated URL.
+
 ## Development
 
 ```bash

@@ -1,11 +1,12 @@
 /**
- * Every route the site may link to, and every in-page anchor a link may
- * target.
+ * Every route the site may link to, every in-page anchor a link may target,
+ * and every locale the site is published in.
  *
- * This is the single source of truth for both. The router, the navigation, the
- * sitemap and the redirect targets are all derived from it; nothing else in the
- * repository may declare a path. A content file cannot link anywhere that is
- * not listed here, because {@link RouteId} is the only thing a link accepts.
+ * This is the single source of truth for all three. The router, the
+ * navigation, the sitemap and the redirect targets are all derived from it;
+ * nothing else in the repository may declare a path or a locale. A content
+ * file cannot link anywhere that is not listed here, because {@link RouteId}
+ * is the only thing a link accepts.
  *
  * Paths are site-relative and always begin with `/`. There is no host, no
  * scheme and no base URL anywhere in this file or in any content file — those
@@ -29,6 +30,74 @@ export const ROUTE_PATHS = {
 
 export type RouteId = keyof typeof ROUTE_PATHS;
 export type RoutePath = (typeof ROUTE_PATHS)[RouteId];
+
+/* ------------------------------------------------------------------------
+ * Locales — a dimension of the content model, not a copy of it
+ * --------------------------------------------------------------------- */
+
+/**
+ * Every locale the site is published in.
+ *
+ * **There is exactly one today, and that is the point.** The dimension is
+ * declared, tested and served now, at one locale, so that the unit which adds
+ * a second one is a content change and a registration rather than a
+ * refactor — see `LOCALE_DEFINITIONS` for what "a registration" means
+ * mechanically.
+ *
+ * A locale is *not* a language: it is a published edition of this site, keyed
+ * by an identifier that is also its URL segment. {@link LocaleDefinition}
+ * carries the BCP 47 language tag the edition is written in, because the two
+ * are different facts and only one of them belongs in a URL.
+ */
+export const LOCALES = ["en"] as const;
+
+export type Locale = (typeof LOCALES)[number];
+
+/**
+ * The locale served at the bare {@link ROUTE_PATHS} — no prefix, no
+ * redirect, no negotiation.
+ *
+ * Exactly one locale may hold that position, and `content.test.ts` asserts
+ * it: two locales sharing the unprefixed paths would be two pages competing
+ * for one canonical URL, which is the failure mode a locale dimension exists
+ * to prevent rather than to introduce.
+ */
+export const DEFAULT_LOCALE = "en" satisfies Locale;
+
+export interface LocaleDefinition {
+  /**
+   * BCP 47 language tag. Three things read it and nothing else may invent
+   * one: the served document's `lang` attribute, the `hreflang` annotation on
+   * a page's alternates, and the collation `localeCompare` sorts a
+   * reader-facing list with.
+   */
+  readonly languageTag: string;
+  /**
+   * The URL path segment this edition is served under, with its leading
+   * slash — or the empty string for the one locale served at the bare route
+   * paths.
+   *
+   * It is declared per locale rather than derived from the key, because
+   * "which edition gets the unprefixed URLs" is a decision with consequences
+   * for every existing link into this site, and a decision belongs in data
+   * where it can be read, not in a rule somewhere that computes it.
+   */
+  readonly pathPrefix: string;
+}
+
+/**
+ * The registration point.
+ *
+ * `Record<Locale, LocaleDefinition>` is **total**: adding a member to
+ * {@link LOCALES} makes this object a compile error until the new locale is
+ * defined here. Every other locale-keyed registry in the content package is
+ * declared the same way (`LocalizedContent<T>` in `schema.ts`), so the type
+ * checker — not a checklist, and not review — is what enumerates the work a
+ * second locale creates.
+ */
+export const LOCALE_DEFINITIONS: Readonly<Record<Locale, LocaleDefinition>> = {
+  en: { languageTag: "en", pathPrefix: "" },
+};
 
 /**
  * In-page anchors.

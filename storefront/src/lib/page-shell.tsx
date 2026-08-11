@@ -16,17 +16,25 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import type { RouteId } from "../../../content/routes.js";
+import { DEFAULT_LOCALE, type Locale, type RouteId } from "../../../content/routes.js";
 import { isTestHost, loadSiteHostConfig } from "../config/hosts.js";
 import { getRequestHost } from "./request-host.js";
 import { buildPageMetadata, findPage } from "./seo.js";
 
 /**
- * `generateMetadata` for one route. Reads this request's `Host` header so a
- * test hostname's pages emit `noindex, nofollow` in their metadata as well as
- * in the `X-Robots-Tag` header `proxy.ts` sends — see `./seo.ts`.
+ * `generateMetadata` for one route in one locale. Reads this request's `Host`
+ * header so a test hostname's pages emit `noindex, nofollow` in their metadata
+ * as well as in the `X-Robots-Tag` header `proxy.ts` sends — see `./seo.ts`.
+ *
+ * The locale is a parameter with a default rather than something inferred:
+ * every route file under `app/(site)/` is, by the definition of that route
+ * group, the default edition, and says so at the one place a reader looks for
+ * it. The localized router passes its own resolved locale instead.
  */
-export function makeMetadata(routeId: RouteId): () => Promise<Metadata> {
+export function makeMetadata(
+  routeId: RouteId,
+  locale: Locale = DEFAULT_LOCALE,
+): () => Promise<Metadata> {
   return async function generateMetadata(): Promise<Metadata> {
     const hostConfig = loadSiteHostConfig();
     const host = await getRequestHost();
@@ -34,6 +42,7 @@ export function makeMetadata(routeId: RouteId): () => Promise<Metadata> {
     return buildPageMetadata(routeId, {
       baseUrl: hostConfig.baseUrl,
       isTestHost: host !== undefined && isTestHost(host, hostConfig),
+      locale,
     });
   };
 }

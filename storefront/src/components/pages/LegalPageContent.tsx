@@ -58,6 +58,7 @@
  * is being served and the page says so; flipping it to `operator-approved` is
  * the operator's act, not this unit's and not this component's.
  */
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../../content/routes.js";
 import type { LegalPage } from "../../../../content/schema.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import {
@@ -78,6 +79,16 @@ import styles from "../../styles/pages/legal.module.css";
 
 export interface LegalPageContentProps {
   readonly page: LegalPage;
+  /**
+   * The edition `page` is written in. It does not choose the content — the
+   * caller already did that, by taking `page` out of that locale's registry —
+   * and this component must never look a page up for itself, because a
+   * component that can substitute another locale's content is a component
+   * that will. What it decides is the **collation** the incompleteness
+   * notice's list is sorted with, which is a property of the language the
+   * reader is reading, not of the container's `LANG`.
+   */
+  readonly locale?: Locale;
   /** From runtime configuration (`getRuntimeConfig().merchant`), projected. */
   readonly values: ConfigurationPlaceholderValues;
   /**
@@ -95,6 +106,7 @@ export interface LegalPageContentProps {
 
 export function LegalPageContent({
   page,
+  locale = DEFAULT_LOCALE,
   values,
   externalTargets = {},
   catalogue = resolveCatalogue(),
@@ -197,13 +209,19 @@ export function LegalPageContent({
    * number, registered address" on the page — alphabetical in a namespace the
    * reader cannot see, and arbitrary in the one they can.
    *
-   * The locale is explicit. `localeCompare` with none takes the runtime's
+   * The collation is explicit. `localeCompare` with none takes the runtime's
    * default, so the same build produced a different order in a container with
    * a different `LANG`, and the assertion pinned to it went red for a reason
-   * that had nothing to do with the page.
+   * that had nothing to do with the page. It was then pinned to the literal
+   * `"en"`, which was right for as long as `"en"` was the only edition and
+   * would have been silently wrong the moment it was not — a list of Estonian
+   * labels sorted by English rules is not sorted. It is the served locale's
+   * own language tag, which is a fact about this page rather than about this
+   * container or about the last language anybody thought of.
    */
+  const collation = LOCALE_DEFINITIONS[locale].languageTag;
   const missing = [...new Set(sections.flatMap((entry) => entry.missing))].toSorted((a, b) =>
-    a.localeCompare(b, "en"),
+    a.localeCompare(b, collation),
   );
 
   return (
