@@ -45,15 +45,20 @@
  * JavaScript the page is complete — styled, brand navy, `MADE Evolve Sans`,
  * the heading, the sentence and the link, no console errors.
  *
- * The `<title>` is set from the localized route's `generateMetadata`, which is
- * why it reaches the hydrated document; **it is not in the server-rendered
- * HTML either**, so a no-JS visitor also gets no tab title. Both are real and
- * both are consequences of two root layouts, which are what make `<html lang>`
- * a property of the edition rather than a literal. The trade was taken
- * deliberately; what would end it is a rewrite in `src/proxy.ts` mapping the
- * unprefixed paths onto a single dynamic root segment, so there is one root
- * layout again and it can still read the locale. That file is outside this
- * unit's authority.
+ * **The `<title>` is the exception, and it is server-rendered.** It is set from
+ * the localized route's `generateMetadata`, and `curl` sees it with no
+ * JavaScript at all — so a no-JS visitor gets an empty page with an honest tab
+ * title rather than an empty page called nothing. An earlier revision of this
+ * note said the opposite; that sentence was written before the `<title>` was
+ * fixed and survived the fix, which is the same class of stale record this unit
+ * corrected twice elsewhere.
+ *
+ * The empty body is real and is a consequence of two root layouts, which are
+ * what make `<html lang>` a property of the edition rather than a literal. The
+ * trade was taken deliberately; what would end it is a rewrite in
+ * `src/proxy.ts` mapping the unprefixed paths onto a single dynamic root
+ * segment, so there is one root layout again and it can still read the locale.
+ * That file is outside this unit's authority.
  *
  * ## What this file still controls
  *
