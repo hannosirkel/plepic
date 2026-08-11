@@ -5,16 +5,18 @@
   border: var(--purchase-panel-border-width) solid var(--purchase-panel-border-color);
   border-radius: var(--purchase-panel-radius);
   padding: var(--purchase-panel-padding);
-  box-shadow: var(--purchase-panel-shadow);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
-  gap: var(--purchase-panel-gap);
+  gap: var(--space-md);
 }
 
 .productName {
   margin: 0;
-  font-size: var(--step-1);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--step-2);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-caps);
 }
 
 /*

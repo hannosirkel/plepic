@@ -26,15 +26,10 @@
  *
  * ---
  *
- * **3. A control the keyboard can reach and the eye cannot.** The sheet that
- * replaced defect 2 shipped two of its own, and neither was visible to any
- * assertion above. The closed sheet was `transform: translateX(100%)` with
- * `visibility: visible`, so all three links still took focus, off-screen, on
- * a phone. And `.navToggle` was visually hidden at *every* width, so on a
- * 1280px desktop a 1x1 checkbox sat in the tab order announcing "Menu,
- * checkbox, not checked", with no focus indicator and nothing to toggle —
- * every rule that would have given it either lives inside the 640px media
- * query.
+ * **3. A control the keyboard can reach and the eye cannot.** The closed
+ * sheet must leave neither its links nor a desktop-only disclosure stop in
+ * the tab order. The client disclosure is also exercised in Playwright for
+ * Escape handling and focus restoration.
  *
  * Both are the same underlying rule and it is the one this file was created
  * to defend: **a thing that is not on the screen must not be in the tab
@@ -180,30 +175,26 @@ describe("the mobile header adapts the navigation instead of deleting it", () =>
     }
   });
 
-  it("carries a disclosure control that needs no client script", () => {
-    const toggleId = /<input[^>]*\bid="([^"]*)"[^>]*type="checkbox"/.exec(html)?.[1];
-    expect(toggleId, "no checkbox-based disclosure in the header markup").toBeTruthy();
-    expect(html, "the visible Menu affordance must be a <label> for the disclosure").toMatch(
-      new RegExp(`<label[^>]*for="${toggleId}"[^>]*>Menu</label>`),
-    );
-    expect(html).not.toContain("onClick");
+  it("uses a button disclosure with an explicit relationship and close control", () => {
+    expect(html).toMatch(/<button[^>]*aria-expanded="false"[^>]*aria-controls="site-nav-panel"[^>]*>Menu<\/button>/);
+    expect(html).toMatch(/<nav[^>]*id="site-nav-panel"/);
+    expect(html).toContain(">Close menu</button>");
+    expect(html).not.toContain('type="checkbox"');
   });
 
-  it("gives two headers in one document independent disclosures", () => {
+  it("gives two headers in one document independent navigation panels", () => {
     const both = renderToStaticMarkup(
       <>
         <SiteHeader wordmark="primary" instanceId="one" />
         <SiteHeader wordmark="dark" instanceId="two" />
       </>,
     );
-    const ids = [...both.matchAll(/<input[^>]*\bid="([^"]*)"/g)].map((match) => match[1]);
+    const ids = [...both.matchAll(/<nav[^>]*\bid="([^"]*)"/g)].map((match) => match[1]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("hides no navigation link without a sheet to hold it", () => {
-    // The precise defect: `.link { display: none }` at the narrow
-    // breakpoint, with nothing that reveals it again.
-    const revealsTheSheet = /\.navToggle:checked\s*~\s*\.nav\s*\{[^}]*transform:\s*translateX\(0\)/.test(headerCss);
+    const revealsTheSheet = /\.navOpen\s*\{[^}]*transform:\s*translateX\(0\)/.test(headerCss);
     const hidesTheLinks = /\.link\s*\{[^}]*display:\s*none/.test(headerCss);
     expect(hidesTheLinks, "the narrow breakpoint must not simply remove .link").toBe(false);
     expect(revealsTheSheet, "the disclosure must actually bring the sheet on screen").toBe(true);
@@ -234,8 +225,8 @@ const narrowCss = breakpointAt === -1 ? "" : cssWithoutComments.slice(breakpoint
 /**
  * The declaration block of the first rule whose selector list contains
  * `selector` exactly. Matching the whole selector matters: a substring match
- * for `.nav` also hits `.navToggle:focus-visible + .scrim + .nav`, which is a
- * different rule saying a different thing.
+ * for `.nav` can also hit a longer compound selector, which is a different
+ * rule saying a different thing.
  */
 function blockFor(css: string, selector: string): string | undefined {
   for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -268,34 +259,17 @@ describe("nothing off-screen or inert is left in the tab order", () => {
   });
 
   it("brings the open sheet back into the tab order with no delay", () => {
-    const open = blockFor(narrowCss, ".navToggle:checked ~ .nav");
-    expect(open, "no `.navToggle:checked ~ .nav` rule inside the breakpoint").toBeTruthy();
+    const open = blockFor(narrowCss, ".navOpen");
+    expect(open, "no `.navOpen` rule inside the breakpoint").toBeTruthy();
     expect(open, "opening the sheet must make it visible again").toMatch(/visibility:\s*visible/);
     expect(open, "the open sheet must not wait out a delay before it can be focused").toMatch(
       /visibility\s+0s\s+\w+\s+0s/,
     );
   });
 
-  it("does not put the disclosure control in the tab order where it has no effect", () => {
-    // Above the breakpoint the sheet does not exist: every `:checked ~` rule
-    // that would move it, and every focus-visible rule that would indicate
-    // it, is inside the media query. A focusable checkbox there is a stop in
-    // the tab order that announces itself, shows no ring, and does nothing.
-    expect(
-      blockFor(wideCss, ".navToggle"),
-      "`.navToggle` must be `display: none` outside the breakpoint",
-    ).toMatch(/display:\s*none/);
-    expect(wideCss, "nothing above the breakpoint may act on the disclosure's checked state").not.toContain(
-      ":checked",
-    );
-    // ...and inside it, it must come back as a real, focusable control.
-    const narrow = blockFor(narrowCss, ".navToggle");
-    expect(narrow, "no .navToggle rule inside the breakpoint").toBeTruthy();
-    expect(narrow, "the disclosure must be visually hidden, not removed, where it does work").not.toMatch(
-      /display:\s*none/,
-    );
-    expect(narrowCss, "the disclosure must carry a focus indicator where it is focusable").toContain(
-      ".navToggle:focus-visible",
-    );
+  it("shows the button disclosure only where the sheet exists", () => {
+    expect(blockFor(wideCss, ".menuButton"), "the desktop menu button must be absent").toMatch(/display:\s*none/);
+    expect(blockFor(narrowCss, ".menuButton"), "the mobile menu button must be visible").toMatch(/display:\s*inline-flex/);
+    expect(narrowCss).toContain(".menuButton:focus-visible");
   });
 });

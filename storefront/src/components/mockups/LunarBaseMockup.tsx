@@ -9,10 +9,8 @@
  * page registry does not carry its own anchor for:
  *
  * - **Table photography**, between "why it travels well" and the
- *   quotations — the printed-component render already used in "what is in
- *   the box" (`layout-base-*.webp`), shown large rather than paired small,
- *   because no second distinct table photograph exists in this repository
- *   and the plan forbids fabricating one.
+ *   quotations — the cleared overhead game-in-progress photograph is shown
+ *   wide as authentic play evidence rather than fabricating a setup.
  * - **The tutorial video**, inside the same `id="video_trailer"` section as
  *   the trailer rather than a separate anchor: `content/routes.ts`'s
  *   `AnchorId` union (read-only to this unit) has no `video_tutorial` member,
@@ -281,37 +279,33 @@ export function LunarBaseMockup({
           <h2 className={styles.heading}>On the table</h2>
           <img
             className={styles.tablePhoto}
-            src="/images/components/layout-base-960.webp"
-            srcSet="/images/components/layout-base-480.webp 480w, /images/components/layout-base-960.webp 960w"
-            sizes="(max-width: 720px) 92vw, 40rem"
-            width={960}
-            height={611}
+            src="/images/table/table-view-1440.webp"
+            srcSet="/images/table/table-view-720.webp 720w, /images/table/table-view-1440.webp 1440w, /images/table/table-view-2048.webp 2048w"
+            sizes="(max-width: 720px) 100vw, 80rem"
+            width={2048}
+            height={1080}
             loading="lazy"
             decoding="async"
-            alt="A player's base laid out with a station and several module cards attached."
+            alt="A complete Lunar Base game in progress seen from above, with six branching player bases and cards arranged around the shared play area."
           />
         </section>
 
         <section id="video_trailer" className={styles.section}>
           <h2 className={styles.heading}>Watch</h2>
-          {/* Both videos live on YouTube per the plan's "keep video on YouTube"
-              instruction; this unit embeds, it does not host one. Neither has a
-              published YouTube id yet (see VideoEmbed.tsx's doc comment), so
-              both render the honest pending state rather than a fabricated
-              embed. This section keeps the id="video_trailer" fragment
-              existing backlinks carry — see content/routes.ts. */}
+          {/* Both verified videos remain on YouTube. This section keeps the
+              existing id="video_trailer" fragment that backlinks carry. */}
           <VideoEmbed
             heading="Trailer"
-            title="Lunar Base trailer"
-            youTubeId={null}
-            aspectRatio={16 / 9}
+            title="Lunar Base Kickstarter Launch Video"
+            youTubeId="2D_y7t7DDYM"
+            aspectRatio="16:9"
             captionStatus="not-yet-available"
           />
           <VideoEmbed
             heading="Tutorial"
-            title="Lunar Base tutorial"
-            youTubeId={null}
-            aspectRatio={1184 / 720}
+            title="Lunar Base - Tutorial and Playthrough"
+            youTubeId="SOW3l7kdu7k"
+            aspectRatio="16:9"
             captionStatus="not-yet-available"
           />
         </section>

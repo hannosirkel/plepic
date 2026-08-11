@@ -221,6 +221,12 @@ describe("HomepageMockup", () => {
     expect(alts.some((alt) => alt.toLowerCase().includes("six people"))).toBe(true);
   });
 
+  it("uses the approved front-and-back product cut-out for the publisher hero", () => {
+    expect(html).toContain('src="/images/box/box-front-back-960.webp"');
+    expect(html).toContain("box-front-back-480.webp 480w");
+    expect(html).toContain("box-front-back-1600.webp 1600w");
+  });
+
   it("marks the header wordmark decorative (empty alt) since its link already carries an accessible name", () => {
     expect(html).toMatch(/<a[^>]*aria-label="Plepic Games, home"[^>]*><img[^>]*\balt=""/);
   });
@@ -285,6 +291,14 @@ describe("LunarBaseMockup", () => {
     // Alt text has to describe what is in the picture, not a setting invented
     // to make the sentence read well.
     expect(boxAlt!.toLowerCase()).not.toContain("table");
+  });
+
+  it("uses genuine table photography and both approved public videos", () => {
+    expect(html).toContain('src="/images/table/table-view-1440.webp"');
+    expect(html).toContain("table-view-720.webp 720w");
+    expect(html).toContain("table-view-2048.webp 2048w");
+    expect(html).toContain("youtube-nocookie.com/embed/2D_y7t7DDYM");
+    expect(html).toContain("youtube-nocookie.com/embed/SOW3l7kdu7k");
   });
 
   it("has exactly one <h1> and skips no heading level", () => {

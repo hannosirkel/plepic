@@ -1,12 +1,15 @@
 .header {
-  position: relative;
-  display: flex;
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--nav-z);
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) auto minmax(9rem, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-md);
   min-height: var(--nav-height);
-  padding-inline: var(--gutter);
-  background: var(--nav-bg);
+  padding-inline: max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
+  background: color-mix(in srgb, var(--nav-bg) 94%, transparent);
+  backdrop-filter: blur(14px);
   border-bottom: var(--nav-border-width) solid var(--nav-border-color);
 }
 
@@ -16,13 +19,15 @@
 }
 
 .wordmark {
-  height: 1.75rem;
+  display: block;
+  height: 2rem;
   width: auto;
 }
 
 .nav {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--nav-link-gap);
 }
 
@@ -31,6 +36,8 @@
   font-size: var(--nav-link-size);
   font-weight: var(--nav-link-weight);
   text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-caps);
   padding-block: var(--nav-link-padding-block);
   padding-inline: var(--nav-link-padding-inline);
 }
@@ -44,6 +51,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  justify-content: flex-end;
 }
 
 .buy {
@@ -51,29 +59,24 @@
   font-weight: var(--font-weight-medium);
   text-decoration: none;
   border: var(--border-width-thick) solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  padding-block: var(--space-3xs);
-  padding-inline: var(--space-sm);
+  min-height: var(--button-min-height);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--button-radius);
+  padding-inline: var(--space-md);
+  transition: var(--button-transition);
 }
 
-/*
- * The disclosure control, the button and the scrim all exist only at the
- * sheet breakpoint.
- *
- * `.navToggle` in particular must be `display: none` here. An earlier
- * revision visually hid it at *every* width instead, on the reasoning that a
- * clipped control stays focusable and operable — true, and exactly wrong for
- * this one, because above 640px there is nothing for it to operate. Both its
- * <label>s compute to `display: none`, every `:checked ~` rule that would
- * move the sheet lives inside the media query below, and so does its only
- * focus indicator. What shipped was a 1x1 box in the desktop tab order that
- * announced as "Menu, checkbox, not checked", showed no focus ring, and did
- * nothing when toggled. A control with no effect and no indicator is not an
- * accessibility affordance; it is a dead stop on the way to the navigation.
- */
-.navToggle,
+.buy:hover,
+.buy:focus-visible {
+  background: var(--button-secondary-bg-hover);
+  color: var(--button-secondary-fg-hover);
+}
+
+/* The disclosure controls and scrim exist only at the sheet breakpoint. */
 .menuButton,
-.scrim {
+.scrim,
+.closeButton {
   display: none;
 }
 
@@ -82,22 +85,14 @@
  * below this line is the narrow-viewport sheet.
  */
 @media (max-width: 640px) {
-  /*
-   * Here — and only here — the disclosure becomes a real control: visually
-   * hidden rather than removed, so it keeps its place in the tab order and
-   * its `:checked` state drives the sheet. `.menuButton` is its visible
-   * affordance and carries the focus ring.
-   */
-  .navToggle {
-    display: block;
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+  .header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: var(--nav-height-compact);
+    padding-inline: var(--gutter);
+  }
+
+  .wordmark {
+    height: 1.65rem;
   }
 
   .menuButton {
@@ -105,16 +100,17 @@
     align-items: center;
     min-height: var(--button-min-height);
     padding-inline: var(--space-sm);
-    border-radius: var(--radius-pill);
+    border-radius: var(--button-radius);
     border: var(--border-width) solid var(--nav-border-color);
     color: var(--nav-fg);
     font-size: var(--nav-link-size);
     font-weight: var(--font-weight-medium);
+    background: transparent;
     cursor: pointer;
   }
 
-  .navToggle:focus-visible + .scrim + .nav,
-  .navToggle:focus-visible ~ .actions .menuButton {
+  .menuButton:focus-visible,
+  .closeButton:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring);
     outline-offset: var(--focus-ring-offset);
   }
@@ -137,7 +133,7 @@
     align-items: stretch;
     justify-content: flex-start;
     gap: var(--space-2xs);
-    padding: var(--space-xl) var(--space-md);
+    padding: var(--space-3xl) var(--space-lg) var(--space-xl);
     background: var(--nav-sheet-bg);
     border-inline-start: var(--nav-border-width) solid var(--nav-border-color);
     box-shadow: var(--shadow-lg);
@@ -176,7 +172,7 @@
     color: var(--accent);
   }
 
-  .navToggle:checked ~ .nav {
+  .navOpen {
     transform: translateX(0);
     visibility: visible;
     transition:
@@ -184,11 +180,35 @@
       visibility 0s linear 0s;
   }
 
-  .navToggle:checked ~ .scrim {
+  .scrimOpen {
     display: block;
     position: fixed;
     inset: 0;
     z-index: 1;
     background: var(--nav-scrim);
+    border: 0;
+  }
+
+  .closeButton {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-end;
+    min-height: var(--button-min-height);
+    padding-inline: var(--space-sm);
+    border: var(--border-width) solid var(--border-strong);
+    border-radius: var(--button-radius);
+    color: var(--text);
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .actions {
+    grid-column: 2;
+    gap: var(--space-2xs);
+  }
+
+  .buy {
+    padding-inline: var(--space-sm);
   }
 }

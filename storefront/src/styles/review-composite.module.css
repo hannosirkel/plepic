@@ -1,7 +1,8 @@
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border-block: var(--border-width) solid var(--border);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -32,18 +33,40 @@
   justify-content: space-between;
   gap: var(--space-sm);
   margin: 0;
-  padding: var(--card-padding);
-  background: var(--card-bg);
-  color: var(--card-fg);
-  border: var(--card-border-width) solid var(--card-border-color);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
+  padding: var(--space-lg);
+  color: var(--text);
+  border-inline-start: var(--border-width) solid var(--border);
+  border-block-start: var(--border-width) solid var(--border);
+}
+
+.card:nth-child(odd) .figure {
+  border-inline-start: 0;
+}
+
+.card:nth-child(-n + 2) .figure {
+  border-block-start: 0;
 }
 
 .quote {
   margin: 0;
-  font-size: var(--card-body-size);
+  font-size: var(--step-1);
   line-height: var(--line-height-body);
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .figure,
+  .card:nth-child(odd) .figure {
+    border-inline-start: 0;
+    border-block-start: var(--border-width) solid var(--border);
+  }
+
+  .card:first-child .figure {
+    border-block-start: 0;
+  }
 }
 
 .quote p {

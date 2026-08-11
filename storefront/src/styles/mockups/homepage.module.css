@@ -6,58 +6,54 @@
 .main {
   display: flex;
   flex-direction: column;
-  gap: var(--section-space);
-  max-width: var(--content-wide);
-  margin-inline: auto;
-  padding-inline: var(--gutter);
-  padding-block: var(--section-space);
 }
 
 .hero {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--content-wide);
+  min-height: clamp(38rem, 72vh, 50rem);
+  margin-inline: auto;
+  padding: clamp(var(--space-2xl), 8vw, var(--space-4xl)) var(--gutter);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  grid-template-columns: minmax(0, 0.92fr) minmax(24rem, 1.08fr);
   grid-template-areas: "copy image";
-  gap: var(--space-xl);
   align-items: center;
+  gap: clamp(var(--space-xl), 5vw, var(--space-3xl));
 }
 
-@media (max-width: 860px) {
-  .hero {
-    grid-template-columns: 1fr;
-    grid-template-areas: "image" "copy";
-  }
-}
-
-/*
- * Exactly one element per named grid area. `grid-area: copy` belongs to this
- * wrapper alone: named areas are cells, not columns, so four siblings each
- * carrying `grid-area: copy` are four items placed in the same cell, painted
- * on top of one another. The copy stacks here, in normal flow.
- */
 .heroCopy {
   grid-area: copy;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  max-width: 42rem;
 }
 
 .publisherLine {
-  margin: 0 0 var(--space-xs);
-  font-size: var(--step-1);
+  margin: 0 0 var(--space-lg);
+  max-width: 34rem;
+  padding-inline-start: var(--space-sm);
+  border-inline-start: var(--border-width-thick) solid var(--accent);
+  font-size: var(--step-0);
+  line-height: var(--line-height-body);
   color: var(--text-muted);
 }
 
 .pitch {
-  margin: 0 0 var(--space-sm);
-  font-size: var(--step-6);
+  margin: 0 0 var(--space-md);
+  font-size: clamp(2.45rem, 4vw, 3.8rem);
   font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-tight);
+  line-height: 0.98;
   letter-spacing: var(--letter-spacing-display);
+  text-wrap: balance;
 }
 
 .differentiator {
-  margin: 0 0 var(--space-md);
+  margin: 0 0 var(--space-lg);
+  max-width: 38rem;
   font-size: var(--step-2);
+  line-height: var(--line-height-body);
   color: var(--text-muted);
 }
 
@@ -69,28 +65,49 @@
 
 .heroImage {
   grid-area: image;
-  width: 100%;
+  width: min(100%, 48rem);
   height: auto;
+  justify-self: end;
+  filter: drop-shadow(var(--shadow-lg));
+  transition: transform var(--duration-slow) var(--easing-standard);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .hero:hover .heroImage {
+    transform: translateY(-0.45rem);
+  }
 }
 
 .section {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding: var(--section-space) var(--gutter);
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: var(--space-lg);
+}
+
+.section[id="proof"] {
+  padding-block: var(--section-space-tight);
+  border-block: var(--border-width) solid var(--border);
 }
 
 .heading {
   margin: 0;
-  font-size: var(--step-4);
+  max-width: 48rem;
+  font-size: var(--step-5);
   font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
   letter-spacing: var(--letter-spacing-heading);
 }
 
 .storyBody {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  max-width: var(--content-measure);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md) var(--space-2xl);
+  max-width: 68rem;
 }
 
 .body {
@@ -100,54 +117,22 @@
   color: var(--text-muted);
 }
 
-.newsletter {
-  background: var(--surface-raised);
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-xl);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  max-width: var(--content-measure);
-}
-
-/*
- * The immersive featured-game section — deliberately not a product card.
- * Switches to the Lunar Base token layer for one section
- * (`data-layer="lunar"` in the markup) so it reads as a distinct, cinematic
- * moment on an otherwise light publisher page, the same mechanism
- * `design/tokens.css` documents for a section switching layers without
- * forking a component.
- */
 .featured {
+  box-sizing: border-box;
+  width: 100%;
+  padding: clamp(var(--space-3xl), 10vw, 9rem) max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
   display: grid;
-  /*
-   * Named "featured-copy"/"featured-image", not "copy"/"image" — `.hero`
-   * above already claims those names. A `grid-template-areas` name is scoped
-   * to its own `display: grid` container in a browser, but
-   * `tests/mockup-layout.test.ts`'s overlap check reads area claims per
-   * *file*, not per container, because a real duplicate mistake (the
-   * defect it exists to catch) has no way to tell "two different grids" from
-   * "one grid, two overlapping items" without a layout engine. Distinct
-   * names sidestep the ambiguity entirely rather than asking the check to
-   * resolve it.
-   */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  grid-template-columns: minmax(0, 0.9fr) minmax(24rem, 1.1fr);
   grid-template-areas: "featured-copy featured-image";
-  gap: var(--space-xl);
   align-items: center;
-  background: var(--surface);
+  gap: clamp(var(--space-xl), 7vw, var(--space-4xl));
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(90deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface) 55%, transparent)),
+    image-set("/images/hero/lunar-hero-960.webp" 1x, "/images/hero/lunar-hero-1920.webp" 2x);
+  background-size: cover;
+  background-position: center;
   color: var(--text);
-  border-radius: var(--radius-xl);
-  padding: var(--space-2xl) var(--space-xl);
-}
-
-@media (max-width: 860px) {
-  .featured {
-    grid-template-columns: 1fr;
-    grid-template-areas: "featured-image" "featured-copy";
-    padding: var(--space-xl) var(--space-md);
-  }
 }
 
 .featuredCopy {
@@ -155,14 +140,19 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-sm);
+  gap: var(--space-md);
+  max-width: 42rem;
 }
 
 .featuredHeading {
   margin: 0;
-  font-size: var(--step-4);
+  padding: var(--space-2xs) var(--space-sm);
+  border: var(--border-width) solid var(--border-strong);
+  font-size: clamp(2.5rem, 6vw, 5.5rem);
   font-weight: var(--font-weight-bold);
-  letter-spacing: var(--letter-spacing-heading);
+  line-height: 0.95;
+  letter-spacing: var(--letter-spacing-display);
+  text-transform: uppercase;
 }
 
 .featuredBody {
@@ -174,8 +164,94 @@
 
 .featuredImage {
   grid-area: featured-image;
-  width: 100%;
+  width: min(100%, 44rem);
   height: auto;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  justify-self: end;
+  filter: drop-shadow(var(--shadow-lg));
+}
+
+.newsletter {
+  box-sizing: border-box;
+  width: min(calc(100% - 2 * var(--gutter)), var(--content-wide));
+  margin: 0 auto var(--section-space);
+  padding: var(--space-xl);
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.8fr) minmax(18rem, 1.2fr);
+  gap: var(--space-md) var(--space-2xl);
+  align-items: start;
+  border-block: var(--border-width-thick) solid var(--border-strong);
+}
+
+.newsletter > :last-child {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+
+@media (max-width: 860px) {
+  .hero {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    grid-template-areas: "image" "copy";
+    padding-block: var(--space-2xl) var(--space-3xl);
+  }
+
+  .heroImage {
+    justify-self: center;
+    max-width: 42rem;
+  }
+
+  .featured {
+    grid-template-columns: 1fr;
+    grid-template-areas: "featured-image" "featured-copy";
+  }
+
+  .featuredImage {
+    justify-self: center;
+    max-width: 36rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    gap: var(--space-lg);
+    padding-block: var(--space-xl) var(--space-2xl);
+  }
+
+  .publisherLine {
+    margin-bottom: var(--space-md);
+  }
+
+  .pitch {
+    font-size: clamp(2.15rem, 10vw, 2.85rem);
+  }
+
+  .heroActions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .storyBody,
+  .newsletter {
+    grid-template-columns: 1fr;
+  }
+
+  .newsletter {
+    box-sizing: border-box;
+    width: calc(100% - 2 * var(--gutter));
+    padding: var(--space-lg) 0;
+  }
+
+  .newsletter > :last-child {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .featured {
+    padding-block: var(--space-3xl);
+  }
+
+  .featuredHeading {
+    font-size: clamp(2.25rem, 15vw, 4rem);
+  }
 }

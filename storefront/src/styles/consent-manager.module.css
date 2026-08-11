@@ -43,7 +43,7 @@
   background: var(--surface-raised);
   color: var(--text);
   border-block-start: var(--border-width) solid var(--border);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   /*
    * Deliberately tight. This is the one fixed element on the site and it
    * covers the bottom of the first viewport until a visitor decides, so
@@ -51,7 +51,7 @@
    * between `--space-md` and `--space-sm` here, and between `--step--1` and
    * `--step--2` on the text below, is 40px of product page.
    */
-  padding: var(--space-sm) var(--gutter);
+  padding: var(--space-xs) var(--gutter);
 }
 
 .bannerInner {
@@ -69,9 +69,9 @@
   /* Grows to fill the row and wraps under the buttons on a phone; min-width: 0
      so it can actually get narrower than its longest line rather than pushing
      the buttons off the side. */
-  flex: 1 1 20rem;
+  flex: 1 1 28rem;
   min-width: 0;
-  font-size: var(--step--2);
+  font-size: var(--step--1);
   line-height: var(--line-height-body);
   color: var(--text-muted);
 }
@@ -110,4 +110,20 @@
 .reopen:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
+}
+
+@media (max-width: 640px) {
+  .banner {
+    padding: var(--space-2xs) var(--space-sm);
+  }
+
+  .bannerInner,
+  .bannerActions {
+    gap: var(--space-2xs);
+  }
+
+  .bannerText {
+    font-size: var(--step--2);
+    line-height: 1.45;
+  }
 }

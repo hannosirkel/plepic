@@ -1,14 +1,17 @@
 .wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
+  min-width: 0;
 }
 
 .heading {
   margin: 0;
-  font-size: var(--step-2);
+  font-size: var(--step-1);
   font-weight: var(--font-weight-medium);
   color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-caps);
 }
 
 .pending {
@@ -26,11 +29,21 @@
 }
 
 .frame {
+  box-sizing: border-box;
   width: 100%;
-  max-width: 48rem;
-  border-radius: var(--radius-lg);
+  max-width: 52rem;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-xs);
   overflow: hidden;
   background: var(--surface-sunken);
+}
+
+.frameWidescreen {
+  aspect-ratio: 16 / 9;
+}
+
+.frameMeasured {
+  aspect-ratio: 74 / 45;
 }
 
 .iframe {

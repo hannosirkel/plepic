@@ -1,7 +1,7 @@
 .section {
   display: grid;
-  grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
-  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
+  gap: clamp(var(--space-xl), 7vw, var(--space-4xl));
   align-items: center;
 }
 
@@ -15,8 +15,8 @@
 .photo {
   width: 100%;
   height: auto;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
 }
 
 .copy {
@@ -26,7 +26,7 @@
 }
 
 .heading {
-  font-size: var(--step-4);
+  font-size: var(--step-5);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-heading);
   letter-spacing: var(--letter-spacing-heading);

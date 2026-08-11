@@ -61,7 +61,7 @@
   min-height: var(--button-min-height);
   padding-inline: var(--space-sm);
   border: var(--border-width) solid var(--border-interactive);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -92,7 +92,7 @@
   min-height: var(--button-min-height);
   padding-inline: var(--space-sm);
   border: var(--border-width) solid var(--border-interactive);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--text);
   font: inherit;

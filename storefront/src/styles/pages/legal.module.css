@@ -16,23 +16,25 @@
 .main {
   display: flex;
   flex-direction: column;
-  gap: var(--section-space);
+  gap: var(--section-space-tight);
   max-width: var(--content-wide);
   margin-inline: auto;
   padding-inline: var(--gutter);
-  padding-block: var(--section-space);
+  padding-block: clamp(var(--space-2xl), 7vw, var(--space-4xl));
 }
 
 .intro {
-  max-width: var(--content-measure);
+  max-width: 58rem;
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-md);
+  padding-bottom: var(--space-xl);
+  border-bottom: var(--border-width-thick) solid var(--border-strong);
 }
 
 .heading {
   margin: 0;
-  font-size: var(--step-6);
+  font-size: clamp(3rem, 7vw, 6rem);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);
   letter-spacing: var(--letter-spacing-display);
@@ -79,17 +81,23 @@
 }
 
 .section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.55fr) minmax(0, 1.45fr);
+  gap: var(--space-md) var(--space-2xl);
+  padding-block-start: var(--space-lg);
+  border-block-start: var(--border-width) solid var(--border);
 }
 
 .sectionHeading {
   margin: 0;
-  font-size: var(--step-4);
+  font-size: var(--step-3);
   font-weight: var(--font-weight-bold);
   letter-spacing: var(--letter-spacing-heading);
   line-height: var(--line-height-tight);
+}
+
+.section > :not(.sectionHeading) {
+  grid-column: 2;
 }
 
 .body {
@@ -161,10 +169,10 @@
    * detect, and no breakpoint to keep in step with the table's width.
    */
   background-image:
-    linear-gradient(to right, var(--surface) 60%, rgb(0 0 0 / 0%)),
-    linear-gradient(to left, var(--surface) 60%, rgb(0 0 0 / 0%)),
-    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 16%), rgb(0 0 0 / 0%)),
-    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 16%), rgb(0 0 0 / 0%));
+    linear-gradient(to right, var(--surface) 60%, var(--scroll-shadow-clear)),
+    linear-gradient(to left, var(--surface) 60%, var(--scroll-shadow-clear)),
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), var(--scroll-shadow-clear)),
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), var(--scroll-shadow-clear));
   background-position: 0 0, 100% 0, 0 0, 100% 0;
   background-repeat: no-repeat;
   background-size: 2rem 100%, 2rem 100%, 0.6rem 100%, 0.6rem 100%;
@@ -246,6 +254,16 @@ a.link:focus-visible {
   flex-direction: column;
   gap: var(--space-sm);
   max-width: var(--content-measure);
+}
+
+@media (max-width: 720px) {
+  .section {
+    grid-template-columns: 1fr;
+  }
+
+  .section > :not(.sectionHeading) {
+    grid-column: 1;
+  }
 }
 
 .item {

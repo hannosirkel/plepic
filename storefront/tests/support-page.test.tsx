@@ -61,6 +61,11 @@ describe("SupportPageContent", () => {
     expect((html.match(/<h1\b/g) ?? []).length).toBe(1);
   });
 
+  it("embeds the approved Gaming Rules tutorial instead of a pending placeholder", () => {
+    expect(html).toContain("youtube-nocookie.com/embed/SOW3l7kdu7k");
+    expect(html).not.toContain("is not linked yet");
+  });
+
   /**
    * `content/support.ts`'s contact copy ends with "You can also reach us at
    * {merchantContactAddress}." — a configuration-sourced placeholder

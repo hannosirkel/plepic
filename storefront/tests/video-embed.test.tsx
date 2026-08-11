@@ -1,13 +1,12 @@
 /**
- * `VideoEmbed`: the pending state (every call site in this unit, since no
- * real YouTube id exists yet — see the component's doc comment) and the
- * embedded state, exercised with a fixture id so the component itself is
- * proven correct independently of whether a real id is ever supplied.
+ * `VideoEmbed`: both the honest pending state and the embedded state used by
+ * the verified product videos.
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { VideoEmbed } from "../src/components/video/VideoEmbed.js";
+import { buildContentSecurityPolicy } from "../src/lib/csp.js";
 
 /**
  * The main, cookie-setting YouTube host, assembled rather than spelled out —
@@ -23,7 +22,7 @@ describe("VideoEmbed: pending state", () => {
       heading="Watch the trailer"
       title="Lunar Base trailer"
       youTubeId={null}
-      aspectRatio={16 / 9}
+      aspectRatio="16:9"
       captionStatus="not-yet-available"
     />,
   );
@@ -53,26 +52,35 @@ describe("VideoEmbed: embedded state", () => {
       heading="Watch the tutorial"
       title="Lunar Base tutorial"
       youTubeId="dQw4w9WgXcQ"
-      aspectRatio={1184 / 720}
+      aspectRatio="74:45"
       captionStatus="not-yet-available"
     />,
   );
 
-  it("embeds the no-cookie host, never the tracking one directly", () => {
+  it("embeds the approved no-cookie host, never the tracking one directly", () => {
     expect(html).toContain("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(html).toContain("<iframe");
     expect(html).not.toContain(TRACKING_YOUTUBE_HOST);
   });
 
-  it("gives the iframe an accessible title", () => {
-    expect(html).toContain('title="Lunar Base tutorial"');
+  it("is permitted by frame-src without permitting the tracking YouTube host", () => {
+    const policy = buildContentSecurityPolicy("test-nonce");
+    const frameSource = policy
+      .split(";")
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith("frame-src"));
+
+    expect(frameSource).toContain("https://www.youtube-nocookie.com");
+    expect(frameSource).not.toContain(`https://www.${TRACKING_YOUTUBE_HOST}`);
   });
 
-  it("lazy-loads the iframe", () => {
-    expect(html).toMatch(/<iframe[^>]*loading="lazy"/);
+  it("sizes the frame from the measured aspect ratio without a CSP-blocked inline style", () => {
+    expect(html).toContain("frameMeasured");
+    expect(html).not.toContain('style="');
   });
 
-  it("sizes the frame from the measured aspect ratio, not a hard-coded 16:9", () => {
-    expect(html).toMatch(/aspect-ratio:\s*1\.6444/);
+  it("gives the lazy iframe an accessible title", () => {
+    expect(html).toMatch(/<iframe[^>]*title="Lunar Base tutorial"[^>]*loading="lazy"/);
   });
 
   it("says plainly that no caption or transcript exists yet", () => {
@@ -87,7 +95,7 @@ describe("VideoEmbed: caption states", () => {
         heading="Watch"
         title="A captioned video"
         youTubeId="abc123"
-        aspectRatio={16 / 9}
+        aspectRatio="16:9"
         captionStatus="captioned"
       />,
     );
@@ -100,7 +108,7 @@ describe("VideoEmbed: caption states", () => {
         heading="Watch"
         title="A transcribed video"
         youTubeId="abc123"
-        aspectRatio={16 / 9}
+        aspectRatio="16:9"
         captionStatus="transcript-only"
         transcriptHref="/support/lunar-base#transcript"
       />,
