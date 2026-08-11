@@ -46,12 +46,12 @@ export const privacy: LegalPage = {
       body: [
         "Esimesel saabumisel küsitakse sinult, kas tohime mõõta, kuidas saiti kasutatakse. Enne sinu vastust ei käivitu miski, mis sind mõõdab, ja keeldumine on üksainus klõps, mis ei jäta sind ilma ühestki võimalusest.",
         "Analüütika ja reklaamimõõtmise piksli õiguslik alus on sinu nõusolek ja mitte miski muu. Sa võid selle igal ajal tagasi võtta jaluses oleva lingi kaudu, mis avab sama valiku uuesti. Tagasivõtmine peatab edasise mõõtmise; juba kogutut see tagasiulatuvalt ei kustuta.",
-        "Saidi osad, mis ei ole mõõtmine — mängu ostmine, meiega ühenduse võtmine, reeglite lugemine — nõusolekut ei vaja ja sinu vastus neid ei mõjuta.",
+        "Saidi osad, mis ei ole mõõtmine – mängu ostmine, meiega ühenduse võtmine, reeglite lugemine – nõusolekut ei vaja ja sinu vastus neid ei mõjuta.",
         "Sinu vastuse mõõtmisküsimusele salvestab see sait sinu brauseri kohalikku salvestusse (local storage), mitte küpsisena. Seda hoitakse, kuni sa oma brauseri andmed kustutad või vastust muudad, ja see ei salvesta muud kui sõna granted (nõustun) või declined (keeldun).",
         "Sinu ostukorvi sisu salvestab see sait sinu brauseri seansisalvestusse (session storage), mitte küpsisena. Seda hoitakse ainult vahelehe sulgemiseni ja see ei salvesta muud kui seda, millise mängu sa valisid ja mitu.",
       ],
       table: {
-        caption: "Küpsised, mida see sait võib seada",
+        caption: "Küpsised, mida see sait võib salvestada",
         columns: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
         rows: [
           ["_ga, _ga_*", "Google Analytics", "Analüütika ja saidi kasutuse mõõtmine", "Kuni 2 aastat"],
@@ -74,14 +74,14 @@ export const privacy: LegalPage = {
       covers: ["third-party-processors", "third-country-transfers"],
       body: [
         "Need on ettevõtted, kes töötlevad andmeid, kui sa seda saiti kasutad, ja see loetelu on täielik.",
-        "Cloudflare osutab selle saidi nimelahendust (DNS), lõpetab saidi krüpteeritud ühendused ja pakub kontrolli, mis kaitseb kontakti- ja uudiskirjavorme automatiseeritud kuritarvituse eest. Seetõttu töötleb ta sinu IP-aadressi ja päringu metaandmeid iga lehe laadimisel. See ei ole valikuline: nii jõuab sait üldse sinuni.",
+        "Cloudflare osutab selle saidi nimelahenduse teenust (DNS), lõpetab saidi krüpteeritud ühendused ja pakub turvakontrolli, mis kaitseb kontakti- ja uudiskirjavorme automatiseeritud kuritarvituse eest. Seetõttu töötleb ta sinu IP-aadressi ja päringu metaandmeid iga lehe laadimisel. See ei ole valikuline: nii jõuab sait üldse sinuni.",
         "Stripe töötleb makseid. Kui sa maksad, lähevad sinu kaardiandmed otse Stripe'ile ja meie ei saa neid kunagi. Maksekirje jääb Stripe'i kätte.",
         "Google Analytics mõõdab saidi kasutust, ainult pärast sinu nõusolekut ja mitte kunagi meie testkeskkonnas.",
         "Kui sa annad nõusoleku, saadab see sait Metale reklaamimõõtmise signaali, et näeksime, kas meie reklaam töötab. Meta kasutab saadut ka oma eesmärkidel, omal vastutusel; nende andmete kogumise ja saatmise osas oleme meie ja Meta kaasvastutavad töötlejad. Enne sinu nõusolekut ei saadeta midagi.",
         "Brevo toimetab kohale uudiskirja ja hoiab aadressi, mille sa selleks meile andsid, kuni sa uudiskirjast loobud.",
         "Tellimuste ja kontaktivormi kirjad saadetakse meie oma meiliserveri kaudu. Neid ei anta üle hulgikirjade teenusepakkujale.",
         "Google, Meta, Stripe ja Cloudflare on USA ettevõtted ning nende kasutamine tähendab, et osa andmeid töödeldakse Ameerika Ühendriikides. Igaüks neist osaleb ELi–USA andmekaitseraamistikus, ja kus see mõnda edastamist ei kata, kohaldatakse standardseid andmekaitseklausleid.",
-        "Me ei müü andmeid. Peale reklaamimõõtmise, millest sa saad ülalpool keelduda, ei tohi ükski siin nimetatud ettevõte kasutada sinu andmeid oma reklaamiks, ja sellel saidil ei ole ühtegi kolmandat osapoolt, keda ei oleks ülal nimetatud.",
+        "Me ei müü andmeid. Peale reklaamimõõtmise, millest sa saad ülalpool keelduda, ei tohi ükski siin nimetatud ettevõte kasutada sinu andmeid oma reklaamiks, ja sellel saidil ei ole ühtegi kolmandat isikut, keda ei oleks ülal nimetatud.",
       ],
     },
     {
@@ -89,7 +89,7 @@ export const privacy: LegalPage = {
       heading: "Sinu andmed ja kuidas meid nende asjus kätte saada",
       covers: ["processing-lawful-bases"],
       body: [
-        "Õiguslikud alused: sinu tellimuse täitmine ja sinu kirjadele vastamine on lepingu täitmine; tellimuse dokumentide seitse aastat säilitamine on Eesti raamatupidamisõigusest tulenev juriidiline kohustus; saidi pakkumine ja kaitsmine on meie õigustatud huvi; mõõtmine ja uudiskiri toimivad ainult sinu nõusolekul.",
+        "Õiguslikud alused: sinu tellimuse täitmine ja sinu kirjadele vastamine on lepingu täitmine; tellimuse dokumentide seitsmeaastane säilitamine on Eesti raamatupidamisõigusest tulenev juriidiline kohustus; saidi pakkumine ja kaitsmine on meie õigustatud huvi; mõõtmine ja uudiskiri toimivad ainult sinu nõusolekul.",
         "Kui sa tellid, hoiame seda, mida tellimus vajab: sinu nime, tarneaadressi, e-posti aadressi, mida sa ostsid ja mida maksid. Eesti raamatupidamisõigus nõuab, et säilitaksime kirje seitse aastat alates selle majandusaasta lõpust, millesse tellimus jääb, ja pärast seda me selle kustutame.",
         "Kui sa meile kirjutad, hoiame kirja ja sinu aadressi, et saaksime vastata ja et leiaksime vestluse uuesti üles, kui sa sama tellimuse asjus tagasi tuled. Hoiame seda kaks aastat pärast vestluse viimast kirja ja siis kustutame.",
         "Kui sa tellid uudiskirja, hoiame sinu e-posti aadressi ja mitte midagi muud. Igas kirjas on loobumislink ja selle kasutamine eemaldab su nimekirjast.",

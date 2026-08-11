@@ -57,7 +57,7 @@ export const shipping: LegalPage = {
       },
       body: [
         "See on hind, mida näidatakse tootelehel ja ostukorvis, ja see on hind, mille tarbija kauba eest maksab.",
-        "Sisaldub tähendab, et maks on selle summa sees, mitte ei lisandu sellele. See on sama summa igale külastajale igas riigis ega muutu selle järgi, kus sa asud või kuhu sa palud meil paki saata — sealhulgas juhul, kui käibemaks ei kuulu üldse tasumisele. Kui maks kuulub tasumisele, selgitatakse tellimuse vormistamisel kinnitatud tarneaadressi põhjal välja, milline maks kohaldub.",
+        "Sisaldab tähendab, et maks on selle summa sees, mitte ei lisandu sellele. See on sama summa igale külastajale igas riigis ega muutu selle järgi, kus sa asud või kuhu sa palud meil paki saata – sealhulgas juhul, kui käibemaks ei kuulu üldse tasumisele. Kui maks kuulub tasumisele, selgitatakse tellimuse vormistamisel kinnitatud tarneaadressi põhjal välja, milline maks kohaldub.",
         "Saatekulu on ainus summa, mis tellimuse vormistamisel lisandub, ja seda näidatakse sulle enne, kui sa tellimuse kinnitad.",
         "Äriostjad: kuvatud hind on tarbijahind, milles sisaldub tasumisele kuuluv maks. Kui vajad oma raamatupidamise jaoks arvet, kus maksukäsitlus on välja toodud, kirjuta enne tellimist aadressil {merchantContactAddress}.",
       ],

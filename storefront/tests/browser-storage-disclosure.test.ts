@@ -131,7 +131,7 @@ const BASKET_SENTENCES: Readonly<Record<Locale, string>> = {
 /** The cookie table's caption, per edition — the anchor the exclusion check holds on to. */
 const COOKIE_TABLE_CAPTIONS: Readonly<Record<Locale, string>> = {
   en: "Cookies this site can set",
-  et: "Küpsised, mida see sait võib seada",
+  et: "Küpsised, mida see sait võib salvestada",
 };
 
 /**
