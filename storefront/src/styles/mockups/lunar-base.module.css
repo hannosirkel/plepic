@@ -6,110 +6,90 @@
 .main {
   display: flex;
   flex-direction: column;
-  gap: var(--section-space);
-  max-width: var(--content-wide);
-  margin-inline: auto;
-  padding-inline: var(--gutter);
-  padding-block: var(--section-space);
 }
 
 .hero {
+  box-sizing: border-box;
+  min-height: clamp(42rem, 82vh, 58rem);
+  padding: clamp(var(--space-2xl), 8vw, 8rem) max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 28rem);
-  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1.02fr) minmax(24rem, 0.98fr);
   align-items: center;
-  /*
-   * The scrim is `--surface` mixed toward transparent, not a literal
-   * `rgb(8 12 35 / …)` — tokens.css's rule is that components consume tokens,
-   * and the literal was the resolved value of --lunar-void, so a change to
-   * the layer's surface would have left this gradient behind.
-   *
-   * Two image-set candidates, not one: the 960px derivative is committed and
-   * this is its only consumer, so a single-candidate set made it unreachable
-   * dead weight. 1x takes the 960, 2x the 1920.
-   */
+  gap: clamp(var(--space-xl), 6vw, var(--space-4xl));
+  background-color: var(--surface);
   background-image:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 0%, transparent), color-mix(in srgb, var(--surface) 85%, transparent)),
+    linear-gradient(90deg, color-mix(in srgb, var(--surface) 98%, transparent) 0%, color-mix(in srgb, var(--surface) 78%, transparent) 48%, color-mix(in srgb, var(--surface) 35%, transparent) 100%),
     image-set("/images/hero/lunar-hero-960.webp" 1x, "/images/hero/lunar-hero-1920.webp" 2x);
   background-size: cover;
   background-position: center;
-  border-radius: var(--radius-xl);
-  padding: var(--space-2xl) var(--space-xl);
-}
-
-@media (max-width: 860px) {
-  .hero {
-    grid-template-columns: 1fr;
-    padding: var(--space-xl) var(--space-md);
-  }
 }
 
 .heroCopy {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  align-items: flex-start;
+  gap: var(--space-md);
+  max-width: 44rem;
 }
 
 .pitch {
-  font-size: var(--step-5);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-tight);
-  letter-spacing: var(--letter-spacing-display);
   margin: 0;
+  padding: var(--space-sm);
+  border: var(--border-width) solid var(--border-strong);
+  font-size: clamp(2.25rem, 3.8vw, 3.75rem);
+  font-weight: var(--font-weight-bold);
+  line-height: 0.98;
+  letter-spacing: var(--letter-spacing-display);
+  text-wrap: balance;
   color: var(--text);
 }
 
 .differentiator {
-  font-size: var(--step-2);
-  color: var(--text-muted);
+  max-width: 40rem;
   margin: 0;
+  font-size: var(--step-2);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
 }
 
 .heroFacts {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-sm);
-  margin: var(--space-2xs) 0 0;
+  gap: 0;
+  margin: 0;
   padding: 0;
-  font-size: var(--step-0);
+  border-block: var(--border-width) solid var(--border);
+}
+
+.heroFacts li {
+  min-width: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border-inline-start: var(--border-width) solid var(--border);
+  font-size: var(--step--1);
   color: var(--accent);
   font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-caps);
 }
 
-/*
- * The hero's commercial block: price, its qualifiers, the stock statement and
- * the Buy action. The decision order asks for price, stock, player count and
- * Buy in the hero; the page shipped with none of them above the fold.
- *
- * Deliberately *not* a second purchase panel — no card, no border, no shadow.
- * It is the hero's own copy column continuing, so a buyer reads one price on
- * this page in two places rather than meeting what looks like two offers.
- */
+.heroFacts li:first-child {
+  min-width: 0;
+  border-inline-start: 0;
+}
+
 .heroPurchase {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3xs);
-  margin-top: var(--space-2xs);
+  box-sizing: border-box;
+  width: min(100%, 34rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3xs) var(--space-lg);
+  margin-top: var(--space-xs);
+  padding-top: var(--space-md);
+  border-top: var(--border-width) solid var(--border);
 }
 
-/*
- * The operator's emphasised line in the hero — figure and tax qualification
- * together, shipping and duties below in `.heroPriceNote`. Deliberately the
- * same treatment as `purchase-panel.module.css`'s `.priceHeadline`, which
- * records the measurements, the three decisions behind them and the one thing
- * that was tried and removed: one paragraph, one inline flow, the figure
- * promoted to `--purchase-price-size` and everything else at `--step--1`, so
- * the operator's words need no shortening and the line does not become a
- * display-sized wall. In this wider column that is 1 line at 1280 and 2 at
- * 390 and 320.
- *
- * Not shared with the panel through a common class because the two live in
- * different CSS modules and this repository composes no cross-module classes.
- * `tests/price-presentation.test.tsx` asserts the property on both surfaces
- * instead — in the markup and in these stylesheets — which is the drift that
- * actually matters.
- */
 .heroPriceHeadline {
   margin: 0;
   font-size: var(--step--1);
@@ -123,12 +103,14 @@
 }
 
 .heroPriceNote {
+  grid-column: 1;
   margin: 0;
   font-size: var(--purchase-note-size);
   color: var(--purchase-note-color);
 }
 
 .heroAvailability {
+  grid-column: 1;
   margin: 0;
   font-size: var(--purchase-meta-size);
   font-weight: var(--font-weight-medium);
@@ -136,162 +118,354 @@
 }
 
 .heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2xs);
-  margin-top: var(--space-2xs);
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
 }
 
 .heroImage {
-  width: 100%;
+  width: min(100%, 42rem);
   height: auto;
+  justify-self: end;
   filter: drop-shadow(var(--shadow-lg));
+  transition: transform var(--duration-slow) var(--easing-standard);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .hero:hover .heroImage {
+    transform: translateY(-0.5rem) rotate(0.3deg);
+  }
+}
+
+.specSection,
+.section,
+.buySection {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding: var(--section-space) var(--gutter);
 }
 
 .specSection {
-  margin-top: calc(var(--space-xl) * -1);
+  padding-block: var(--section-space-tight);
 }
 
 .divider {
-  width: 15rem;
-  height: 1rem;
-  color: var(--border);
-  align-self: center;
-  margin-inline: auto;
+  display: none;
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-lg);
+  border-block-start: var(--border-width) solid var(--border);
 }
 
 .heading {
-  font-size: var(--step-4);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: var(--letter-spacing-heading);
+  max-width: 54rem;
   margin: 0;
+  font-size: var(--step-5);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-heading);
   color: var(--text);
 }
 
 .body {
+  max-width: var(--content-measure);
+  margin: 0;
   font-size: var(--step-1);
   line-height: var(--line-height-body);
   color: var(--text-muted);
-  margin: 0;
 }
 
 .note {
-  font-size: var(--step--1);
-  color: var(--text-subtle);
+  max-width: var(--content-measure);
   margin: 0;
+  font-size: var(--step--1);
+  line-height: var(--line-height-body);
+  color: var(--text-subtle);
 }
 
 .steps {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  padding-left: var(--space-md);
-  color: var(--text);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  counter-reset: play-step;
+}
+
+.steps li {
+  counter-increment: play-step;
+  min-width: 0;
+  padding: var(--space-xl);
+  border-inline-start: var(--border-width) solid var(--border);
+  font-size: var(--step-1);
+  line-height: var(--line-height-body);
+}
+
+.steps li:first-child {
+  border-inline-start: 0;
+  padding-inline-start: 0;
+}
+
+.steps li::before {
+  content: "0" counter(play-step);
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-size: var(--step-3);
+  color: var(--accent);
+  font-weight: var(--font-weight-bold);
 }
 
 .victoryList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--space-sm);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
   margin: 0;
+  border-block: var(--border-width) solid var(--border);
 }
 
 .victoryItem {
-  background: var(--card-bg);
-  border: var(--card-border-width) solid var(--card-border-color);
-  border-radius: var(--card-radius);
-  padding: var(--card-padding);
+  min-width: 0;
+  padding: var(--space-lg);
+  border-inline-start: var(--border-width) solid var(--border);
+  border-block-start: var(--border-width) solid var(--border);
+}
+
+.victoryItem:nth-child(odd) {
+  border-inline-start: 0;
+}
+
+.victoryItem:nth-child(-n + 2) {
+  border-block-start: 0;
 }
 
 .victoryItem dt {
-  font-weight: var(--font-weight-medium);
+  font-size: var(--step-2);
+  font-weight: var(--font-weight-bold);
   color: var(--text);
 }
 
 .victoryItem dd {
-  margin: var(--space-3xs) 0 0;
-  font-size: var(--step--1);
+  margin: var(--space-xs) 0 0;
+  line-height: var(--line-height-body);
   color: var(--text-muted);
 }
 
+.section[id="in-the-box"] {
+  max-width: none;
+  padding-inline: max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
+  background-color: var(--surface-sunken);
+  background-image: image-set("/images/textures/lunar-linework-960.webp" 1x, "/images/textures/lunar-linework-1920.webp" 2x);
+  background-size: cover;
+}
+
 .boxList {
+  max-width: 62rem;
+  columns: 2 20rem;
+  column-gap: var(--space-2xl);
+  margin: 0;
+  padding-inline-start: var(--space-md);
   color: var(--text-muted);
   line-height: var(--line-height-body);
 }
 
+.boxList li {
+  break-inside: avoid;
+  margin-bottom: var(--space-xs);
+}
+
 .componentGallery {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: clamp(var(--space-xl), 8vw, var(--space-4xl));
+  margin-block: var(--space-lg);
 }
 
 .componentGallery img {
-  max-width: 20rem;
   width: 100%;
   height: auto;
   min-width: 0;
-  border-radius: var(--radius-md);
+  filter: drop-shadow(var(--shadow-md));
 }
 
-.factions summary {
+.factions {
+  max-width: 62rem;
+  padding-block: var(--space-sm);
+  border-block: var(--border-width) solid var(--border);
+}
+
+.factions summary,
+.faq summary {
   cursor: pointer;
   font-weight: var(--font-weight-medium);
   color: var(--accent);
 }
 
 .travelsSection {
+  padding: clamp(var(--space-3xl), 9vw, 8rem) max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.75fr) minmax(0, 1.25fr);
+  gap: var(--space-md) var(--space-4xl);
   background: var(--surface-sunken);
-  border-radius: var(--radius-xl);
-  padding: var(--space-xl);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
+  border-block: var(--border-width) solid var(--border);
 }
 
 .headingOnDark {
+  grid-row: 1 / span 3;
   margin: 0;
-  font-size: var(--step-3);
+  font-size: var(--step-5);
+  line-height: var(--line-height-tight);
   color: var(--text-on-surface-sunken);
 }
 
 .bodyOnDark {
   margin: 0;
-  color: var(--text-on-surface-sunken);
-  opacity: 0.85;
+  max-width: var(--content-measure);
+  color: var(--text-muted);
   line-height: var(--line-height-body);
 }
 
+.section[id="table-photography"] {
+  max-width: none;
+  padding-inline: 0;
+  padding-bottom: 0;
+  gap: var(--space-xl);
+}
+
+.section[id="table-photography"] .heading {
+  margin-inline: max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
+}
+
 .tablePhoto {
+  display: block;
   width: 100%;
-  max-width: 40rem;
-  height: auto;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  height: clamp(22rem, 58vw, 52rem);
+  object-fit: cover;
+  object-position: center;
+}
+
+.section[id="video_trailer"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xl);
+}
+
+.section[id="video_trailer"] > .heading {
+  grid-column: 1 / -1;
 }
 
 .faq details {
+  max-width: 58rem;
   border-bottom: var(--border-width) solid var(--border);
-  padding-block: var(--space-sm);
-}
-
-.faq summary {
-  cursor: pointer;
-  font-weight: var(--font-weight-medium);
-  color: var(--text);
+  padding-block: var(--space-md);
 }
 
 .faq p {
-  margin: var(--space-2xs) 0 0;
+  margin: var(--space-xs) 0 0;
+  max-width: var(--content-measure);
   color: var(--text-muted);
+  line-height: var(--line-height-body);
 }
 
 .buySection {
   display: flex;
   justify-content: center;
+  padding-block: var(--section-space);
+  background: var(--surface-sunken);
+  max-width: none;
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding-block: var(--space-3xl);
+  }
+
+  .heroImage {
+    grid-row: 1;
+    justify-self: center;
+    max-width: 40rem;
+  }
+
+  .travelsSection {
+    grid-template-columns: 1fr;
+  }
+
+  .headingOnDark {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .hero {
+    min-height: auto;
+    padding-block: var(--space-xl) var(--space-3xl);
+    gap: var(--space-lg);
+  }
+
+  .pitch {
+    padding: var(--space-xs);
+    font-size: clamp(2rem, 9vw, 2.55rem);
+  }
+
+  .heroFacts li {
+    min-width: 0;
+    width: 50%;
+    box-sizing: border-box;
+    border-block-start: var(--border-width) solid var(--border);
+  }
+
+  .heroFacts li:nth-child(odd) {
+    min-width: 0;
+    border-inline-start: 0;
+  }
+
+  .heroPurchase {
+    grid-template-columns: 1fr;
+  }
+
+  .heroActions {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: var(--space-sm);
+  }
+
+  .heroActions > * {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .steps,
+  .victoryList,
+  .componentGallery,
+  .section[id="video_trailer"] {
+    grid-template-columns: 1fr;
+  }
+
+  .steps li,
+  .steps li:first-child,
+  .victoryItem,
+  .victoryItem:nth-child(odd) {
+    padding: var(--space-lg) 0;
+    border-inline-start: 0;
+    border-block-start: var(--border-width) solid var(--border);
+  }
+
+  .steps li:first-child,
+  .victoryItem:first-child {
+    border-block-start: 0;
+  }
+
+  .section[id="video_trailer"] > .heading {
+    grid-column: 1;
+  }
+
+  .tablePhoto {
+    height: 23rem;
+  }
 }

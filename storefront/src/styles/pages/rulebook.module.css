@@ -1,36 +1,42 @@
 .page {
+  min-height: 100dvh;
   background: var(--surface);
   color: var(--text);
 }
 
 .main {
+  box-sizing: border-box;
+  min-height: calc(100dvh - var(--nav-height));
+  padding: clamp(var(--space-3xl), 10vw, 9rem) max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
   display: flex;
-  flex-direction: column;
-  gap: var(--space-lg);
-  max-width: var(--content-wide);
-  margin-inline: auto;
-  padding-inline: var(--gutter);
-  padding-block: var(--section-space);
+  align-items: center;
+  background-color: var(--surface);
+  background-image: image-set("/images/textures/lunar-linework-960.webp" 1x, "/images/textures/lunar-linework-1920.webp" 2x);
+  background-size: cover;
 }
 
 .intro {
-  max-width: var(--content-measure);
+  max-width: 54rem;
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  align-items: flex-start;
+  gap: var(--space-md);
 }
 
 .heading {
   margin: 0;
-  font-size: var(--step-6);
+  padding: var(--space-sm);
+  border: var(--border-width) solid var(--border-strong);
+  font-size: clamp(3rem, 8vw, 7rem);
   font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-tight);
+  line-height: 0.92;
   letter-spacing: var(--letter-spacing-display);
 }
 
 .lede {
+  max-width: var(--content-measure);
   margin: 0;
-  font-size: var(--step-1);
+  font-size: var(--step-2);
   line-height: var(--line-height-body);
   color: var(--text-muted);
 }
@@ -41,12 +47,6 @@
   gap: var(--space-sm);
 }
 
-/*
- * `.viewer` and `.fallback` are deleted, not disabled. They styled an inline
- * `<object>` PDF viewer this application's own CSP (`object-src 'none'`)
- * blocked outright — see RulebookPageContent.tsx. Leaving dead rules behind
- * would have left the next reader believing the page still has a viewer.
- */
 .note {
   margin: 0;
   font-size: var(--step--1);

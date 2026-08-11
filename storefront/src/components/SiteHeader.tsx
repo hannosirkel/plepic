@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Shared header markup for the two mockups. Uses only layer-1 `--nav-*`
  * tokens, so it repaints correctly whether the page around it is on the
@@ -20,47 +22,13 @@
  * `design/tokens.css` already ships for exactly this component and nothing
  * else had ever consumed.
  *
- * The disclosure is a checkbox, not script. Three reasons, in order of
- * weight: these mockups are rendered with `renderToStaticMarkup` in the
- * suite and have no client runtime at all; the next unit lifts this markup
- * into real routes, and a Server Component with no `"use client"` boundary
- * is the cheaper thing to inherit; and a sheet that depends on JavaScript is
- * a navigation that disappears when a bundle fails, which is the same defect
- * as `display: none` arriving by a slower route. `Basket` stays outside the
- * sheet, in the header bar, because a store's one commercial affordance
- * should not need two taps.
- *
- * ---
- *
- * **HAND-OFF TO `t2-pages`: this sheet is not shippable on a route as it
- * stands.** Not "revisit it if a client boundary turns up for other
- * reasons" — it needs the following work *before* it appears on a real
- * page, and the reason is that every gap below is a keyboard user's problem,
- * not a purist's:
- *
- * 1. **A real `<button aria-expanded>`.** The checkbox announces as "Menu,
- *    checkbox, not checked" — a state, where a disclosure should announce a
- *    name and an expanded/collapsed relationship to the thing it controls.
- * 2. **Escape must close it**, and
- * 3. **focus must return** to the control that opened it.
- * 4. **There is no close control inside the sheet.** With the sheet open,
- *    the only way back out by keyboard is Shift-Tab to the checkbox — and
- *    the checkbox's focus indicator paints on `.menuButton`, which sits in
- *    `.actions` with no stacking context, *underneath* the scrim at
- *    `z-index: 1`. So the one escape route is signposted by a focus ring the
- *    user cannot see. Raising `.actions` above the scrim would fix the
- *    symptom and change what the scrim means (Basket would become clickable
- *    through it), so it is deliberately left to the same change that adds
- *    the button, Escape and focus return, rather than patched here in
- *    isolation.
- *
- * What the checkbox does buy is real and is why it ships in a *mockup*:
- * these mockups are rendered with `renderToStaticMarkup` in the suite and
- * have no client runtime at all, so a script-driven disclosure could not be
- * exercised here in any form. The trade is recorded rather than papered over
- * with an `aria-*` attribute that would misdescribe the element to the
- * accessibility tree.
+ * The mobile sheet is a button disclosure with an explicit controlled panel,
+ * an in-sheet close action, Escape handling, and focus return. `Basket` stays
+ * outside the sheet because the store's primary commercial affordance should
+ * not require opening navigation first.
  */
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import { CHROME_STRINGS } from "../lib/chrome-strings.js";
 import { localizedLinkFor } from "../lib/seo.js";
@@ -70,9 +38,8 @@ export interface SiteHeaderProps {
   /** Which wordmark variant reads correctly against this header's background. */
   readonly wordmark: "primary" | "dark";
   /**
-   * Disambiguates the disclosure's `id`/`for` pair when two headers are
-   * rendered into one document (a style gallery, a side-by-side review
-   * render). Duplicate ids would make the first header's checkbox drive both.
+   * Disambiguates the disclosure panel when two headers are rendered into
+   * one document (for example, a style gallery).
    */
   readonly instanceId?: string;
   /**
@@ -94,8 +61,28 @@ export function SiteHeader({
   locale = DEFAULT_LOCALE,
 }: SiteHeaderProps) {
   const wordmarkSrc = wordmark === "dark" ? "/brand/plepic-wordmark-dark.svg" : "/brand/plepic-wordmark-primary.svg";
-  const toggleId = `${instanceId}-toggle`;
+  const panelId = `${instanceId}-panel`;
   const strings = CHROME_STRINGS[locale];
+  const [isOpen, setIsOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openMenu = useCallback(() => {
+    setIsOpen(true);
+    requestAnimationFrame(() => closeButtonRef.current?.focus());
+  }, []);
+  const closeMenu = useCallback((restoreFocus = true) => {
+    setIsOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [closeMenu, isOpen]);
 
   return (
     <header className={styles.header}>
@@ -107,19 +94,22 @@ export function SiteHeader({
         <img className={styles.wordmark} src={wordmarkSrc} alt="" width={162} height={54} />
       </a>
 
-      {/* Must precede .scrim and .nav: the sheet is driven by `:checked ~`. */}
-      <input
-        id={toggleId}
-        className={styles.navToggle}
-        type="checkbox"
-        aria-label={strings.menuLabel}
+      <button
+        className={`${styles.scrim} ${isOpen ? styles.scrimOpen : ""}`}
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={() => closeMenu()}
       />
 
-      {/* Tapping outside the sheet closes it. Decorative and unlabelled — the
-          same control is reachable as the visible Menu button below. */}
-      <label className={styles.scrim} htmlFor={toggleId} aria-hidden="true" />
-
-      <nav className={styles.nav} aria-label={strings.primaryNavLabel}>
+      <nav
+        id={panelId}
+        className={`${styles.nav} ${isOpen ? styles.navOpen : ""}`}
+        aria-label={strings.primaryNavLabel}
+      >
+        <button ref={closeButtonRef} className={styles.closeButton} type="button" onClick={() => closeMenu()}>
+          {strings.closeMenuLabel}
+        </button>
         <a className={styles.link} {...localizedLinkFor(locale, "lunarBase")}>
           Lunar Base
         </a>
@@ -132,9 +122,16 @@ export function SiteHeader({
       </nav>
 
       <div className={styles.actions}>
-        <label className={styles.menuButton} htmlFor={toggleId}>
+        <button
+          ref={menuButtonRef}
+          className={styles.menuButton}
+          type="button"
+          aria-expanded={isOpen}
+          aria-controls={panelId}
+          onClick={openMenu}
+        >
           {strings.menuLabel}
-        </label>
+        </button>
         <a className={styles.buy} {...localizedLinkFor(locale, "cart")}>
           {strings.basketLabel}
         </a>

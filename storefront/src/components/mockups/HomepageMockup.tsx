@@ -15,11 +15,8 @@
  *
  * **What changed to become the real route, beyond wiring:**
  *
- * - The hero image is now the open-box render (`box-open-*.webp`, the same
- *   photograph `/games/lunar-base` uses for its own hero) rather than the
- *   closed-box front/back shot: the checkbox specifically asks for "the
- *   large Lunar Base box with a few real cards", and the open-box render is
- *   the one asset in this repository that actually shows cards.
+ * - The hero uses the cleared front/back box cut-out (`box-front-back-*.webp`)
+ *   so the publisher page shows both the cover and the real product summary.
  * - `{price}` in the "Buy for {price}" call to action, and every other
  *   catalogue placeholder on this page, is resolved against
  *   `storefront/mock/catalogue.json` through `resolveCataloguePlaceholders`
@@ -82,14 +79,14 @@ export function HomepageMockup({
           </div>
           <img
             className={styles.heroImage}
-            src="/images/box/box-open-960.webp"
-            srcSet="/images/box/box-open-480.webp 480w, /images/box/box-open-960.webp 960w, /images/box/box-open-1500.webp 1500w"
+            src="/images/box/box-front-back-960.webp"
+            srcSet="/images/box/box-front-back-480.webp 480w, /images/box/box-front-back-960.webp 960w, /images/box/box-front-back-1600.webp 1600w"
             sizes="(max-width: 720px) 92vw, 40rem"
-            width={1500}
-            height={1000}
+            width={1600}
+            height={864}
             loading="eager"
             decoding="async"
-            alt="The Lunar Base box open on a plain background, its lid raised behind the empty tray, with a squared stack of cards topped by the Shackleton main-action card, a small card tuck box, the rulebook standing open, and several round scoring discs arranged in front."
+            alt="The front and back of the Lunar Base game box, showing the astronaut cover and the component and game summary on the reverse."
           />
         </section>
 

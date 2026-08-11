@@ -17,7 +17,9 @@
  * `https://www.googletagmanager.com` and `https://www.google-analytics.com`
  * are here for the consent-gated GA loader; `https://challenges.cloudflare.com`
  * is here for Turnstile, both its script and the iframe it opens for the
- * interactive challenge. Both are loaded through `next/script`, which means
+ * interactive challenge. `https://www.youtube-nocookie.com` is restricted to
+ * `frame-src` for the verified product videos; the cookie-setting YouTube host
+ * is not permitted. Script-based services are loaded through `next/script`, which means
  * they are injected by an already-nonced Next.js script and are therefore
  * covered by `'strict-dynamic'` propagation; the explicit host-sources are
  * kept as a fallback for a browser that only supports CSP Level 2.
@@ -34,7 +36,7 @@ export function buildContentSecurityPolicy(nonce: string): string {
     `style-src 'self' 'nonce-${nonce}'`,
     `img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com`,
     `connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://challenges.cloudflare.com`,
-    `frame-src https://challenges.cloudflare.com`,
+    `frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com`,
     `font-src 'self'`,
     `upgrade-insecure-requests`,
   ];

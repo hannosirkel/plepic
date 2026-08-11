@@ -40,6 +40,8 @@ export interface ChromeStrings {
   readonly navSupport: string;
   /** The narrow-viewport disclosure control. */
   readonly menuLabel: string;
+  /** The close control inside the narrow-viewport navigation sheet. */
+  readonly closeMenuLabel: string;
   /** The header's basket affordance. */
   readonly basketLabel: string;
   /** `aria-label` of the footer's legal `<nav>`. */
@@ -68,6 +70,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
     navAbout: "About",
     navSupport: "Support",
     menuLabel: "Menu",
+    closeMenuLabel: "Close menu",
     basketLabel: "Basket",
     legalNavLabel: "Legal",
     legalLinkLabels: {
@@ -106,6 +109,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
      */
     navSupport: "Klienditugi",
     menuLabel: "Menüü",
+    closeMenuLabel: "Sulge menüü",
     basketLabel: "Ostukorv",
     legalNavLabel: "Juriidiline teave",
     legalLinkLabels: {

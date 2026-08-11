@@ -98,9 +98,9 @@ export function SupportPageContent({
 
           <VideoEmbed
             heading="Tutorial"
-            title="Lunar Base tutorial"
-            youTubeId={null}
-            aspectRatio={1184 / 720}
+            title="Lunar Base - Tutorial and Playthrough"
+            youTubeId="SOW3l7kdu7k"
+            aspectRatio="16:9"
             captionStatus="not-yet-available"
           />
         </section>

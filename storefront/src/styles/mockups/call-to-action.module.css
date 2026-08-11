@@ -18,6 +18,8 @@
   text-decoration: none;
   transition: var(--button-transition);
   cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-caps);
 }
 
 /*
@@ -39,10 +41,21 @@
   border-color: var(--button-primary-border);
 }
 
+.primary:hover {
+  background: var(--button-primary-bg-hover);
+  color: var(--button-primary-fg-hover);
+  border-color: var(--button-primary-bg-hover);
+}
+
 .secondary {
   background: var(--button-secondary-bg);
   color: var(--button-secondary-fg);
   border-color: var(--button-secondary-border);
+}
+
+.secondary:hover {
+  background: var(--button-secondary-bg-hover);
+  color: var(--button-secondary-fg-hover);
 }
 
 .quiet {

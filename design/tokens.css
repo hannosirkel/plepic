@@ -286,7 +286,7 @@
   --button-font-size: var(--step-0);
   --button-font-weight: var(--font-weight-medium);
   --button-letter-spacing: var(--letter-spacing-body);
-  --button-radius: var(--radius-pill);
+  --button-radius: var(--radius-xs);
   --button-padding-block: var(--space-xs);
   --button-padding-inline: var(--space-md);
   --button-gap: var(--space-2xs);
@@ -324,7 +324,7 @@
   --card-fg: var(--text);
   --card-border-color: var(--border);
   --card-border-width: var(--border-width);
-  --card-radius: var(--radius-lg);
+  --card-radius: var(--radius-md);
   --card-padding: var(--space-md);
   --card-padding-lg: var(--space-lg);
   --card-gap: var(--space-sm);
@@ -335,8 +335,12 @@
   --card-meta-size: var(--step--1);
   --card-meta-color: var(--text-subtle);
 
+  /* Overflow affordances ---------------------------------------------- */
+  --scroll-shadow: color-mix(in srgb, var(--text) 16%, transparent);
+  --scroll-shadow-clear: color-mix(in srgb, var(--text) 0%, transparent);
+
   /* Navigation --------------------------------------------------------- */
-  --nav-height: 4.5rem;
+  --nav-height: 5rem;
   --nav-height-compact: 3.5rem;
   --nav-bg: var(--surface);
   --nav-fg: var(--text);
@@ -360,11 +364,11 @@
   --purchase-panel-fg: var(--text);
   --purchase-panel-border-color: var(--border);
   --purchase-panel-border-width: var(--border-width);
-  --purchase-panel-radius: var(--radius-lg);
+  --purchase-panel-radius: var(--radius-md);
   --purchase-panel-padding: var(--space-lg);
   --purchase-panel-gap: var(--space-sm);
   --purchase-panel-shadow: var(--shadow-md);
-  --purchase-panel-max-width: 24rem;
+  --purchase-panel-max-width: 28rem;
 
   --purchase-price-size: var(--step-5);
   --purchase-price-weight: var(--font-weight-bold);

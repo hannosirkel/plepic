@@ -120,15 +120,8 @@ const ALLOWED_DOMAINS: readonly string[] = [
   "google-analytics.com",
   "googletagmanager.com",
   "schema.org",
-  // `VideoEmbed.tsx` embeds from `youtube-nocookie.com`, and every call site
-  // in this unit passes `youTubeId={null}` (no real YouTube video id exists
-  // yet — see that component's doc comment), so nothing actually loads it
-  // today. It is allowlisted here as the genuine future endpoint rather than
-  // routed around, but `src/lib/csp.ts` does not yet permit it in
-  // `frame-src`/`script-src` — this unit's authority to touch that file is
-  // scoped to two carried findings and catalogue-placeholder resolution, not
-  // video CSP, so a future unit supplying a real id must update the CSP too.
-  // Recorded in the migration report as a follow-up dependency.
+  // `VideoEmbed.tsx` embeds the two verified public videos from the privacy-
+  // enhanced host, which `src/lib/csp.ts` permits only in `frame-src`.
   //
   // The main, cookie-setting YouTube host is deliberately **not** here. It
   // was added beside this entry and nothing in the repository loads it —
