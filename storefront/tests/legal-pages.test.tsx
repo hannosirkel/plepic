@@ -22,10 +22,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { legalPages } from "../../content/legal/index.js";
+import { legalPages, legalPagesByLocale } from "../../content/legal/index.js";
+import { LOCALES } from "../../content/routes.js";
 import type { ExternalTargetUrls } from "../src/config/runtime-config.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
-import { PLACEHOLDER_TABLE } from "../../content/schema.js";
+import { contentFor, PLACEHOLDER_TABLE } from "../../content/schema.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { ProductSafetyBlock } from "../src/components/ProductSafetyBlock.js";
 import {
@@ -118,9 +119,18 @@ describe("the resolver knows exactly the tokens content/ declares from configura
   });
 });
 
+/*
+ * Both loops below run over every edition, not over the default one. The two
+ * properties they hold — configured, nothing is missing; unconfigured,
+ * nothing is hidden — are properties of a page as served, and the Estonian
+ * pages are served to exactly the consumer the translation exists for. A
+ * loop over `legalPages` alone would have proved them of the English pages
+ * and assumed them of the Estonian ones.
+ */
 describe("configured, the legal pages carry every required disclosure", () => {
-  for (const page of legalPages) {
-    it(`${page.route} resolves everything and shows no notice`, () => {
+  for (const locale of LOCALES) {
+  for (const page of contentFor(legalPagesByLocale, locale)) {
+    it(`${locale}:${page.route} resolves everything and shows no notice`, () => {
       const html = render(page, CONFIGURED);
       const text = visibleText(html);
 
@@ -134,7 +144,7 @@ describe("configured, the legal pages carry every required disclosure", () => {
       expect(text.trim().length, `${page.route} rendered nothing`).toBeGreaterThan(600);
     });
 
-    it(`${page.route} renders every string its content declares`, () => {
+    it(`${locale}:${page.route} renders every string its content declares`, () => {
       const text = visibleText(render(page, CONFIGURED));
       const served = (source: string): string =>
         resolveRequiredProse(
@@ -176,32 +186,38 @@ describe("configured, the legal pages carry every required disclosure", () => {
       }
     });
   }
+  }
 
-  it("states the whole trader identity on the imprint, telephone number included", () => {
-    const imprint = legalPages.find((page) => page.route === "legalImprint");
-    const text = visibleText(render(imprint!, CONFIGURED));
+  for (const locale of LOCALES) {
+    const edition = contentFor(legalPagesByLocale, locale);
 
-    for (const value of [
-      CONFIGURED.merchantLegalName,
-      CONFIGURED.merchantRegisteredAddress,
-      CONFIGURED.merchantRegistrationNumber,
-      CONFIGURED.merchantVatNumber,
-      CONFIGURED.merchantContactAddress,
-      CONFIGURED.merchantPhoneNumber,
-    ]) {
-      expect(text).toContain(value);
-    }
-  });
+    it(`${locale}: states the whole trader identity on the imprint, telephone number included`, () => {
+      const imprint = edition.find((page) => page.route === "legalImprint");
+      const text = visibleText(render(imprint!, CONFIGURED));
 
-  it("states the return address on the returns page", () => {
-    const returnsPage = legalPages.find((page) => page.route === "legalReturns");
-    expect(visibleText(render(returnsPage!, CONFIGURED))).toContain(CONFIGURED.returnAddress);
-  });
+      for (const value of [
+        CONFIGURED.merchantLegalName,
+        CONFIGURED.merchantRegisteredAddress,
+        CONFIGURED.merchantRegistrationNumber,
+        CONFIGURED.merchantVatNumber,
+        CONFIGURED.merchantContactAddress,
+        CONFIGURED.merchantPhoneNumber,
+      ]) {
+        expect(text).toContain(value);
+      }
+    });
+
+    it(`${locale}: states the return address on the returns page`, () => {
+      const returnsPage = edition.find((page) => page.route === "legalReturns");
+      expect(visibleText(render(returnsPage!, CONFIGURED))).toContain(CONFIGURED.returnAddress);
+    });
+  }
 });
 
 describe("unconfigured, the legal pages are loud rather than quiet", () => {
-  for (const page of legalPages) {
-    it(`${page.route} drops no paragraph and shows no brace`, () => {
+  for (const locale of LOCALES) {
+  for (const page of contentFor(legalPagesByLocale, locale)) {
+    it(`${locale}:${page.route} drops no paragraph and shows no brace`, () => {
       const configured = visibleText(render(page, CONFIGURED));
       const unconfigured = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
 
@@ -237,6 +253,7 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
       expect(unconfigured.length).toBeGreaterThan(configured.length * 0.9);
     });
   }
+  }
 
   it("names every missing detail on the imprint, in the text and in the notice", () => {
     const imprint = legalPages.find((page) => page.route === "legalImprint");
@@ -259,10 +276,15 @@ describe("unconfigured, the legal pages are loud rather than quiet", () => {
   });
 
   it("never fabricates a value, and never renders an empty one", () => {
-    for (const page of legalPages) {
-      const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
-      // No sentence ends up with a dangling ", ." or "at ." where a value went.
-      expect(text, `${page.route} rendered an empty value`).not.toMatch(/\b(?:at|to|is)\s+[.,]/);
+    for (const locale of LOCALES) {
+      for (const page of contentFor(legalPagesByLocale, locale)) {
+        const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}));
+        // No sentence ends up with a dangling ", ." or "at ." where a value
+        // went — nor the Estonian equivalent, "aadressil ." and kin.
+        expect(text, `${locale}:${page.route} rendered an empty value`).not.toMatch(
+          /\b(?:at|to|is|aadressil|aadress|on)\s+[.,]/,
+        );
+      }
     }
   });
 });

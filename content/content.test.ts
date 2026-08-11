@@ -56,6 +56,7 @@ import {
   type LegalElement,
   type SourceId,
 } from "./schema.js";
+import type { Locale } from "./routes.js";
 
 const contentDir = dirname(fileURLToPath(import.meta.url));
 
@@ -588,6 +589,55 @@ function legalProseIn(page: (typeof legalPages)[number]): readonly string[] {
  * four of the five notices would otherwise satisfy every check in this file
  * while covering four fifths of the obligations.
  */
+/**
+ * The words each edition's cookie table must be made of.
+ *
+ * The *properties* under test are language-independent — four columns in a
+ * fixed order, durations hedged rather than asserted about other companies'
+ * products, the consent status of every cookie stated beneath — but the
+ * strings that carry them are the edition's own. A total `Record<Locale, …>`
+ * keeps this honest the same way every registry is kept honest: a third
+ * edition does not compile until somebody writes down what its hedged
+ * durations look like, rather than inheriting an English regex that can
+ * never match and a test that can never fail.
+ */
+const COOKIE_TABLE_LANGUAGE: Readonly<
+  Record<
+    Locale,
+    {
+      readonly columns: readonly string[];
+      /** What a hedged duration starts with in this language. */
+      readonly hedgedDuration: RegExp;
+      /** Substrings of the operator's two consent sentences, one per class. */
+      readonly consentStatements: readonly [string, string];
+    }
+  >
+> = {
+  en: {
+    columns: ["Cookie", "Provider", "Purpose", "Duration"],
+    hedgedDuration: /^(?:Up to |Varies)/,
+    consentStatements: ["only with your consent", "do not require consent"],
+  },
+  et: {
+    columns: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
+    hedgedDuration: /^(?:Kuni |Varieerub)/,
+    consentStatements: ["ainult sinu nõusolekul", "ega vaja nõusolekut"],
+  },
+};
+
+/**
+ * Phrases naming the dismantled ODR platform, in every published language.
+ * One flat list checked against every edition, because a phrase that is
+ * wrong in one language is not right in another.
+ */
+const ODR_PLATFORM_PHRASES = [
+  "odr platform",
+  "online dispute resolution platform",
+  "odr-platvorm",
+  "veebipõhise vaidluste lahendamise platvorm",
+  "ec.europa",
+] as const;
+
 for (const locale of LOCALES) {
   const edition = contentFor(legalPagesByLocale, locale);
 
@@ -706,7 +756,7 @@ for (const locale of LOCALES) {
      */
     it("offer no link to the dismantled ODR platform", () => {
       const corpus = edition.flatMap((page) => legalProseIn(page)).join("\n").toLowerCase();
-      for (const phrase of ["odr platform", "online dispute resolution platform", "ec.europa"]) {
+      for (const phrase of ODR_PLATFORM_PHRASES) {
         expect(corpus, `${phrase} names a platform that no longer exists`).not.toContain(phrase);
       }
     });
@@ -769,24 +819,65 @@ for (const locale of LOCALES) {
      * section around it. An agent had previously asserted both.
      */
     it("hedge every cookie duration and state every cookie's consent status", () => {
+      const language = COOKIE_TABLE_LANGUAGE[locale];
       const privacyPage = edition.find((page) => page.route === "legalPrivacy");
       const table = privacyPage?.body.find((section) => section.anchor === "consent")?.table;
 
       expect(table, "the cookie table is gone from the privacy page").toBeDefined();
-      expect(table?.columns).toEqual(["Cookie", "Provider", "Purpose", "Duration"]);
+      expect(table?.columns).toEqual(language.columns);
 
       const durations = (table?.rows ?? []).map((row) => row[row.length - 1] ?? "");
       expect(durations.length).toBeGreaterThan(0);
       for (const duration of durations) {
         expect(
-          /^(?:Up to |Varies)/.test(duration),
+          language.hedgedDuration.test(duration),
           `"${duration}" asserts a third party's cookie lifetime rather than hedging it`,
         ).toBe(true);
       }
 
       const notes = (table?.notes ?? []).join(" ");
-      expect(notes).toContain("only with your consent");
-      expect(notes).toContain("do not require consent");
+      for (const statement of language.consentStatements) {
+        expect(notes).toContain(statement);
+      }
+    });
+
+    /**
+     * The price a legal page presents is `{price}` in every language — a
+     * figure written into a translation goes stale exactly as silently as
+     * one written into the original, and `{priceLine}` is excluded for the
+     * reason Minor 2 recorded: it resolves to the unqualified claim the
+     * callout already states conditionally.
+     */
+    it("quote the price only as the {price} placeholder in the VAT section", () => {
+      const shippingPage = edition.find((page) => page.route === "legalShipping");
+      const vat = shippingPage?.body.find((section) =>
+        section.covers.includes("vat-presentation"),
+      );
+      const strings = [
+        vat?.callout?.lead ?? "",
+        vat?.callout?.detail ?? "",
+        ...(vat?.body ?? []),
+      ].join("\n");
+
+      expect(strings, "the VAT section is gone").not.toBe("\n");
+      expect(strings).toContain("{price}");
+      expect(strings).not.toContain("{priceLine}");
+    });
+
+    /**
+     * The statutory deadline, as a figure, in the section that discharges
+     * `withdrawal-deadline`. A translation that mislays the 14 is not a copy
+     * defect but a misstatement of the consumer's rights in the language
+     * they will rely on — and a figure survives translation verbatim, so it
+     * is the one part of the sentence a language-blind test can hold.
+     */
+    it("state the 14-day withdrawal period in figures", () => {
+      const returnsPage = edition.find((page) => page.route === "legalReturns");
+      const section = returnsPage?.body.find((candidate) =>
+        candidate.covers.includes("withdrawal-deadline"),
+      );
+      expect(section, "no section discharges withdrawal-deadline").toBeDefined();
+      expect((section?.body ?? []).join(" ")).toContain("14");
     });
 
     it("declare every section they say they contain", () => {
@@ -846,8 +937,16 @@ describe("the page registry", () => {
  * is a failure rather than progress.
  */
 describe("the locale dimension", () => {
-  it("has exactly one locale today, and it is the default one", () => {
-    expect([...LOCALES]).toEqual([DEFAULT_LOCALE]);
+  /**
+   * Still pinned, now at two. A locale appearing — or disappearing — without
+   * anybody deciding it is a failure, not progress. `et` is the operator's
+   * decision of 2026-08-09: the legal set translated for the Estonian
+   * consumer, after the second qualified legal read found consumer-facing
+   * terms in English only.
+   */
+  it("has exactly the two decided locales, and the default is the English one", () => {
+    expect([...LOCALES]).toEqual(["en", "et"]);
+    expect(DEFAULT_LOCALE).toBe("en");
   });
 
   it("names no locale twice, and knows its own members", () => {

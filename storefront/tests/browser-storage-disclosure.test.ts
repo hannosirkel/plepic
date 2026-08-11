@@ -70,7 +70,9 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { privacy } from "../../content/legal/privacy.js";
+import { legalPagesByLocale } from "../../content/legal/index.js";
+import { LOCALES, type Locale } from "../../content/routes.js";
+import { contentFor } from "../../content/schema.js";
 import { listSourceFiles } from "./helpers/source-files.js";
 
 const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -85,13 +87,52 @@ function withoutComments(source: string): string {
   return source.replaceAll(/\/\*[\s\S]*?\*\//g, " ").replaceAll(/\/\/[^\n]*/g, " ");
 }
 
-/** The Web Storage areas, as the privacy page has to describe them to a reader. */
-const STORAGE_DISCLOSURES = {
-  localStorage: "in your browser's local storage rather than as a cookie",
-  sessionStorage: "in your browser's session storage rather than as a cookie",
-} as const;
+/** The Web Storage areas the source scan looks for. */
+const STORAGE_AREAS = ["localStorage", "sessionStorage"] as const;
 
-type StorageArea = keyof typeof STORAGE_DISCLOSURES;
+type StorageArea = (typeof STORAGE_AREAS)[number];
+
+/**
+ * The Web Storage areas, as each edition's privacy page has to describe them
+ * to a reader — in that reader's own language. The store is one fact; the
+ * sentence disclosing it exists once per published edition, so the check
+ * runs once per published edition. Total over `Locale`, so an edition that
+ * publishes a privacy page cannot ship without its two disclosure sentences
+ * being written down here and asserted.
+ */
+const STORAGE_DISCLOSURES: Readonly<Record<Locale, Readonly<Record<StorageArea, string>>>> = {
+  en: {
+    localStorage: "in your browser's local storage rather than as a cookie",
+    sessionStorage: "in your browser's session storage rather than as a cookie",
+  },
+  et: {
+    localStorage: "kohalikku salvestusse (local storage), mitte küpsisena",
+    sessionStorage: "seansisalvestusse (session storage), mitte küpsisena",
+  },
+};
+
+/**
+ * The basket sentence, verbatim per edition: where it is stored, how long it
+ * survives, and what it contains, in that order. Checked whole because the
+ * three claims were verified against a running build, and a translation that
+ * drops one of them is a disclosure that stopped being the observation.
+ */
+const BASKET_SENTENCES: Readonly<Record<Locale, string>> = {
+  en:
+    "The contents of your basket are stored by this site in your browser's session storage " +
+    "rather than as a cookie. It is kept only until you close the tab, and it records nothing " +
+    "but which game you chose and how many.",
+  et:
+    "Sinu ostukorvi sisu salvestab see sait sinu brauseri seansisalvestusse (session storage), " +
+    "mitte küpsisena. Seda hoitakse ainult vahelehe sulgemiseni ja see ei salvesta muud kui " +
+    "seda, millise mängu sa valisid ja mitu.",
+};
+
+/** The cookie table's caption, per edition — the anchor the exclusion check holds on to. */
+const COOKIE_TABLE_CAPTIONS: Readonly<Record<Locale, string>> = {
+  en: "Cookies this site can set",
+  et: "Küpsised, mida see sait võib seada",
+};
 
 /**
  * The cookie-writing forms this scan knows, each with the name it reports.
@@ -143,7 +184,7 @@ for (const file of listSourceFiles(srcDir)) {
   const code = withoutComments(readFileSync(file, "utf8"));
   const name = relative(storefrontDir, file);
 
-  for (const area of Object.keys(STORAGE_DISCLOSURES) as readonly StorageArea[]) {
+  for (const area of STORAGE_AREAS) {
     // `window.sessionStorage.setItem(`, `sessionStorage.setItem(`, and the
     // `.removeItem(`/`.clear()` forms that imply the same store is in use.
     if (new RegExp(String.raw`\b${area}\s*\.\s*(setItem|removeItem|clear)\s*\(`).test(code)) {
@@ -164,8 +205,12 @@ for (const file of listSourceFiles(srcDir)) {
 }
 
 /** The prose above the table — where a non-cookie store is disclosed. */
-const consentSection = privacy.body.find((section) => section.anchor === "consent");
-const consentProse = (consentSection?.body ?? []).join("\n");
+function consentSectionIn(locale: Locale) {
+  const privacyPage = contentFor(legalPagesByLocale, locale).find(
+    (page) => page.route === "legalPrivacy",
+  );
+  return privacyPage?.body.find((section) => section.anchor === "consent");
+}
 
 describe("the privacy notice accounts for every browser store this site writes", () => {
   it("scanned the source tree and found stores to check", () => {
@@ -178,49 +223,65 @@ describe("the privacy notice accounts for every browser store this site writes",
     ).toEqual(["localStorage", "sessionStorage"]);
   });
 
-  it("discloses each one in prose, in the consent section, above the table", () => {
-    expect(consentSection, "the consent section is gone").toBeDefined();
+  /*
+   * The stores are one fact about the code; the sentences disclosing them
+   * exist once per published edition, and an edition whose privacy page
+   * missed one would describe two of the three ways this site stores
+   * something in a browser while reading as though it had described all of
+   * them — the exact defect the English page was found with on 2026-08-10.
+   */
+  for (const locale of LOCALES) {
+    const consentSection = consentSectionIn(locale);
+    const consentProse = (consentSection?.body ?? []).join("\n");
 
-    for (const [area, files] of writers) {
-      expect(
-        consentProse,
-        `${files.join(", ")} writes ${area} and /legal/privacy never says so`,
-      ).toContain(STORAGE_DISCLOSURES[area]);
-    }
-  });
+    it(`${locale}: discloses each one in prose, in the consent section, above the table`, () => {
+      expect(consentSection, "the consent section is gone").toBeDefined();
 
-  it("says what the basket store holds and how long it lasts, not merely that it exists", () => {
-    /*
-     * Checked against a running build rather than against a comment: after
-     * adding the game to the basket, `sessionStorage` held
-     * `{"plepic.basket":"[{\"id\":\"lunar-base\",\"quantity\":1}]"}` — a
-     * product id and an integer, no price, no address, nothing about a person
-     * — with `localStorage` holding only the consent decision and
-     * `document.cookie` empty. The three claims below are that observation.
-     */
-    expect(consentProse).toContain(
-      "The contents of your basket are stored by this site in your browser's session storage " +
-        "rather than as a cookie. It is kept only until you close the tab, and it records nothing " +
-        "but which game you chose and how many.",
-    );
-  });
+      for (const [area, files] of writers) {
+        expect(
+          consentProse,
+          `${files.join(", ")} writes ${area} and the ${locale} privacy page never says so`,
+        ).toContain(STORAGE_DISCLOSURES[locale][area]);
+      }
+    });
 
-  it("keeps the two non-cookie stores out of the cookie table", () => {
-    /*
-     * The operator's decision of 2026-08-10, and the structure the page
-     * depends on: the table is cookies, everything else this site stores is
-     * prose above it. A store moved into the table would have three of its
-     * four columns empty and would claim a provider it does not have.
-     */
-    const table = consentSection?.table;
-    expect(table?.caption, "the caption a second reader relied on moved").toBe(
-      "Cookies this site can set",
-    );
-    expect(table?.columns).toEqual(["Cookie", "Provider", "Purpose", "Duration"]);
+    it(`${locale}: says what the basket store holds and how long it lasts, not merely that it exists`, () => {
+      /*
+       * Checked against a running build rather than against a comment: after
+       * adding the game to the basket, `sessionStorage` held
+       * `{"plepic.basket":"[{\"id\":\"lunar-base\",\"quantity\":1}]"}` — a
+       * product id and an integer, no price, no address, nothing about a person
+       * — with `localStorage` holding only the consent decision and
+       * `document.cookie` empty. The claims below are that observation, in the
+       * edition's own words.
+       */
+      expect(consentProse).toContain(BASKET_SENTENCES[locale]);
+    });
 
-    const tableText = [...(table?.rows ?? []).flat(), ...(table?.notes ?? [])].join("\n");
-    expect(tableText).not.toMatch(/session storage|local storage/i);
-  });
+    it(`${locale}: keeps the two non-cookie stores out of the cookie table`, () => {
+      /*
+       * The operator's decision of 2026-08-10, and the structure the page
+       * depends on: the table is cookies, everything else this site stores is
+       * prose above it. A store moved into the table would have three of its
+       * four columns empty and would claim a provider it does not have.
+       *
+       * The exclusion pattern carries both languages at once: the Estonian
+       * sentences name each store with its English term in parentheses, so
+       * the English words alone would catch a move, but the Estonian words
+       * are matched too rather than relied on to tag along.
+       */
+      const table = consentSectionIn(locale)?.table;
+      expect(table?.caption, "the caption a second reader relied on moved").toBe(
+        COOKIE_TABLE_CAPTIONS[locale],
+      );
+      expect(table?.columns).toHaveLength(4);
+
+      const tableText = [...(table?.rows ?? []).flat(), ...(table?.notes ?? [])].join("\n");
+      expect(tableText).not.toMatch(
+        /session storage|local storage|seansisalvestus|kohalik\w* salvestus/i,
+      );
+    });
+  }
 
   it("fails rather than guessing on every cookie-write form it knows", () => {
     expect(

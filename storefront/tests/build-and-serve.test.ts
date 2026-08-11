@@ -73,7 +73,6 @@ import { resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import {
-  DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
   ROUTE_PATHS,
@@ -1907,16 +1906,23 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
 describe("the served document declares its language and its alternates", () => {
   const HOST = "runtime.example.com";
 
-  it("declares the default edition's language tag on every served page", async () => {
-    const expected = LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag;
+  /*
+   * Every edition, not the default one: an Estonian legal page served with
+   * `lang="en"` tells a screen reader to pronounce Estonian statutory terms
+   * as English, on exactly the pages a reader consults about their rights.
+   */
+  it("declares each edition's own language tag on every page it publishes", async () => {
+    for (const locale of LOCALES) {
+      const expected = LOCALE_DEFINITIONS[locale].languageTag;
 
-    for (const page of pagesIn(DEFAULT_LOCALE)) {
-      const path = localizedPath(DEFAULT_LOCALE, ROUTE_PATHS[page.route]);
-      const response = await requestWithHost(server.port, path, HOST);
-      expect(response.status, path).toBe(200);
+      for (const page of pagesIn(locale)) {
+        const path = localizedPath(locale, ROUTE_PATHS[page.route]);
+        const response = await requestWithHost(server.port, path, HOST);
+        expect(response.status, path).toBe(200);
 
-      const match = /<html[^>]*\slang="([^"]*)"/.exec(response.body);
-      expect(match?.[1], `${path} does not declare a language`).toBe(expected);
+        const match = /<html[^>]*\slang="([^"]*)"/.exec(response.body);
+        expect(match?.[1], `${path} does not declare its language`).toBe(expected);
+      }
     }
   });
 
