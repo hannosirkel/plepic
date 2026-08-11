@@ -91,9 +91,20 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
   },
   et: {
     brandHomeLabel: "Plepic Games, avaleht",
-    primaryNavLabel: "Peamine",
+    /*
+     * A whole noun, not the bare adjective "Peamine": the label composes
+     * with the announced role for an English ear ("Primary" + navigation),
+     * but a screen-reader user hears the Estonian label on its own, and an
+     * adjective with no head noun hangs in the air.
+     */
+    primaryNavLabel: "Peamenüü",
     navAbout: "Meist",
-    navSupport: "Kasutajatugi",
+    /*
+     * "Klienditugi", not "kasutajatugi": this is a shop, so the person is a
+     * customer, and Estonian e-commerce says klienditugi. Kasutajatugi is
+     * software vocabulary.
+     */
+    navSupport: "Klienditugi",
     menuLabel: "Menüü",
     basketLabel: "Ostukorv",
     legalNavLabel: "Juriidiline teave",
@@ -105,7 +116,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
       legalPrivacy: "Privaatsus",
     },
     languageNavLabel: "Keel",
-    draftNote: "Mustand, ootab halduri heakskiitu.",
+    draftNote: "Mustand, ootab haldaja heakskiitu.",
     noticeHeading: "See teade on puudulik.",
     noticeBody: (missing) =>
       missing.length === 1
