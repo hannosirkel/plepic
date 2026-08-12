@@ -8,7 +8,8 @@
     "node": ">=24.18.0"
   },
   "workspaces": [
-    "storefront"
+    "storefront",
+    "backend"
   ],
   "scripts": {
     "lint": "eslint .",

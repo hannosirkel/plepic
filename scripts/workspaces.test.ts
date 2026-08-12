@@ -35,8 +35,9 @@ describe("declaresWorkspace", () => {
 });
 
 describe("this repository's package.json", () => {
-  it("declares the storefront workspace that later PR units fill in", () => {
+  it("declares the storefront and backend application workspaces", () => {
     const pkg = readRootPackageJson(repoRoot);
     expect(declaresWorkspace(pkg, "storefront")).toBe(true);
+    expect(declaresWorkspace(pkg, "backend")).toBe(true);
   });
 });

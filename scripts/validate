@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+plepic_medusa_config_dir="$(mktemp -d "${TMPDIR:-/tmp}/plepic-medusa-config.XXXXXX")"
+trap 'rm -rf -- "${plepic_medusa_config_dir}"' EXIT
+
 npm run lint
 # The root tsconfig covers content/, design/ and scripts/ only, so the
 # storefront's program is typechecked explicitly -- otherwise the seam's
@@ -8,4 +11,19 @@ npm run lint
 # enforced by CI for the content/ half.
 npm run typecheck
 npm run typecheck --workspace storefront
+npm run typecheck --workspace backend
+env \
+  NODE_ENV=production \
+  DATABASE_URL=postgres://app:password@database:5432/medusa \
+  JWT_SECRET=validation-jwt-secret \
+  COOKIE_SECRET=validation-cookie-secret \
+  STORE_CORS=https://store.example.test \
+  ADMIN_CORS=https://admin.example.test \
+  AUTH_CORS=https://store.example.test \
+  MEDUSA_DISABLE_TELEMETRY=true \
+  XDG_CONFIG_HOME="${plepic_medusa_config_dir}" \
+  npm run build --workspace backend
+test -s backend/.medusa/server/medusa-config.js
+test -s backend/.medusa/server/src/config/runtime.js
+test ! -e backend/.medusa/server/tests/runtime-config.test.js
 npm run test:unit
