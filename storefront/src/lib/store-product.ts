@@ -6,6 +6,14 @@ interface StoreProductResponse {
   readonly products?: readonly unknown[];
 }
 
+const STORE_PRODUCT_FIELDS = [
+  "id",
+  "title",
+  "*variants",
+  "+variants.calculated_price",
+  "+variants.inventory_quantity",
+].join(",");
+
 function record(value: unknown, label: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new ConfigError(`Medusa Store response has no ${label}`);
@@ -95,7 +103,7 @@ export async function loadStoreCatalogueProduct({
   }
   const url = new URL("/store/products", backendUrl);
   url.searchParams.set("limit", "1");
-  url.searchParams.set("fields", "id,title,variants.*");
+  url.searchParams.set("fields", STORE_PRODUCT_FIELDS);
   const response = await fetch(url, {
     cache: "no-store",
     headers: { "x-publishable-api-key": publishableKey },
@@ -115,7 +123,7 @@ export async function loadStoreProduct(input: {
   }
   const url = new URL("/store/products", backendUrl);
   url.searchParams.set("limit", "1");
-  url.searchParams.set("fields", "id,title,variants.*");
+  url.searchParams.set("fields", STORE_PRODUCT_FIELDS);
   const response = await fetch(url, { cache: "no-store", headers: { "x-publishable-api-key": publishableKey } });
   if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
   const body = (await response.json()) as StoreProductResponse;

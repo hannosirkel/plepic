@@ -147,7 +147,9 @@ import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import {
   addGuestShippingMethod,
+  currentAddressTotals,
   prepareGuestShipping,
+  type AddressBoundTotals,
   type GuestShippingOption,
 } from "../../lib/store-checkout.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
@@ -284,7 +286,7 @@ export function CheckoutPageContent({
      option being submitted during the debounce for a changed address. */
   const [shippingOptionsAddress, setShippingOptionsAddress] = useState<string | null>(null);
   const [selectedShippingOption, setSelectedShippingOption] = useState("");
-  const [storeTotals, setStoreTotals] = useState<ReturnType<typeof cartTotals> | null>(null);
+  const [storeTotals, setStoreTotals] = useState<AddressBoundTotals | null>(null);
   const [shippingState, setShippingState] = useState<"idle" | "loading" | "error">("idle");
   const shippingRequest = useRef(0);
   /*
@@ -310,7 +312,10 @@ export function CheckoutPageContent({
     () => ({ ...cartTotals(lines, { deliveryZone: null }), shippingAmount: null, orderAmount: null }),
     [lines],
   );
-  const totals = scenario === null ? storeTotals ?? pendingStoreTotals : mockTotals;
+  const totals =
+    scenario === null
+      ? currentAddressTotals(storeTotals, addressRevision) ?? pendingStoreTotals
+      : mockTotals;
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
@@ -365,7 +370,8 @@ export function CheckoutPageContent({
   function selectShippingOption(optionId: string): void {
     // This is intentionally a runtime guard as well as a disabled control:
     // a stale event must not attach the previous address's delivery method.
-    if (shippingOptionsAddress !== addressRevision) return;
+    if (shippingOptionsAddress !== addressRevision || addressRevision === null) return;
+    const selectedAddressRevision = addressRevision;
     const request = ++shippingRequest.current;
     setSelectedShippingOption(optionId);
     setStoreTotals(null);
@@ -383,7 +389,7 @@ export function CheckoutPageContent({
     ).then(
       (nextTotals) => {
         if (request !== shippingRequest.current) return;
-        setStoreTotals(nextTotals);
+        setStoreTotals({ addressRevision: selectedAddressRevision, totals: nextTotals });
         setShippingState("idle");
       },
       () => {

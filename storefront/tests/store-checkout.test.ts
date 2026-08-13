@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createMedusaStoreClient } from "../src/lib/medusa-client.js";
 import {
   addGuestShippingMethod,
+  currentAddressTotals,
   prepareGuestShipping,
 } from "../src/lib/store-checkout.js";
 
@@ -153,9 +154,40 @@ describe("guest checkout Store operations", () => {
       },
     ]);
   });
+
+  it("accepts a literal zero-priced free shipping option", async () => {
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.setHeader("content-type", "application/json");
+        if (request.url === "/store-api/store/carts/cart_example") {
+          response.end('{"cart":{"id":"cart_example"}}');
+        } else {
+          response.end(
+            '{"shipping_options":[{"id":"so_free","name":"Free delivery","amount":0}]}',
+          );
+        }
+      });
+    });
+    servers.push(server);
+    const origin = await listen(server);
+    const client = createMedusaStoreClient(
+      { basePath: "/store-api", publishableKey: "pk_example_checkout" },
+      origin,
+    );
+
+    await expect(prepareGuestShipping(client, "cart_example", address)).resolves.toEqual([
+      { id: "so_free", name: "Free delivery", amount: 0 },
+    ]);
+  });
 });
 
 describe("checkout shipping option address binding", () => {
+  it("withholds authoritative totals once the completed address changes", () => {
+    const totals = { currency: "EUR", goodsAmount: 2500, shippingAmount: 700, orderAmount: 3200 };
+    expect(currentAddressTotals({ addressRevision: "address-a", totals }, "address-a")).toEqual(totals);
+    expect(currentAddressTotals({ addressRevision: "address-a", totals }, "address-b")).toBeNull();
+  });
   it("refuses the stale-option window when a complete address revision begins", () => {
     // This is a source-level contract because the storefront unit suite is
     // Node-only. It pins both defences: render-time disabling for the effect
@@ -165,7 +197,9 @@ describe("checkout shipping option address binding", () => {
       "utf8",
     );
     expect(source).toContain("shippingOptionsAddress !== addressRevision");
-    expect(source).toContain("if (shippingOptionsAddress !== addressRevision) return;");
+    expect(source).toContain(
+      "if (shippingOptionsAddress !== addressRevision || addressRevision === null) return;",
+    );
     expect(source).toContain("setShippingOptions([]);");
     expect(source).toContain("setSelectedShippingOption(\"\");");
   });

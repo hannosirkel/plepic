@@ -19,6 +19,19 @@ export interface GuestShippingOption {
   readonly amount: number;
 }
 
+export interface AddressBoundTotals {
+  readonly addressRevision: string;
+  readonly totals: CartTotals;
+}
+
+/** Returns totals only while they belong to the address currently on screen. */
+export function currentAddressTotals(
+  value: AddressBoundTotals | null,
+  addressRevision: string | null,
+): CartTotals | null {
+  return value?.addressRevision === addressRevision ? value.totals : null;
+}
+
 function countryCode(countryName: string): string {
   const country = deliveryCountries.find((candidate) => candidate.name === countryName);
   if (country === undefined) throw new ConfigError("The selected delivery country is unavailable");
@@ -48,7 +61,7 @@ function shippingOptions(value: unknown): readonly GuestShippingOption[] {
       typeof option.name !== "string" ||
       option.name.length === 0 ||
       !Number.isInteger(option.amount) ||
-      (option.amount as number) <= 0
+      (option.amount as number) < 0
     ) {
       throw new ConfigError("Medusa returned a malformed shipping option");
     }

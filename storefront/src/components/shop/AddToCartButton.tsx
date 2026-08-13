@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
@@ -13,18 +13,26 @@ function runtimeConfig(): ClientRuntimeConfig {
   return JSON.parse(element.textContent) as ClientRuntimeConfig;
 }
 
+/** Claims the click synchronously, before a state update can trigger a rerender. */
+export function claimAddAttempt(inFlight: { current: boolean }): boolean {
+  if (inFlight.current) return false;
+  inFlight.current = true;
+  return true;
+}
+
 /** The canonical CTA slot's only client behaviour: create/reuse a guest cart and add this variant. */
 export function AddToCartButton({ label, variantId }: { readonly label: string; readonly variantId: string | null }) {
   const [state, setState] = useState<"idle" | "adding" | "error">("idle");
+  const inFlight = useRef(false);
   const unavailable = variantId === null;
   return (
     <button
       type="button"
       className={`${styles.cta} ${styles.primary} ${styles.linkReplacement}`}
       aria-busy={state === "adding"}
-      disabled={unavailable}
+      disabled={unavailable || state === "adding"}
       onClick={() => {
-        if (variantId === null) return;
+        if (variantId === null || !claimAddAttempt(inFlight)) return;
         void (async () => {
           setState("adding");
           try {
@@ -49,6 +57,7 @@ export function AddToCartButton({ label, variantId }: { readonly label: string; 
             }
             window.location.assign("/cart");
           } catch {
+            inFlight.current = false;
             setState("error");
           }
         })();
