@@ -113,7 +113,11 @@ The Plepic Games storefront and Medusa backend monorepo.
   returned an amount-bound session matching the total on screen. Only a
   successful Stripe confirmation followed by an explicit Medusa order clears
   the cart and shows confirmation; processing redirects return through
-  `/checkout/payment-return`. `?mock=` requests either route in a given state
+  `/checkout/payment-return`. Standard Store cart completion is server-gated by
+  Cloudflare Turnstile; the checkout sends its bounded response only in the
+  dedicated completion header. A redirect return renders a fresh Turnstile
+  challenge and requires an explicit completion submission, so no one-use
+  response crosses the payment-provider redirect. `?mock=` requests either route in a given state
   (`filled`, `updating`, `removing`, `unavailable`, `error`, `placing`) so the
   loading and error layouts can be inspected on a real device; it belongs to
   the mock data layer and leaves with it.

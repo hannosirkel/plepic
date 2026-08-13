@@ -1,13 +1,13 @@
 import { createServer, type Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createMedusaStoreClient } from "../src/lib/medusa-client.js";
 import {
   completeStripeOrder,
-  completeStripeOrderWithRetry,
   confirmAndCompleteStripeOrder,
   createSerialPaymentInitializer,
   initiateStripePayment,
+  returnOrderDisclosure,
   stripeConfirmationForStatus,
   STRIPE_PROVIDER_ID,
 } from "../src/lib/store-payment.js";
@@ -50,6 +50,34 @@ describe("Stripe payment session Store operations", () => {
   const servers: Server[] = [];
 
   afterEach(async () => Promise.all(servers.map(close)));
+
+  it("accepts only a complete authoritative cart for return-page order disclosure", () => {
+    expect(returnOrderDisclosure({
+      cart: {
+        id: "cart_example",
+        currency_code: "eur",
+        item_total: 25,
+        subtotal: 32,
+        shipping_total: 7,
+        total: 32,
+        items: [{ title: "Lunar Base", quantity: 1 }],
+        shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
+        shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
+      },
+    }, "cart_example")).toEqual({
+      currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 2500, shippingAmount: 700,
+      orderAmount: 3200, address: "Ada, Moon Street 1, 10101, Tallinn, EE",
+    });
+    expect(() => returnOrderDisclosure({
+      cart: {
+        id: "cart_example", currency_code: "eur", subtotal: 32,
+        shipping_total: 7, total: 32, items: [{ title: "Lunar Base", quantity: 1 }],
+        shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
+        shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
+      },
+    }, "cart_example")).toThrow(/complete checkout disclosure/);
+    expect(() => returnOrderDisclosure({ cart: { id: "cart_example" } }, "cart_example")).toThrow(/complete checkout disclosure/);
+  });
 
   it("initiates the one maintained Stripe provider against the current cart total", async () => {
     const seen: SeenRequest[] = [];
@@ -159,11 +187,46 @@ describe("Stripe payment session Store operations", () => {
       });
       servers.push(server);
       const origin = await listen(server);
-      outcomes.push(completeStripeOrder(client(origin), "cart_example"));
+      outcomes.push(completeStripeOrder(client(origin), "cart_example", "synthetic-checkout-token"));
     }
 
     await expect(outcomes[0]).resolves.toEqual({ orderId: "order_example", displayId: 42 });
     await expect(outcomes[1]).rejects.toThrow("Medusa did not place the order");
+  });
+
+  it("sends the bounded Turnstile token only in the cart completion request header", async () => {
+    const seen: SeenRequest[] = [];
+    const headers: string[] = [];
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        seen.push({ method: request.method ?? "", path: request.url ?? "", body: null });
+        headers.push(String(request.headers["x-plepic-turnstile-token"] ?? ""));
+        response.setHeader("content-type", "application/json");
+        response.end('{"type":"order","order":{"id":"order_example","display_id":42}}');
+      });
+    });
+    servers.push(server);
+    const origin = await listen(server);
+
+    await expect(
+      completeStripeOrder(client(origin), "cart_example", "synthetic-checkout-token"),
+    ).resolves.toEqual({ orderId: "order_example", displayId: 42 });
+
+    expect(seen).toEqual([{ method: "POST", path: "/store-api/store/carts/cart_example/complete", body: null }]);
+    expect(headers).toEqual(["synthetic-checkout-token"]);
+  });
+
+  it("rejects missing and oversized completion tokens before calling Medusa", async () => {
+    const complete = vi.fn();
+    const storeClient = { store: { cart: { complete } } };
+
+    for (const token of ["", "x".repeat(4097)] as const) {
+      await expect(completeStripeOrder(storeClient as never, "cart_example", token)).rejects.toThrow(
+        /verification challenge/i,
+      );
+    }
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("never asks Medusa to complete when Stripe reports a confirmation error", async () => {
@@ -226,7 +289,7 @@ describe("Stripe payment session Store operations", () => {
     expect(stripeConfirmationForStatus(undefined)).toMatchObject({ ok: false, pending: false });
   });
 
-  it("retries asynchronous redirect completion until Medusa returns an explicit order", async () => {
+  it("makes exactly one redirect completion request per fresh Turnstile response", async () => {
     let attempts = 0;
     const server = createServer((request, response) => {
       request.resume();
@@ -234,9 +297,7 @@ describe("Stripe payment session Store operations", () => {
         attempts += 1;
         response.setHeader("content-type", "application/json");
         response.end(
-          attempts < 3
-            ? '{"type":"cart","cart":{"id":"cart_example"},"error":{"message":"Payment is processing"}}'
-            : '{"type":"order","order":{"id":"order_example","display_id":42}}',
+          '{"type":"cart","cart":{"id":"cart_example"},"error":{"message":"Payment is processing"}}',
         );
       });
     });
@@ -244,8 +305,8 @@ describe("Stripe payment session Store operations", () => {
     const origin = await listen(server);
 
     await expect(
-      completeStripeOrderWithRetry(client(origin), "cart_example", { attempts: 3, delayMs: 0 }),
-    ).resolves.toEqual({ orderId: "order_example", displayId: 42 });
-    expect(attempts).toBe(3);
+      completeStripeOrder(client(origin), "cart_example", "synthetic-return-token"),
+    ).rejects.toThrow("Medusa did not place the order");
+    expect(attempts).toBe(1);
   });
 });

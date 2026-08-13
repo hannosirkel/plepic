@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRef } from "react";
 import { describe, expect, it } from "vitest";
@@ -40,11 +41,22 @@ describe("Stripe Payment Element fail-closed states", () => {
 });
 
 describe("redirect-based Stripe payment return", () => {
-  it("starts in a non-confirming state until Medusa returns an explicit order", () => {
-    const html = renderToStaticMarkup(<StripePaymentReturn />);
-    expect(html).toContain('role="status"');
-    expect(html).toContain("Confirming your order");
+  it("withholds the return action until it can load authoritative order disclosures", () => {
+    const html = renderToStaticMarkup(
+      <StripePaymentReturn turnstileSiteKey="synthetic-site-key" nonce="synthetic-nonce" />,
+    );
+    expect(html).toContain("Loading your order details");
+    expect(html).not.toContain('data-testid="turnstile-checkout-return"');
     expect(html).not.toContain("Order confirmed");
+  });
+
+  it("declares the dedicated payment-safe POST fallback once disclosures load", () => {
+    const source = readFileSync(
+      new URL("../src/components/shop/StripePaymentReturn.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain('action={PAYMENT_RETURN_ORDER_POST_PATH}');
+    expect(source).not.toContain('action={CHECKOUT_ORDER_POST_PATH}');
   });
 });
 

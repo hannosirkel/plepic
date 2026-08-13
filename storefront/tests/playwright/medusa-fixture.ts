@@ -22,6 +22,7 @@ const product = {
     },
   ],
 };
+const completions = new Map<string, string[]>();
 
 const server = createServer((request, response) => {
   if (request.url === "/health") {
@@ -29,6 +30,24 @@ const server = createServer((request, response) => {
     response.end("ok");
     return;
   }
+
+  const cart = /^\/store\/carts\/(cart_return_[\w-]+)$/.exec(request.url ?? "");
+  if (cart !== null && request.method === "GET") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ cart: { id: cart[1]!, currency_code: "eur", item_total: 25, subtotal: 32, shipping_total: 7, total: 32, items: [{ title: "Lunar Base", quantity: 1 }], shipping_address: { first_name: "Ada", address_1: "1 Example Street", postal_code: "10115", city: "Tallinn", country_code: "ee" }, shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }] } }));
+    return;
+  }
+  const completion = /^\/store\/carts\/(cart_return_[\w-]+)\/complete$/.exec(request.url ?? "");
+  if (completion !== null && request.method === "POST") {
+    const tokens = completions.get(completion[1]!) ?? [];
+    tokens.push(String(request.headers["x-plepic-turnstile-token"] ?? ""));
+    completions.set(completion[1]!, tokens);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(tokens.length === 1 ? { type: "cart" } : { type: "order", order: { id: "order_fixture", display_id: 42 } }));
+    return;
+  }
+  const inspect = /^\/inspect\/(cart_return_[\w-]+)$/.exec(request.url ?? "");
+  if (inspect !== null) { response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify({ tokens: completions.get(inspect[1]!) ?? [] })); return; }
 
   if ((request.url ?? "").startsWith("/store/products?limit=1&fields=")) {
     response.writeHead(200, { "content-type": "application/json" });

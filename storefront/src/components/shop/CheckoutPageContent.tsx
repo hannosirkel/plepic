@@ -309,6 +309,7 @@ export function CheckoutPageContent({
   >(null);
   const [paymentState, setPaymentState] = useState<"idle" | "loading" | "error">("idle");
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [challengeRevision, setChallengeRevision] = useState(0);
   const [completedOrder, setCompletedOrder] = useState<CompletedStoreOrder | null>(null);
   const shippingRequest = useRef(0);
   const paymentRequest = useRef(0);
@@ -477,6 +478,7 @@ export function CheckoutPageContent({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    const turnstileToken = new FormData(event.currentTarget).get("cf-turnstile-response");
     if (attemptInFlight.current) return;
     // Leaves a painted `?mock=placing` rather than being swallowed by it. In
     // every other case this is already `false`, because a real attempt in
@@ -505,6 +507,14 @@ export function CheckoutPageContent({
      * has not shown them the total.
      */
     if (!orderMayBePlaced({ lines, addressComplete, totals })) return;
+    if (
+      typeof turnstileToken !== "string" ||
+      turnstileToken.trim().length === 0 ||
+      turnstileToken.trim().length > 4096
+    ) {
+      setPaymentError("Complete the verification challenge before placing the order.");
+      return;
+    }
 
     attemptInFlight.current = true;
     setPlacing(true);
@@ -534,7 +544,11 @@ export function CheckoutPageContent({
     setPaymentError(null);
     void confirmAndCompleteStripeOrder(
       () => paymentElementRef.current!.confirm(),
-      () => completeStripeOrder(createMedusaStoreClient(browserRuntimeConfig().medusa), cartId),
+      () => completeStripeOrder(
+        createMedusaStoreClient(browserRuntimeConfig().medusa),
+        cartId,
+        turnstileToken,
+      ),
     ).then(
       (order) => {
         forgetMedusaCartId();
@@ -550,6 +564,7 @@ export function CheckoutPageContent({
             ? error.message
             : "Payment could not be completed. Nothing has been charged.",
         );
+        setChallengeRevision((value) => value + 1);
         window.requestAnimationFrame(() => outcomeRef.current?.focus());
       },
     );
@@ -824,7 +839,7 @@ export function CheckoutPageContent({
 
           <HoneypotField formName="checkout" />
           <div className={styles.turnstile}>
-            <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="checkout" />
+            <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="checkout" resetKey={challengeRevision} />
           </div>
         </section>
 

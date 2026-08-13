@@ -1,5 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("https://challenges.cloudflare.com/**", async (route) => {
+    await route.fulfill({ contentType: "application/javascript", body: `window.turnstile={render:(e)=>{e.innerHTML='<input type="hidden" name="cf-turnstile-response" value="">';return 'fixture'},reset:()=>{document.querySelector('[name=cf-turnstile-response]').value=''}}` });
+  });
+});
+
+async function supplyTurnstileResponse(page: Page, value: string): Promise<void> {
+  await page.locator('[name="cf-turnstile-response"]').evaluate(
+    (element, response) => { (element as HTMLInputElement).value = response; },
+    value,
+  );
+}
+
 const visualRoutes = [
   ["home", "/"],
   ["lunar-base", "/games/lunar-base"],
@@ -202,6 +215,7 @@ test("Article 8(2) invariant: no order placement succeeds where all six Article 
   const orderSummary = page.getByRole("heading", { name: "Your order" }).locator("..");
   await expect(orderSummary.getByText("€7.00", { exact: true })).toBeVisible();
   await expect(orderSummary.getByText("€32.00", { exact: true })).toBeVisible();
+  await supplyTurnstileResponse(page, "synthetic-checkout-token");
   await order.click();
   await expect(page.getByRole("alert").filter({ hasText: "card payment is not connected" })).toContainText(
     "No order was placed and nothing was charged: card payment is not connected on this site yet.",
@@ -222,4 +236,28 @@ test("Article 8(2) invariant: no order placement succeeds where all six Article 
   await expect(order).toHaveAttribute("aria-disabled", "true");
   await page.waitForTimeout(500);
   await expect(page.getByRole("alert").filter({ hasText: "card payment is not connected" })).toHaveCount(0);
+});
+
+test("payment return renews Turnstile and completes only on Medusa order", async ({ page }, testInfo) => {
+  const cartId = `cart_return_${testInfo.project.name}_${testInfo.workerIndex}`;
+  await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
+  await page.goto("/checkout/payment-return");
+  await expect(page.getByText("€25.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("€32.00", { exact: true })).toBeVisible();
+  const form = page.locator("form");
+  await expect(form).toHaveAttribute("method", "post");
+  await expect(form).toHaveAttribute("action", "/checkout/payment-return/order");
+  await expect(form.locator('[name="cf-turnstile-response"]')).toHaveValue("");
+  await page.getByRole("button", { name: "Order with obligation to pay" }).click();
+  await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: [] });
+  await supplyTurnstileResponse(page, "synthetic-return-token-one");
+  await page.getByRole("button", { name: "Order with obligation to pay" }).dblclick();
+  await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: ["synthetic-return-token-one"] });
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("plepic.medusa.cart-id"))).toBe(cartId);
+  await expect(form.locator('[name="cf-turnstile-response"]')).toHaveValue("");
+  await supplyTurnstileResponse(page, "synthetic-return-token-two");
+  await page.getByRole("button", { name: "Order with obligation to pay" }).click();
+  await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: ["synthetic-return-token-one", "synthetic-return-token-two"] });
+  await expect(page.getByText("Order confirmed")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("plepic.medusa.cart-id"))).toBeNull();
 });

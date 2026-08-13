@@ -59,6 +59,7 @@ export default defineConfig({
         ANALYTICS_MEASUREMENT_ID: "G-PLAYWRIGHTTEST",
         MEDUSA_BACKEND_URL: "http://127.0.0.1:3199",
         MEDUSA_PUBLISHABLE_API_KEY: "pk_playwright_fixture",
+        TURNSTILE_SITE_KEY: "synthetic-playwright-turnstile-site-key",
       },
       timeout: 120_000,
     },

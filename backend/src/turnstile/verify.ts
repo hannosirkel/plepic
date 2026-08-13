@@ -13,7 +13,7 @@ export async function verifyTurnstile(
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ secret, response: token }),
     });
-    if (!response.ok) return "rejected";
+    if (!response.ok) return "unavailable";
     const result = await response.json() as { readonly success?: unknown };
     return result.success === true ? "verified" : "rejected";
   } catch {

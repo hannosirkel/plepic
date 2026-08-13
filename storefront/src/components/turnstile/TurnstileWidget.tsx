@@ -18,6 +18,7 @@
  */
 
 import Script from "next/script";
+import { useEffect, useRef, useState } from "react";
 
 export interface TurnstileWidgetProps {
   /** From runtime configuration. `null` renders nothing rather than a broken widget. */
@@ -85,22 +86,43 @@ export interface TurnstileWidgetProps {
    * newsletter and checkout all take this default.
    */
   readonly size?: "normal" | "compact" | "flexible";
+  /** Resets an already rendered challenge after its one-use response is spent. */
+  readonly resetKey?: number;
 }
 
-export function TurnstileWidget({ siteKey, nonce, formName, size = "compact" }: TurnstileWidgetProps) {
+declare global {
+  interface Window { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => string; reset: (id: string) => void }; }
+}
+
+export function TurnstileWidget({ siteKey, nonce, formName, size = "compact", resetKey = 0 }: TurnstileWidgetProps) {
+  const element = useRef<HTMLDivElement>(null);
+  const widgetId = useRef<string | null>(null);
+  const lastReset = useRef(resetKey);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!loaded || element.current === null || window.turnstile === undefined) return;
+    if (widgetId.current === null) {
+      widgetId.current = window.turnstile.render(element.current, { sitekey: siteKey, size });
+      return;
+    }
+    if (lastReset.current !== resetKey) window.turnstile.reset(widgetId.current);
+    lastReset.current = resetKey;
+  }, [loaded, resetKey, siteKey, size]);
   if (siteKey === null) return null;
 
   return (
     <>
       <Script
         id="cf-turnstile-script"
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
         strategy="afterInteractive"
         nonce={nonce}
         async
         defer
+        onReady={() => setLoaded(true)}
       />
       <div
+        ref={element}
         className="cf-turnstile"
         data-sitekey={siteKey}
         data-size={size}

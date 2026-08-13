@@ -1,6 +1,6 @@
 import { ConfigError } from "../config/env.js";
 import type { createMedusaStoreClient } from "./medusa-client.js";
-import { minorToMedusaMajor } from "./store-money.js";
+import { medusaMajorToMinor, minorToMedusaMajor } from "./store-money.js";
 
 type StoreClient = ReturnType<typeof createMedusaStoreClient>;
 
@@ -105,9 +105,58 @@ export interface CompletedStoreOrder {
   readonly displayId: number;
 }
 
+export interface ReturnOrderDisclosure {
+  readonly currency: string;
+  readonly goods: string;
+  readonly goodsAmount: number;
+  readonly shippingAmount: number;
+  readonly orderAmount: number;
+  readonly address: string;
+}
+
+/** Validates the current Medusa cart before it can power a return-page order action. */
+export function returnOrderDisclosure(value: unknown, cartId: string): ReturnOrderDisclosure {
+  const cart = (value as { cart?: Record<string, unknown> }).cart;
+  const items = cart?.items;
+  const address = cart?.shipping_address as Record<string, unknown> | undefined;
+  const methods = cart?.shipping_methods;
+  if (
+    cart?.id !== cartId || typeof cart.currency_code !== "string" ||
+    typeof cart.item_total !== "number" || typeof cart.shipping_total !== "number" ||
+    typeof cart.total !== "number" || !Array.isArray(items) || items.length === 0 ||
+    !Array.isArray(methods) || methods.length !== 1 || address === undefined
+  ) throw new ConfigError("Medusa returned no complete checkout disclosure");
+  const goods = items.map((item) => {
+    const source = item as Record<string, unknown>;
+    if (typeof source.title !== "string" || !Number.isInteger(source.quantity)) {
+      throw new ConfigError("Medusa returned no complete checkout disclosure");
+    }
+    return `${source.title} × ${String(source.quantity)}`;
+  }).join(", ");
+  const addressParts = [address.first_name, address.address_1, address.postal_code, address.city, address.country_code];
+  if (addressParts.some((part) => typeof part !== "string" || part.length === 0)) {
+    throw new ConfigError("Medusa returned no complete checkout disclosure");
+  }
+  return {
+    currency: cart.currency_code.toUpperCase(), goods,
+    goodsAmount: medusaMajorToMinor(cart.item_total, cart.currency_code),
+    shippingAmount: medusaMajorToMinor(cart.shipping_total, cart.currency_code),
+    orderAmount: medusaMajorToMinor(cart.total, cart.currency_code),
+    address: addressParts.map((part) => String(part).toUpperCase() === String(address.country_code).toUpperCase() ? String(part).toUpperCase() : String(part)).join(", "),
+  };
+}
+
 export type StripeConfirmation =
   | { readonly ok: true }
   | { readonly ok: false; readonly pending: boolean; readonly message: string };
+
+function checkoutTurnstileToken(value: string): string {
+  const token = value.trim();
+  if (token.length === 0 || token.length > 4096) {
+    throw new ConfigError("Complete the verification challenge before placing the order.");
+  }
+  return token;
+}
 
 export function stripeConfirmationForStatus(status: string | undefined): StripeConfirmation {
   if (status === "succeeded") return { ok: true };
@@ -149,8 +198,11 @@ export async function confirmAndCompleteStripeOrder(
 export async function completeStripeOrder(
   client: StoreClient,
   cartId: string,
+  turnstileToken: string,
 ): Promise<CompletedStoreOrder> {
-  const result = (await client.store.cart.complete(cartId)) as {
+  const result = (await client.store.cart.complete(cartId, undefined, {
+    "x-plepic-turnstile-token": checkoutTurnstileToken(turnstileToken),
+  })) as {
     type?: unknown;
     order?: { id?: unknown; display_id?: unknown };
   };
@@ -163,29 +215,4 @@ export async function completeStripeOrder(
     throw new ConfigError("Medusa did not place the order");
   }
   return { orderId: result.order.id, displayId: result.order.display_id as number };
-}
-
-/** Allows redirect/asynchronous methods time to settle, but confirms only a Medusa order. */
-export async function completeStripeOrderWithRetry(
-  client: StoreClient,
-  cartId: string,
-  options: { readonly attempts?: number; readonly delayMs?: number } = {},
-): Promise<CompletedStoreOrder> {
-  const attempts = options.attempts ?? 40;
-  const delayMs = options.delayMs ?? 1500;
-  if (!Number.isInteger(attempts) || attempts < 1 || !Number.isInteger(delayMs) || delayMs < 0) {
-    throw new ConfigError("The payment completion retry policy is invalid");
-  }
-  let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await completeStripeOrder(client, cartId);
-    } catch (error: unknown) {
-      lastError = error;
-      if (attempt + 1 < attempts) {
-        await new Promise<void>((resolve) => globalThis.setTimeout(resolve, delayMs));
-      }
-    }
-  }
-  throw lastError;
 }

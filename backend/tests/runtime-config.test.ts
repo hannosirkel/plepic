@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  readCheckoutTurnstileRuntimeConfig,
   readBackendRuntimeConfig,
   readNewsletterRateLimitRuntimeConfig,
   readNewsletterRuntimeConfig,
 } from "../src/config/runtime.js";
 
 describe("readBackendRuntimeConfig", () => {
+  it("parses the Turnstile secret only for the checkout completion route", () => {
+    expect(readCheckoutTurnstileRuntimeConfig({ TURNSTILE_SECRET_KEY: "turnstile-secret" })).toEqual({
+      secretKey: "turnstile-secret",
+    });
+    expect(() => readCheckoutTurnstileRuntimeConfig({})).toThrow(/TURNSTILE_SECRET_KEY/);
+  });
+
   it("rejects production configuration without every required value", () => {
     expect(() =>
       readBackendRuntimeConfig({

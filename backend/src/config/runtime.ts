@@ -30,6 +30,10 @@ export interface NewsletterRuntimeConfig {
   readonly turnstileSecretKey: string;
 }
 
+export interface CheckoutTurnstileRuntimeConfig {
+  readonly secretKey: string;
+}
+
 export interface NewsletterRateLimitRuntimeConfig {
   readonly redisHost: string;
   readonly redisPort: number;
@@ -133,6 +137,13 @@ export function readNewsletterRuntimeConfig(
     listId: requirePositiveInteger(environment, "NEWSLETTER_LIST_ID"),
     turnstileSecretKey: requireEnvironmentValue(environment, "TURNSTILE_SECRET_KEY"),
   };
+}
+
+/** Reads only the secret required by the standard checkout completion route. */
+export function readCheckoutTurnstileRuntimeConfig(
+  environment: RuntimeEnvironment,
+): CheckoutTurnstileRuntimeConfig {
+  return { secretKey: requireEnvironmentValue(environment, "TURNSTILE_SECRET_KEY") };
 }
 
 export function readNewsletterRateLimitRuntimeConfig(

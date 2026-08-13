@@ -1411,6 +1411,27 @@ describe("the checkout form cannot put a delivery address in a URL", () => {
   });
 });
 
+describe("the redirect-return fallback never denies a possibly captured payment", () => {
+  const path = "/checkout/payment-return/order";
+  const safeOutcome = "We could not confirm your order. Your payment may have completed or may still be processing. Check your email and contact the shop before trying again.";
+
+  it("accepts only POST and returns a fixed no-store outcome without a redirect", async () => {
+    const token = "synthetic-sensitive-response";
+    const response = await postFormWithHost(server.port, path, MOCK_HOST, {
+      "cf-turnstile-response": token,
+    });
+    expect(response.status).toBe(409);
+    expect(response.headers.location).toBeUndefined();
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.body).toBe(safeOutcome);
+    expect(response.body).not.toContain(token);
+    expect(response.body).not.toMatch(/nothing was charged|payment was not charged/i);
+
+    const get = await requestWithHost(server.port, path, MOCK_HOST);
+    expect(get.status).toBe(405);
+  });
+});
+
 /**
  * The same defect, on the two **public** forms, and the same requirement: no
  * field value from either form reaches a URL in any state of the page,
