@@ -132,6 +132,12 @@ export interface RuntimeConfig {
   readonly canonicalHost: string;
   readonly analytics: { readonly measurementId: string | null };
   readonly turnstile: { readonly siteKey: string | null };
+  readonly medusa: {
+    /** Namespace-local backend origin, consumed only by the server-side proxy. */
+    readonly backendUrl: string | null;
+    /** Public credential deliberately projected to the browser at request time. */
+    readonly publishableKey: string | null;
+  };
   readonly merchant: MerchantConfig;
   readonly externalTargets: ExternalTargetUrls;
 }
@@ -150,6 +156,10 @@ export function getRuntimeConfig(env: EnvRecord = process.env): RuntimeConfig {
     canonicalHost: hostConfig.canonicalHost,
     analytics: { measurementId: readEnv("ANALYTICS_MEASUREMENT_ID", env) ?? null },
     turnstile: { siteKey: readEnv("TURNSTILE_SITE_KEY", env) ?? null },
+    medusa: {
+      backendUrl: readEnv("MEDUSA_BACKEND_URL", env) ?? null,
+      publishableKey: readEnv("MEDUSA_PUBLISHABLE_API_KEY", env) ?? null,
+    },
     merchant: {
       legalName: readEnv("MERCHANT_LEGAL_NAME", env) ?? null,
       registeredAddress: readEnv("MERCHANT_REGISTERED_ADDRESS", env) ?? null,

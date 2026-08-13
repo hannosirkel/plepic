@@ -97,6 +97,10 @@ export const RUNTIME_ENV_VARS = [
   "MERCHANT_RETURN_ADDRESS",
   /** VAT identification number. */
   "MERCHANT_VAT_NUMBER",
+  /** Namespace-local Medusa origin used by the request-time Store API proxy. */
+  "MEDUSA_BACKEND_URL",
+  /** Public Store API credential serialized into the request-time browser config. */
+  "MEDUSA_PUBLISHABLE_API_KEY",
   /** Path to the operator's redirect map; absent means the committed fixture. */
   "REDIRECT_MAP_PATH",
   /** Canonical origin, no trailing slash. */

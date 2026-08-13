@@ -230,15 +230,31 @@ interface HostRequestResult {
  * passed in `headers`, which would make every host-based assertion here pass
  * or fail for the wrong reason. `node:http` has no such restriction.
  */
-function requestWithHost(port: number, path: string, host: string): Promise<HostRequestResult> {
+interface HostRequestOptions {
+  readonly method?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: Buffer;
+}
+
+function requestWithHost(
+  port: number,
+  path: string,
+  host: string,
+  options: HostRequestOptions = {},
+): Promise<HostRequestResult> {
   return new Promise((resolve, reject) => {
+    const body = options.body;
     const request = http.request(
       {
         hostname: "127.0.0.1",
         port,
         path,
-        method: "GET",
-        headers: { Host: host },
+        method: options.method ?? "GET",
+        headers: {
+          Host: host,
+          ...options.headers,
+          ...(body === undefined ? {} : { "Content-Length": String(body.byteLength) }),
+        },
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -253,7 +269,7 @@ function requestWithHost(port: number, path: string, host: string): Promise<Host
       },
     );
     request.on("error", reject);
-    request.end();
+    request.end(body);
   });
 }
 
@@ -372,6 +388,8 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   SITE_TEST_HOSTNAMES: "test.runtime.example.com,test-admin.runtime.example.com",
   ANALYTICS_MEASUREMENT_ID: "G-RUNTIMEVALUE",
   TURNSTILE_SITE_KEY: "0xRUNTIMEVALUE",
+  MEDUSA_BACKEND_URL: "http://127.0.0.1:1",
+  MEDUSA_PUBLISHABLE_API_KEY: "pk_runtime_value",
   MERCHANT_CONTACT_ADDRESS: "runtime-value@example.com",
   MERCHANT_LEGAL_NAME: "Runtime Value Legal Name OU",
   MERCHANT_PHONE_NUMBER: "+000 00 000000",
@@ -400,10 +418,50 @@ async function startServer(env: Record<string, string>): Promise<RunningServer> 
 }
 
 let server: RunningServer;
+let unconfiguredServer: RunningServer;
 let buildArtifactText: string;
+let backendServer: http.Server;
+
+interface BackendRequest {
+  readonly method: string;
+  readonly path: string;
+  readonly headers: http.IncomingHttpHeaders;
+  readonly bodyBase64: string;
+}
+
+const backendRequests: BackendRequest[] = [];
+
+async function startBackendServer(): Promise<string> {
+  backendServer = http.createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      const bodyBase64 = Buffer.concat(chunks).toString("base64");
+      backendRequests.push({
+        method: request.method ?? "",
+        path: request.url ?? "",
+        headers: request.headers,
+        bodyBase64,
+      });
+      response.writeHead(202, {
+        "content-type": "application/json",
+        "x-medusa-test-response": "preserved",
+      });
+      response.end(JSON.stringify({ method: request.method, path: request.url, bodyBase64 }));
+    });
+  });
+
+  const port = await findFreePort();
+  await new Promise<void>((resolve, reject) => {
+    backendServer.once("error", reject);
+    backendServer.listen(port, "127.0.0.1", resolve);
+  });
+  return `http://127.0.0.1:${port}`;
+}
 
 beforeAll(async () => {
   rmSync(nextDistDir, { recursive: true, force: true });
+  RUNTIME_ENV.MEDUSA_BACKEND_URL = await startBackendServer();
 
   writeFileSync(
     runtimeRedirectMapPath,
@@ -444,10 +502,17 @@ beforeAll(async () => {
     .join("\n");
 
   server = await startServer(RUNTIME_ENV);
+  unconfiguredServer = await startServer({
+    ...RUNTIME_ENV,
+    MEDUSA_BACKEND_URL: "",
+    MEDUSA_PUBLISHABLE_API_KEY: "",
+  });
 }, 300_000);
 
 afterAll(() => {
   server?.process.kill();
+  unconfiguredServer?.process.kill();
+  backendServer?.close();
   rmSync(nextDistDir, { recursive: true, force: true });
   rmSync(scratchDir, { recursive: true, force: true });
 });
@@ -588,6 +653,15 @@ describe("the CSP nonce the browser is told to trust is the one on the page", ()
 });
 
 describe("the running server reflects the runtime environment, not the build-time one", () => {
+  it("publishes the Medusa key at request time without publishing the backend target", async () => {
+    const response = await requestWithHost(server.port, "/", "runtime.example.com");
+    expect(response.status).toBe(200);
+    expect(response.body).toContain(RUNTIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    expect(response.body).not.toContain(RUNTIME_ENV.MEDUSA_BACKEND_URL);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.MEDUSA_BACKEND_URL);
+  });
+
   it("serves the sitemap built from the runtime base URL", async () => {
     const response = await requestWithHost(server.port, "/sitemap.xml", "runtime.example.com");
     expect(response.status).toBe(200);
@@ -677,6 +751,135 @@ describe("the running server reflects the runtime environment, not the build-tim
         RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS,
       );
     }
+  });
+});
+
+describe("the built storefront's strict /store-api transport", () => {
+  it("denies an unmatched path before consulting missing backend configuration", async () => {
+    backendRequests.length = 0;
+    const denied = await requestWithHost(
+      unconfiguredServer.port,
+      "/store-api/admin/users",
+      "runtime.example.com",
+    );
+    const allowed = await requestWithHost(
+      unconfiguredServer.port,
+      "/store-api/store/products",
+      "runtime.example.com",
+    );
+
+    expect(denied.status).toBe(404);
+    expect(allowed.status).toBe(503);
+    expect(backendRequests).toHaveLength(0);
+  });
+
+  it("strips /store-api and preserves a Store request's method, query and required headers", async () => {
+    backendRequests.length = 0;
+
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/store/products?limit=7&region_id=reg_example",
+      "runtime.example.com",
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer session-example",
+          Cookie: "cart_id=cart_example",
+          "X-Publishable-Api-Key": "pk_request_runtime",
+        },
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(response.headers["x-medusa-test-response"]).toBe("preserved");
+    expect(backendRequests).toHaveLength(1);
+    expect(backendRequests[0]).toMatchObject({
+      method: "GET",
+      path: "/store/products?limit=7&region_id=reg_example",
+      bodyBase64: "",
+    });
+    expect(backendRequests[0]?.headers.authorization).toBe("Bearer session-example");
+    expect(backendRequests[0]?.headers.cookie).toBe("cart_id=cart_example");
+    expect(backendRequests[0]?.headers["x-publishable-api-key"]).toBe("pk_request_runtime");
+  });
+
+  it("forwards a Stripe hook body byte-for-byte with its signature and content type", async () => {
+    backendRequests.length = 0;
+    const body = Buffer.from([0x7b, 0x22, 0x72, 0x61, 0x77, 0x22, 0x3a, 0xff, 0x00, 0x7d]);
+
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/hooks/payment/stripe_stripe",
+      "runtime.example.com",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Stripe-Signature": "t=123,v1=signature-example",
+        },
+        body,
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(backendRequests).toHaveLength(1);
+    expect(backendRequests[0]).toMatchObject({
+      method: "POST",
+      path: "/hooks/payment/stripe_stripe",
+      bodyBase64: body.toString("base64"),
+    });
+    expect(backendRequests[0]?.headers["content-type"]).toBe("application/octet-stream");
+    expect(backendRequests[0]?.headers["stripe-signature"]).toBe("t=123,v1=signature-example");
+  });
+
+  it("allows product media only through the named static prefix", async () => {
+    backendRequests.length = 0;
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/static/products/lunar-base.webp?v=1",
+      "runtime.example.com",
+    );
+
+    expect(response.status).toBe(202);
+    expect(backendRequests).toHaveLength(1);
+    expect(backendRequests[0]?.path).toBe("/static/products/lunar-base.webp?v=1");
+  });
+
+  it("404s every unmatched or normalized traversal path without a backend request", async () => {
+    const denied = [
+      "/store-api/admin/users",
+      "/store-api/app",
+      "/store-api/%2e%2e/app",
+      "/store-api/store/../admin/users",
+    ];
+
+    for (const path of denied) {
+      backendRequests.length = 0;
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(404);
+      expect(backendRequests, `${path} reached the backend`).toHaveLength(0);
+    }
+  });
+
+  it("lets Next normalize a repeated slash once, then locally 404s the destination without backend traffic", async () => {
+    backendRequests.length = 0;
+
+    const raw = await requestWithHost(
+      server.port,
+      "/store-api//admin/users",
+      "runtime.example.com",
+    );
+    expect(raw.status).toBe(308);
+    expect(raw.headers.location).toBe("/store-api/admin/users");
+    expect(backendRequests, "the raw repeated-slash request reached the backend").toHaveLength(0);
+
+    const normalized = await requestWithHost(
+      server.port,
+      raw.headers.location ?? "",
+      "runtime.example.com",
+    );
+    expect(normalized.status).toBe(404);
+    expect(backendRequests, "the normalized denial reached the backend").toHaveLength(0);
   });
 });
 
