@@ -85,6 +85,7 @@ import { ProductSafetyBlock } from "../ProductSafetyBlock.js";
 import { ReviewComposite } from "../ReviewComposite.js";
 import { SectionDivider } from "../decor/SectionDivider.js";
 import { PurchasePanelMockup } from "../PurchasePanelMockup.js";
+import type { ReactNode } from "react";
 import { SiteFooter } from "../SiteFooter.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { VideoEmbed } from "../video/VideoEmbed.js";
@@ -101,6 +102,8 @@ export interface LunarBaseMockupProps {
    * notice rather than dropping the manufacturer disclosure.
    */
   readonly merchant?: ConfigurationPlaceholderValues;
+  /** Narrow client island rendered in both existing primary purchase slots. */
+  readonly primaryPurchaseAction?: ReactNode;
 }
 
 /**
@@ -130,6 +133,7 @@ const heroBuyAction: CallToAction = requirePrimaryPurchaseAction();
 export function LunarBaseMockup({
   catalogue = resolveCatalogue(),
   merchant = NO_CONFIGURATION_VALUES,
+  primaryPurchaseAction,
 }: LunarBaseMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
@@ -168,7 +172,7 @@ export function LunarBaseMockup({
               <p className={styles.heroPriceNote}>{catalogue.priceShippingNote}</p>
               <p className={styles.heroAvailability}>{catalogue.availabilityLabel}</p>
               <div className={styles.heroActions}>
-                <CallToActionLink action={heroBuyAction} resolveLabel={resolve} />
+                {primaryPurchaseAction ?? <CallToActionLink action={heroBuyAction} resolveLabel={resolve} />}
               </div>
             </div>
           </div>
@@ -330,7 +334,7 @@ export function LunarBaseMockup({
         </section>
 
         <section id="buy" className={styles.buySection}>
-          <PurchasePanelMockup catalogue={catalogue} />
+          <PurchasePanelMockup catalogue={catalogue} primaryAction={primaryPurchaseAction} />
         </section>
 
         {/* GPSR Article 19: manufacturer identity and contact, and the safety

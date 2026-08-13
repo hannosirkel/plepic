@@ -126,7 +126,7 @@
  * URL. See `./checkout-order-post.ts`.
  */
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
 import { checkout, unavailableFigure } from "../../../../content/shop.js";
@@ -142,6 +142,14 @@ import {
   zoneForCountryName,
 } from "../../lib/cart.js";
 import { useCart } from "../../lib/cart-store.js";
+import { storedMedusaCartId } from "../../lib/cart-store.js";
+import { createMedusaStoreClient } from "../../lib/medusa-client.js";
+import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
+import {
+  addGuestShippingMethod,
+  prepareGuestShipping,
+  type GuestShippingOption,
+} from "../../lib/store-checkout.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
@@ -163,6 +171,25 @@ const FIELDS: readonly AddressFieldCopy[] = checkout.address.fields;
 type AddressValues = Readonly<Record<string, string>>;
 
 const EMPTY_ADDRESS: AddressValues = Object.fromEntries(FIELDS.map((field) => [field.name, ""]));
+
+function browserRuntimeConfig(): ClientRuntimeConfig {
+  const element = document.getElementById("plepic-runtime-config");
+  if (element === null || element.textContent === null) {
+    throw new Error("Store runtime configuration is unavailable");
+  }
+  return JSON.parse(element.textContent) as ClientRuntimeConfig;
+}
+
+function guestAddress(values: AddressValues) {
+  return {
+    fullName: values.fullName ?? "",
+    streetAddress: values.streetAddress ?? "",
+    postalCode: values.postalCode ?? "",
+    city: values.city ?? "",
+    country: values.country ?? "",
+    email: values.email ?? "",
+  };
+}
 
 /** Deliberately permissive: enough to catch a typo, never enough to reject a real address. */
 function isPlausibleEmail(value: string): boolean {
@@ -252,6 +279,14 @@ export function CheckoutPageContent({
   const [outcome, setOutcome] = useState<OrderOutcome | null>(() =>
     initialOutcome(scenario, unhydratedOrderAttempt),
   );
+  const [shippingOptions, setShippingOptions] = useState<readonly GuestShippingOption[]>([]);
+  /* The completed address these options belong to. It prevents an old-zone
+     option being submitted during the debounce for a changed address. */
+  const [shippingOptionsAddress, setShippingOptionsAddress] = useState<string | null>(null);
+  const [selectedShippingOption, setSelectedShippingOption] = useState("");
+  const [storeTotals, setStoreTotals] = useState<ReturnType<typeof cartTotals> | null>(null);
+  const [shippingState, setShippingState] = useState<"idle" | "loading" | "error">("idle");
+  const shippingRequest = useRef(0);
   /*
    * True only while a real attempt is in flight, which is what the
    * double-submit guard actually means. `?mock=placing` *paints* the busy
@@ -261,6 +296,7 @@ export function CheckoutPageContent({
   const attemptInFlight = useRef(false);
 
   const addressComplete = isComplete(values);
+  const addressRevision = addressComplete ? JSON.stringify(guestAddress(values)) : null;
   /*
    * The zone, and therefore the charge, is a function of the chosen country
    * and nothing else. It is withheld until the whole address is complete
@@ -269,10 +305,92 @@ export function CheckoutPageContent({
    * all rather than the dearer one.
    */
   const deliveryZone = addressComplete ? zoneForCountryName((values.country ?? "").trim()) : null;
-  const totals = useMemo(() => cartTotals(lines, { deliveryZone }), [lines, deliveryZone]);
+  const mockTotals = useMemo(() => cartTotals(lines, { deliveryZone }), [lines, deliveryZone]);
+  const pendingStoreTotals = useMemo(
+    () => ({ ...cartTotals(lines, { deliveryZone: null }), shippingAmount: null, orderAmount: null }),
+    [lines],
+  );
+  const totals = scenario === null ? storeTotals ?? pendingStoreTotals : mockTotals;
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
+
+  useEffect(() => {
+    const request = ++shippingRequest.current;
+    setShippingOptions([]);
+    setShippingOptionsAddress(null);
+    setSelectedShippingOption("");
+    setStoreTotals(null);
+    if (scenario !== null || !addressComplete) {
+      setShippingState("idle");
+      return;
+    }
+    const cartId = storedMedusaCartId();
+    if (cartId === null) {
+      setShippingState("idle");
+      return;
+    }
+    let active = true;
+    // Clear synchronously in this effect and tag results with the address
+    // revision; the render-time equality below closes the effect/event gap.
+    const timer = window.setTimeout(() => {
+      setShippingState("loading");
+      void prepareGuestShipping(
+        createMedusaStoreClient(browserRuntimeConfig().medusa),
+        cartId,
+        guestAddress(values),
+      ).then(
+        (options) => {
+          if (!active || request !== shippingRequest.current || addressRevision !== JSON.stringify(guestAddress(values))) return;
+          setShippingOptions(options);
+          setShippingOptionsAddress(addressRevision);
+          setSelectedShippingOption("");
+          setShippingState("idle");
+        },
+        () => {
+          if (!active || request !== shippingRequest.current) return;
+          setShippingOptions([]);
+          setShippingOptionsAddress(null);
+          setSelectedShippingOption("");
+          setShippingState("error");
+        },
+      );
+    }, 350);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [addressComplete, addressRevision, scenario, values]);
+
+  function selectShippingOption(optionId: string): void {
+    // This is intentionally a runtime guard as well as a disabled control:
+    // a stale event must not attach the previous address's delivery method.
+    if (shippingOptionsAddress !== addressRevision) return;
+    const request = ++shippingRequest.current;
+    setSelectedShippingOption(optionId);
+    setStoreTotals(null);
+    if (optionId === "") return;
+    const cartId = storedMedusaCartId();
+    if (cartId === null) {
+      setShippingState("error");
+      return;
+    }
+    setShippingState("loading");
+    void addGuestShippingMethod(
+      createMedusaStoreClient(browserRuntimeConfig().medusa),
+      cartId,
+      optionId,
+    ).then(
+      (nextTotals) => {
+        if (request !== shippingRequest.current) return;
+        setStoreTotals(nextTotals);
+        setShippingState("idle");
+      },
+      () => {
+        if (request === shippingRequest.current) setShippingState("error");
+      },
+    );
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -481,7 +599,28 @@ export function CheckoutPageContent({
           <dl className={styles.summary}>
             <div className={styles.summaryRow}>
               <dt>{checkout.delivery.methodLabel}</dt>
-              <dd>{declaredShippingMethod.name}</dd>
+              <dd>
+                {scenario === null ? (
+                  <select
+                    className={`${styles.field} ${styles.select}`}
+                    aria-label={checkout.delivery.methodLabel}
+                    value={selectedShippingOption}
+                    disabled={
+                      shippingState === "loading" ||
+                      shippingOptions.length === 0 ||
+                      shippingOptionsAddress !== addressRevision
+                    }
+                    onChange={(event) => selectShippingOption(event.currentTarget.value)}
+                  >
+                    <option value="">Choose a delivery method</option>
+                    {shippingOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name} — {formatAmount(option.amount, "EUR")}
+                      </option>
+                    ))}
+                  </select>
+                ) : declaredShippingMethod.name}
+              </dd>
             </div>
             <div className={styles.summaryRow}>
               <dt>{checkout.delivery.chargeLabel}</dt>
@@ -496,6 +635,12 @@ export function CheckoutPageContent({
               <dd>{DELIVERY_ESTIMATE}</dd>
             </div>
           </dl>
+          {scenario === null && shippingState === "loading" ? (
+            <p className={styles.note} role="status">Updating delivery options…</p>
+          ) : null}
+          {scenario === null && shippingState === "error" ? (
+            <p className={styles.error} role="alert">Delivery options could not be loaded. Check the address and try again.</p>
+          ) : null}
         </section>
 
         <section className={styles.card} aria-labelledby="checkout-payment-heading">

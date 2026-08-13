@@ -8,6 +8,8 @@ import { placeholderValuesFrom } from "../../../../lib/configuration-placeholder
 import { absoluteUrl } from "../../../../lib/urls.js";
 import { buildProductJsonLd } from "../../../../lib/product-jsonld.js";
 import { getRequestNonce } from "../../../../lib/nonce.js";
+import { loadStoreProduct } from "../../../../lib/store-product.js";
+import { AddToCartButton } from "../../../../components/shop/AddToCartButton.js";
 import { makeMetadata } from "../../../../lib/page-shell.js";
 import { findPage } from "../../../../lib/seo.js";
 
@@ -16,12 +18,9 @@ export const generateMetadata = makeMetadata("lunarBase");
 /**
  * The one canonical product page.
  *
- * **The structured data and the visible page read the same catalogue, in the
- * same request.** `mockCatalogue` is `storefront/mock/catalogue.json`'s
- * product; `resolveCatalogue(mockCatalogue)` turns it into the display
- * strings the composition paints, and `buildProductJsonLd` reads the raw
- * figures off the same object for the `Product`/`Offer` block. They cannot
- * disagree, because there is nothing for them to disagree with.
+ * **The structured data and visible page read the same Store product in the
+ * same request.** The committed catalogue remains only the deterministic
+ * test-host presentation and the editorial game-specification source.
  *
  * They *did* disagree. The JSON-LD used to be built from four environment
  * variables (`CATALOGUE_MOCK_PRICE_AMOUNT` and friends) while the page read
@@ -40,10 +39,18 @@ export default async function LunarBasePage() {
   const { baseUrl } = loadSiteHostConfig();
   const page = findPage("lunarBase");
   const nonce = await getRequestNonce();
-  const catalogue = resolveCatalogue(mockCatalogue);
+  const runtime = getRuntimeConfig();
+  // Both environments read their own Store database. Browser baselines use a
+  // synthetic Medusa server in the Playwright harness, never a page fallback.
+  const store = await loadStoreProduct({
+    backendUrl: runtime.medusa.backendUrl,
+    publishableKey: runtime.medusa.publishableKey,
+    presentation: mockCatalogue,
+  });
+  const catalogue = resolveCatalogue(store.catalogue);
 
   const jsonLd = buildProductJsonLd({
-    product: mockCatalogue,
+    product: store.catalogue,
     url: absoluteUrl(baseUrl, ROUTE_PATHS.lunarBase),
     description: page.description,
   });
@@ -52,7 +59,8 @@ export default async function LunarBasePage() {
     <>
       <LunarBaseMockup
         catalogue={catalogue}
-        merchant={placeholderValuesFrom(getRuntimeConfig().merchant)}
+        merchant={placeholderValuesFrom(runtime.merchant)}
+        primaryPurchaseAction={<AddToCartButton label="Add to basket" variantId={store.variantId} />}
       />
       <JsonLdScript data={jsonLd} nonce={nonce} />
     </>

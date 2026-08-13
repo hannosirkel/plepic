@@ -48,7 +48,7 @@ export const privacy: LegalPage = {
         "Analüütika ja reklaamimõõtmise piksli õiguslik alus on sinu nõusolek ja mitte miski muu. Sa võid selle igal ajal tagasi võtta jaluses oleva lingi kaudu, mis avab sama valiku uuesti. Tagasivõtmine peatab edasise mõõtmise; juba kogutut see tagasiulatuvalt ei kustuta.",
         "Saidi osad, mis ei ole mõõtmine – mängu ostmine, meiega ühenduse võtmine, reeglite lugemine – nõusolekut ei vaja ja sinu vastus neid ei mõjuta.",
         "Sinu vastuse mõõtmisküsimusele salvestab see sait sinu brauseri kohalikku salvestusse (local storage), mitte küpsisena. Seda hoitakse, kuni sa oma brauseri andmed kustutad või vastust muudad, ja see ei salvesta muud kui sõna granted (nõustun) või declined (keeldun).",
-        "Sinu ostukorvi sisu salvestab see sait sinu brauseri seansisalvestusse (session storage), mitte küpsisena. Seda hoitakse ainult vahelehe sulgemiseni ja see ei salvesta muud kui seda, millise mängu sa valisid ja mitu.",
+        "Sinu ostukorvi läbipaistmatu tunnus salvestatakse selle saidi poolt sinu brauseri seansisalvestusse (session storage), mitte küpsisena. Seda hoitakse ainult vahelehe sulgemiseni ning see ei salvesta toodete üksikasju, koguseid, e-posti aadressi ega tarneaadressi.",
       ],
       table: {
         caption: "Küpsised, mida see sait võib salvestada",

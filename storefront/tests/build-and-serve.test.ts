@@ -69,8 +69,7 @@ import {
 import { formatAmount } from "../src/lib/cart.js";
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
 import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
-import { resolveCatalogue } from "../src/lib/catalogue.js";
-import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
+import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import {
   LOCALES,
@@ -413,7 +412,10 @@ async function startServer(env: Record<string, string>): Promise<RunningServer> 
     env: { ...process.env, ...env, NODE_ENV: "production" },
     stdio: "pipe",
   });
-  await waitForServer(`http://127.0.0.1:${port}/`, 60_000);
+  // `/` intentionally fails closed without Store configuration. Readiness is
+  // a site-process check, so use a non-commerce route that every deployment
+  // can serve even when a focused test starts an unconfigured Store seam.
+  await waitForServer(`http://127.0.0.1:${port}/about`, 60_000);
   return { process: process_, port };
 }
 
@@ -443,6 +445,34 @@ async function startBackendServer(): Promise<string> {
         headers: request.headers,
         bodyBase64,
       });
+      // The request-time page loader asks for one product with the fields it
+      // needs. Other Store requests must remain transparent transport tests.
+      if ((request.url ?? "").startsWith("/store/products?limit=1&fields=")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            products: [
+              {
+                id: "prod_lunar_base",
+                title: mockCatalogue.name,
+                variants: [
+                  {
+                    id: "variant_lunar_base",
+                    manage_inventory: true,
+                    allow_backorder: false,
+                    inventory_quantity: 12,
+                    calculated_price: {
+                      currency_code: mockCatalogue.price.currency.toLowerCase(),
+                      calculated_amount: mockCatalogue.price.amount,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        return;
+      }
       response.writeHead(202, {
         "content-type": "application/json",
         "x-medusa-test-response": "preserved",
@@ -801,6 +831,23 @@ describe("the built storefront's strict /store-api transport", () => {
     expect(backendRequests[0]?.headers.authorization).toBe("Bearer session-example");
     expect(backendRequests[0]?.headers.cookie).toBe("cart_id=cart_example");
     expect(backendRequests[0]?.headers["x-publishable-api-key"]).toBe("pk_request_runtime");
+  });
+
+  it("loads home and canonical product facts from the server Store seam with its publishable key", async () => {
+    backendRequests.length = 0;
+
+    for (const host of ["runtime.example.com", "test.runtime.example.com"]) {
+      for (const path of ["/", "/games/lunar-base"]) {
+        const response = await requestWithHost(server.port, path, host);
+        expect(response.status, `${host}${path} did not render from the Store catalogue`).toBe(200);
+      }
+    }
+
+    const productRequests = backendRequests.filter((request) => request.path.startsWith("/store/products?limit=1&fields="));
+    expect(productRequests).toHaveLength(4);
+    for (const request of productRequests) {
+      expect(request.headers["x-publishable-api-key"]).toBe(RUNTIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    }
   });
 
   it("forwards a Stripe hook body byte-for-byte with its signature and content type", async () => {
@@ -1876,12 +1923,10 @@ describe("test hostnames", () => {
  * This is the finding that made the whole arrangement worth changing. The
  * price used to come from `CATALOGUE_MOCK_*`, so an unconfigured deployment
  * published a visible €25.00 to a person and, in the JSON-LD, **no offer at
- * all** to a search engine; a *mis*configured one published a different price
- * to each, with nothing failing or warning. Both facts now come from
- * `storefront/mock/catalogue.json`, so the default state is the correct state
- * and there is no environment that can separate them.
+ * all** to a search engine. The Store-backed page must instead fail closed:
+ * there is no honest sale page without a runtime Store credential.
  */
-describe("an unconfigured deployment publishes the same price it renders", () => {
+describe("an unconfigured deployment fails closed for commerce pages", () => {
   let unconfigured: RunningServer;
 
   beforeAll(async () => {
@@ -1895,44 +1940,14 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     unconfigured?.process.kill();
   });
 
-  it("still serves the product page", async () => {
+  it("does not serve a product page from the committed catalogue fixture", async () => {
     const response = await requestWithHost(
       unconfigured.port,
       "/games/lunar-base",
       "unconfigured.example.com",
     );
-    expect(response.status).toBe(200);
-    expect(response.body).toContain('"@type":"Product"');
-  });
-
-  it("publishes an Offer whose price, currency and availability are the catalogue's own", async () => {
-    const response = await requestWithHost(
-      unconfigured.port,
-      "/games/lunar-base",
-      "unconfigured.example.com",
-    );
-    const expected = buildProductJsonLd({
-      url: "https://unconfigured.example.com/games/lunar-base",
-      description: "",
-    });
-    const offer = expected.offers as Record<string, unknown>;
-
-    expect(response.body).toContain('"@type":"Offer"');
-    expect(response.body).toContain(`"priceCurrency":"${String(offer.priceCurrency)}"`);
-    expect(response.body).toContain(`"price":"${String(offer.price)}"`);
-    expect(response.body).toContain(`"availability":"${String(offer.availability)}"`);
-  });
-
-  it("shows a human the same price it tells a crawler", async () => {
-    const response = await requestWithHost(
-      unconfigured.port,
-      "/games/lunar-base",
-      "unconfigured.example.com",
-    );
-    const rendered = resolveCatalogue();
-    expect(response.body).toContain(rendered.price);
-    expect(response.body).toContain(rendered.availabilityLabel);
-    expect(response.body).toContain(rendered.productName);
+    expect(response.status).toBe(500);
+    expect(response.body).not.toContain(resolveCatalogue().price);
   });
 
   it("suppresses the copy that quotes an unconfigured merchant address, rather than rendering the brace", async () => {
@@ -2093,20 +2108,6 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     }
   });
 
-  it("names, rather than drops, the unconfigured GPSR manufacturer identity", async () => {
-    const response = await requestWithHost(
-      unconfigured.port,
-      "/games/lunar-base",
-      "unconfigured.example.com",
-    );
-    expect(response.status).toBe(200);
-    expect(paintedText(response.body)).not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
-    expect(response.body).toContain("[not configured: registered address]");
-    expect(response.body).toContain("product-safety-incomplete-notice");
-    // The safety information itself needs no configuration and must be intact.
-    expect(response.body).toContain("SHAH01338706");
-    expect(response.body).toContain("Flammability");
-  });
 });
 
 /**

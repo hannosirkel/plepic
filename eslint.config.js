@@ -4,7 +4,12 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "coverage/**", "backend/.medusa/**"],
+    ignores: [
+      "node_modules/**",
+      "coverage/**",
+      "backend/.medusa/**",
+      "storefront/.next/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
