@@ -110,14 +110,14 @@
  * takes `aria-disabled`: an incomplete address must still be pressable,
  * because pressing it is what produces the error summary a reader needs.
  *
- * ## The order button cannot place an order in this build, and says so
+ * ## The no-JavaScript order button cannot place an order, and says so
  *
- * Stripe elements and server-side Turnstile verification are deferred. The
- * card step is a labelled placeholder region and nothing else — no card field,
- * no fake card number, not even a disabled one. Pressing the order button runs
- * the real validation, then reports that nothing was charged and no order was
- * placed, because that is true. The alternative — a fabricated confirmation —
- * would tell a person a contract exists when none does.
+ * Hydrated production checkout mounts Stripe's Payment Element only after
+ * Medusa returns a session for the address-bound total currently displayed.
+ * Before hydration, or with JavaScript disabled, the POST runs validation and
+ * reports that nothing was charged and no order was placed. The alternative —
+ * a fabricated confirmation — would tell a person a contract exists when none
+ * does.
  *
  * That holds when nothing has hydrated, too. The form carries `method="post"`
  * and an `action`, so a press before hydration — or with JavaScript off —
@@ -142,7 +142,7 @@ import {
   zoneForCountryName,
 } from "../../lib/cart.js";
 import { useCart } from "../../lib/cart-store.js";
-import { storedMedusaCartId } from "../../lib/cart-store.js";
+import { forgetMedusaCartId, storedMedusaCartId } from "../../lib/cart-store.js";
 import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import {
@@ -152,11 +152,23 @@ import {
   type AddressBoundTotals,
   type GuestShippingOption,
 } from "../../lib/store-checkout.js";
+import {
+  createSerialPaymentInitializer,
+  completeStripeOrder,
+  confirmAndCompleteStripeOrder,
+  initiateStripePayment,
+  type CompletedStoreOrder,
+  type StripePaymentSession,
+} from "../../lib/store-payment.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import {
+  StripePaymentElement,
+  type StripePaymentElementHandle,
+} from "./StripePaymentElement.js";
 import { CHECKOUT_ORDER_POST_PATH } from "./checkout-order-post.js";
 import {
   CARD_STATEMENT,
@@ -228,6 +240,7 @@ function isComplete(values: AddressValues): boolean {
 export interface CheckoutPageContentProps {
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
+  readonly stripePublishableKey?: string | null;
   /** The `?mock=` state this route was requested in — see `src/lib/mock-cart-actions.ts`. */
   readonly scenario: MockScenario | null;
   /**
@@ -264,6 +277,7 @@ function initialOutcome(
 export function CheckoutPageContent({
   turnstileSiteKey,
   nonce,
+  stripePublishableKey = null,
   scenario,
   unhydratedOrderAttempt = false,
   latencyMs,
@@ -274,6 +288,7 @@ export function CheckoutPageContent({
   const baseId = useId();
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const outcomeRef = useRef<HTMLParagraphElement>(null);
+  const paymentElementRef = useRef<StripePaymentElementHandle>(null);
 
   const [values, setValues] = useState<AddressValues>(initialAddress);
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
@@ -288,7 +303,15 @@ export function CheckoutPageContent({
   const [selectedShippingOption, setSelectedShippingOption] = useState("");
   const [storeTotals, setStoreTotals] = useState<AddressBoundTotals | null>(null);
   const [shippingState, setShippingState] = useState<"idle" | "loading" | "error">("idle");
+  const [paymentSession, setPaymentSession] = useState<
+    { readonly revision: string; readonly value: StripePaymentSession } | null
+  >(null);
+  const [paymentState, setPaymentState] = useState<"idle" | "loading" | "error">("idle");
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [completedOrder, setCompletedOrder] = useState<CompletedStoreOrder | null>(null);
   const shippingRequest = useRef(0);
+  const paymentRequest = useRef(0);
+  const initializePayment = useRef(createSerialPaymentInitializer()).current;
   /*
    * True only while a real attempt is in flight, which is what the
    * double-submit guard actually means. `?mock=placing` *paints* the busy
@@ -319,6 +342,18 @@ export function CheckoutPageContent({
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
+  const payableRevision =
+    scenario === null &&
+    addressRevision !== null &&
+    selectedShippingOption !== "" &&
+    totals.orderAmount !== null
+      ? JSON.stringify({
+          addressRevision,
+          selectedShippingOption,
+          amount: totals.orderAmount,
+          currency: totals.currency,
+        })
+      : null;
 
   useEffect(() => {
     const request = ++shippingRequest.current;
@@ -367,10 +402,51 @@ export function CheckoutPageContent({
     };
   }, [addressComplete, addressRevision, scenario, values]);
 
+  useEffect(() => {
+    const request = ++paymentRequest.current;
+    setPaymentSession(null);
+    setPaymentError(null);
+    if (payableRevision === null || totals.orderAmount === null) {
+      setPaymentState("idle");
+      return;
+    }
+    const cartId = storedMedusaCartId();
+    if (cartId === null) {
+      setPaymentState("error");
+      return;
+    }
+    let active = true;
+    setPaymentState("loading");
+    void initializePayment(async () => {
+      if (!active || request !== paymentRequest.current) return null;
+      return initiateStripePayment(createMedusaStoreClient(browserRuntimeConfig().medusa), cartId, {
+        amount: totals.orderAmount!,
+        currency: totals.currency,
+      });
+    }).then(
+      (value) => {
+        if (value === null || !active || request !== paymentRequest.current) return;
+        setPaymentSession({ revision: payableRevision, value });
+        setPaymentState("idle");
+      },
+      () => {
+        if (!active || request !== paymentRequest.current) return;
+        setPaymentState("error");
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [initializePayment, payableRevision, totals.currency, totals.orderAmount]);
+
   function selectShippingOption(optionId: string): void {
     // This is intentionally a runtime guard as well as a disabled control:
     // a stale event must not attach the previous address's delivery method.
-    if (shippingOptionsAddress !== addressRevision || addressRevision === null) return;
+    if (
+      attemptInFlight.current ||
+      shippingOptionsAddress !== addressRevision ||
+      addressRevision === null
+    ) return;
     const selectedAddressRevision = addressRevision;
     const request = ++shippingRequest.current;
     setSelectedShippingOption(optionId);
@@ -431,12 +507,51 @@ export function CheckoutPageContent({
 
     attemptInFlight.current = true;
     setPlacing(true);
-    void placeMockOrder({ latencyMs, failing: scenario === "error" }).then((result) => {
+    if (scenario !== null) {
+      void placeMockOrder({ latencyMs, failing: scenario === "error" }).then((result) => {
+        attemptInFlight.current = false;
+        setPlacing(false);
+        setOutcome(result);
+        window.requestAnimationFrame(() => outcomeRef.current?.focus());
+      });
+      return;
+    }
+
+    const cartId = storedMedusaCartId();
+    const session = paymentSession;
+    if (
+      cartId === null ||
+      payableRevision === null ||
+      session?.revision !== payableRevision ||
+      paymentElementRef.current === null
+    ) {
       attemptInFlight.current = false;
       setPlacing(false);
-      setOutcome(result);
-      window.requestAnimationFrame(() => outcomeRef.current?.focus());
-    });
+      setPaymentError("Payment options are not ready. Wait a moment and try again.");
+      return;
+    }
+    setPaymentError(null);
+    void confirmAndCompleteStripeOrder(
+      () => paymentElementRef.current!.confirm(),
+      () => completeStripeOrder(createMedusaStoreClient(browserRuntimeConfig().medusa), cartId),
+    ).then(
+      (order) => {
+        forgetMedusaCartId();
+        setCompletedOrder(order);
+        attemptInFlight.current = false;
+        setPlacing(false);
+      },
+      (error: unknown) => {
+        attemptInFlight.current = false;
+        setPlacing(false);
+        setPaymentError(
+          error instanceof Error
+            ? error.message
+            : "Payment could not be completed. Nothing has been charged.",
+        );
+        window.requestAnimationFrame(() => outcomeRef.current?.focus());
+      },
+    );
   }
 
   const outcomeMessage =
@@ -445,6 +560,20 @@ export function CheckoutPageContent({
       : outcome.reason === "order-failed"
         ? checkout.errors.orderFailed
         : checkout.errors.paymentNotConnected;
+
+  if (completedOrder !== null) {
+    return (
+      <section className={styles.card} aria-labelledby="checkout-confirmation-heading">
+        <h1 id="checkout-confirmation-heading" className={styles.heading}>
+          Order confirmed
+        </h1>
+        <p className={styles.body}>
+          Your order number is {String(completedOrder.displayId)}. A confirmation will be sent by
+          email.
+        </p>
+      </section>
+    );
+  }
 
   if (lines.length === 0) {
     return (
@@ -548,9 +677,11 @@ export function CheckoutPageContent({
                 required: true,
                 autoComplete: field.autoComplete,
                 value: values[field.name] ?? "",
+                disabled: placing,
                 "aria-invalid": error !== undefined,
                 "aria-describedby": describedBy === "" ? undefined : describedBy,
                 onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+                  if (attemptInFlight.current) return;
                   const next = event.currentTarget.value;
                   setValues((current) => ({ ...current, [field.name]: next }));
                 },
@@ -613,6 +744,7 @@ export function CheckoutPageContent({
                     value={selectedShippingOption}
                     disabled={
                       shippingState === "loading" ||
+                      placing ||
                       shippingOptions.length === 0 ||
                       shippingOptionsAddress !== addressRevision
                     }
@@ -654,17 +786,34 @@ export function CheckoutPageContent({
             {checkout.payment.heading}
           </h2>
           <p className={styles.body}>{CARD_STATEMENT}</p>
-          {/* The card step, deferred to Task 5. A labelled region and nothing
-              else: no card field, no fabricated instrument, not even a
-              disabled one. */}
           <div
             className={styles.cardPlaceholder}
             role="group"
             aria-label={checkout.payment.cardRegionLabel}
-            data-checkout-placeholder="card"
           >
             <p className={styles.cardPlaceholderLabel}>{checkout.payment.cardRegionLabel}</p>
-            <p className={styles.note}>{checkout.payment.cardRegionBody}</p>
+            {scenario === null ? (
+              <StripePaymentElement
+                ref={paymentElementRef}
+                publishableKey={stripePublishableKey}
+                clientSecret={
+                  paymentSession?.revision === payableRevision
+                    ? paymentSession.value.clientSecret
+                    : null
+                }
+              />
+            ) : (
+              <p className={styles.note}>{checkout.payment.cardRegionBody}</p>
+            )}
+            {paymentState === "loading" ? <p role="status">Loading payment options…</p> : null}
+            {paymentState === "error" ? (
+              <p className={styles.error} role="alert">Payment options could not be loaded.</p>
+            ) : null}
+            {paymentError === null ? null : (
+              <p className={styles.error} role="alert" ref={outcomeRef} tabIndex={-1}>
+                {paymentError}
+              </p>
+            )}
           </div>
 
           <HoneypotField formName="checkout" />

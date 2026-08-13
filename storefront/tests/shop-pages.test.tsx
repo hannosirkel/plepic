@@ -194,7 +194,7 @@ describe("every sentence the checkout owes comes from content/legal, not from a 
       [terms.body.flatMap((section) => section.body), "Placing an order is an offer to buy"],
       [terms.body.flatMap((section) => section.body), "By placing the order you confirm"],
       [terms.body.flatMap((section) => section.body), "You will receive a confirmation by email"],
-      [terms.body.flatMap((section) => section.body), "We accept payment by card"],
+      [terms.body.flatMap((section) => section.body), "We accept cards, Apple Pay, Google Pay and PayPal"],
       [returns.body.flatMap((section) => section.body), "You pay the cost of returning the parcel"],
       [shipping.body.flatMap((section) => section.body), "Orders are dispatched within"],
     ];
@@ -428,6 +428,7 @@ describe("the loading state", () => {
     const html = renderCheckout("placing");
     expect(html).toContain('aria-busy="true"');
     expect(visibleText(html)).toContain(checkout.placingLabel);
+    expect(html.match(/<(?:input|select)[^>]*\sdisabled(?:=""|\s|>)/g)?.length).toBe(6);
   });
 });
 
@@ -1454,17 +1455,17 @@ describe("the mock cart actions are the one seam Task 5 replaces", () => {
 /* What must not be here                                                     */
 /* ------------------------------------------------------------------------ */
 
-describe("no payment instrument data of any kind", () => {
+describe("mock checkout payment boundary", () => {
   const html = renderCheckout("filled");
 
-  it("renders the card step as a labelled region with no field in it", () => {
-    expect(html).toContain('data-checkout-placeholder="card"');
+  it("renders the card step as a labelled region without inventing an instrument", () => {
+    expect(html).toContain(`aria-label="${checkout.payment.cardRegionLabel}"`);
     expect(html).not.toMatch(/autocomplete="cc-/);
     expect(html).not.toMatch(/name="card(Number|Cvc|Expiry)"/i);
     expect(html).not.toMatch(/\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\b/);
   });
 
-  it("loads no payment script: Stripe is Task 5's", () => {
+  it("loads no payment script into a mock-state server render", () => {
     expect(html).not.toContain("stripe");
     expect(html.toLowerCase()).not.toContain("js.stripe");
   });

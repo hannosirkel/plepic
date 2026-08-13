@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 import { deliveryCountries, type CartTotals } from "./cart.js";
 import type { createMedusaStoreClient } from "./medusa-client.js";
+import { medusaMajorToMinor } from "./store-money.js";
 
 type StoreClient = ReturnType<typeof createMedusaStoreClient>;
 
@@ -60,12 +61,11 @@ function shippingOptions(value: unknown): readonly GuestShippingOption[] {
       option.id.length === 0 ||
       typeof option.name !== "string" ||
       option.name.length === 0 ||
-      !Number.isInteger(option.amount) ||
-      (option.amount as number) < 0
+      typeof option.amount !== "number"
     ) {
       throw new ConfigError("Medusa returned a malformed shipping option");
     }
-    return { id: option.id, name: option.name, amount: option.amount as number };
+    return { id: option.id, name: option.name, amount: medusaMajorToMinor(option.amount, "EUR") };
   });
 }
 
@@ -92,17 +92,17 @@ function cartTotals(value: unknown): CartTotals {
   if (
     cart === undefined ||
     typeof cart.currency_code !== "string" ||
-    !Number.isInteger(cart.subtotal) ||
-    !Number.isInteger(cart.shipping_total) ||
-    !Number.isInteger(cart.total)
+    typeof cart.subtotal !== "number" ||
+    typeof cart.shipping_total !== "number" ||
+    typeof cart.total !== "number"
   ) {
     throw new ConfigError("Medusa returned malformed checkout totals");
   }
   return {
     currency: cart.currency_code.toUpperCase(),
-    goodsAmount: cart.subtotal as number,
-    shippingAmount: cart.shipping_total as number,
-    orderAmount: cart.total as number,
+    goodsAmount: medusaMajorToMinor(cart.subtotal, cart.currency_code),
+    shippingAmount: medusaMajorToMinor(cart.shipping_total, cart.currency_code),
+    orderAmount: medusaMajorToMinor(cart.total, cart.currency_code),
   };
 }
 

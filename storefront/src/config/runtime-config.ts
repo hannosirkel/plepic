@@ -138,6 +138,7 @@ export interface RuntimeConfig {
     /** Public credential deliberately projected to the browser at request time. */
     readonly publishableKey: string | null;
   };
+  readonly stripe: { readonly publishableKey: string | null };
   readonly merchant: MerchantConfig;
   readonly externalTargets: ExternalTargetUrls;
 }
@@ -160,6 +161,7 @@ export function getRuntimeConfig(env: EnvRecord = process.env): RuntimeConfig {
       backendUrl: readEnv("MEDUSA_BACKEND_URL", env) ?? null,
       publishableKey: readEnv("MEDUSA_PUBLISHABLE_API_KEY", env) ?? null,
     },
+    stripe: { publishableKey: readEnv("STRIPE_PUBLISHABLE_KEY", env) ?? null },
     merchant: {
       legalName: readEnv("MERCHANT_LEGAL_NAME", env) ?? null,
       registeredAddress: readEnv("MERCHANT_REGISTERED_ADDRESS", env) ?? null,

@@ -21,7 +21,7 @@ const response = (inventoryQuantity: number) => ({
       manage_inventory: true,
       allow_backorder: false,
       inventory_quantity: inventoryQuantity,
-      calculated_price: { currency_code: "eur", calculated_amount: 2500 },
+      calculated_price: { currency_code: "eur", calculated_amount: 25 },
     }],
   }],
 });

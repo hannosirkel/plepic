@@ -68,7 +68,7 @@ describe("guest checkout Store operations", () => {
           response.end('{"cart":{"id":"cart_example"}}');
         } else if (request.url === "/store-api/store/shipping-options?cart_id=cart_example") {
           response.end(
-            '{"shipping_options":[{"id":"so_eu","name":"EU flat delivery","amount":700},{"id":"so_world","name":"Worldwide flat delivery","amount":1200}]}',
+            '{"shipping_options":[{"id":"so_eu","name":"EU flat delivery","amount":7},{"id":"so_world","name":"Worldwide flat delivery","amount":12}]}',
           );
         } else {
           response.writeHead(404).end('{}');
@@ -132,7 +132,7 @@ describe("guest checkout Store operations", () => {
         });
         response.setHeader("content-type", "application/json");
         response.end(
-          '{"cart":{"id":"cart_example","currency_code":"eur","subtotal":2500,"shipping_total":700,"total":3200}}',
+          '{"cart":{"id":"cart_example","currency_code":"eur","subtotal":25,"shipping_total":7,"total":32}}',
         );
       });
     });
@@ -197,9 +197,8 @@ describe("checkout shipping option address binding", () => {
       "utf8",
     );
     expect(source).toContain("shippingOptionsAddress !== addressRevision");
-    expect(source).toContain(
-      "if (shippingOptionsAddress !== addressRevision || addressRevision === null) return;",
-    );
+    expect(source).toContain("attemptInFlight.current ||");
+    expect(source).toContain("addressRevision === null");
     expect(source).toContain("setShippingOptions([]);");
     expect(source).toContain("setSelectedShippingOption(\"\");");
   });

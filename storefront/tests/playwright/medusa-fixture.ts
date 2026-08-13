@@ -15,7 +15,7 @@ const product = {
           inventory_quantity: 12,
           calculated_price: {
             currency_code: "eur",
-            calculated_amount: 2500,
+            calculated_amount: 25,
           },
         },
       ],

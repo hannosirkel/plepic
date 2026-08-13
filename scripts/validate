@@ -20,6 +20,9 @@ env \
   STORE_CORS=https://store.example.test \
   ADMIN_CORS=https://admin.example.test \
   AUTH_CORS=https://store.example.test \
+  STRIPE_SECRET_KEY=synthetic_validation \
+  STRIPE_WEBHOOK_SECRET=whsec_validation \
+  STRIPE_PAYMENT_METHOD_CONFIGURATION_ID=pmc_validation \
   MEDUSA_DISABLE_TELEMETRY=true \
   XDG_CONFIG_HOME="${plepic_medusa_config_dir}" \
   npm run build --workspace backend

@@ -57,6 +57,7 @@ export default async function CheckoutPage({
         <CheckoutPageContent
           turnstileSiteKey={runtimeConfig.turnstile.siteKey}
           nonce={nonce}
+          stripePublishableKey={runtimeConfig.stripe.publishableKey}
           scenario={scenario}
           unhydratedOrderAttempt={isOrderNotPlaced(params[ORDER_OUTCOME_PARAM])}
         />

@@ -59,6 +59,7 @@ import type { ReactNode } from "react";
 import type { CartLine } from "./cart.js";
 import { createMedusaStoreClient } from "./medusa-client.js";
 import type { ClientRuntimeConfig } from "./client-runtime-config.js";
+import { medusaMajorToMinor } from "./store-money.js";
 import {
   addCatalogueLineAction,
   basketForScenario,
@@ -81,14 +82,14 @@ function runtimeConfig(): ClientRuntimeConfig {
   return JSON.parse(element.textContent) as ClientRuntimeConfig;
 }
 
-function storeLines(cart: unknown): readonly CartLine[] {
+export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
   const value = cart as { items?: readonly { id?: string; title?: string; unit_price?: number; quantity?: number; variant?: { manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string };
   if (!Array.isArray(value.items) || typeof value.currency_code !== "string") throw new Error("Medusa Store cart response is malformed");
   return value.items.map((line) => {
-    if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.unit_price) || !Number.isInteger(line.quantity)) throw new Error("Medusa Store cart line is malformed");
+    if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.quantity)) throw new Error("Medusa Store cart line is malformed");
     const variant = line.variant;
     const available = variant?.manage_inventory !== true || variant.allow_backorder === true || (Number.isInteger(variant.inventory_quantity) && variant.inventory_quantity! > 0);
-    return { id: line.id, productName: line.title, unitAmount: line.unit_price, currency: value.currency_code!, quantity: line.quantity, availability: available ? "InStock" : "OutOfStock" };
+    return { id: line.id, productName: line.title, unitAmount: medusaMajorToMinor(line.unit_price, value.currency_code!), currency: value.currency_code!.toUpperCase(), quantity: line.quantity, availability: available ? "InStock" : "OutOfStock" };
   });
 }
 
@@ -174,7 +175,7 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     void (async () => {
       try {
         const { cart } = await createMedusaStoreClient(runtimeConfig().medusa).store.cart.retrieve(stored);
-        setLines(storeLines(cart));
+        setLines(cartLinesFromStore(cart));
       } catch { forgetMedusaCartId(); cartId.current = null; setFailure("action"); }
     })();
   }, [scenario, initial.lines]);
@@ -228,10 +229,10 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
         cartId.current = createdCartId;
         rememberMedusaCartId(createdCartId);
         const updated = await sdk.store.cart.createLineItem(createdCartId, { variant_id: products[0].variants[0].id, quantity: 1 });
-        return { ok: true, lines: storeLines(updated.cart) };
+        return { ok: true, lines: cartLinesFromStore(updated.cart) };
       }
       const updated = await sdk.store.cart.createLineItem(id, { variant_id: products[0].variants[0].id, quantity: 1 });
-      return { ok: true, lines: storeLines(updated.cart) };
+      return { ok: true, lines: cartLinesFromStore(updated.cart) };
     });
   }, [run, options, scenario]);
 
@@ -239,7 +240,7 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     (id: string, quantity: number) => {
       if (scenario !== null) { void run(id, "updating", (current) => updateLineQuantityAction(current, id, quantity, options)); return; }
       if (cartId.current === null) { setFailure("action"); return; }
-      void run(id, "updating", async () => ({ ok: true, lines: storeLines((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.updateLineItem(cartId.current!, id, { quantity })).cart) }));
+      void run(id, "updating", async () => ({ ok: true, lines: cartLinesFromStore((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.updateLineItem(cartId.current!, id, { quantity })).cart) }));
     },
     [run, options, scenario],
   );
@@ -248,7 +249,7 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     (id: string) => {
       if (scenario !== null) { void run(id, "removing", (current) => removeLineAction(current, id, options)); return; }
       if (cartId.current === null) { setFailure("action"); return; }
-      void run(id, "removing", async () => ({ ok: true, lines: storeLines((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.deleteLineItem(cartId.current!, id)).parent) }));
+      void run(id, "removing", async () => ({ ok: true, lines: cartLinesFromStore((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.deleteLineItem(cartId.current!, id)).parent) }));
     },
     [run, options, scenario],
   );

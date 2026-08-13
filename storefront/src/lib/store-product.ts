@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 
 import type { CatalogueProduct } from "./catalogue.js";
+import { medusaMajorToMinor } from "./store-money.js";
 
 interface StoreProductResponse {
   readonly products?: readonly unknown[];
@@ -24,13 +25,6 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function text(value: unknown, label: string): string {
   if (typeof value !== "string" || value === "") throw new ConfigError(`Medusa Store response has no ${label}`);
   return value;
-}
-
-function amount(value: unknown, label: string): number {
-  if (!Number.isInteger(value) || (value as number) < 0) {
-    throw new ConfigError(`Medusa Store response has no usable ${label}`);
-  }
-  return value as number;
 }
 
 /**
@@ -61,7 +55,7 @@ export function catalogueProductFromStore(
       ...presentation,
       name: text(product.title, "product title"),
       price: {
-        amount: amount(calculated.calculated_amount, "calculated price amount"),
+        amount: medusaMajorToMinor(calculated.calculated_amount, currency),
         currency,
         taxIncluded: presentation.price.taxIncluded,
       },

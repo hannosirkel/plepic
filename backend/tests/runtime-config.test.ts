@@ -9,8 +9,11 @@ describe("readBackendRuntimeConfig", () => {
         DATABASE_URL: "postgres://app:password@database:5432/medusa",
         JWT_SECRET: "jwt-secret",
         COOKIE_SECRET: "cookie-secret",
+        STORE_CORS: "https://store.example.test",
+        ADMIN_CORS: "https://admin.example.test",
+        AUTH_CORS: "https://store.example.test",
       }),
-    ).toThrow(/STORE_CORS/);
+    ).toThrow(/STRIPE_SECRET_KEY/);
   });
 
   it("does not silently supply credentials or CORS origins", () => {
@@ -29,6 +32,9 @@ describe("readBackendRuntimeConfig", () => {
         STORE_CORS: "https://store.example.test",
         ADMIN_CORS: "https://admin.example.test",
         AUTH_CORS: "https://store.example.test",
+        STRIPE_SECRET_KEY: "sk_test_example",
+        STRIPE_WEBHOOK_SECRET: "whsec_example",
+        STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
       }),
     ).toEqual({
       databaseUrl: "postgres://app:password@database:5432/medusa",
@@ -38,6 +44,11 @@ describe("readBackendRuntimeConfig", () => {
         authCors: "https://store.example.test",
         jwtSecret: "jwt-secret",
         cookieSecret: "cookie-secret",
+      },
+      stripe: {
+        apiKey: "sk_test_example",
+        webhookSecret: "whsec_example",
+        paymentMethodConfiguration: "pmc_example",
       },
     });
   });

@@ -389,6 +389,7 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   TURNSTILE_SITE_KEY: "0xRUNTIMEVALUE",
   MEDUSA_BACKEND_URL: "http://127.0.0.1:1",
   MEDUSA_PUBLISHABLE_API_KEY: "pk_runtime_value",
+  STRIPE_PUBLISHABLE_KEY: "pk_test_runtime_value",
   MERCHANT_CONTACT_ADDRESS: "runtime-value@example.com",
   MERCHANT_LEGAL_NAME: "Runtime Value Legal Name OU",
   MERCHANT_PHONE_NUMBER: "+000 00 000000",
@@ -463,7 +464,7 @@ async function startBackendServer(): Promise<string> {
                     inventory_quantity: 12,
                     calculated_price: {
                       currency_code: mockCatalogue.price.currency.toLowerCase(),
-                      calculated_amount: mockCatalogue.price.amount,
+                      calculated_amount: mockCatalogue.price.amount / 100,
                     },
                   },
                 ],
@@ -683,12 +684,14 @@ describe("the CSP nonce the browser is told to trust is the one on the page", ()
 });
 
 describe("the running server reflects the runtime environment, not the build-time one", () => {
-  it("publishes the Medusa key at request time without publishing the backend target", async () => {
+  it("publishes public commerce keys at request time without publishing the backend target", async () => {
     const response = await requestWithHost(server.port, "/", "runtime.example.com");
     expect(response.status).toBe(200);
     expect(response.body).toContain(RUNTIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    expect(response.body).toContain(RUNTIME_ENV.STRIPE_PUBLISHABLE_KEY);
     expect(response.body).not.toContain(RUNTIME_ENV.MEDUSA_BACKEND_URL);
     expect(response.body).not.toContain(BUILD_TIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.STRIPE_PUBLISHABLE_KEY);
     expect(response.body).not.toContain(BUILD_TIME_ENV.MEDUSA_BACKEND_URL);
   });
 

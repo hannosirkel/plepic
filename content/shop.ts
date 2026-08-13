@@ -328,9 +328,9 @@ export const checkout = {
 
   payment: {
     heading: "Payment",
-    cardRegionLabel: "Card details",
+    cardRegionLabel: "Payment details",
     cardRegionBody:
-      "The card form from our payment processor is shown here. It is not connected on this site yet, so the order button below cannot take a payment.",
+      "The secure payment form is shown after you choose delivery. Available methods depend on your device, location and Stripe configuration.",
   },
 
   beforeYouOrder: {

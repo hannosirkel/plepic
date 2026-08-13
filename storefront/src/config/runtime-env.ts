@@ -109,6 +109,8 @@ export const RUNTIME_ENV_VARS = [
   "SITE_CANONICAL_HOST",
   /** Comma-separated hostnames that must never be indexed and never load analytics. */
   "SITE_TEST_HOSTNAMES",
+  /** Public Stripe.js credential serialized into the request-time browser config. */
+  "STRIPE_PUBLISHABLE_KEY",
   /** Cloudflare Turnstile site key. Absent means no widget renders. */
   "TURNSTILE_SITE_KEY",
 ] as const;

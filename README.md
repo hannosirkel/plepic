@@ -1,7 +1,6 @@
 # Plepic
 
-The Plepic Games storefront and backend monorepo: an npm workspace root for a
-Next.js storefront and, later, a Medusa backend.
+The Plepic Games storefront and Medusa backend monorepo.
 
 ## Workspaces
 
@@ -15,14 +14,16 @@ Next.js storefront and, later, a Medusa backend.
   server-side and handed to the browser — never a `NEXT_PUBLIC_*` variable. See
   [`storefront/src/config/runtime-config.ts`](./storefront/src/config/runtime-config.ts)
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
-  for the redirect map's documented shape. Every route is real; the basket and
-  checkout flows run against mock cart actions, and only Stripe elements,
-  server-side Turnstile verification and real totals are deferred.
+  for the redirect map's documented shape. Production catalogue, basket,
+  address, shipping totals, and payment sessions come from Medusa through the
+  same-origin `/store-api` allowlist. Named `?mock=` states remain isolated to
+  development and declared test hosts.
 
   **The basket and the checkout, and the legal page that specifies them.**
   `src/app/cart/page.tsx` and `src/app/checkout/page.tsx` render
-  `src/components/shop/`, against the mock cart actions in
-  `src/lib/mock-cart-actions.ts` and the state in `src/lib/cart-store.tsx`.
+  `src/components/shop/`; the production path stores only an opaque Medusa cart
+  ID in tab-scoped storage, while `src/lib/mock-cart-actions.ts` supplies only
+  the explicitly gated visual states.
   `content/legal/terms.ts` is merged, live and says its checkout section "is
   written to match the checkout screen exactly", so it is the specification:
   the consent line, the contract-formation sentence, the confirmation promise
@@ -53,8 +54,9 @@ Next.js storefront and, later, a Medusa backend.
   access log on the path. It carries `method="post"` and an action instead:
   `src/app/checkout/order/route.ts` reads nothing out of the body and answers
   `303` back to the checkout with a fixed marker, and the page says in its
-  first paint that no order was placed and nothing was charged — which is true,
-  with or without JavaScript, while Stripe is deferred. See
+  first paint that no order was placed and nothing was charged. Hydrated
+  checkout uses Medusa's maintained Stripe PaymentIntent provider; the no-JS
+  POST deliberately never attempts payment. See
   [`storefront/src/components/shop/checkout-order-post.ts`](./storefront/src/components/shop/checkout-order-post.ts).
 
   The shipping charge and the total are `null` until a delivery address is
@@ -107,10 +109,11 @@ Next.js storefront and, later, a Medusa backend.
   which the order button is `aria-disabled`: an incomplete address must stay
   pressable, because pressing it is what produces the error summary.
 
-  The card step is a labelled placeholder region and nothing else — no card
-  field, no fabricated instrument — and pressing the order button reports that
-  nothing was charged and no order was placed, which is true while Stripe is
-  deferred. `?mock=` requests either route in a given state
+  The payment step mounts Stripe's Payment Element only after Medusa has
+  returned an amount-bound session matching the total on screen. Only a
+  successful Stripe confirmation followed by an explicit Medusa order clears
+  the cart and shows confirmation; processing redirects return through
+  `/checkout/payment-return`. `?mock=` requests either route in a given state
   (`filled`, `updating`, `removing`, `unavailable`, `error`, `placing`) so the
   loading and error layouts can be inspected on a real device; it belongs to
   the mock data layer and leaves with it.
@@ -616,7 +619,10 @@ Next.js storefront and, later, a Medusa backend.
   committed derivatives were produced outside the repository. If `next/image`
   is still unused when the storefront ships, returning it to Next's own
   optional resolution is a one-line change.
-- `backend/` — Medusa backend, added by a later PR unit.
+- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams and
+  one maintained Stripe provider. API/webhook secrets and the environment's
+  Payment Method Configuration stay backend-only; only Stripe's publishable key
+  is projected to the browser at request time.
 
 Two directories are not workspaces but are consumed by the storefront:
 
