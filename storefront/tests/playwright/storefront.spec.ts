@@ -13,6 +13,12 @@ async function supplyTurnstileResponse(page: Page, value: string): Promise<void>
   );
 }
 
+async function commerceEvents(page: Page): Promise<unknown[][]> {
+  return page.evaluate(() => ((window as typeof window & { dataLayer?: unknown[] }).dataLayer ?? [])
+    .map((entry) => Array.from(entry as ArrayLike<unknown>))
+    .filter((entry) => entry[0] === "event"));
+}
+
 const visualRoutes = [
   ["home", "/"],
   ["lunar-base", "/games/lunar-base"],
@@ -240,8 +246,13 @@ test("Article 8(2) invariant: no order placement succeeds where all six Article 
 
 test("payment return renews Turnstile and completes only on Medusa order", async ({ page }, testInfo) => {
   const cartId = `cart_return_${testInfo.project.name}_${testInfo.workerIndex}`;
+  await page.route("https://www.googletagmanager.com/**", async (route) => {
+    await route.fulfill({ contentType: "application/javascript", body: "" });
+  });
   await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
   await page.goto("/checkout/payment-return");
+  await expect.poll(() => commerceEvents(page)).toEqual([]);
+  await page.getByRole("button", { name: "Agree" }).click();
   await expect(page.getByText("€25.00", { exact: true })).toBeVisible();
   await expect(page.getByText("€32.00", { exact: true })).toBeVisible();
   const form = page.locator("form");
@@ -250,14 +261,84 @@ test("payment return renews Turnstile and completes only on Medusa order", async
   await expect(form.locator('[name="cf-turnstile-response"]')).toHaveValue("");
   await page.getByRole("button", { name: "Order with obligation to pay" }).click();
   await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: [] });
+  await expect.poll(() => commerceEvents(page)).toEqual([]);
   await supplyTurnstileResponse(page, "synthetic-return-token-one");
   await page.getByRole("button", { name: "Order with obligation to pay" }).dblclick();
   await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: ["synthetic-return-token-one"] });
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("plepic.medusa.cart-id"))).toBe(cartId);
+  await expect.poll(() => commerceEvents(page)).toEqual([["event", "payment_failure", {
+    failure_stage: "order_completion", currency: "EUR", value: 32,
+  }]]);
   await expect(form.locator('[name="cf-turnstile-response"]')).toHaveValue("");
   await supplyTurnstileResponse(page, "synthetic-return-token-two");
   await page.getByRole("button", { name: "Order with obligation to pay" }).click();
   await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: ["synthetic-return-token-one", "synthetic-return-token-two"] });
   await expect(page.getByText("Order confirmed")).toBeVisible();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("plepic.medusa.cart-id"))).toBeNull();
+  await expect.poll(() => commerceEvents(page)).toEqual([
+    ["event", "payment_failure", { failure_stage: "order_completion", currency: "EUR", value: 32 }],
+    ["event", "purchase", {
+      transaction_id: "order_fixture", currency: "EUR", value: 32,
+      items: [{ item_id: "variant_fixture", item_name: "Lunar Base", price: 25, quantity: 1 }],
+    }],
+  ]);
+});
+
+test("product view is emitted only after analytics consent", async ({ page }) => {
+  await page.route("https://www.googletagmanager.com/**", async (route) => {
+    await route.fulfill({ contentType: "application/javascript", body: "" });
+  });
+  await page.goto("/games/lunar-base");
+  await expect.poll(() => commerceEvents(page)).toEqual([]);
+  await page.getByRole("button", { name: "Agree" }).click();
+  await expect.poll(() => commerceEvents(page)).toEqual([["event", "view_item", {
+    currency: "EUR", value: 25,
+    items: [{ item_id: "variant_lunar_base", item_name: "Lunar Base", price: 25, quantity: 1 }],
+  }]]);
+});
+
+test("begin checkout is emitted once for the restored Store basket after consent", async ({ page }, testInfo) => {
+  const cartId = `cart_return_checkout_${testInfo.project.name}_${testInfo.workerIndex}`;
+  await page.route("https://www.googletagmanager.com/**", async (route) => {
+    await route.fulfill({ contentType: "application/javascript", body: "" });
+  });
+  await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
+  await page.goto("/checkout");
+  await expect(page.getByText("Lunar Base × 1")).toBeVisible();
+  await expect.poll(() => commerceEvents(page)).toEqual([]);
+  await page.getByRole("button", { name: "Agree" }).click();
+  await expect.poll(() => commerceEvents(page)).toEqual([["event", "begin_checkout", {
+    currency: "EUR", value: 25,
+    items: [{ item_id: "variant_fixture", item_name: "Lunar Base", price: 25, quantity: 1 }],
+  }]]);
+});
+
+test("add to cart is emitted only after the Store line succeeds", async ({ page }) => {
+  const captured: unknown[][] = [];
+  await page.exposeFunction("captureCommerceEvent", (entry: unknown[]) => { captured.push(entry); });
+  await page.addInitScript(() => {
+    const layer: unknown[] = [];
+    layer.push = (...entries: unknown[]): number => {
+      for (const entry of entries) {
+        const command = Array.from(entry as ArrayLike<unknown>);
+        if (command[0] === "event") {
+          void (window as typeof window & { captureCommerceEvent: (value: unknown[]) => Promise<void> }).captureCommerceEvent(command);
+        }
+      }
+      return Array.prototype.push.apply(layer, entries);
+    };
+    (window as typeof window & { dataLayer: unknown[] }).dataLayer = layer;
+  });
+  await page.route("https://www.googletagmanager.com/**", async (route) => {
+    await route.fulfill({ contentType: "application/javascript", body: "" });
+  });
+  await page.goto("/games/lunar-base");
+  await page.getByRole("button", { name: "Agree" }).click();
+  await expect.poll(() => captured.length).toBe(1);
+  await page.getByLabel("Buy Lunar Base").getByRole("button", { name: "Add to basket" }).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect.poll(() => captured).toContainEqual(["event", "add_to_cart", {
+    currency: "EUR", value: 25,
+    items: [{ item_id: "variant_lunar_base", item_name: "Lunar Base", price: 25, quantity: 1 }],
+  }]);
 });

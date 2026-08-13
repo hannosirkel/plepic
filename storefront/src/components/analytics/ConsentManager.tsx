@@ -46,6 +46,7 @@ import {
   shouldLoadAnalytics,
   type ConsentDecision,
 } from "../../lib/consent.js";
+import { setAnalyticsEnabled } from "../../lib/analytics.js";
 import {
   releaseConsentBannerSpace,
   reserveConsentBannerSpace,
@@ -106,9 +107,14 @@ export function ConsentManager({ isTestHost, measurementId, nonce }: ConsentMana
     setBannerOpen(false);
   }
 
-  if (!mounted) return null;
-
   const loadAnalytics = shouldLoadAnalytics({ isTestHost, decision, measurementId });
+
+  useEffect(() => {
+    setAnalyticsEnabled(loadAnalytics);
+    return () => setAnalyticsEnabled(false);
+  }, [loadAnalytics]);
+
+  if (!mounted) return null;
 
   return (
     <>

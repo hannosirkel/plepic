@@ -24,7 +24,7 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
       () => ({
         async confirm() {
           if (stripe === null || elements === null) {
-            return { ok: false, pending: false, message: "Payment options are still loading" };
+            return { ok: false, pending: false, reportFailure: false, message: "Payment options are still loading" };
           }
           const result = await stripe.confirmPayment({
             elements,
@@ -35,6 +35,7 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
             return {
               ok: false,
               pending: false,
+              reportFailure: true,
               message: "Payment could not be confirmed. Check the details or choose another method.",
             };
           }

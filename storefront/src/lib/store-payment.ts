@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 import type { createMedusaStoreClient } from "./medusa-client.js";
 import { medusaMajorToMinor, minorToMedusaMajor } from "./store-money.js";
+import type { AnalyticsItem } from "./analytics.js";
 
 type StoreClient = ReturnType<typeof createMedusaStoreClient>;
 
@@ -112,6 +113,30 @@ export interface ReturnOrderDisclosure {
   readonly shippingAmount: number;
   readonly orderAmount: number;
   readonly address: string;
+  readonly analyticsItems: readonly AnalyticsItem[] | null;
+}
+
+function returnAnalyticsItems(items: readonly unknown[], currency: string): readonly AnalyticsItem[] | null {
+  try {
+    return items.map((item) => {
+      const source = item as Record<string, unknown>;
+      if (
+        typeof source.variant_id !== "string" || source.variant_id.length === 0 ||
+        typeof source.title !== "string" || source.title.length === 0 ||
+        !Number.isInteger(source.quantity) ||
+        typeof source.unit_price !== "number"
+      ) throw new ConfigError("Medusa returned no analytics item metadata");
+      return {
+        variantId: source.variant_id,
+        name: source.title,
+        unitAmount: medusaMajorToMinor(source.unit_price, currency),
+        currency: currency.toUpperCase(),
+        quantity: source.quantity as number,
+      };
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** Validates the current Medusa cart before it can power a return-page order action. */
@@ -137,18 +162,20 @@ export function returnOrderDisclosure(value: unknown, cartId: string): ReturnOrd
   if (addressParts.some((part) => typeof part !== "string" || part.length === 0)) {
     throw new ConfigError("Medusa returned no complete checkout disclosure");
   }
+  const currency = cart.currency_code as string;
   return {
-    currency: cart.currency_code.toUpperCase(), goods,
-    goodsAmount: medusaMajorToMinor(cart.item_total, cart.currency_code),
-    shippingAmount: medusaMajorToMinor(cart.shipping_total, cart.currency_code),
-    orderAmount: medusaMajorToMinor(cart.total, cart.currency_code),
+    currency: currency.toUpperCase(), goods,
+    goodsAmount: medusaMajorToMinor(cart.item_total, currency),
+    shippingAmount: medusaMajorToMinor(cart.shipping_total, currency),
+    orderAmount: medusaMajorToMinor(cart.total, currency),
     address: addressParts.map((part) => String(part).toUpperCase() === String(address.country_code).toUpperCase() ? String(part).toUpperCase() : String(part)).join(", "),
+    analyticsItems: returnAnalyticsItems(items, currency),
   };
 }
 
 export type StripeConfirmation =
   | { readonly ok: true }
-  | { readonly ok: false; readonly pending: boolean; readonly message: string };
+  | { readonly ok: false; readonly pending: boolean; readonly reportFailure: boolean; readonly message: string };
 
 function checkoutTurnstileToken(value: string): string {
   const token = value.trim();
@@ -164,12 +191,14 @@ export function stripeConfirmationForStatus(status: string | undefined): StripeC
     return {
       ok: false,
       pending: true,
+      reportFailure: false,
       message: "Payment is still processing. We are checking the order status.",
     };
   }
   return {
     ok: false,
     pending: false,
+    reportFailure: true,
     message: "Payment could not be confirmed. Check the details or choose another method.",
   };
 }
@@ -188,10 +217,27 @@ export function createSerialPaymentInitializer() {
 export async function confirmAndCompleteStripeOrder(
   confirmPayment: () => Promise<StripeConfirmation>,
   completeOrder: () => Promise<CompletedStoreOrder>,
+  onFailure: (stage: "stripe_confirmation" | "order_completion") => void = () => undefined,
 ): Promise<CompletedStoreOrder> {
-  const confirmation = await confirmPayment();
-  if (!confirmation.ok) throw new ConfigError(confirmation.message);
-  return completeOrder();
+  let confirmation: StripeConfirmation;
+  try {
+    confirmation = await confirmPayment();
+  } catch (error: unknown) {
+    try { onFailure("stripe_confirmation"); } catch { /* Analytics must not affect checkout. */ }
+    throw error;
+  }
+  if (!confirmation.ok) {
+    if (confirmation.reportFailure) {
+      try { onFailure("stripe_confirmation"); } catch { /* Analytics must not affect checkout. */ }
+    }
+    throw new ConfigError(confirmation.message);
+  }
+  try {
+    return await completeOrder();
+  } catch (error: unknown) {
+    try { onFailure("order_completion"); } catch { /* Analytics must not affect checkout. */ }
+    throw error;
+  }
 }
 
 /** A cart/error response is not an order and must never produce confirmation UI. */

@@ -160,6 +160,13 @@ import {
   type CompletedStoreOrder,
   type StripePaymentSession,
 } from "../../lib/store-payment.js";
+import {
+  analyticsItemsFromCartLines,
+  emitBeginCheckout,
+  emitPaymentFailure,
+  emitPurchase,
+  onAnalyticsEnabled,
+} from "../../lib/analytics.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
@@ -321,6 +328,21 @@ export function CheckoutPageContent({
    * swallowed every press and left the state unescapable without a reload.
    */
   const attemptInFlight = useRef(false);
+
+  useEffect(() => {
+    if (scenario !== null) return;
+    const analyticsItems = analyticsItemsFromCartLines(lines);
+    if (analyticsItems === null) return;
+    const value = analyticsItems.reduce(
+      (sum, item) => sum + item.unitAmount * (item.quantity ?? 1),
+      0,
+    );
+    return onAnalyticsEnabled(() => emitBeginCheckout({
+      currency: analyticsItems[0]!.currency,
+      value,
+      items: analyticsItems,
+    }));
+  }, [lines, scenario]);
 
   const addressComplete = isComplete(values);
   const addressRevision = addressComplete ? JSON.stringify(guestAddress(values)) : null;
@@ -530,6 +552,7 @@ export function CheckoutPageContent({
 
     const cartId = storedMedusaCartId();
     const session = paymentSession;
+    const analyticsItems = analyticsItemsFromCartLines(lines);
     if (
       cartId === null ||
       payableRevision === null ||
@@ -549,8 +572,24 @@ export function CheckoutPageContent({
         cartId,
         turnstileToken,
       ),
+      (stage) => {
+        if (totals.orderAmount === null) return;
+        emitPaymentFailure({
+          failureStage: stage,
+          currency: totals.currency,
+          value: totals.orderAmount,
+        });
+      },
     ).then(
       (order) => {
+        if (analyticsItems !== null && totals.orderAmount !== null) {
+          emitPurchase({
+            transactionId: order.orderId,
+            currency: totals.currency,
+            value: totals.orderAmount,
+            items: analyticsItems,
+          });
+        }
         forgetMedusaCartId();
         setCompletedOrder(order);
         attemptInFlight.current = false;

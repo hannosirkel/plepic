@@ -145,6 +145,21 @@ The Plepic Games storefront and Medusa backend monorepo.
   `tests/browser-storage-disclosure.test.ts` walks `src/` for Web Storage
   writes and requires a sentence per store found.
 
+  Purchase-funnel measurement is the closed GA4 set `view_item`,
+  `add_to_cart`, `begin_checkout`, `purchase`, and `payment_failure`. The
+  central typed emitter starts disabled, is opened only by the same consent
+  decision that loads Google Analytics, and remains disabled on every declared
+  test host. Events attempted before consent are dropped rather than queued;
+  withdrawing consent closes the emitter again. It adds no storage key.
+
+  Commerce payloads contain only the Medusa product or variant identifier,
+  product name, quantity, uppercase currency, and monetary values. `purchase`
+  additionally uses the Medusa order ID as `transaction_id`, so GA4 can
+  deduplicate a retried client event. `payment_failure` carries only the closed
+  stage `stripe_confirmation` or `order_completion`. Email and postal
+  addresses, cart IDs, Turnstile responses, payment payloads, and free-form
+  error text never enter analytics.
+
   **That guard is a floor, not a proof, and this paragraph has twice claimed
   otherwise.** It said a third store "cannot be added without the notice growing
   with it"; corrected, it admitted "two things it does not see" and presented

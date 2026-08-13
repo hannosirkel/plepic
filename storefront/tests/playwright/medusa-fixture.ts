@@ -23,6 +23,7 @@ const product = {
   ],
 };
 const completions = new Map<string, string[]>();
+const addedCart = { id: "cart_add_fixture", currency_code: "eur", items: [{ id: "line_fixture", title: "Lunar Base", unit_price: 25, quantity: 1, variant: { id: "variant_lunar_base", manage_inventory: false } }] };
 
 const server = createServer((request, response) => {
   if (request.url === "/health") {
@@ -31,10 +32,31 @@ const server = createServer((request, response) => {
     return;
   }
 
-  const cart = /^\/store\/carts\/(cart_return_[\w-]+)$/.exec(request.url ?? "");
+  if (request.url === "/store/regions?limit=2" && request.method === "GET") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end('{"regions":[{"id":"region_fixture"}]}');
+    return;
+  }
+  if (request.url === "/store/carts" && request.method === "POST") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end('{"cart":{"id":"cart_add_fixture"}}');
+    return;
+  }
+  if (request.url === "/store/carts/cart_add_fixture/line-items" && request.method === "POST") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ cart: addedCart }));
+    return;
+  }
+  if (request.url === "/store/carts/cart_add_fixture" && request.method === "GET") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ cart: addedCart }));
+    return;
+  }
+
+  const cart = /^\/store\/carts\/(cart_return_[\w-]+)(?:\?.*)?$/.exec(request.url ?? "");
   if (cart !== null && request.method === "GET") {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ cart: { id: cart[1]!, currency_code: "eur", item_total: 25, subtotal: 32, shipping_total: 7, total: 32, items: [{ title: "Lunar Base", quantity: 1 }], shipping_address: { first_name: "Ada", address_1: "1 Example Street", postal_code: "10115", city: "Tallinn", country_code: "ee" }, shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }] } }));
+    response.end(JSON.stringify({ cart: { id: cart[1]!, currency_code: "eur", item_total: 25, subtotal: 32, shipping_total: 7, total: 32, items: [{ id: "line_fixture", variant_id: "variant_fixture", variant: { id: "variant_fixture", manage_inventory: false }, title: "Lunar Base", unit_price: 25, quantity: 1 }], shipping_address: { first_name: "Ada", address_1: "1 Example Street", postal_code: "10115", city: "Tallinn", country_code: "ee" }, shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }] } }));
     return;
   }
   const completion = /^\/store\/carts\/(cart_return_[\w-]+)\/complete$/.exec(request.url ?? "");

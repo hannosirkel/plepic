@@ -65,7 +65,7 @@ export function catalogueProductFromStore(
   throw new ConfigError("Medusa Store product has no purchasable EUR variant");
 }
 
-function purchasableVariantIdFromStore(response: StoreProductResponse): string | null {
+function variantIdentityFromStore(response: StoreProductResponse): { readonly id: string; readonly available: boolean } {
   const product = record(response.products?.[0], "product");
   if (!Array.isArray(product.variants)) throw new ConfigError("Medusa Store product has no variants");
   for (const rawVariant of product.variants) {
@@ -76,7 +76,7 @@ function purchasableVariantIdFromStore(response: StoreProductResponse): string |
         variant.manage_inventory !== true ||
         variant.allow_backorder === true ||
         (Number.isInteger(variant.inventory_quantity) && (variant.inventory_quantity as number) > 0);
-      return available ? text(variant.id, "variant id") : null;
+      return { id: text(variant.id, "variant id"), available };
     }
   }
   throw new ConfigError("Medusa Store product has no EUR variant");
@@ -110,7 +110,11 @@ export async function loadStoreProduct(input: {
   readonly backendUrl: string | null;
   readonly publishableKey: string | null;
   readonly presentation: CatalogueProduct;
-}): Promise<{ readonly catalogue: CatalogueProduct; readonly variantId: string | null }> {
+}): Promise<{
+  readonly catalogue: CatalogueProduct;
+  readonly variantId: string | null;
+  readonly analyticsVariantId: string;
+}> {
   const { backendUrl, publishableKey, presentation } = input;
   if (backendUrl === null || publishableKey === null) {
     throw new ConfigError("MEDUSA_BACKEND_URL and MEDUSA_PUBLISHABLE_API_KEY are required for the Store catalogue");
@@ -121,5 +125,10 @@ export async function loadStoreProduct(input: {
   const response = await fetch(url, { cache: "no-store", headers: { "x-publishable-api-key": publishableKey } });
   if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
   const body = (await response.json()) as StoreProductResponse;
-  return { catalogue: catalogueProductFromStore(body, presentation), variantId: purchasableVariantIdFromStore(body) };
+  const variant = variantIdentityFromStore(body);
+  return {
+    catalogue: catalogueProductFromStore(body, presentation),
+    variantId: variant.available ? variant.id : null,
+    analyticsVariantId: variant.id,
+  };
 }

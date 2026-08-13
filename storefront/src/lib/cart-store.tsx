@@ -60,6 +60,7 @@ import type { CartLine } from "./cart.js";
 import { createMedusaStoreClient } from "./medusa-client.js";
 import type { ClientRuntimeConfig } from "./client-runtime-config.js";
 import { medusaMajorToMinor } from "./store-money.js";
+import { emitAddToCart } from "./analytics.js";
 import {
   addCatalogueLineAction,
   basketForScenario,
@@ -83,14 +84,51 @@ function runtimeConfig(): ClientRuntimeConfig {
 }
 
 export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
-  const value = cart as { items?: readonly { id?: string; title?: string; unit_price?: number; quantity?: number; variant?: { manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string };
+  const value = cart as { items?: readonly { id?: string; title?: string; unit_price?: number; quantity?: number; variant?: { id?: string; manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string };
   if (!Array.isArray(value.items) || typeof value.currency_code !== "string") throw new Error("Medusa Store cart response is malformed");
   return value.items.map((line) => {
     if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.quantity)) throw new Error("Medusa Store cart line is malformed");
     const variant = line.variant;
     const available = variant?.manage_inventory !== true || variant.allow_backorder === true || (Number.isInteger(variant.inventory_quantity) && variant.inventory_quantity! > 0);
-    return { id: line.id, productName: line.title, unitAmount: medusaMajorToMinor(line.unit_price, value.currency_code!), currency: value.currency_code!.toUpperCase(), quantity: line.quantity, availability: available ? "InStock" : "OutOfStock" };
+    return { id: line.id, ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}), productName: line.title, unitAmount: medusaMajorToMinor(line.unit_price, value.currency_code!), currency: value.currency_code!.toUpperCase(), quantity: line.quantity, availability: available ? "InStock" : "OutOfStock" };
   });
+}
+
+type StoreClient = ReturnType<typeof createMedusaStoreClient>;
+
+/** Adds the sole Store product to a new or existing cart and measures only the accepted line. */
+export async function addStoreCatalogueLine(
+  sdk: StoreClient,
+  existingCartId: string | null,
+): Promise<{ readonly cartId: string; readonly lines: readonly CartLine[] }> {
+  const { products } = await sdk.store.product.list({ limit: 1, fields: "id,variants.*" });
+  const variantId = products[0]?.variants?.[0]?.id;
+  if (products.length !== 1 || typeof variantId !== "string" || variantId.length === 0) {
+    throw new Error("Medusa Store catalogue is not ready");
+  }
+
+  let cartId = existingCartId;
+  if (cartId === null) {
+    const { regions } = await sdk.store.region.list({ limit: 2 });
+    if (regions.length !== 1) throw new Error("Medusa Store catalogue is not ready");
+    const createdId = (await sdk.store.cart.create({ region_id: regions[0]!.id })).cart.id;
+    if (typeof createdId !== "string" || createdId.length === 0) throw new Error("Medusa Store cart is not ready");
+    cartId = createdId;
+  }
+
+  const updated = await sdk.store.cart.createLineItem(cartId, { variant_id: variantId, quantity: 1 });
+  const lines = cartLinesFromStore(updated.cart);
+  const acceptedLine = lines.find((line) => line.variantId === variantId);
+  if (acceptedLine !== undefined) {
+    emitAddToCart({
+      variantId,
+      name: acceptedLine.productName,
+      unitAmount: acceptedLine.unitAmount,
+      currency: acceptedLine.currency,
+      quantity: 1,
+    });
+  }
+  return { cartId, lines };
 }
 
 /** Reads only the opaque, tab-scoped cart identifier; no other module touches this key. */
@@ -218,21 +256,12 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     }
     void run("lunar-base", "adding", async () => {
       const sdk = createMedusaStoreClient(runtimeConfig().medusa);
-      const id = cartId.current;
-      const { products } = await sdk.store.product.list({ limit: 1, fields: "id,variants.*" });
-      if (products.length !== 1 || products[0]?.variants?.[0] === undefined) throw new Error("Medusa Store catalogue is not ready");
-      if (id === null) {
-        const { regions } = await sdk.store.region.list({ limit: 2 });
-        if (regions.length !== 1) throw new Error("Medusa Store catalogue is not ready");
-        const created = await sdk.store.cart.create({ region_id: regions[0]!.id });
-        const createdCartId = created.cart.id;
-        cartId.current = createdCartId;
-        rememberMedusaCartId(createdCartId);
-        const updated = await sdk.store.cart.createLineItem(createdCartId, { variant_id: products[0].variants[0].id, quantity: 1 });
-        return { ok: true, lines: cartLinesFromStore(updated.cart) };
+      const added = await addStoreCatalogueLine(sdk, cartId.current);
+      if (cartId.current === null) {
+        cartId.current = added.cartId;
+        rememberMedusaCartId(added.cartId);
       }
-      const updated = await sdk.store.cart.createLineItem(id, { variant_id: products[0].variants[0].id, quantity: 1 });
-      return { ok: true, lines: cartLinesFromStore(updated.cart) };
+      return { ok: true, lines: added.lines };
     });
   }, [run, options, scenario]);
 

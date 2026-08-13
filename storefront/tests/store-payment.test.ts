@@ -60,13 +60,14 @@ describe("Stripe payment session Store operations", () => {
         subtotal: 32,
         shipping_total: 7,
         total: 32,
-        items: [{ title: "Lunar Base", quantity: 1 }],
+        items: [{ variant_id: "variant_example", title: "Lunar Base", unit_price: 25, quantity: 1 }],
         shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
         shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
       },
     }, "cart_example")).toEqual({
       currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 2500, shippingAmount: 700,
       orderAmount: 3200, address: "Ada, Moon Street 1, 10101, Tallinn, EE",
+      analyticsItems: [{ variantId: "variant_example", name: "Lunar Base", unitAmount: 2500, currency: "EUR", quantity: 1 }],
     });
     expect(() => returnOrderDisclosure({
       cart: {
@@ -77,6 +78,26 @@ describe("Stripe payment session Store operations", () => {
       },
     }, "cart_example")).toThrow(/complete checkout disclosure/);
     expect(() => returnOrderDisclosure({ cart: { id: "cart_example" } }, "cart_example")).toThrow(/complete checkout disclosure/);
+  });
+
+  it("keeps redirect completion available when only optional analytics item metadata is absent", () => {
+    expect(returnOrderDisclosure({
+      cart: {
+        id: "cart_example",
+        currency_code: "eur",
+        item_total: 25,
+        subtotal: 32,
+        shipping_total: 7,
+        total: 32,
+        items: [{ title: "Lunar Base", quantity: 1 }],
+        shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
+        shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
+      },
+    }, "cart_example")).toMatchObject({
+      goods: "Lunar Base × 1",
+      orderAmount: 3200,
+      analyticsItems: null,
+    });
   });
 
   it("initiates the one maintained Stripe provider against the current cart total", async () => {
@@ -231,16 +252,19 @@ describe("Stripe payment session Store operations", () => {
 
   it("never asks Medusa to complete when Stripe reports a confirmation error", async () => {
     let completions = 0;
+    const failures: string[] = [];
     await expect(
       confirmAndCompleteStripeOrder(
-        async () => ({ ok: false, pending: false, message: "The payment could not be confirmed" }),
+        async () => ({ ok: false, pending: false, reportFailure: true, message: "The payment could not be confirmed" }),
         async () => {
           completions += 1;
           return { orderId: "order_should_not_exist", displayId: 99 };
         },
+        (stage) => failures.push(stage),
       ),
     ).rejects.toThrow("The payment could not be confirmed");
     expect(completions).toBe(0);
+    expect(failures).toEqual(["stripe_confirmation"]);
   });
 
   it("returns only the order Medusa creates after Stripe confirms", async () => {
@@ -258,6 +282,39 @@ describe("Stripe payment session Store operations", () => {
       ),
     ).resolves.toEqual({ orderId: "order_example", displayId: 42 });
     expect(sequence).toEqual(["stripe", "medusa"]);
+  });
+
+  it("preserves the commerce failure when the analytics callback also throws", async () => {
+    await expect(confirmAndCompleteStripeOrder(
+      async () => ({ ok: true }),
+      async () => { throw new Error("Medusa completion failed"); },
+      () => { throw new Error("synthetic analytics failure"); },
+    )).rejects.toThrow("Medusa completion failed");
+  });
+
+  it("does not classify redirect processing or locally unavailable controls as payment failure", async () => {
+    for (const confirmation of [
+      { ok: false, pending: true, reportFailure: false, message: "Payment is still processing" },
+      { ok: false, pending: false, reportFailure: false, message: "Payment options are still loading" },
+    ] as const) {
+      const failures: string[] = [];
+      await expect(confirmAndCompleteStripeOrder(
+        async () => confirmation,
+        async () => ({ orderId: "order_should_not_exist", displayId: 1 }),
+        (stage) => failures.push(stage),
+      )).rejects.toThrow(confirmation.message);
+      expect(failures).toEqual([]);
+    }
+  });
+
+  it("classifies a Medusa completion rejection without exposing its error text", async () => {
+    const failures: string[] = [];
+    await expect(confirmAndCompleteStripeOrder(
+      async () => ({ ok: true }),
+      async () => { throw new Error("provider payload must stay private"); },
+      (stage) => failures.push(stage),
+    )).rejects.toThrow("provider payload must stay private");
+    expect(failures).toEqual(["order_completion"]);
   });
 
   it("serializes payment-session creation so PaymentIntents cannot race", async () => {
@@ -284,9 +341,9 @@ describe("Stripe payment session Store operations", () => {
 
   it("completes only a succeeded PaymentIntent and treats processing as pending", () => {
     expect(stripeConfirmationForStatus("succeeded")).toEqual({ ok: true });
-    expect(stripeConfirmationForStatus("processing")).toMatchObject({ ok: false, pending: true });
-    expect(stripeConfirmationForStatus("requires_capture")).toMatchObject({ ok: false, pending: false });
-    expect(stripeConfirmationForStatus(undefined)).toMatchObject({ ok: false, pending: false });
+    expect(stripeConfirmationForStatus("processing")).toMatchObject({ ok: false, pending: true, reportFailure: false });
+    expect(stripeConfirmationForStatus("requires_capture")).toMatchObject({ ok: false, pending: false, reportFailure: true });
+    expect(stripeConfirmationForStatus(undefined)).toMatchObject({ ok: false, pending: false, reportFailure: true });
   });
 
   it("makes exactly one redirect completion request per fresh Turnstile response", async () => {

@@ -217,4 +217,18 @@ describe("checkout shipping option address binding", () => {
       effect.indexOf("const cartId = storedMedusaCartId();"),
     );
   });
+
+  it("reports a real payment failure even when optional item analytics metadata is unavailable", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/components/shop/CheckoutPageContent.tsx", import.meta.url)),
+      "utf8",
+    );
+    const start = source.indexOf("(stage) => {");
+    const callback = source.slice(start, source.indexOf("},", start));
+
+    expect(start, "payment failure callback was not found").toBeGreaterThan(0);
+    expect(callback).toContain("if (totals.orderAmount === null) return;");
+    expect(callback).not.toContain("analyticsItems");
+    expect(callback).toContain("emitPaymentFailure({");
+  });
 });

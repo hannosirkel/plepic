@@ -39,11 +39,32 @@ describe("Store catalogue boundary", () => {
     expect(catalogueProductFromStore(response(0), mockCatalogue).availability).toBe("OutOfStock");
   });
 
+  it("retains stable variant identity for an exhausted product while disabling purchase", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify(response(0)), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    try {
+      await expect(loadStoreProduct({
+        backendUrl: "https://store.example.test",
+        publishableKey: "pk_example_product",
+        presentation: mockCatalogue,
+      })).resolves.toMatchObject({ variantId: null, analyticsVariantId: "variant_lunar_base" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("renders an exhausted variant in the existing CTA slot without an active add action", () => {
     const html = renderToStaticMarkup(
       createElement(AddToCartButton, {
         label: "Add to basket",
         variantId: null,
+        analyticsVariantId: "variant_lunar_base",
+        productName: "Lunar Base",
+        unitAmount: 2500,
+        currency: "EUR",
       }),
     );
 

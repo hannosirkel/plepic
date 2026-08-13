@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { emitAddToCart, emitViewItem, onAnalyticsEnabled } from "../../lib/analytics.js";
 import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import { forgetMedusaCartId, rememberMedusaCartId, storedMedusaCartId } from "../../lib/cart-store.js";
@@ -21,10 +22,27 @@ export function claimAddAttempt(inFlight: { current: boolean }): boolean {
 }
 
 /** The canonical CTA slot's only client behaviour: create/reuse a guest cart and add this variant. */
-export function AddToCartButton({ label, variantId }: { readonly label: string; readonly variantId: string | null }) {
+export function AddToCartButton({
+  label,
+  variantId,
+  analyticsVariantId,
+  productName,
+  unitAmount,
+  currency,
+}: {
+  readonly label: string;
+  readonly variantId: string | null;
+  readonly analyticsVariantId: string;
+  readonly productName: string;
+  readonly unitAmount: number;
+  readonly currency: string;
+}) {
   const [state, setState] = useState<"idle" | "adding" | "error">("idle");
   const inFlight = useRef(false);
   const unavailable = variantId === null;
+  useEffect(() => {
+    return onAnalyticsEnabled(() => emitViewItem({ variantId: analyticsVariantId, name: productName, unitAmount, currency }));
+  }, [analyticsVariantId, currency, productName, unitAmount]);
   return (
     <button
       type="button"
@@ -55,6 +73,7 @@ export function AddToCartButton({ label, variantId }: { readonly label: string; 
               forgetMedusaCartId();
               throw new Error("The basket expired; try adding the game again");
             }
+            emitAddToCart({ variantId, name: productName, unitAmount, currency });
             window.location.assign("/cart");
           } catch {
             inFlight.current = false;

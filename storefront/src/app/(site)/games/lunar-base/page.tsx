@@ -48,6 +48,7 @@ export default async function LunarBasePage() {
     presentation: mockCatalogue,
   });
   const catalogue = resolveCatalogue(store.catalogue);
+  const analyticsProduct = store.catalogue;
 
   const jsonLd = buildProductJsonLd({
     product: store.catalogue,
@@ -60,7 +61,7 @@ export default async function LunarBasePage() {
       <LunarBaseMockup
         catalogue={catalogue}
         merchant={placeholderValuesFrom(runtime.merchant)}
-        primaryPurchaseAction={<AddToCartButton label="Add to basket" variantId={store.variantId} />}
+        primaryPurchaseAction={<AddToCartButton label="Add to basket" variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
       />
       <JsonLdScript data={jsonLd} nonce={nonce} />
     </>

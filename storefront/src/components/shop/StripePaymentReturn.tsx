@@ -15,6 +15,7 @@ import { CONFIRMATION_PROMISE, CONSENT_LINE, DELIVERY_ESTIMATE } from "./checkou
 import styles from "../../styles/pages/shop.module.css";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
+import { emitPaymentFailure, emitPurchase } from "../../lib/analytics.js";
 
 function browserRuntimeConfig(): ClientRuntimeConfig {
   const element = document.getElementById("plepic-runtime-config");
@@ -57,6 +58,8 @@ export function StripePaymentReturn({
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (completing) return;
+    const currentDisclosure = disclosure;
+    if (currentDisclosure === null) return;
     const token = new FormData(event.currentTarget).get("cf-turnstile-response");
     if (typeof token !== "string" || token.trim().length === 0 || token.trim().length > 4096) {
       setFailed(true);
@@ -75,10 +78,26 @@ export function StripePaymentReturn({
       token,
     ).then(
       (completed) => {
+        if (currentDisclosure.analyticsItems !== null) {
+          emitPurchase({
+            transactionId: completed.orderId,
+            currency: currentDisclosure.currency,
+            value: currentDisclosure.orderAmount,
+            items: currentDisclosure.analyticsItems,
+          });
+        }
         forgetMedusaCartId();
         setOrder(completed);
       },
-      () => { setFailed(true); setChallengeRevision((value) => value + 1); },
+      () => {
+        emitPaymentFailure({
+          failureStage: "order_completion",
+          currency: currentDisclosure.currency,
+          value: currentDisclosure.orderAmount,
+        });
+        setFailed(true);
+        setChallengeRevision((value) => value + 1);
+      },
     ).finally(() => setCompleting(false));
   }
 

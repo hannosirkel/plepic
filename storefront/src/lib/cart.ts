@@ -92,6 +92,8 @@ export const MIN_QUANTITY_PER_LINE = 1;
 export interface CartLine {
   /** Stable within a basket. Task 5 replaces this with the Medusa line item id. */
   readonly id: string;
+  /** Medusa's product-variant identifier when this line came from the Store API. */
+  readonly variantId?: string;
   readonly productName: string;
   /** Minor units, as the catalogue holds them. */
   readonly unitAmount: number;
