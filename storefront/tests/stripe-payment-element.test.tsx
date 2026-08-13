@@ -7,6 +7,7 @@ import {
   type StripePaymentElementHandle,
 } from "../src/components/shop/StripePaymentElement.js";
 import { StripePaymentReturn } from "../src/components/shop/StripePaymentReturn.js";
+import { PostPurchaseNewsletterForm } from "../src/components/shop/PostPurchaseNewsletterForm.js";
 
 describe("Stripe Payment Element fail-closed states", () => {
   it("does not mount a payment instrument without the request-time Stripe key", () => {
@@ -44,5 +45,22 @@ describe("redirect-based Stripe payment return", () => {
     expect(html).toContain('role="status"');
     expect(html).toContain("Confirming your order");
     expect(html).not.toContain("Order confirmed");
+  });
+});
+
+describe("post-purchase newsletter opt-in", () => {
+  it("is separate from purchase, starts unticked, and requires an affirmative check", () => {
+    const html = renderToStaticMarkup(
+      <PostPurchaseNewsletterForm
+        defaultEmail="buyer@example.test"
+        turnstileSiteKey="synthetic-site-key"
+        nonce="nonce"
+      />,
+    );
+    expect(html).toContain('name="newsletter-consent"');
+    expect(html).not.toMatch(/name="newsletter-consent"[^>]*checked/);
+    expect(html).toContain('value="buyer@example.test"');
+    expect(html).toContain('data-testid="turnstile-post-purchase-newsletter"');
+    expect(html).toContain("This choice does not affect your order");
   });
 });

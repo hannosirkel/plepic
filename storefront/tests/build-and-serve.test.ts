@@ -474,7 +474,7 @@ async function startBackendServer(): Promise<string> {
         );
         return;
       }
-      if (request.url === "/store/contact" && request.method === "POST") {
+      if (["/store/contact", "/store/newsletter"].includes(request.url ?? "") && request.method === "POST") {
         response.writeHead(204);
         response.end();
         return;
@@ -1438,26 +1438,15 @@ describe("neither public form can put a field value in a URL", () => {
     {
       route: "/",
       label: newsletterCopy.heading,
-      answer: newsletterCopy.notSentMessage,
+      answer: newsletterCopy.successMessage,
       copy: newsletterCopy,
-      /**
-       * The sentence this route must never paint, because painting it would
-       * be a lie about a form that sends nothing.
-       *
-       * **`null` because the newsletter copy has no success sentence at
-       * all**, deliberately: nothing in this build can succeed, so
-       * `content/publisher.ts`'s `newsletter` object never had one to
-       * fabricate. The test below pins that absence instead. It used to
-       * assert that the *contact* form's success line was missing from the
-       * homepage — which a page that never had that string passes for free,
-       * and which said nothing about the newsletter at all. Give the
-       * newsletter a success sentence and this fixture has to gain the string
-       * to look for, or the suite reddens.
-       */
-      fabricatedAnswer: null,
-      backendPath: null,
+      fabricatedAnswer: newsletterCopy.errorMessage,
+      backendPath: "/store/newsletter",
       extraFields: [["additional-notes", ""]] as const,
-      typed: { email: "unhydrated-subscriber@example.com" },
+      typed: {
+        email: "unhydrated-subscriber@example.com",
+        "cf-turnstile-response": "synthetic-turnstile-token",
+      },
     },
     {
       route: "/support/lunar-base",
@@ -1659,16 +1648,6 @@ describe("neither public form can put a field value in a URL", () => {
 
       it("does not fabricate a success message anywhere on the route", async () => {
         const response = await requestWithHost(server.port, form.route, LIVE_HOST);
-
-        if (form.fabricatedAnswer === null) {
-          // See the fixture: this form has no success copy to fabricate, and
-          // the check with teeth is that it still has none.
-          expect(
-            Object.keys(form.copy),
-            "this form now has success copy; give the fixture the string to look for",
-          ).not.toContain("successMessage");
-          return;
-        }
 
         expect(paintedText(response.body)).not.toContain(form.fabricatedAnswer);
       });

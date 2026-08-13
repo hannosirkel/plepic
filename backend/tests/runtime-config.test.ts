@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { readBackendRuntimeConfig } from "../src/config/runtime.js";
+import {
+  readBackendRuntimeConfig,
+  readNewsletterRateLimitRuntimeConfig,
+  readNewsletterRuntimeConfig,
+} from "../src/config/runtime.js";
 
 describe("readBackendRuntimeConfig", () => {
   it("rejects production configuration without every required value", () => {
@@ -58,6 +62,8 @@ describe("readBackendRuntimeConfig", () => {
       SMTP_ENVELOPE_FROM: "orders@example.test",
       CONTACT_MAIL_RECIPIENT: "contact@example.test",
       TURNSTILE_SECRET_KEY: "turnstile-secret",
+      NEWSLETTER_API_KEY: "newsletter-api-key",
+      NEWSLETTER_LIST_ID: "42",
       MERCHANT_LEGAL_NAME: "Lunar Base OÜ",
       MERCHANT_REGISTERED_ADDRESS: "Moon Street 1, Tallinn",
       MERCHANT_CONTACT_ADDRESS: "legal@example.test",
@@ -80,6 +86,12 @@ describe("readBackendRuntimeConfig", () => {
     expect(() =>
       readBackendRuntimeConfig({ ...environment, MERCHANT_CONTACT_ADDRESS: "not-an-address" }),
     ).toThrow(/MERCHANT_CONTACT_ADDRESS/);
+    expect(() => readNewsletterRuntimeConfig({ ...environment, NEWSLETTER_LIST_ID: "0" })).toThrow(
+      /NEWSLETTER_LIST_ID/,
+    );
+    expect(() => readNewsletterRuntimeConfig({ ...environment, NEWSLETTER_LIST_ID: "12.5" })).toThrow(
+      /NEWSLETTER_LIST_ID/,
+    );
   });
 
   it("returns the supplied production values unchanged", () => {
@@ -102,6 +114,8 @@ describe("readBackendRuntimeConfig", () => {
         SMTP_ENVELOPE_FROM: "orders@example.test",
         CONTACT_MAIL_RECIPIENT: "contact@example.test",
         TURNSTILE_SECRET_KEY: "turnstile-secret",
+        NEWSLETTER_API_KEY: "newsletter-api-key",
+        NEWSLETTER_LIST_ID: "42",
         MERCHANT_LEGAL_NAME: "Lunar Base OÜ",
         MERCHANT_REGISTERED_ADDRESS: "Moon Street 1, Tallinn",
         MERCHANT_CONTACT_ADDRESS: "legal@example.test",
@@ -137,5 +151,43 @@ describe("readBackendRuntimeConfig", () => {
         returnAddress: "Return Street 2, Tallinn",
       },
     });
+  });
+
+  it("parses newsletter credentials only for the subscribing Store route", () => {
+    expect(readNewsletterRuntimeConfig({
+      NEWSLETTER_API_KEY: "newsletter-api-key",
+      NEWSLETTER_LIST_ID: "42",
+      TURNSTILE_SECRET_KEY: "turnstile-secret",
+    })).toEqual({
+      apiKey: "newsletter-api-key",
+      listId: 42,
+      turnstileSecretKey: "turnstile-secret",
+    });
+  });
+
+  it("parses the newsletter limiter only for the subscribing Store route", () => {
+    expect(readNewsletterRateLimitRuntimeConfig({
+      REDIS_HOST: "redis.internal",
+      REDIS_PORT: "6379",
+      REDIS_PASSWORD: "redis-password",
+      NEWSLETTER_RATE_LIMIT_MAX: "20",
+      NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS: "600",
+    })).toEqual({
+      redisHost: "redis.internal",
+      redisPort: 6379,
+      redisPassword: "redis-password",
+      maximum: 20,
+      windowSeconds: 600,
+    });
+
+    for (const invalid of ["0", "12.5", "9007199254740992"]) {
+      expect(() => readNewsletterRateLimitRuntimeConfig({
+        REDIS_HOST: "redis.internal",
+        REDIS_PORT: "6379",
+        REDIS_PASSWORD: "redis-password",
+        NEWSLETTER_RATE_LIMIT_MAX: invalid,
+        NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS: "600",
+      })).toThrow(/NEWSLETTER_RATE_LIMIT_MAX/);
+    }
   });
 });

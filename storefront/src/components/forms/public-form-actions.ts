@@ -57,18 +57,17 @@
  *
  * ## What these functions do, and what they refuse to do
  *
- * The newsletter action reads no visitor field because this build has no
- * newsletter subsystem. The contact action passes its bounded `FormData` to
- * the server-only relay, which sends it to Medusa in a POST body; Medusa
- * verifies Turnstile and relays the message without persistence or logging.
+ * Both actions pass bounded `FormData` to server-only relays. Medusa verifies
+ * Turnstile, then either upserts the configured provider list or relays the
+ * contact message without local persistence or logging.
  *
  * The first argument they *do* bind is the previous answer as the **client
  * posts it back**, and it exists for one reason: see `PublicFormOutcome`
  * below, which also says why it is treated as untrusted input.
  *
- * **They do not fabricate success.** Newsletter returns its explicit no-send
- * copy. Contact returns success only after Medusa answers 204 and otherwise
- * returns the fixed configuration-resolved error copy.
+ * **They do not fabricate success.** Each returns success only after Medusa
+ * answers 204 and otherwise returns its fixed configuration-resolved error
+ * copy.
  *
  * The returned message is a fixed string from `content/`. **No value a
  * visitor typed is ever put in it**, which is the whole point of the
@@ -83,6 +82,7 @@ import {
   resolveConfigurationPlaceholders,
 } from "../../lib/configuration-placeholders.js";
 import { submitContactMessage } from "./contact-submit.js";
+import { submitNewsletterAddress } from "./newsletter-submit.js";
 
 /**
  * What a public form's action returns.
@@ -180,9 +180,16 @@ function nextSubmission(previous: unknown): number {
   return typeof counted === "number" && Number.isInteger(counted) ? counted + 1 : 1;
 }
 
-/** The newsletter form's answer to a submission this build cannot act on. */
-export async function reportNewsletterNotSent(previous: unknown): Promise<PublicFormOutcome> {
-  return { message: newsletter.notSentMessage, submissions: nextSubmission(previous) };
+/** Subscribes one explicitly submitted address through the configured provider relay. */
+export async function submitNewsletter(
+  previous: unknown,
+  formData: FormData,
+): Promise<PublicFormOutcome> {
+  const result = await submitNewsletterAddress(formData, getRuntimeConfig().medusa);
+  return {
+    message: result.ok ? newsletter.successMessage : newsletter.errorMessage,
+    submissions: nextSubmission(previous),
+  };
 }
 
 /** Relays a validated contact message without retaining or echoing its fields. */

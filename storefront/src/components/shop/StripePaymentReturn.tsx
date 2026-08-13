@@ -7,6 +7,7 @@ import { forgetMedusaCartId, storedMedusaCartId } from "../../lib/cart-store.js"
 import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import { completeStripeOrderWithRetry, type CompletedStoreOrder } from "../../lib/store-payment.js";
 import styles from "../../styles/pages/shop.module.css";
+import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
 
 function runtimeConfig(): ClientRuntimeConfig {
   const element = document.getElementById("plepic-runtime-config");
@@ -44,12 +45,18 @@ export function StripePaymentReturn() {
   }, []);
 
   if (order !== null) {
+    const runtime = runtimeConfig();
     return (
       <section className={styles.card} aria-labelledby="payment-return-heading">
         <h1 id="payment-return-heading" className={styles.heading}>Order confirmed</h1>
         <p className={styles.body}>
           Your order number is {String(order.displayId)}. A confirmation will be sent by email.
         </p>
+        <PostPurchaseNewsletterForm
+          defaultEmail=""
+          turnstileSiteKey={runtime.turnstile.siteKey}
+          nonce={undefined}
+        />
       </section>
     );
   }

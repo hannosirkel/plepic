@@ -1,7 +1,5 @@
 import type { SmtpSender } from "../notifications/smtp.js";
-
-const TURNSTILE_VERIFY_URL =
-  "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+import { verifyTurnstile } from "../turnstile/verify.js";
 
 interface ContactRelayConfig {
   readonly recipient: string;
@@ -67,22 +65,13 @@ export async function relayContactMessage(
   const message = parseContactMessage(input);
   if (message === null) return 400;
 
-  try {
-    const body = new URLSearchParams({
-      secret: config.turnstileSecretKey,
-      response: message.turnstileToken,
-    });
-    const response = await fetcher(TURNSTILE_VERIFY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!response.ok) return 403;
-    const result = await response.json() as { readonly success?: unknown };
-    if (result.success !== true) return 403;
-  } catch {
-    return 503;
-  }
+  const verification = await verifyTurnstile(
+    message.turnstileToken,
+    config.turnstileSecretKey,
+    fetcher,
+  );
+  if (verification === "rejected") return 403;
+  if (verification === "unavailable") return 503;
 
   try {
     await sender.send({

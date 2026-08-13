@@ -324,11 +324,14 @@ The Plepic Games storefront and Medusa backend monorepo.
   page. It now hides via a stylesheet class
   (`src/components/turnstile/HoneypotField.module.css`). The contact path now
   verifies Turnstile server-side and relays through the configured Medusa
-  backend; newsletter remains an explicit no-op because this repository has
-  no newsletter subscription subsystem.
+  backend. Newsletter follows the same server-side validation boundary and
+  writes only to the configured Brevo list, with no local subscriber store. A
+  deployment-wide fixed-window counter in the environment's existing Redis
+  rejects excess valid attempts before Turnstile or Brevo; its one static key
+  contains no address, IP, token, or other subscriber-derived value.
 
-  **Neither public form can put a field value in a URL, and neither pretends
-  to have sent anything.** Both shipped as `<form onSubmit={…}>` with no
+  **Neither public form can put a field value in a URL, and neither fabricates
+  success.** Both shipped as `<form onSubmit={…}>` with no
   `method` and no `action` — which is a GET, and a GET serialises **every**
   named control, not only the ones somebody typed into. Measured on a rebuilt
   base revision, an unhydrated press (or one with JavaScript off) put **2 of
@@ -344,10 +347,10 @@ The Plepic Games storefront and Medusa backend monorepo.
   Server Function as the form's `action` instead
   (`src/components/forms/public-form-actions.ts`), which reaches the same
   guarantee from inside the form components. The values travel in a request
-  body. The newsletter action reads no field and returns its no-send copy.
-  The contact action validates bounded fields, then posts them server-to-server
-  to Medusa; Medusa revalidates them, verifies Turnstile, and relays through
-  strict STARTTLS submission without storing or logging the message. Success
+  body. Each action validates bounded fields, then posts them server-to-server
+  to Medusa; Medusa revalidates them and verifies Turnstile before either
+  upserting the configured Brevo list or relaying contact mail through strict
+  STARTTLS. Neither path stores or logs the submitted content locally. Success
   is rendered only after a 204 response; every failure uses fixed error copy.
   The answer is rendered into the HTML of the POST response, so it is legible
   with no JavaScript at all.
@@ -628,6 +631,11 @@ The Plepic Games storefront and Medusa backend monorepo.
   test keeps that email wording equal to `content/legal/returns.ts`.
   contact messages use the same strict STARTTLS sender directly, after
   Turnstile verification, so their contents are never stored by Medusa.
+  Newsletter submissions follow the same bounded, Turnstile-first Store API
+  boundary and upsert only the deployment-configured Brevo list. A fail-closed,
+  cross-pod Redis counter limits the route before either external service and
+  stores no subscriber-derived key or value; subscriber addresses and provider
+  errors are neither persisted nor logged locally.
   SMTP submission is fixed to port 587 with certificate verification; sender
   and contact recipient are deployment configuration, and visitor addresses
   are Reply-To only. API/webhook secrets and the environment's Payment Method

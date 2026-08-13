@@ -165,6 +165,7 @@ import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
 import {
   StripePaymentElement,
   type StripePaymentElementHandle,
@@ -571,6 +572,11 @@ export function CheckoutPageContent({
           Your order number is {String(completedOrder.displayId)}. A confirmation will be sent by
           email.
         </p>
+        <PostPurchaseNewsletterForm
+          defaultEmail={values.email ?? ""}
+          turnstileSiteKey={turnstileSiteKey}
+          nonce={nonce}
+        />
       </section>
     );
   }

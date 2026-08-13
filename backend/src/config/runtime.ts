@@ -24,6 +24,20 @@ export interface BackendRuntimeConfig {
   readonly orderConfirmationLegal: OrderConfirmationLegalConfig;
 }
 
+export interface NewsletterRuntimeConfig {
+  readonly apiKey: string;
+  readonly listId: number;
+  readonly turnstileSecretKey: string;
+}
+
+export interface NewsletterRateLimitRuntimeConfig {
+  readonly redisHost: string;
+  readonly redisPort: number;
+  readonly redisPassword: string;
+  readonly maximum: number;
+  readonly windowSeconds: number;
+}
+
 export interface OrderConfirmationLegalConfig {
   readonly merchantLegalName: string;
   readonly merchantRegisteredAddress: string;
@@ -82,6 +96,21 @@ function requireSingleLineValue(environment: RuntimeEnvironment, name: string): 
   return value;
 }
 
+function requirePositiveInteger(environment: RuntimeEnvironment, name: string): number {
+  const value = requireEnvironmentValue(environment, name);
+
+  if (!/^[1-9][0-9]*$/.test(value)) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+
+  return parsed;
+}
+
 export function readOrderConfirmationLegalConfig(
   environment: RuntimeEnvironment,
 ): OrderConfirmationLegalConfig {
@@ -93,6 +122,31 @@ export function readOrderConfirmationLegalConfig(
     ),
     merchantContactAddress: requireEmailAddress(environment, "MERCHANT_CONTACT_ADDRESS"),
     returnAddress: requireSingleLineValue(environment, "MERCHANT_RETURN_ADDRESS"),
+  };
+}
+
+export function readNewsletterRuntimeConfig(
+  environment: RuntimeEnvironment,
+): NewsletterRuntimeConfig {
+  return {
+    apiKey: requireEnvironmentValue(environment, "NEWSLETTER_API_KEY"),
+    listId: requirePositiveInteger(environment, "NEWSLETTER_LIST_ID"),
+    turnstileSecretKey: requireEnvironmentValue(environment, "TURNSTILE_SECRET_KEY"),
+  };
+}
+
+export function readNewsletterRateLimitRuntimeConfig(
+  environment: RuntimeEnvironment,
+): NewsletterRateLimitRuntimeConfig {
+  return {
+    redisHost: requireEnvironmentValue(environment, "REDIS_HOST"),
+    redisPort: requirePositiveInteger(environment, "REDIS_PORT"),
+    redisPassword: requireEnvironmentValue(environment, "REDIS_PASSWORD"),
+    maximum: requirePositiveInteger(environment, "NEWSLETTER_RATE_LIMIT_MAX"),
+    windowSeconds: requirePositiveInteger(
+      environment,
+      "NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS",
+    ),
   };
 }
 
