@@ -23,6 +23,17 @@ env \
   STRIPE_SECRET_KEY=synthetic_validation \
   STRIPE_WEBHOOK_SECRET=whsec_validation \
   STRIPE_PAYMENT_METHOD_CONFIGURATION_ID=pmc_validation \
+  SMTP_HOST=smtp.example.test \
+  SMTP_PORT=587 \
+  SMTP_USERNAME=validation-smtp-user \
+  SMTP_PASSWORD=validation-smtp-password \
+  SMTP_ENVELOPE_FROM=orders@example.test \
+  CONTACT_MAIL_RECIPIENT=contact@example.test \
+  TURNSTILE_SECRET_KEY=validation-turnstile-secret \
+  MERCHANT_LEGAL_NAME='Example Games OÜ' \
+  MERCHANT_REGISTERED_ADDRESS='Example Street 1, Tallinn' \
+  MERCHANT_CONTACT_ADDRESS=legal@example.test \
+  MERCHANT_RETURN_ADDRESS='Return Street 2, Tallinn' \
   MEDUSA_DISABLE_TELEMETRY=true \
   XDG_CONFIG_HOME="${plepic_medusa_config_dir}" \
   npm run build --workspace backend

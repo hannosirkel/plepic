@@ -322,10 +322,10 @@ The Plepic Games storefront and Medusa backend monorepo.
   application's CSP (no `'unsafe-inline'` in `style-src`) does not permit, so
   it rendered as a visible input the moment it was actually mounted in a
   page. It now hides via a stylesheet class
-  (`src/components/turnstile/HoneypotField.module.css`). Server-side
-  Turnstile verification is a later unit's; these forms render the widget,
-  validate their own fields with tied, announced errors, and submit to
-  nothing yet.
+  (`src/components/turnstile/HoneypotField.module.css`). The contact path now
+  verifies Turnstile server-side and relays through the configured Medusa
+  backend; newsletter remains an explicit no-op because this repository has
+  no newsletter subscription subsystem.
 
   **Neither public form can put a field value in a URL, and neither pretends
   to have sent anything.** Both shipped as `<form onSubmit={…}>` with no
@@ -344,14 +344,13 @@ The Plepic Games storefront and Medusa backend monorepo.
   Server Function as the form's `action` instead
   (`src/components/forms/public-form-actions.ts`), which reaches the same
   guarantee from inside the form components. The values travel in a request
-  body, the functions **read nothing a visitor typed** — React calls a
-  `useActionState` action as `(previousState, formData)` and neither function
-  binds the second argument, so no expression in that module can reach a
-  field — and the answer is rendered into the HTML of the POST response, so
-  it is legible with no JavaScript at all. That answer is
-  `newsletter.notSentMessage` / `contactForm.notSentMessage`: nothing was
-  sent, nothing was stored. Silently accepting a submission nothing can act
-  on is its own defect, and it is the one the previous revision shipped.
+  body. The newsletter action reads no field and returns its no-send copy.
+  The contact action validates bounded fields, then posts them server-to-server
+  to Medusa; Medusa revalidates them, verifies Turnstile, and relays through
+  strict STARTTLS submission without storing or logging the message. Success
+  is rendered only after a 204 response; every failure uses fixed error copy.
+  The answer is rendered into the HTML of the POST response, so it is legible
+  with no JavaScript at all.
   Proved on a running server with `javaScriptEnabled: false` at 1280, 390 and
   320, and asserted in `tests/build-and-serve.test.ts`.
 
@@ -619,9 +618,20 @@ The Plepic Games storefront and Medusa backend monorepo.
   committed derivatives were produced outside the repository. If `next/image`
   is still unused when the storefront ships, returning it to Next's own
   optional resolution is a one-line change.
-- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams and
-  one maintained Stripe provider. API/webhook secrets and the environment's
-  Payment Method Configuration stay backend-only; only Stripe's publishable key
+- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams,
+  one maintained Stripe provider, and a custom email notification provider.
+  Order confirmations use Medusa's idempotent persisted notification lifecycle;
+  each confirmation reproduces the approved withdrawal conditions and complete
+  model withdrawal form in the durable email, with legal name, registered
+  address, legal contact address, and return address supplied through the same
+  `MERCHANT_*` deployment configuration used by the storefront. A root contract
+  test keeps that email wording equal to `content/legal/returns.ts`.
+  contact messages use the same strict STARTTLS sender directly, after
+  Turnstile verification, so their contents are never stored by Medusa.
+  SMTP submission is fixed to port 587 with certificate verification; sender
+  and contact recipient are deployment configuration, and visitor addresses
+  are Reply-To only. API/webhook secrets and the environment's Payment Method
+  Configuration stay backend-only; only Stripe's publishable key
   is projected to the browser at request time.
 
 Two directories are not workspaces but are consumed by the storefront:

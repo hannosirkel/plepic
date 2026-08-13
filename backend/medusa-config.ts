@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "@medusajs/framework/utils";
 import { readBackendRuntimeConfig } from "./src/config/runtime";
 import { stripePaymentModule } from "./src/config/payment";
+import { notificationModule } from "./src/config/notification";
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
@@ -11,5 +12,8 @@ module.exports = defineConfig({
     databaseUrl: runtime.databaseUrl,
     http: runtime.http,
   },
-  modules: [stripePaymentModule(runtime.stripe)],
+  modules: [
+    stripePaymentModule(runtime.stripe),
+    notificationModule(runtime.smtp),
+  ],
 });

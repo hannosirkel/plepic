@@ -26,11 +26,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { newsletter as newsletterCopy } from "../../content/publisher.js";
-import { contactForm as contactFormCopy } from "../../content/support.js";
 import { ContactForm } from "../src/components/forms/ContactForm.js";
 import { NewsletterForm } from "../src/components/forms/NewsletterForm.js";
 import {
-  reportContactNotSent,
   reportNewsletterNotSent,
 } from "../src/components/forms/public-form-actions.js";
 
@@ -155,10 +153,7 @@ describe("neither form is a GET form", () => {
  * the live-region mutation count was measured in a browser.
  */
 describe("a repeated submission is a new answer, not the same answer again", () => {
-  const cases = [
-    ["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage],
-    ["contact", reportContactNotSent, contactFormCopy.notSentMessage],
-  ] as const;
+  const cases = [["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage]] as const;
 
   for (const [name, action, sentence] of cases) {
     it(`${name}: answers with the fixed sentence from content/, every time`, async () => {
@@ -196,10 +191,7 @@ describe("a repeated submission is a new answer, not the same answer again", () 
  * answered with a 500.
  */
 describe("a forged previous state cannot become part of the answer", () => {
-  const actions = [
-    ["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage],
-    ["contact", reportContactNotSent, contactFormCopy.notSentMessage],
-  ] as const;
+  const actions = [["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage]] as const;
 
   const forged: readonly (readonly [string, unknown])[] = [
     ["a string count", { submissions: "REVIEWER-TAMPERED-COUNT" }],

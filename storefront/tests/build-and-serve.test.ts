@@ -474,6 +474,11 @@ async function startBackendServer(): Promise<string> {
         );
         return;
       }
+      if (request.url === "/store/contact" && request.method === "POST") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
       response.writeHead(202, {
         "content-type": "application/json",
         "x-medusa-test-response": "preserved",
@@ -1450,19 +1455,24 @@ describe("neither public form can put a field value in a URL", () => {
        * to look for, or the suite reddens.
        */
       fabricatedAnswer: null,
+      backendPath: null,
+      extraFields: [["additional-notes", ""]] as const,
       typed: { email: "unhydrated-subscriber@example.com" },
     },
     {
       route: "/support/lunar-base",
       label: contactCopy.heading,
-      answer: contactFormCopy.notSentMessage,
+      answer: contactFormCopy.successMessage,
       copy: contactFormCopy,
-      fabricatedAnswer: contactFormCopy.successMessage,
+      fabricatedAnswer: contactFormCopy.errorMessage,
+      backendPath: "/store/contact",
+      extraFields: [["additional-notes", ""]] as const,
       typed: {
         name: "Unhydrated Person",
         email: "unhydrated-writer@example.com",
         subject: "A subject line",
         message: "A message body that must never appear in a URL.",
+        "cf-turnstile-response": "synthetic-turnstile-token",
       },
     },
   ] as const;
@@ -1597,13 +1607,18 @@ describe("neither public form can put a field value in a URL", () => {
       it("answers an unhydrated submission without putting one value in the URL", async () => {
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
         const markup = formMarkup(served.body, form.label);
-        const fields = [...hiddenFields(markup), ...Object.entries(form.typed)];
+        const fields = [
+          ...hiddenFields(markup),
+          ...Object.entries(form.typed),
+          ...form.extraFields,
+        ];
 
         // A browser sends every hidden control the form declares. If React
         // stopped emitting them this submission would stop reaching the
         // Server Function, and the answer assertion below would fail.
         expect(fields.some(([name]) => name.startsWith("$ACTION"))).toBe(true);
 
+        backendRequests.length = 0;
         const response = await postMultipartWithHost(
           server.port,
           form.route,
@@ -1619,13 +1634,19 @@ describe("neither public form can put a field value in a URL", () => {
           expect(response.body, `"${field}" came back in the response`).not.toContain(value);
           expect(response.body).not.toContain(encodeURIComponent(value));
         }
+        const relays = backendRequests.filter((request) => request.path === form.backendPath);
+        expect(relays).toHaveLength(form.backendPath === null ? 0 : 1);
+        if (form.backendPath !== null) {
+          expect(relays[0]).toMatchObject({ method: "POST", path: form.backendPath });
+        }
       });
 
-      it("says plainly that nothing was sent, in the first paint, with no script involved", async () => {
+      it("reports the honest submission outcome in the first paint, with no script involved", async () => {
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
         const fields = [
           ...hiddenFields(formMarkup(served.body, form.label)),
           ...Object.entries(form.typed),
+          ...form.extraFields,
         ];
         const response = await postMultipartWithHost(server.port, form.route, LIVE_HOST, fields);
 
@@ -1672,7 +1693,7 @@ describe("neither public form can put a field value in a URL", () => {
        * report.
        */
       it("answers a second consecutive submission as its own event", async () => {
-        const typed = Object.entries(form.typed);
+        const typed = [...Object.entries(form.typed), ...form.extraFields];
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
 
         const first = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
@@ -1726,7 +1747,7 @@ describe("neither public form can put a field value in a URL", () => {
        * while the response-body test above stays green on press 1.
        */
       it("serialises back the fixed sentence and an integer, and nothing else, on every press", async () => {
-        const typed = Object.entries(form.typed);
+        const typed = [...Object.entries(form.typed), ...form.extraFields];
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
 
         // Before any press at all. If this control is absent the loop below

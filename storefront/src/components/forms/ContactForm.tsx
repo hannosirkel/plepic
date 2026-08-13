@@ -26,11 +26,9 @@
  * body. See `./public-form-actions.ts`, and `NewsletterForm.tsx` for the same
  * note on the form it shares this defect and this fix with.
  *
- * A valid submission is answered with `contactForm.notSentMessage`, hydrated
- * or not, identically: this build has no submission host, so the honest
- * answer is that the message was not delivered and the address printed above
- * the form is the way through. Doing nothing silently — which is what this
- * component did before — reads as success to the person who pressed Send.
+ * A valid submission is relayed by the Server Function to Medusa's contact
+ * endpoint and answered with fixed success or failure copy, hydrated or not.
+ * Field values remain in POST bodies and are never echoed into the page.
  */
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
@@ -39,7 +37,7 @@ import type { FormEvent } from "react";
 import { contact, contactForm } from "../../../../content/support.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
-import { reportContactNotSent } from "./public-form-actions.js";
+import { submitContact } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
 
@@ -67,7 +65,7 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
   const baseId = useId();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [outcome, submit] = useActionState<PublicFormOutcome | null, FormData>(
-    reportContactNotSent,
+    submitContact,
     null,
   );
   const outcomeRef = useRef<HTMLParagraphElement>(null);

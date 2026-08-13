@@ -57,28 +57,18 @@
  *
  * ## What these functions do, and what they refuse to do
  *
- * **They read nothing a visitor typed.** React calls a `useActionState`
- * action with two arguments, `(previousState, formData)`. Neither function
- * here binds the second one, so there is no expression anywhere in this
- * module that could read, log or store a field — the `FormData` object has no
- * name in this file and cannot acquire one without editing it. That is
- * deliberate and it is the same discipline `src/app/checkout/order/route.ts`
- * applies: nothing in this build can honestly receive a subscription or a
- * message. There is no newsletter subsystem (the plan forbids one outright)
- * and no submission host wired to the contact form; both are Task 5's work,
- * together with the server-side Turnstile verification.
+ * The newsletter action reads no visitor field because this build has no
+ * newsletter subsystem. The contact action passes its bounded `FormData` to
+ * the server-only relay, which sends it to Medusa in a POST body; Medusa
+ * verifies Turnstile and relays the message without persistence or logging.
  *
  * The first argument they *do* bind is the previous answer as the **client
  * posts it back**, and it exists for one reason: see `PublicFormOutcome`
  * below, which also says why it is treated as untrusted input.
  *
- * **They do not fabricate success.** A silent no-op that leaves the page
- * looking as though something was sent is its own defect — arguably a worse one
- * than the URL leak, because the visitor stops waiting for a reply that will
- * never come. Each function returns the sentence its own content module holds
- * for exactly this state: nothing was sent, nothing was stored, and — for the
- * contact form — the email address printed a few lines above is the way through
- * in the meantime.
+ * **They do not fabricate success.** Newsletter returns its explicit no-send
+ * copy. Contact returns success only after Medusa answers 204 and otherwise
+ * returns the fixed configuration-resolved error copy.
  *
  * The returned message is a fixed string from `content/`. **No value a
  * visitor typed is ever put in it**, which is the whole point of the
@@ -87,6 +77,12 @@
 
 import { newsletter } from "../../../../content/publisher.js";
 import { contactForm } from "../../../../content/support.js";
+import { getRuntimeConfig } from "../../config/runtime-config.js";
+import {
+  placeholderValuesFrom,
+  resolveConfigurationPlaceholders,
+} from "../../lib/configuration-placeholders.js";
+import { submitContactMessage } from "./contact-submit.js";
 
 /**
  * What a public form's action returns.
@@ -189,7 +185,19 @@ export async function reportNewsletterNotSent(previous: unknown): Promise<Public
   return { message: newsletter.notSentMessage, submissions: nextSubmission(previous) };
 }
 
-/** The contact form's answer to a submission this build cannot act on. */
-export async function reportContactNotSent(previous: unknown): Promise<PublicFormOutcome> {
-  return { message: contactForm.notSentMessage, submissions: nextSubmission(previous) };
+/** Relays a validated contact message without retaining or echoing its fields. */
+export async function submitContact(
+  previous: unknown,
+  formData: FormData,
+): Promise<PublicFormOutcome> {
+  const runtime = getRuntimeConfig();
+  const result = await submitContactMessage(formData, runtime.medusa);
+  const error = resolveConfigurationPlaceholders(
+    contactForm.errorMessage,
+    placeholderValuesFrom(runtime.merchant),
+  );
+  return {
+    message: result.ok ? contactForm.successMessage : error,
+    submissions: nextSubmission(previous),
+  };
 }
