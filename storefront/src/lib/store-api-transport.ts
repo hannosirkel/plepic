@@ -78,6 +78,13 @@ function forwardedRequestHeaders(request: Request): Headers {
 function forwardedResponseHeaders(response: Response): Headers {
   const headers = new Headers(response.headers);
   for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
+  if (headers.has("content-encoding")) {
+    // Node's fetch transparently decodes gzip/br/deflate response bodies but
+    // retains the upstream representation metadata. The downstream response
+    // carries decoded bytes, so its runtime must calculate fresh framing.
+    headers.delete("content-encoding");
+    headers.delete("content-length");
+  }
   return headers;
 }
 
