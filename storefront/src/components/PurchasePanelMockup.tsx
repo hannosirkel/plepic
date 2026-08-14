@@ -64,14 +64,20 @@ import {
   type ResolvedCatalogue,
 } from "../lib/catalogue.js";
 import { CallToActionLink } from "./mockups/CallToActionLink.js";
+import type { ReactNode } from "react";
 import styles from "../styles/purchase-panel.module.css";
 
 export interface PurchasePanelMockupProps {
   /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
   readonly catalogue?: ResolvedCatalogue;
+  /** Replaces only the existing primary CTA slot with the cart client island. */
+  readonly primaryAction?: ReactNode;
 }
 
-export function PurchasePanelMockup({ catalogue = resolveCatalogue() }: PurchasePanelMockupProps = {}) {
+export function PurchasePanelMockup({
+  catalogue = resolveCatalogue(),
+  primaryAction,
+}: PurchasePanelMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
   return (
@@ -100,6 +106,7 @@ export function PurchasePanelMockup({ catalogue = resolveCatalogue() }: Purchase
 
       <div className={styles.actions}>
         {purchase.callsToAction.map((action) => (
+          action.emphasis === "primary" && primaryAction !== undefined ? primaryAction :
           <CallToActionLink key={action.label} action={action} resolveLabel={resolve} />
         ))}
       </div>

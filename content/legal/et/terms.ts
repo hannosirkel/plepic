@@ -41,7 +41,7 @@ export const terms: LegalPage = {
         "Tellimuse vormistamise lehe viimane nupp on märgistatud nii, et selle vajutamine esitab tellimuse koos maksekohustusega. Vahetult nupu kohal näed ühel ekraanil: kaupa, kauba hinda, saatekulu, kogusummat, tarneaadressi ja tarne eeldatavat aega.",
         "Tellimust esitades kinnitad, et oled need tingimused ja privaatsusteate läbi lugenud ja nendega nõus, et ostad nii, nagu sellel saidil kirjeldatud, ning et oled vähemalt 18-aastane või tellid kellegi nõusolekul, kes seda on.",
         "Saadame sulle e-postiga kinnituse, mis sisaldab tellimust, makstud kogusummat ja neid tingimusi. Hoia see alles – see on sinu eksemplar lepingust.",
-        "Võtame vastu kaardimakseid oma makseteenuse pakkuja kaudu. Meie ei näe ega salvesta kunagi sinu kaardinumbrit. Kui makse ebaõnnestub või hiljem tagasi pööratakse, tellimus edasi ei liigu.",
+        "Võtame Stripe’i kaudu vastu kaardimakseid, Apple Payd, Google Payd ja PayPali, kui Stripe teeb need sinu seadmes ja asukohas kättesaadavaks. Meie ei näe ega salvesta kunagi sinu kaardinumbrit. Kui makse ebaõnnestub või hiljem tagasi pööratakse, tellimus edasi ei liigu.",
         "Müüme tarbijatele ja ettevõtetele samadel tingimustel. Miski sellel lehel ei vähenda tarbija seadusest tulenevaid õigusi.",
       ],
       source: "checkout-contract",

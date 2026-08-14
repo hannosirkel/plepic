@@ -1,7 +1,6 @@
 # Plepic
 
-The Plepic Games storefront and backend monorepo: an npm workspace root for a
-Next.js storefront and, later, a Medusa backend.
+The Plepic Games storefront and Medusa backend monorepo.
 
 ## Workspaces
 
@@ -15,14 +14,16 @@ Next.js storefront and, later, a Medusa backend.
   server-side and handed to the browser — never a `NEXT_PUBLIC_*` variable. See
   [`storefront/src/config/runtime-config.ts`](./storefront/src/config/runtime-config.ts)
   for that mechanism and [`storefront/src/config/redirect-map.ts`](./storefront/src/config/redirect-map.ts)
-  for the redirect map's documented shape. Every route is real; the basket and
-  checkout flows run against mock cart actions, and only Stripe elements,
-  server-side Turnstile verification and real totals are deferred.
+  for the redirect map's documented shape. Production catalogue, basket,
+  address, shipping totals, and payment sessions come from Medusa through the
+  same-origin `/store-api` allowlist. Named `?mock=` states remain isolated to
+  development and declared test hosts.
 
   **The basket and the checkout, and the legal page that specifies them.**
   `src/app/cart/page.tsx` and `src/app/checkout/page.tsx` render
-  `src/components/shop/`, against the mock cart actions in
-  `src/lib/mock-cart-actions.ts` and the state in `src/lib/cart-store.tsx`.
+  `src/components/shop/`; the production path stores only an opaque Medusa cart
+  ID in tab-scoped storage, while `src/lib/mock-cart-actions.ts` supplies only
+  the explicitly gated visual states.
   `content/legal/terms.ts` is merged, live and says its checkout section "is
   written to match the checkout screen exactly", so it is the specification:
   the consent line, the contract-formation sentence, the confirmation promise
@@ -53,8 +54,9 @@ Next.js storefront and, later, a Medusa backend.
   access log on the path. It carries `method="post"` and an action instead:
   `src/app/checkout/order/route.ts` reads nothing out of the body and answers
   `303` back to the checkout with a fixed marker, and the page says in its
-  first paint that no order was placed and nothing was charged — which is true,
-  with or without JavaScript, while Stripe is deferred. See
+  first paint that no order was placed and nothing was charged. Hydrated
+  checkout uses Medusa's maintained Stripe PaymentIntent provider; the no-JS
+  POST deliberately never attempts payment. See
   [`storefront/src/components/shop/checkout-order-post.ts`](./storefront/src/components/shop/checkout-order-post.ts).
 
   The shipping charge and the total are `null` until a delivery address is
@@ -107,10 +109,15 @@ Next.js storefront and, later, a Medusa backend.
   which the order button is `aria-disabled`: an incomplete address must stay
   pressable, because pressing it is what produces the error summary.
 
-  The card step is a labelled placeholder region and nothing else — no card
-  field, no fabricated instrument — and pressing the order button reports that
-  nothing was charged and no order was placed, which is true while Stripe is
-  deferred. `?mock=` requests either route in a given state
+  The payment step mounts Stripe's Payment Element only after Medusa has
+  returned an amount-bound session matching the total on screen. Only a
+  successful Stripe confirmation followed by an explicit Medusa order clears
+  the cart and shows confirmation; processing redirects return through
+  `/checkout/payment-return`. Standard Store cart completion is server-gated by
+  Cloudflare Turnstile; the checkout sends its bounded response only in the
+  dedicated completion header. A redirect return renders a fresh Turnstile
+  challenge and requires an explicit completion submission, so no one-use
+  response crosses the payment-provider redirect. `?mock=` requests either route in a given state
   (`filled`, `updating`, `removing`, `unavailable`, `error`, `placing`) so the
   loading and error layouts can be inspected on a real device; it belongs to
   the mock data layer and leaves with it.
@@ -137,6 +144,21 @@ Next.js storefront and, later, a Medusa backend.
   kept, how long it survives and what it holds.
   `tests/browser-storage-disclosure.test.ts` walks `src/` for Web Storage
   writes and requires a sentence per store found.
+
+  Purchase-funnel measurement is the closed GA4 set `view_item`,
+  `add_to_cart`, `begin_checkout`, `purchase`, and `payment_failure`. The
+  central typed emitter starts disabled, is opened only by the same consent
+  decision that loads Google Analytics, and remains disabled on every declared
+  test host. Events attempted before consent are dropped rather than queued;
+  withdrawing consent closes the emitter again. It adds no storage key.
+
+  Commerce payloads contain only the Medusa product or variant identifier,
+  product name, quantity, uppercase currency, and monetary values. `purchase`
+  additionally uses the Medusa order ID as `transaction_id`, so GA4 can
+  deduplicate a retried client event. `payment_failure` carries only the closed
+  stage `stripe_confirmation` or `order_completion`. Email and postal
+  addresses, cart IDs, Turnstile responses, payment payloads, and free-form
+  error text never enter analytics.
 
   **That guard is a floor, not a proof, and this paragraph has twice claimed
   otherwise.** It said a third store "cannot be added without the notice growing
@@ -319,13 +341,16 @@ Next.js storefront and, later, a Medusa backend.
   application's CSP (no `'unsafe-inline'` in `style-src`) does not permit, so
   it rendered as a visible input the moment it was actually mounted in a
   page. It now hides via a stylesheet class
-  (`src/components/turnstile/HoneypotField.module.css`). Server-side
-  Turnstile verification is a later unit's; these forms render the widget,
-  validate their own fields with tied, announced errors, and submit to
-  nothing yet.
+  (`src/components/turnstile/HoneypotField.module.css`). The contact path now
+  verifies Turnstile server-side and relays through the configured Medusa
+  backend. Newsletter follows the same server-side validation boundary and
+  writes only to the configured Brevo list, with no local subscriber store. A
+  deployment-wide fixed-window counter in the environment's existing Redis
+  rejects excess valid attempts before Turnstile or Brevo; its one static key
+  contains no address, IP, token, or other subscriber-derived value.
 
-  **Neither public form can put a field value in a URL, and neither pretends
-  to have sent anything.** Both shipped as `<form onSubmit={…}>` with no
+  **Neither public form can put a field value in a URL, and neither fabricates
+  success.** Both shipped as `<form onSubmit={…}>` with no
   `method` and no `action` — which is a GET, and a GET serialises **every**
   named control, not only the ones somebody typed into. Measured on a rebuilt
   base revision, an unhydrated press (or one with JavaScript off) put **2 of
@@ -341,14 +366,13 @@ Next.js storefront and, later, a Medusa backend.
   Server Function as the form's `action` instead
   (`src/components/forms/public-form-actions.ts`), which reaches the same
   guarantee from inside the form components. The values travel in a request
-  body, the functions **read nothing a visitor typed** — React calls a
-  `useActionState` action as `(previousState, formData)` and neither function
-  binds the second argument, so no expression in that module can reach a
-  field — and the answer is rendered into the HTML of the POST response, so
-  it is legible with no JavaScript at all. That answer is
-  `newsletter.notSentMessage` / `contactForm.notSentMessage`: nothing was
-  sent, nothing was stored. Silently accepting a submission nothing can act
-  on is its own defect, and it is the one the previous revision shipped.
+  body. Each action validates bounded fields, then posts them server-to-server
+  to Medusa; Medusa revalidates them and verifies Turnstile before either
+  upserting the configured Brevo list or relaying contact mail through strict
+  STARTTLS. Neither path stores or logs the submitted content locally. Success
+  is rendered only after a 204 response; every failure uses fixed error copy.
+  The answer is rendered into the HTML of the POST response, so it is legible
+  with no JavaScript at all.
   Proved on a running server with `javaScriptEnabled: false` at 1280, 390 and
   320, and asserted in `tests/build-and-serve.test.ts`.
 
@@ -616,7 +640,26 @@ Next.js storefront and, later, a Medusa backend.
   committed derivatives were produced outside the repository. If `next/image`
   is still unused when the storefront ships, returning it to Next's own
   optional resolution is a one-line change.
-- `backend/` — Medusa backend, added by a later PR unit.
+- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams,
+  one maintained Stripe provider, and a custom email notification provider.
+  Order confirmations use Medusa's idempotent persisted notification lifecycle;
+  each confirmation reproduces the approved withdrawal conditions and complete
+  model withdrawal form in the durable email, with legal name, registered
+  address, legal contact address, and return address supplied through the same
+  `MERCHANT_*` deployment configuration used by the storefront. A root contract
+  test keeps that email wording equal to `content/legal/returns.ts`.
+  contact messages use the same strict STARTTLS sender directly, after
+  Turnstile verification, so their contents are never stored by Medusa.
+  Newsletter submissions follow the same bounded, Turnstile-first Store API
+  boundary and upsert only the deployment-configured Brevo list. A fail-closed,
+  cross-pod Redis counter limits the route before either external service and
+  stores no subscriber-derived key or value; subscriber addresses and provider
+  errors are neither persisted nor logged locally.
+  SMTP submission is fixed to port 587 with certificate verification; sender
+  and contact recipient are deployment configuration, and visitor addresses
+  are Reply-To only. API/webhook secrets and the environment's Payment Method
+  Configuration stay backend-only; only Stripe's publishable key
+  is projected to the browser at request time.
 
 Two directories are not workspaces but are consumed by the storefront:
 

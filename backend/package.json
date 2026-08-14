@@ -1,0 +1,47 @@
+{
+  "name": "@plepic/backend",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "scripts": {
+    "build": "NODE_PATH=./node_modules medusa build",
+    "dev": "medusa develop",
+    "start": "medusa start",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@medusajs/admin-sdk": "2.18.0",
+    "@medusajs/admin-shared": "2.18.0",
+    "@medusajs/caching": "2.18.0",
+    "@medusajs/cli": "2.18.0",
+    "@medusajs/dashboard": "2.18.0",
+    "@medusajs/draft-order": "2.18.0",
+    "@medusajs/framework": "2.18.0",
+    "@medusajs/medusa": "2.18.0",
+    "@medusajs/payment-stripe": "2.18.0",
+    "@medusajs/ui": "4.2.0",
+    "@tanstack/react-query": "5.64.2",
+    "nodemailer": "9.0.5",
+    "react-i18next": "13.5.0",
+    "react-router-dom": "6.30.4",
+    "redis": "6.2.1",
+    "zod": "4.2.0"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.7.28",
+    "@types/node": "^20.12.11",
+    "@types/nodemailer": "8.0.1",
+    "@types/react": "^18.3.2",
+    "@types/react-dom": "^18.2.25",
+    "prop-types": "^15.8.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.14",
+    "vitest": "^4.1.10"
+  }
+}

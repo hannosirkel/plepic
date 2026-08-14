@@ -8,26 +8,24 @@
  * routes. Task 5 replaces the action module and this provider's persistence
  * with a Medusa cart id, and no component above it changes.
  *
- * ## Persistence: session storage, holding a quantity and nothing else
+ * ## Persistence: session storage, holding one opaque cart id and nothing else
  *
  * `/cart` and `/checkout` are separate documents, so the basket has to survive
  * a navigation. It is kept in **`sessionStorage`, not a cookie**, and that is
  * a compliance decision rather than a technical preference:
- * `content/legal/privacy.ts` carries a table captioned "Cookies this site can
- * set" listing exactly three, and `content/legal/` was not the cart unit's to
- * edit — a fourth cookie set by this site would make a merged, legally-read
- * page false. A basket is in any case storage "strictly necessary for a service the
+ * `content/legal/privacy.ts` truthfully describes this tab-scoped identifier.
+ * A basket is in any case storage "strictly necessary for a service the
  * user explicitly requested" under ePrivacy Article 5(3) and needs no consent.
  *
- * **What is stored is a product id and a quantity.** Never a price (the
- * catalogue is the only source of a figure, so a tampered or stale stored
- * price cannot reach a total), never an address, never anything about a
- * person.
+ * **What is stored is only the opaque Medusa cart id.** Product details,
+ * quantities, prices, email and postal addresses remain in Medusa and are
+ * retrieved again for the current tab. Nothing about a person is written to
+ * browser storage.
  *
  * **That sentence is also on `/legal/privacy`, as operator-approved copy: the
- * basket store "records nothing but which game you chose and how many".
- * Storing anything more here — a shipping address, an email address, an order
- * draft — makes a legal page false.** And it does so *quietly from this file*:
+ * basket store records only that opaque id. Storing anything more here — a
+ * product detail, shipping address, email address, or order draft — makes a
+ * legal page false.** And it does so *quietly from this file*:
  * `tests/browser-storage-disclosure.test.ts` pins the write sites, so a new
  * module persisting something would go red, but a second key added inside this
  * one would not. The write is `setItem(STORAGE_KEY, …)`, an identifier, which
@@ -58,7 +56,11 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-import { catalogueLine, clampQuantity, type CartLine } from "./cart.js";
+import type { CartLine } from "./cart.js";
+import { createMedusaStoreClient } from "./medusa-client.js";
+import type { ClientRuntimeConfig } from "./client-runtime-config.js";
+import { medusaMajorToMinor } from "./store-money.js";
+import { emitAddToCart } from "./analytics.js";
 import {
   addCatalogueLineAction,
   basketForScenario,
@@ -71,28 +73,68 @@ import {
   type MockScenario,
 } from "./mock-cart-actions.js";
 
-const STORAGE_KEY = "plepic.basket";
+const STORAGE_KEY = "plepic.medusa.cart-id";
 
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-interface StoredLine {
-  readonly id: string;
-  readonly quantity: number;
+function runtimeConfig(): ClientRuntimeConfig {
+  const element = document.getElementById("plepic-runtime-config");
+  if (element === null || element.textContent === null) throw new Error("Store runtime configuration is unavailable");
+  return JSON.parse(element.textContent) as ClientRuntimeConfig;
 }
 
-function readStoredLines(): readonly CartLine[] | null {
+export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
+  const value = cart as { items?: readonly { id?: string; title?: string; unit_price?: number; quantity?: number; variant?: { id?: string; manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string };
+  if (!Array.isArray(value.items) || typeof value.currency_code !== "string") throw new Error("Medusa Store cart response is malformed");
+  return value.items.map((line) => {
+    if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.quantity)) throw new Error("Medusa Store cart line is malformed");
+    const variant = line.variant;
+    const available = variant?.manage_inventory !== true || variant.allow_backorder === true || (Number.isInteger(variant.inventory_quantity) && variant.inventory_quantity! > 0);
+    return { id: line.id, ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}), productName: line.title, unitAmount: medusaMajorToMinor(line.unit_price, value.currency_code!), currency: value.currency_code!.toUpperCase(), quantity: line.quantity, availability: available ? "InStock" : "OutOfStock" };
+  });
+}
+
+type StoreClient = ReturnType<typeof createMedusaStoreClient>;
+
+/** Adds the sole Store product to a new or existing cart and measures only the accepted line. */
+export async function addStoreCatalogueLine(
+  sdk: StoreClient,
+  existingCartId: string | null,
+): Promise<{ readonly cartId: string; readonly lines: readonly CartLine[] }> {
+  const { products } = await sdk.store.product.list({ limit: 1, fields: "id,variants.*" });
+  const variantId = products[0]?.variants?.[0]?.id;
+  if (products.length !== 1 || typeof variantId !== "string" || variantId.length === 0) {
+    throw new Error("Medusa Store catalogue is not ready");
+  }
+
+  let cartId = existingCartId;
+  if (cartId === null) {
+    const { regions } = await sdk.store.region.list({ limit: 2 });
+    if (regions.length !== 1) throw new Error("Medusa Store catalogue is not ready");
+    const createdId = (await sdk.store.cart.create({ region_id: regions[0]!.id })).cart.id;
+    if (typeof createdId !== "string" || createdId.length === 0) throw new Error("Medusa Store cart is not ready");
+    cartId = createdId;
+  }
+
+  const updated = await sdk.store.cart.createLineItem(cartId, { variant_id: variantId, quantity: 1 });
+  const lines = cartLinesFromStore(updated.cart);
+  const acceptedLine = lines.find((line) => line.variantId === variantId);
+  if (acceptedLine !== undefined) {
+    emitAddToCart({
+      variantId,
+      name: acceptedLine.productName,
+      unitAmount: acceptedLine.unitAmount,
+      currency: acceptedLine.currency,
+      quantity: 1,
+    });
+  }
+  return { cartId, lines };
+}
+
+/** Reads only the opaque, tab-scoped cart identifier; no other module touches this key. */
+export function storedMedusaCartId(): string | null {
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-
-    const lines = (parsed as readonly StoredLine[])
-      .filter((entry) => typeof entry?.id === "string" && typeof entry.quantity === "number")
-      .map((entry) => catalogueLine(clampQuantity(entry.quantity), undefined, entry.id))
-      .filter((line) => line.quantity > 0);
-
-    return lines;
+    return window.sessionStorage.getItem(STORAGE_KEY);
   } catch {
     // A private-mode browser, a quota error, or a corrupted value. An empty
     // basket is the correct fallback: it is the honest default state, and it
@@ -101,15 +143,21 @@ function readStoredLines(): readonly CartLine[] | null {
   }
 }
 
-function writeStoredLines(lines: readonly CartLine[]): void {
+/** The single audited browser-storage writer: only an opaque cart identifier. */
+export function rememberMedusaCartId(id: string): void {
   try {
-    const stored: readonly StoredLine[] = lines.map((line) => ({
-      id: line.id,
-      quantity: line.quantity,
-    }));
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    window.sessionStorage.setItem(STORAGE_KEY, id);
   } catch {
     // Storage unavailable. The basket still works for this document.
+  }
+}
+
+/** Removes an expired cart identity so the next add can create a fresh guest cart. */
+export function forgetMedusaCartId(): void {
+  try {
+    window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // A subsequent attempt may still create a cart for this document.
   }
 }
 
@@ -136,6 +184,7 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
   const [lines, setLines] = useState<readonly CartLine[]>(initial.lines);
   const [pending, setPending] = useState<Readonly<Record<string, LinePending>>>(initial.pending);
   const [failure, setFailure] = useState<BasketFailure | null>(initial.failure);
+  const cartId = useRef<string | null>(null);
   const restored = useRef(false);
   /* The lines an in-flight action started from. A ref rather than a read
      inside a state updater: a reducer must stay pure, and an action that
@@ -156,16 +205,18 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     if (restored.current) return;
     restored.current = true;
     if (scenario !== null) {
-      writeStoredLines(initial.lines);
       return;
     }
-    const stored = readStoredLines();
-    if (stored !== null && stored.length > 0) setLines(stored);
+    const stored = storedMedusaCartId();
+    if (stored === null) return;
+    cartId.current = stored;
+    void (async () => {
+      try {
+        const { cart } = await createMedusaStoreClient(runtimeConfig().medusa).store.cart.retrieve(stored);
+        setLines(cartLinesFromStore(cart));
+      } catch { forgetMedusaCartId(); cartId.current = null; setFailure("action"); }
+    })();
   }, [scenario, initial.lines]);
-
-  useEffect(() => {
-    writeStoredLines(lines);
-  }, [lines]);
 
   const run = useCallback(
     async (
@@ -175,7 +226,13 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     ) => {
       setFailure(null);
       setPending((current) => ({ ...current, [id]: state }));
-      const outcome = await action(linesRef.current);
+      let outcome: CartActionOutcome;
+      try {
+        outcome = await action(linesRef.current);
+      } catch {
+        if (scenario === null) { forgetMedusaCartId(); cartId.current = null; }
+        outcome = { ok: false, reason: "action-failed" };
+      }
       setPending((current) => {
         const next = { ...current };
         delete next[id];
@@ -186,30 +243,44 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
       // `CartActionOutcome`.
       else setFailure(outcome.reason === "line-limit" ? "limit" : "action");
     },
-    [],
+    [scenario],
   );
 
   const add = useCallback(() => {
     // "adding", not "updating": nothing is being updated when the first line
     // of an empty basket is created, and the status line says what is
     // happening rather than what is usually happening.
-    void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options));
-  }, [run, options]);
+    if (scenario !== null) {
+      void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options));
+      return;
+    }
+    void run("lunar-base", "adding", async () => {
+      const sdk = createMedusaStoreClient(runtimeConfig().medusa);
+      const added = await addStoreCatalogueLine(sdk, cartId.current);
+      if (cartId.current === null) {
+        cartId.current = added.cartId;
+        rememberMedusaCartId(added.cartId);
+      }
+      return { ok: true, lines: added.lines };
+    });
+  }, [run, options, scenario]);
 
   const updateQuantity = useCallback(
     (id: string, quantity: number) => {
-      void run(id, "updating", (current) =>
-        updateLineQuantityAction(current, id, quantity, options),
-      );
+      if (scenario !== null) { void run(id, "updating", (current) => updateLineQuantityAction(current, id, quantity, options)); return; }
+      if (cartId.current === null) { setFailure("action"); return; }
+      void run(id, "updating", async () => ({ ok: true, lines: cartLinesFromStore((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.updateLineItem(cartId.current!, id, { quantity })).cart) }));
     },
-    [run, options],
+    [run, options, scenario],
   );
 
   const remove = useCallback(
     (id: string) => {
-      void run(id, "removing", (current) => removeLineAction(current, id, options));
+      if (scenario !== null) { void run(id, "removing", (current) => removeLineAction(current, id, options)); return; }
+      if (cartId.current === null) { setFailure("action"); return; }
+      void run(id, "removing", async () => ({ ok: true, lines: cartLinesFromStore((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.deleteLineItem(cartId.current!, id)).parent) }));
     },
-    [run, options],
+    [run, options, scenario],
   );
 
   const value = useMemo<CartContextValue>(

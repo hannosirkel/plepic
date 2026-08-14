@@ -35,6 +35,13 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/* A client cart button replaces an existing CTA link in-place. Buttons use
+ * border-box by default while links use content-box, so the same min-height
+ * and padding would otherwise make the replacement 23px shorter. */
+.linkReplacement {
+  box-sizing: content-box;
+}
+
 .primary {
   background: var(--button-primary-bg);
   color: var(--button-primary-fg);

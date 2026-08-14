@@ -23,16 +23,30 @@
  * running server in `tests/build-and-serve.test.ts`.
  */
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/components/forms/newsletter-submit.js", () => ({
+  submitNewsletterAddress: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("../src/config/runtime-config.js", () => ({
+  getRuntimeConfig: () => ({ medusa: { backendUrl: "http://backend.test", publishableKey: "pk_test" } }),
+}));
 
 import { newsletter as newsletterCopy } from "../../content/publisher.js";
-import { contactForm as contactFormCopy } from "../../content/support.js";
 import { ContactForm } from "../src/components/forms/ContactForm.js";
 import { NewsletterForm } from "../src/components/forms/NewsletterForm.js";
 import {
-  reportContactNotSent,
-  reportNewsletterNotSent,
+  submitNewsletter,
 } from "../src/components/forms/public-form-actions.js";
+
+function newsletterForm(): FormData {
+  const form = new FormData();
+  form.set("email", "reader@example.com");
+  form.set("newsletter-consent", "on");
+  form.set("additional-notes", "");
+  form.set("cf-turnstile-response", "synthetic-token");
+  return form;
+}
 
 describe("NewsletterForm", () => {
   const html = renderToStaticMarkup(<NewsletterForm turnstileSiteKey="test-site-key" nonce="abc" />);
@@ -155,22 +169,19 @@ describe("neither form is a GET form", () => {
  * the live-region mutation count was measured in a browser.
  */
 describe("a repeated submission is a new answer, not the same answer again", () => {
-  const cases = [
-    ["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage],
-    ["contact", reportContactNotSent, contactFormCopy.notSentMessage],
-  ] as const;
+  const cases = [["newsletter", submitNewsletter, newsletterCopy.successMessage]] as const;
 
   for (const [name, action, sentence] of cases) {
     it(`${name}: answers with the fixed sentence from content/, every time`, async () => {
-      const first = await action(null);
-      const second = await action(first);
+      const first = await action(null, newsletterForm());
+      const second = await action(first, newsletterForm());
       expect(first.message).toBe(sentence);
       expect(second.message).toBe(sentence);
     });
 
     it(`${name}: returns a value React cannot mistake for the previous one`, async () => {
-      const first = await action(null);
-      const second = await action(first);
+      const first = await action(null, newsletterForm());
+      const second = await action(first, newsletterForm());
       expect(first.submissions).toBe(1);
       expect(second.submissions).toBe(2);
       expect(
@@ -196,10 +207,7 @@ describe("a repeated submission is a new answer, not the same answer again", () 
  * answered with a 500.
  */
 describe("a forged previous state cannot become part of the answer", () => {
-  const actions = [
-    ["newsletter", reportNewsletterNotSent, newsletterCopy.notSentMessage],
-    ["contact", reportContactNotSent, contactFormCopy.notSentMessage],
-  ] as const;
+  const actions = [["newsletter", submitNewsletter, newsletterCopy.successMessage]] as const;
 
   const forged: readonly (readonly [string, unknown])[] = [
     ["a string count", { submissions: "REVIEWER-TAMPERED-COUNT" }],
@@ -218,20 +226,20 @@ describe("a forged previous state cannot become part of the answer", () => {
   for (const [name, action, sentence] of actions) {
     for (const [description, previous] of forged) {
       it(`${name}: ${description} is answered with the fixed sentence and 1`, async () => {
-        const outcome = await action(previous);
+      const outcome = await action(previous, newsletterForm());
         expect(outcome.message).toBe(sentence);
         expect(outcome.submissions).toBe(1);
       });
     }
 
     it(`${name}: an integer count is still the one thing it accepts`, async () => {
-      expect((await action({ submissions: 41 })).submissions).toBe(42);
-      expect((await action(null)).submissions).toBe(1);
+      expect((await action({ submissions: 41 }, newsletterForm())).submissions).toBe(42);
+      expect((await action(null, newsletterForm())).submissions).toBe(1);
     });
 
     it(`${name}: never returns a count that is not an integer`, async () => {
       for (const [, previous] of forged) {
-        expect(Number.isInteger((await action(previous)).submissions)).toBe(true);
+        expect(Number.isInteger((await action(previous, newsletterForm())).submissions)).toBe(true);
       }
     });
   }

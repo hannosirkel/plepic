@@ -32,6 +32,7 @@ export default defineConfig({
         },
       },
       "./storefront/vitest.config.ts",
+      "./backend/vitest.config.mts",
     ],
   },
 });

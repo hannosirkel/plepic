@@ -120,6 +120,9 @@ const ALLOWED_DOMAINS: readonly string[] = [
   "google-analytics.com",
   "googletagmanager.com",
   "schema.org",
+  // Stripe Elements loads its script, API calls, and embedded payment frames
+  // from subdomains of this vendor-owned endpoint in every environment.
+  "stripe.com",
   // `VideoEmbed.tsx` embeds the two verified public videos from the privacy-
   // enhanced host, which `src/lib/csp.ts` permits only in `frame-src`.
   //

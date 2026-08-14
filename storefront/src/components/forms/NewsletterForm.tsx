@@ -2,10 +2,10 @@
 
 /**
  * The newsletter signup form — content/publisher.ts's `newsletter` copy,
- * mounted with the two components that were built and mounted nowhere:
- * `TurnstileWidget` and `HoneypotField`. Server-side token verification and
- * the actual subscribe call are Task 5's; this unit renders the widget,
- * takes the site key from runtime configuration, and makes the form itself
+ * mounted with `TurnstileWidget` and `HoneypotField`. The Server Function
+ * posts bounded fields to Medusa, which verifies Turnstile and performs the
+ * provider subscription without storing the address locally. This component
+ * takes the site key from runtime configuration and makes the form itself
  * fully keyboard- and screen-reader-operable — required field, native email
  * validation, and an error tied to its field with `aria-describedby` and
  * `aria-invalid`, per the checkbox's "errors announced and tied to their
@@ -35,14 +35,9 @@
  * whole reasoning, including why that shape rather than the checkout's route
  * handler.
  *
- * ## And it does not pretend to have subscribed anybody
- *
- * There is still nothing behind this form: the plan forbids building a
- * newsletter subsystem, and the provider integration is Task 5's. So a valid
- * submission — hydrated or not, identically — is answered with
- * `newsletter.notSentMessage`, which says nothing was sent and nothing was
- * stored. The previous revision did nothing at all and said nothing at all,
- * which looks exactly like success to the person who pressed the button.
+ * Success is claimed only after the backend returns 204. Every other outcome
+ * is fixed content copy and never echoes the submitted address or provider
+ * details.
  */
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
@@ -51,7 +46,7 @@ import type { FormEvent } from "react";
 import { newsletter } from "../../../../content/publisher.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
-import { reportNewsletterNotSent } from "./public-form-actions.js";
+import { submitNewsletter } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
 
@@ -65,7 +60,7 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
   const errorId = useId();
   const [error, setError] = useState<string | null>(null);
   const [outcome, submit] = useActionState<PublicFormOutcome | null, FormData>(
-    reportNewsletterNotSent,
+    submitNewsletter,
     null,
   );
   const outcomeRef = useRef<HTMLParagraphElement>(null);
@@ -124,6 +119,7 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
       onSubmit={handleSubmit}
       noValidate
     >
+      <input type="hidden" name="newsletter-consent" value="on" />
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel} htmlFor={fieldId}>
           {newsletter.fieldLabel}

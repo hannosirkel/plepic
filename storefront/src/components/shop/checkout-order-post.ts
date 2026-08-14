@@ -42,6 +42,12 @@
 /** Where the checkout form posts when the browser, rather than React, submits it. */
 export const CHECKOUT_ORDER_POST_PATH = "/checkout/order";
 
+/** Dedicated native fallback after Stripe may already have captured payment. */
+export const PAYMENT_RETURN_ORDER_POST_PATH = "/checkout/payment-return/order";
+
+/** Fixed outcome that never denies a possibly completed provider payment. */
+export const PAYMENT_RETURN_UNCONFIRMED_MESSAGE = "We could not confirm your order. Your payment may have completed or may still be processing. Check your email and contact the shop before trying again.";
+
 /** The query parameter carrying the outcome of an unhydrated submission. */
 export const ORDER_OUTCOME_PARAM = "order";
 

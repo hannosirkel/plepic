@@ -4,8 +4,8 @@
  * The page had a table captioned "Cookies this site can set" and one sentence
  * of prose about the consent decision in `localStorage` — and it read as a
  * complete account of what this site puts in a browser. It was not one:
- * `src/lib/cart-store.tsx` has kept the basket in `sessionStorage` under
- * `plepic.basket` since the shop pages landed, and no word of the privacy
+ * `src/lib/cart-store.tsx` keeps only an opaque cart identifier in
+ * `sessionStorage`, and no word of the privacy
  * notice mentioned it. Nothing failed, because nothing asked.
  *
  * That is the same defect class as the five legal routes that served a
@@ -40,7 +40,7 @@
  * 1. **A store outside Web Storage and cookies.** IndexedDB, Cache Storage and
  *    the rest are invisible to the scan below.
  * 2. **A new key in an area already disclosed** — a live hazard rather than a
- *    curiosity. `/legal/privacy` says the basket store "records nothing but
+ *    curiosity. `/legal/privacy` says the basket store records only
  *    which game you chose and how many", which is operator-approved copy. A
  *    second `sessionStorage` key holding a shipping address, an email address
  *    or an order draft — the obvious shape of Task 5's checkout — makes that
@@ -119,13 +119,13 @@ const STORAGE_DISCLOSURES: Readonly<Record<Locale, Readonly<Record<StorageArea, 
  */
 const BASKET_SENTENCES: Readonly<Record<Locale, string>> = {
   en:
-    "The contents of your basket are stored by this site in your browser's session storage " +
-    "rather than as a cookie. It is kept only until you close the tab, and it records nothing " +
-    "but which game you chose and how many.",
+    "An opaque identifier for your basket is stored by this site in your browser's session storage " +
+    "rather than as a cookie. It is kept only until you close the tab, and it records no product " +
+    "details, quantities, email address or delivery address.",
   et:
-    "Sinu ostukorvi sisu salvestab see sait sinu brauseri seansisalvestusse (session storage), " +
-    "mitte küpsisena. Seda hoitakse ainult vahelehe sulgemiseni ja see ei salvesta muud kui " +
-    "seda, millise mängu sa valisid ja mitu.",
+    "Sinu ostukorvi läbipaistmatu tunnus salvestatakse selle saidi poolt sinu brauseri " +
+    "seansisalvestusse (session storage), mitte küpsisena. Seda hoitakse ainult vahelehe " +
+    "sulgemiseni ning see ei salvesta toodete üksikasju, koguseid, e-posti aadressi ega tarneaadressi.",
 };
 
 /** The cookie table's caption, per edition — the anchor the exclusion check holds on to. */
@@ -261,9 +261,9 @@ describe("the privacy notice accounts for every browser store this site writes",
     it(`${locale}: says what the basket store holds and how long it lasts, not merely that it exists`, () => {
       /*
        * Checked against a running build rather than against a comment: after
-       * adding the game to the basket, `sessionStorage` held
-       * `{"plepic.basket":"[{\"id\":\"lunar-base\",\"quantity\":1}]"}` — a
-       * product id and an integer, no price, no address, nothing about a person
+       * adding the game to the basket, `sessionStorage` held only an opaque
+       * Medusa cart identifier — no product id, price, quantity, address, or
+       * email
        * — with `localStorage` holding only the consent decision and
        * `document.cookie` empty. The claims below are that observation, in the
        * edition's own words.

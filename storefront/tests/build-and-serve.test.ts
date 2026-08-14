@@ -69,8 +69,7 @@ import {
 import { formatAmount } from "../src/lib/cart.js";
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
 import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
-import { resolveCatalogue } from "../src/lib/catalogue.js";
-import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
+import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import {
   LOCALES,
@@ -230,15 +229,31 @@ interface HostRequestResult {
  * passed in `headers`, which would make every host-based assertion here pass
  * or fail for the wrong reason. `node:http` has no such restriction.
  */
-function requestWithHost(port: number, path: string, host: string): Promise<HostRequestResult> {
+interface HostRequestOptions {
+  readonly method?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: Buffer;
+}
+
+function requestWithHost(
+  port: number,
+  path: string,
+  host: string,
+  options: HostRequestOptions = {},
+): Promise<HostRequestResult> {
   return new Promise((resolve, reject) => {
+    const body = options.body;
     const request = http.request(
       {
         hostname: "127.0.0.1",
         port,
         path,
-        method: "GET",
-        headers: { Host: host },
+        method: options.method ?? "GET",
+        headers: {
+          Host: host,
+          ...options.headers,
+          ...(body === undefined ? {} : { "Content-Length": String(body.byteLength) }),
+        },
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -253,7 +268,7 @@ function requestWithHost(port: number, path: string, host: string): Promise<Host
       },
     );
     request.on("error", reject);
-    request.end();
+    request.end(body);
   });
 }
 
@@ -372,6 +387,9 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   SITE_TEST_HOSTNAMES: "test.runtime.example.com,test-admin.runtime.example.com",
   ANALYTICS_MEASUREMENT_ID: "G-RUNTIMEVALUE",
   TURNSTILE_SITE_KEY: "0xRUNTIMEVALUE",
+  MEDUSA_BACKEND_URL: "http://127.0.0.1:1",
+  MEDUSA_PUBLISHABLE_API_KEY: "pk_runtime_value",
+  STRIPE_PUBLISHABLE_KEY: "pk_test_runtime_value",
   MERCHANT_CONTACT_ADDRESS: "runtime-value@example.com",
   MERCHANT_LEGAL_NAME: "Runtime Value Legal Name OU",
   MERCHANT_PHONE_NUMBER: "+000 00 000000",
@@ -395,15 +413,91 @@ async function startServer(env: Record<string, string>): Promise<RunningServer> 
     env: { ...process.env, ...env, NODE_ENV: "production" },
     stdio: "pipe",
   });
-  await waitForServer(`http://127.0.0.1:${port}/`, 60_000);
+  // `/` intentionally fails closed without Store configuration. Readiness is
+  // a site-process check, so use a non-commerce route that every deployment
+  // can serve even when a focused test starts an unconfigured Store seam.
+  await waitForServer(`http://127.0.0.1:${port}/about`, 60_000);
   return { process: process_, port };
 }
 
 let server: RunningServer;
+let unconfiguredServer: RunningServer;
 let buildArtifactText: string;
+let backendServer: http.Server;
+
+interface BackendRequest {
+  readonly method: string;
+  readonly path: string;
+  readonly headers: http.IncomingHttpHeaders;
+  readonly bodyBase64: string;
+}
+
+const backendRequests: BackendRequest[] = [];
+
+async function startBackendServer(): Promise<string> {
+  backendServer = http.createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      const bodyBase64 = Buffer.concat(chunks).toString("base64");
+      backendRequests.push({
+        method: request.method ?? "",
+        path: request.url ?? "",
+        headers: request.headers,
+        bodyBase64,
+      });
+      // The request-time page loader asks for one product with the fields it
+      // needs. Other Store requests must remain transparent transport tests.
+      if ((request.url ?? "").startsWith("/store/products?limit=1&fields=")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            products: [
+              {
+                id: "prod_lunar_base",
+                title: mockCatalogue.name,
+                variants: [
+                  {
+                    id: "variant_lunar_base",
+                    manage_inventory: true,
+                    allow_backorder: false,
+                    inventory_quantity: 12,
+                    calculated_price: {
+                      currency_code: mockCatalogue.price.currency.toLowerCase(),
+                      calculated_amount: mockCatalogue.price.amount / 100,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      if (["/store/contact", "/store/newsletter"].includes(request.url ?? "") && request.method === "POST") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+      response.writeHead(202, {
+        "content-type": "application/json",
+        "x-medusa-test-response": "preserved",
+      });
+      response.end(JSON.stringify({ method: request.method, path: request.url, bodyBase64 }));
+    });
+  });
+
+  const port = await findFreePort();
+  await new Promise<void>((resolve, reject) => {
+    backendServer.once("error", reject);
+    backendServer.listen(port, "127.0.0.1", resolve);
+  });
+  return `http://127.0.0.1:${port}`;
+}
 
 beforeAll(async () => {
   rmSync(nextDistDir, { recursive: true, force: true });
+  RUNTIME_ENV.MEDUSA_BACKEND_URL = await startBackendServer();
 
   writeFileSync(
     runtimeRedirectMapPath,
@@ -444,10 +538,17 @@ beforeAll(async () => {
     .join("\n");
 
   server = await startServer(RUNTIME_ENV);
+  unconfiguredServer = await startServer({
+    ...RUNTIME_ENV,
+    MEDUSA_BACKEND_URL: "",
+    MEDUSA_PUBLISHABLE_API_KEY: "",
+  });
 }, 300_000);
 
 afterAll(() => {
   server?.process.kill();
+  unconfiguredServer?.process.kill();
+  backendServer?.close();
   rmSync(nextDistDir, { recursive: true, force: true });
   rmSync(scratchDir, { recursive: true, force: true });
 });
@@ -588,6 +689,17 @@ describe("the CSP nonce the browser is told to trust is the one on the page", ()
 });
 
 describe("the running server reflects the runtime environment, not the build-time one", () => {
+  it("publishes public commerce keys at request time without publishing the backend target", async () => {
+    const response = await requestWithHost(server.port, "/", "runtime.example.com");
+    expect(response.status).toBe(200);
+    expect(response.body).toContain(RUNTIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    expect(response.body).toContain(RUNTIME_ENV.STRIPE_PUBLISHABLE_KEY);
+    expect(response.body).not.toContain(RUNTIME_ENV.MEDUSA_BACKEND_URL);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.STRIPE_PUBLISHABLE_KEY);
+    expect(response.body).not.toContain(BUILD_TIME_ENV.MEDUSA_BACKEND_URL);
+  });
+
   it("serves the sitemap built from the runtime base URL", async () => {
     const response = await requestWithHost(server.port, "/sitemap.xml", "runtime.example.com");
     expect(response.status).toBe(200);
@@ -677,6 +789,152 @@ describe("the running server reflects the runtime environment, not the build-tim
         RUNTIME_ENV.MERCHANT_CONTACT_ADDRESS,
       );
     }
+  });
+});
+
+describe("the built storefront's strict /store-api transport", () => {
+  it("denies an unmatched path before consulting missing backend configuration", async () => {
+    backendRequests.length = 0;
+    const denied = await requestWithHost(
+      unconfiguredServer.port,
+      "/store-api/admin/users",
+      "runtime.example.com",
+    );
+    const allowed = await requestWithHost(
+      unconfiguredServer.port,
+      "/store-api/store/products",
+      "runtime.example.com",
+    );
+
+    expect(denied.status).toBe(404);
+    expect(allowed.status).toBe(503);
+    expect(backendRequests).toHaveLength(0);
+  });
+
+  it("strips /store-api and preserves a Store request's method, query and required headers", async () => {
+    backendRequests.length = 0;
+
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/store/products?limit=7&region_id=reg_example",
+      "runtime.example.com",
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer session-example",
+          Cookie: "cart_id=cart_example",
+          "X-Publishable-Api-Key": "pk_request_runtime",
+        },
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(response.headers["x-medusa-test-response"]).toBe("preserved");
+    expect(backendRequests).toHaveLength(1);
+    expect(backendRequests[0]).toMatchObject({
+      method: "GET",
+      path: "/store/products?limit=7&region_id=reg_example",
+      bodyBase64: "",
+    });
+    expect(backendRequests[0]?.headers.authorization).toBe("Bearer session-example");
+    expect(backendRequests[0]?.headers.cookie).toBe("cart_id=cart_example");
+    expect(backendRequests[0]?.headers["x-publishable-api-key"]).toBe("pk_request_runtime");
+  });
+
+  it("loads home and canonical product facts from the server Store seam with its publishable key", async () => {
+    backendRequests.length = 0;
+
+    for (const host of ["runtime.example.com", "test.runtime.example.com"]) {
+      for (const path of ["/", "/games/lunar-base"]) {
+        const response = await requestWithHost(server.port, path, host);
+        expect(response.status, `${host}${path} did not render from the Store catalogue`).toBe(200);
+      }
+    }
+
+    const productRequests = backendRequests.filter((request) => request.path.startsWith("/store/products?limit=1&fields="));
+    expect(productRequests).toHaveLength(4);
+    for (const request of productRequests) {
+      expect(request.headers["x-publishable-api-key"]).toBe(RUNTIME_ENV.MEDUSA_PUBLISHABLE_API_KEY);
+    }
+  });
+
+  it("forwards a Stripe hook body byte-for-byte with its signature and content type", async () => {
+    backendRequests.length = 0;
+    const body = Buffer.from([0x7b, 0x22, 0x72, 0x61, 0x77, 0x22, 0x3a, 0xff, 0x00, 0x7d]);
+
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/hooks/payment/stripe_stripe",
+      "runtime.example.com",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Stripe-Signature": "t=123,v1=signature-example",
+        },
+        body,
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(backendRequests).toHaveLength(1);
+    expect(backendRequests[0]).toMatchObject({
+      method: "POST",
+      path: "/hooks/payment/stripe_stripe",
+      bodyBase64: body.toString("base64"),
+    });
+    expect(backendRequests[0]?.headers["content-type"]).toBe("application/octet-stream");
+    expect(backendRequests[0]?.headers["stripe-signature"]).toBe("t=123,v1=signature-example");
+  });
+
+  it("allows product media only through the named static prefix", async () => {
+    backendRequests.length = 0;
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/static/products/lunar-base.webp?v=1",
+      "runtime.example.com",
+    );
+
+    expect(response.status).toBe(202);
+    expect(backendRequests).toHaveLength(1);
+    expect(backendRequests[0]?.path).toBe("/static/products/lunar-base.webp?v=1");
+  });
+
+  it("404s every unmatched or normalized traversal path without a backend request", async () => {
+    const denied = [
+      "/store-api/admin/users",
+      "/store-api/app",
+      "/store-api/%2e%2e/app",
+      "/store-api/store/../admin/users",
+    ];
+
+    for (const path of denied) {
+      backendRequests.length = 0;
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(404);
+      expect(backendRequests, `${path} reached the backend`).toHaveLength(0);
+    }
+  });
+
+  it("lets Next normalize a repeated slash once, then locally 404s the destination without backend traffic", async () => {
+    backendRequests.length = 0;
+
+    const raw = await requestWithHost(
+      server.port,
+      "/store-api//admin/users",
+      "runtime.example.com",
+    );
+    expect(raw.status).toBe(308);
+    expect(raw.headers.location).toBe("/store-api/admin/users");
+    expect(backendRequests, "the raw repeated-slash request reached the backend").toHaveLength(0);
+
+    const normalized = await requestWithHost(
+      server.port,
+      raw.headers.location ?? "",
+      "runtime.example.com",
+    );
+    expect(normalized.status).toBe(404);
+    expect(backendRequests, "the normalized denial reached the backend").toHaveLength(0);
   });
 });
 
@@ -1153,6 +1411,27 @@ describe("the checkout form cannot put a delivery address in a URL", () => {
   });
 });
 
+describe("the redirect-return fallback never denies a possibly captured payment", () => {
+  const path = "/checkout/payment-return/order";
+  const safeOutcome = "We could not confirm your order. Your payment may have completed or may still be processing. Check your email and contact the shop before trying again.";
+
+  it("accepts only POST and returns a fixed no-store outcome without a redirect", async () => {
+    const token = "synthetic-sensitive-response";
+    const response = await postFormWithHost(server.port, path, MOCK_HOST, {
+      "cf-turnstile-response": token,
+    });
+    expect(response.status).toBe(409);
+    expect(response.headers.location).toBeUndefined();
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.body).toBe(safeOutcome);
+    expect(response.body).not.toContain(token);
+    expect(response.body).not.toMatch(/nothing was charged|payment was not charged/i);
+
+    const get = await requestWithHost(server.port, path, MOCK_HOST);
+    expect(get.status).toBe(405);
+  });
+});
+
 /**
  * The same defect, on the two **public** forms, and the same requirement: no
  * field value from either form reaches a URL in any state of the page,
@@ -1180,36 +1459,30 @@ describe("neither public form can put a field value in a URL", () => {
     {
       route: "/",
       label: newsletterCopy.heading,
-      answer: newsletterCopy.notSentMessage,
+      answer: newsletterCopy.successMessage,
       copy: newsletterCopy,
-      /**
-       * The sentence this route must never paint, because painting it would
-       * be a lie about a form that sends nothing.
-       *
-       * **`null` because the newsletter copy has no success sentence at
-       * all**, deliberately: nothing in this build can succeed, so
-       * `content/publisher.ts`'s `newsletter` object never had one to
-       * fabricate. The test below pins that absence instead. It used to
-       * assert that the *contact* form's success line was missing from the
-       * homepage — which a page that never had that string passes for free,
-       * and which said nothing about the newsletter at all. Give the
-       * newsletter a success sentence and this fixture has to gain the string
-       * to look for, or the suite reddens.
-       */
-      fabricatedAnswer: null,
-      typed: { email: "unhydrated-subscriber@example.com" },
+      fabricatedAnswer: newsletterCopy.errorMessage,
+      backendPath: "/store/newsletter",
+      extraFields: [["additional-notes", ""]] as const,
+      typed: {
+        email: "unhydrated-subscriber@example.com",
+        "cf-turnstile-response": "synthetic-turnstile-token",
+      },
     },
     {
       route: "/support/lunar-base",
       label: contactCopy.heading,
-      answer: contactFormCopy.notSentMessage,
+      answer: contactFormCopy.successMessage,
       copy: contactFormCopy,
-      fabricatedAnswer: contactFormCopy.successMessage,
+      fabricatedAnswer: contactFormCopy.errorMessage,
+      backendPath: "/store/contact",
+      extraFields: [["additional-notes", ""]] as const,
       typed: {
         name: "Unhydrated Person",
         email: "unhydrated-writer@example.com",
         subject: "A subject line",
         message: "A message body that must never appear in a URL.",
+        "cf-turnstile-response": "synthetic-turnstile-token",
       },
     },
   ] as const;
@@ -1344,13 +1617,18 @@ describe("neither public form can put a field value in a URL", () => {
       it("answers an unhydrated submission without putting one value in the URL", async () => {
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
         const markup = formMarkup(served.body, form.label);
-        const fields = [...hiddenFields(markup), ...Object.entries(form.typed)];
+        const fields = [
+          ...hiddenFields(markup),
+          ...Object.entries(form.typed),
+          ...form.extraFields,
+        ];
 
         // A browser sends every hidden control the form declares. If React
         // stopped emitting them this submission would stop reaching the
         // Server Function, and the answer assertion below would fail.
         expect(fields.some(([name]) => name.startsWith("$ACTION"))).toBe(true);
 
+        backendRequests.length = 0;
         const response = await postMultipartWithHost(
           server.port,
           form.route,
@@ -1366,13 +1644,19 @@ describe("neither public form can put a field value in a URL", () => {
           expect(response.body, `"${field}" came back in the response`).not.toContain(value);
           expect(response.body).not.toContain(encodeURIComponent(value));
         }
+        const relays = backendRequests.filter((request) => request.path === form.backendPath);
+        expect(relays).toHaveLength(form.backendPath === null ? 0 : 1);
+        if (form.backendPath !== null) {
+          expect(relays[0]).toMatchObject({ method: "POST", path: form.backendPath });
+        }
       });
 
-      it("says plainly that nothing was sent, in the first paint, with no script involved", async () => {
+      it("reports the honest submission outcome in the first paint, with no script involved", async () => {
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
         const fields = [
           ...hiddenFields(formMarkup(served.body, form.label)),
           ...Object.entries(form.typed),
+          ...form.extraFields,
         ];
         const response = await postMultipartWithHost(server.port, form.route, LIVE_HOST, fields);
 
@@ -1385,16 +1669,6 @@ describe("neither public form can put a field value in a URL", () => {
 
       it("does not fabricate a success message anywhere on the route", async () => {
         const response = await requestWithHost(server.port, form.route, LIVE_HOST);
-
-        if (form.fabricatedAnswer === null) {
-          // See the fixture: this form has no success copy to fabricate, and
-          // the check with teeth is that it still has none.
-          expect(
-            Object.keys(form.copy),
-            "this form now has success copy; give the fixture the string to look for",
-          ).not.toContain("successMessage");
-          return;
-        }
 
         expect(paintedText(response.body)).not.toContain(form.fabricatedAnswer);
       });
@@ -1419,7 +1693,7 @@ describe("neither public form can put a field value in a URL", () => {
        * report.
        */
       it("answers a second consecutive submission as its own event", async () => {
-        const typed = Object.entries(form.typed);
+        const typed = [...Object.entries(form.typed), ...form.extraFields];
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
 
         const first = await postMultipartWithHost(server.port, form.route, LIVE_HOST, [
@@ -1473,7 +1747,7 @@ describe("neither public form can put a field value in a URL", () => {
        * while the response-body test above stays green on press 1.
        */
       it("serialises back the fixed sentence and an integer, and nothing else, on every press", async () => {
-        const typed = Object.entries(form.typed);
+        const typed = [...Object.entries(form.typed), ...form.extraFields];
         const served = await requestWithHost(server.port, form.route, LIVE_HOST);
 
         // Before any press at all. If this control is absent the loop below
@@ -1673,12 +1947,10 @@ describe("test hostnames", () => {
  * This is the finding that made the whole arrangement worth changing. The
  * price used to come from `CATALOGUE_MOCK_*`, so an unconfigured deployment
  * published a visible €25.00 to a person and, in the JSON-LD, **no offer at
- * all** to a search engine; a *mis*configured one published a different price
- * to each, with nothing failing or warning. Both facts now come from
- * `storefront/mock/catalogue.json`, so the default state is the correct state
- * and there is no environment that can separate them.
+ * all** to a search engine. The Store-backed page must instead fail closed:
+ * there is no honest sale page without a runtime Store credential.
  */
-describe("an unconfigured deployment publishes the same price it renders", () => {
+describe("an unconfigured deployment fails closed for commerce pages", () => {
   let unconfigured: RunningServer;
 
   beforeAll(async () => {
@@ -1692,44 +1964,14 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     unconfigured?.process.kill();
   });
 
-  it("still serves the product page", async () => {
+  it("does not serve a product page from the committed catalogue fixture", async () => {
     const response = await requestWithHost(
       unconfigured.port,
       "/games/lunar-base",
       "unconfigured.example.com",
     );
-    expect(response.status).toBe(200);
-    expect(response.body).toContain('"@type":"Product"');
-  });
-
-  it("publishes an Offer whose price, currency and availability are the catalogue's own", async () => {
-    const response = await requestWithHost(
-      unconfigured.port,
-      "/games/lunar-base",
-      "unconfigured.example.com",
-    );
-    const expected = buildProductJsonLd({
-      url: "https://unconfigured.example.com/games/lunar-base",
-      description: "",
-    });
-    const offer = expected.offers as Record<string, unknown>;
-
-    expect(response.body).toContain('"@type":"Offer"');
-    expect(response.body).toContain(`"priceCurrency":"${String(offer.priceCurrency)}"`);
-    expect(response.body).toContain(`"price":"${String(offer.price)}"`);
-    expect(response.body).toContain(`"availability":"${String(offer.availability)}"`);
-  });
-
-  it("shows a human the same price it tells a crawler", async () => {
-    const response = await requestWithHost(
-      unconfigured.port,
-      "/games/lunar-base",
-      "unconfigured.example.com",
-    );
-    const rendered = resolveCatalogue();
-    expect(response.body).toContain(rendered.price);
-    expect(response.body).toContain(rendered.availabilityLabel);
-    expect(response.body).toContain(rendered.productName);
+    expect(response.status).toBe(500);
+    expect(response.body).not.toContain(resolveCatalogue().price);
   });
 
   it("suppresses the copy that quotes an unconfigured merchant address, rather than rendering the brace", async () => {
@@ -1890,20 +2132,6 @@ describe("an unconfigured deployment publishes the same price it renders", () =>
     }
   });
 
-  it("names, rather than drops, the unconfigured GPSR manufacturer identity", async () => {
-    const response = await requestWithHost(
-      unconfigured.port,
-      "/games/lunar-base",
-      "unconfigured.example.com",
-    );
-    expect(response.status).toBe(200);
-    expect(paintedText(response.body)).not.toMatch(/\{[A-Za-z][A-Za-z0-9]*\}/);
-    expect(response.body).toContain("[not configured: registered address]");
-    expect(response.body).toContain("product-safety-incomplete-notice");
-    // The safety information itself needs no configuration and must be intact.
-    expect(response.body).toContain("SHAH01338706");
-    expect(response.body).toContain("Flammability");
-  });
 });
 
 /**

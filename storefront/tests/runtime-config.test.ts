@@ -9,12 +9,15 @@ import {
   CLIENT_RUNTIME_CONFIG_KEYS,
   toClientRuntimeConfig,
 } from "../src/lib/client-runtime-config.js";
+import { buildContentSecurityPolicy } from "../src/lib/csp.js";
 
 describe("getRuntimeConfig", () => {
-  it("has a null analytics measurement ID, turnstile site key and merchant field when unconfigured, never a literal", () => {
+  it("has null runtime integration values when unconfigured, never a literal", () => {
     const config = getRuntimeConfig({});
     expect(config.analytics.measurementId).toBeNull();
     expect(config.turnstile.siteKey).toBeNull();
+    expect(config.medusa).toEqual({ backendUrl: null, publishableKey: null });
+    expect(config.stripe).toEqual({ publishableKey: null });
 
     /*
      * Every one of the seven, not just the contact address. A merchant field
@@ -39,6 +42,9 @@ describe("getRuntimeConfig", () => {
       SITE_CANONICAL_HOST: "canonical.example.net",
       ANALYTICS_MEASUREMENT_ID: "G-EXAMPLE1",
       TURNSTILE_SITE_KEY: "0x0000000000000000000AA",
+      MEDUSA_BACKEND_URL: "http://plepic-backend:8102",
+      MEDUSA_PUBLISHABLE_API_KEY: "pk_example_runtime",
+      STRIPE_PUBLISHABLE_KEY: "pk_test_example_runtime",
       MERCHANT_CONTACT_ADDRESS: "hello@canonical.example.net",
       MERCHANT_LEGAL_NAME: "Example Trader OU",
       MERCHANT_PHONE_NUMBER: "+000 00 000000",
@@ -54,6 +60,11 @@ describe("getRuntimeConfig", () => {
       canonicalHost: "canonical.example.net",
       analytics: { measurementId: "G-EXAMPLE1" },
       turnstile: { siteKey: "0x0000000000000000000AA" },
+      medusa: {
+        backendUrl: "http://plepic-backend:8102",
+        publishableKey: "pk_example_runtime",
+      },
+      stripe: { publishableKey: "pk_test_example_runtime" },
       merchant: {
         legalName: "Example Trader OU",
         registeredAddress: "1 Example Street, Example Town",
@@ -74,6 +85,14 @@ describe("getRuntimeConfig", () => {
     const second = getRuntimeConfig({ ANALYTICS_MEASUREMENT_ID: "G-SECOND" });
     expect(first.analytics.measurementId).toBe("G-FIRST");
     expect(second.analytics.measurementId).toBe("G-SECOND");
+  });
+
+  it("selects either environment's authoritative backend Service target from the same source", () => {
+    const live = getRuntimeConfig({ MEDUSA_BACKEND_URL: "http://plepic-backend:8102" });
+    const test = getRuntimeConfig({ MEDUSA_BACKEND_URL: "http://plepic-backend-test:8112" });
+
+    expect(live.medusa.backendUrl).toBe("http://plepic-backend:8102");
+    expect(test.medusa.backendUrl).toBe("http://plepic-backend-test:8112");
   });
 });
 
@@ -98,6 +117,9 @@ describe("only a named subset of the runtime config is published to the browser"
     SITE_CANONICAL_HOST: "canonical.example.net",
     ANALYTICS_MEASUREMENT_ID: "G-EXAMPLE1",
     TURNSTILE_SITE_KEY: "0x0000000000000000000AA",
+    MEDUSA_BACKEND_URL: "http://plepic-backend:8102",
+    MEDUSA_PUBLISHABLE_API_KEY: "pk_example_runtime",
+    STRIPE_PUBLISHABLE_KEY: "pk_test_example_runtime",
     MERCHANT_CONTACT_ADDRESS: "hello@canonical.example.net",
   });
   const client = toClientRuntimeConfig(config, true);
@@ -117,6 +139,8 @@ describe("only a named subset of the runtime config is published to the browser"
       canonicalHost: "canonical.example.net",
       analytics: { measurementId: "G-EXAMPLE1" },
       turnstile: { siteKey: "0x0000000000000000000AA" },
+      medusa: { basePath: "/store-api", publishableKey: "pk_example_runtime" },
+      stripe: { publishableKey: "pk_test_example_runtime" },
       isTestHost: true,
     });
   });
@@ -124,6 +148,25 @@ describe("only a named subset of the runtime config is published to the browser"
   it("is a projection and not a spread — a new configuration field is not published by default", () => {
     const widened = { ...config, futureSecret: "must-not-be-published" };
     expect(JSON.stringify(toClientRuntimeConfig(widened, false))).not.toContain("must-not-be-published");
+  });
+});
+
+describe("Stripe browser boundary", () => {
+  it("permits only Stripe's script, frame, and API origins needed by Elements", () => {
+    const csp = buildContentSecurityPolicy("nonce-example");
+    const directives = new Map(
+      csp.split("; ").map((directive) => {
+        const [name, ...sources] = directive.split(" ");
+        return [name, sources];
+      }),
+    );
+
+    expect(directives.get("script-src")).toContain("https://js.stripe.com");
+    expect(directives.get("frame-src")).toEqual(
+      expect.arrayContaining(["https://js.stripe.com", "https://hooks.stripe.com"]),
+    );
+    expect(directives.get("connect-src")).toContain("https://api.stripe.com");
+    expect(directives.get("form-action")).toEqual(["'self'"]);
   });
 });
 

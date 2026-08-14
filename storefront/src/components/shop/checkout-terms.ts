@@ -81,11 +81,11 @@ export const CONFIRMATION_PROMISE = paragraph(
   "confirmation",
 );
 
-/** The card-number statement the payment step is built around. */
+/** The processor and card-number statement the payment step is built around. */
 export const CARD_STATEMENT = paragraph(
   terms,
   "checkout-acknowledgement",
-  "We accept payment by card",
+  "We accept cards, Apple Pay, Google Pay and PayPal",
   "card number",
 );
 

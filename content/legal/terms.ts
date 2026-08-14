@@ -56,7 +56,7 @@ export const terms: LegalPage = {
         "The final button on the checkout page is labelled to say that pressing it places an order with an obligation to pay. Immediately above it you see, on one screen: the goods, the price of the goods, the shipping charge, the total, the delivery address and the delivery estimate.",
         "By placing the order you confirm that you have read and accept these terms and the privacy notice, that you are buying as described on this site, and that you are at least 18 years old or ordering with the agreement of somebody who is.",
         "You will receive a confirmation by email containing the order, the total paid and these terms. Keep it — it is your copy of the contract.",
-        "We accept payment by card through our payment processor. We never see or store your card number. If the payment fails or is later reversed, the order does not proceed.",
+        "We accept cards, Apple Pay, Google Pay and PayPal through Stripe when Stripe makes them available for your device and location. We never see or store your card number. If the payment fails or is later reversed, the order does not proceed.",
         "Sold to consumers, and to businesses on the same terms. Nothing on this page reduces the statutory rights of a consumer.",
       ],
       source: "checkout-contract",

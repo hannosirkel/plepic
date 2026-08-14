@@ -53,6 +53,11 @@ export interface ClientRuntimeConfig {
   readonly canonicalHost: string;
   readonly analytics: RuntimeConfig["analytics"];
   readonly turnstile: RuntimeConfig["turnstile"];
+  readonly medusa: {
+    readonly basePath: "/store-api";
+    readonly publishableKey: string | null;
+  };
+  readonly stripe: { readonly publishableKey: string | null };
   /** This request's host classification. The one field that is not environment configuration. */
   readonly isTestHost: boolean;
 }
@@ -63,6 +68,8 @@ export const CLIENT_RUNTIME_CONFIG_KEYS: readonly (keyof ClientRuntimeConfig)[] 
   "baseUrl",
   "canonicalHost",
   "isTestHost",
+  "medusa",
+  "stripe",
   "turnstile",
 ];
 
@@ -80,6 +87,11 @@ export function toClientRuntimeConfig(config: RuntimeConfig, isTestHost: boolean
     canonicalHost: config.canonicalHost,
     analytics: config.analytics,
     turnstile: config.turnstile,
+    medusa: {
+      basePath: "/store-api",
+      publishableKey: config.medusa.publishableKey,
+    },
+    stripe: { publishableKey: config.stripe.publishableKey },
     isTestHost,
   };
 }

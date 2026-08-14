@@ -44,11 +44,24 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command: "npm run build && npm run start -- --hostname 127.0.0.1 --port 3100",
-    url: "http://127.0.0.1:3100",
-    reuseExistingServer: false,
-    env: { ANALYTICS_MEASUREMENT_ID: "G-PLAYWRIGHTTEST" },
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "node tests/playwright/medusa-fixture.ts",
+      url: "http://127.0.0.1:3199/health",
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+    {
+      command: "npm run build && npm run start -- --hostname 127.0.0.1 --port 3100",
+      url: "http://127.0.0.1:3100",
+      reuseExistingServer: false,
+      env: {
+        ANALYTICS_MEASUREMENT_ID: "G-PLAYWRIGHTTEST",
+        MEDUSA_BACKEND_URL: "http://127.0.0.1:3199",
+        MEDUSA_PUBLISHABLE_API_KEY: "pk_playwright_fixture",
+        TURNSTILE_SITE_KEY: "synthetic-playwright-turnstile-site-key",
+      },
+      timeout: 120_000,
+    },
+  ],
 });
