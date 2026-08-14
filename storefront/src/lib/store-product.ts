@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 
 import type { CatalogueProduct } from "./catalogue.js";
+import { browserMediaUrls } from "./store-media.js";
 import { medusaMajorToMinor } from "./store-money.js";
 
 interface StoreProductResponse {
@@ -10,6 +11,8 @@ interface StoreProductResponse {
 const STORE_PRODUCT_FIELDS = [
   "id",
   "title",
+  "thumbnail",
+  "images.url",
   "*variants",
   "+variants.calculated_price",
   "+variants.inventory_quantity",
@@ -65,6 +68,21 @@ export function catalogueProductFromStore(
   throw new ConfigError("Medusa Store product has no purchasable EUR variant");
 }
 
+/**
+ * The product's media, in the one form the browser is allowed to receive:
+ * `/store-api/static/<file>` on the current origin. The seeded backend records
+ * `/static/<file>`; anything else — an absolute origin, a traversal, an
+ * encoding — is dropped rather than forwarded. See `store-media.ts`.
+ */
+export function productImageUrlsFromStore(response: StoreProductResponse): readonly string[] {
+  const product = record(response.products?.[0], "product");
+  const images = Array.isArray(product.images) ? product.images : [];
+  return browserMediaUrls([
+    product.thumbnail,
+    ...images.map((image) => (typeof image === "object" && image !== null ? (image as Record<string, unknown>).url : null)),
+  ]);
+}
+
 function variantIdentityFromStore(response: StoreProductResponse): { readonly id: string; readonly available: boolean } {
   const product = record(response.products?.[0], "product");
   if (!Array.isArray(product.variants)) throw new ConfigError("Medusa Store product has no variants");
@@ -114,6 +132,7 @@ export async function loadStoreProduct(input: {
   readonly catalogue: CatalogueProduct;
   readonly variantId: string | null;
   readonly analyticsVariantId: string;
+  readonly imageUrls: readonly string[];
 }> {
   const { backendUrl, publishableKey, presentation } = input;
   if (backendUrl === null || publishableKey === null) {
@@ -130,5 +149,6 @@ export async function loadStoreProduct(input: {
     catalogue: catalogueProductFromStore(body, presentation),
     variantId: variant.available ? variant.id : null,
     analyticsVariantId: variant.id,
+    imageUrls: productImageUrlsFromStore(body),
   };
 }

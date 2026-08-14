@@ -9,6 +9,7 @@
     "build": "NODE_PATH=./node_modules medusa build",
     "dev": "medusa develop",
     "start": "medusa start",
+    "catalogue:import": "medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test:unit": "vitest run"
   },

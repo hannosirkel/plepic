@@ -42,6 +42,18 @@ export interface NewsletterRateLimitRuntimeConfig {
   readonly windowSeconds: number;
 }
 
+export interface MediaRuntimeConfig {
+  /** The assets PVC mount, and Medusa's local file provider `upload_dir`. */
+  readonly root: string;
+}
+
+export interface CatalogueImportRuntimeConfig {
+  readonly archivePath: string;
+  readonly mediaRoot: string;
+  readonly expectedArchiveSha256: string;
+  readonly environmentIdentity: "live" | "test";
+}
+
 export interface OrderConfirmationLegalConfig {
   readonly merchantLegalName: string;
   readonly merchantRegisteredAddress: string;
@@ -144,6 +156,58 @@ export function readCheckoutTurnstileRuntimeConfig(
   environment: RuntimeEnvironment,
 ): CheckoutTurnstileRuntimeConfig {
   return { secretKey: requireEnvironmentValue(environment, "TURNSTILE_SECRET_KEY") };
+}
+
+/**
+ * The assets root. The Job manifest mounts the assets PVC at `/app/static` in
+ * both environments, so this default is a property of the base manifest rather
+ * than a per-environment value; `MEDIA_ROOT` exists for a local run against a
+ * different directory.
+ */
+const DEFAULT_MEDIA_ROOT = "/app/static";
+/** The manifest's second mount of the same PVC, `subPath: import`. */
+const DEFAULT_ARCHIVE_PATH = "/var/lib/plepic/import/catalogue.tar.gz";
+
+export function readMediaRuntimeConfig(environment: RuntimeEnvironment): MediaRuntimeConfig {
+  const root = environment.MEDIA_ROOT?.trim();
+  return { root: root === undefined || root.length === 0 ? DEFAULT_MEDIA_ROOT : root };
+}
+
+/**
+ * The catalogue import's configuration.
+ *
+ * The expected checksum and the environment identity are read here — from the
+ * deployment's own environment — and never from a file staged next to the
+ * archive, because an archive that carries its own checksum proves only that it
+ * is internally consistent. Both are required: an import that cannot tell which
+ * archive it expects, or which environment it is, refuses rather than
+ * proceeding.
+ */
+export function readCatalogueImportRuntimeConfig(
+  environment: RuntimeEnvironment,
+): CatalogueImportRuntimeConfig {
+  const expectedArchiveSha256 = requireEnvironmentValue(
+    environment,
+    "CATALOGUE_IMPORT_ARCHIVE_SHA256",
+  );
+  if (!/^[0-9a-f]{64}$/.test(expectedArchiveSha256)) {
+    throw new Error("CATALOGUE_IMPORT_ARCHIVE_SHA256 must be 64 lowercase hex digits");
+  }
+
+  const environmentIdentity = requireEnvironmentValue(environment, "CATALOGUE_IMPORT_ENVIRONMENT");
+  if (environmentIdentity !== "live" && environmentIdentity !== "test") {
+    throw new Error("CATALOGUE_IMPORT_ENVIRONMENT must be exactly live or test");
+  }
+
+  const archivePath = environment.CATALOGUE_IMPORT_ARCHIVE_PATH?.trim();
+
+  return {
+    archivePath:
+      archivePath === undefined || archivePath.length === 0 ? DEFAULT_ARCHIVE_PATH : archivePath,
+    mediaRoot: readMediaRuntimeConfig(environment).root,
+    expectedArchiveSha256,
+    environmentIdentity,
+  };
 }
 
 export function readNewsletterRateLimitRuntimeConfig(

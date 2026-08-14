@@ -849,6 +849,86 @@ npm run typecheck
 npm run test:unit
 ```
 
+## Catalogue import
+
+`npm run catalogue:import`, in the `backend` workspace, seeds a Medusa
+environment from a staged WooCommerce export. It is the command the
+`plepic-catalogue-import` Job in `hannosirkel/deploys` runs.
+
+**It runs in the cluster and nowhere else.** The NetworkPolicy admits
+PostgreSQL connections only from in-namespace workloads, so an operator machine
+cannot run it at all. The Job runs it from the backend image, in the target
+namespace, once (`backoffLimit: 0`, `activeDeadlineSeconds: 1800`), with no
+Kubernetes API access and a read-only root filesystem — the only writable paths
+are the assets PVC and `/tmp`.
+
+### What it seeds, and what it refuses
+
+It seeds the active physical product, its current price and stock, its packaged
+dimensions, the coupons that are still valid at the moment of the run, the tax
+zones and rates, the shipping zones and methods, and the media.
+
+It **refuses** WordPress users, WooCommerce customer accounts, sessions and
+order history — it does not filter them silently. Customer accounts and order
+history are archive-only: a final export is preserved in encrypted backup
+storage and never imported. The manifest's accepted section list is an
+allowlist, so a section nobody has read is refused too. No refusal message ever
+quotes the data that caused it.
+
+### The staged archive
+
+The archive is `catalogue.tar.gz` — a gzip-compressed tar carrying exactly
+`manifest.json` and `media/<file>` members. It is staged onto the environment's
+assets PVC by `kubectl cp` into a short-lived helper pod that mounts the PVC, at
+the path the Job mounts as `/var/lib/plepic/import` (`subPath: import` of the
+same PVC).
+
+The import **refuses to start** unless the archive hashes to the expected value
+and the environment it was prepared for is the environment it is running in.
+Both expected values come from the backend's runtime configuration, never from a
+file staged beside the archive — an archive that carries its own checksum proves
+only that it is internally consistent. When either is unset, empty or malformed
+the import refuses; an unconfigured import never proceeds.
+
+The staged archive is deleted after a successful import **and after a failed or
+refused one alike**. A WooCommerce export sitting on a PVC is a liability
+whether or not the import that was supposed to consume it worked.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `CATALOGUE_IMPORT_ARCHIVE_SHA256` | yes | 64 lowercase hex digits; the expected archive digest |
+| `CATALOGUE_IMPORT_ENVIRONMENT` | yes | exactly `live` or `test`; must equal the archive's recorded identity |
+| `CATALOGUE_IMPORT_ARCHIVE_PATH` | no | defaults to `/var/lib/plepic/import/catalogue.tar.gz` |
+| `MEDIA_ROOT` | no | defaults to `/app/static`, the assets PVC mount |
+
+### Rerunning it
+
+The import is rerunnable, and that is a property of its shape rather than of a
+lock. It emits key-addressed upserts — the product by handle, the price by SKU
+and currency, the stock by SKU, a coupon by code, a tax region by country, a
+shipping option by zone and name — so applying the same record twice is applying
+it once. Media is written to a `.plepic-import-partial` sibling and moved into
+place with one rename, and a file already present with identical bytes is left
+untouched. Running it twice leaves one product, one price, one stock figure and
+one copy of each media file; a run interrupted halfway can simply be run again.
+
+### Media delivery
+
+Imported media lands on the assets PVC. Medusa's local file provider is pinned
+to that directory and serves it under `/static/*`, and stamps that relative path
+into every product image URL. The storefront exposes the same bytes at
+`/store-api/static/*` through its prefix allowlist, and
+`storefront/src/lib/store-media.ts` is the one place that converts one form into
+the other — so every product image URL the browser receives is that relative
+form, and a URL that is not one is dropped rather than forwarded.
+
+A crafted filename cannot escape the assets root. The archive reader accepts
+only regular files and directories, so a symlink, a hard link, a device node and
+a GNU long-name extension are each refused; media filenames must match a strict
+charset, which admits no separator, no `..`, no percent-encoding, no backslash
+and no leading or trailing space; and every write resolves through one function
+that re-checks containment.
+
 ## Enabling the pre-commit hook
 
 This repository ships a `.githooks/pre-commit` hook that runs a `gitleaks`

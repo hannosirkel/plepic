@@ -1,7 +1,8 @@
 import { defineConfig, loadEnv } from "@medusajs/framework/utils";
-import { readBackendRuntimeConfig } from "./src/config/runtime";
+import { readBackendRuntimeConfig, readMediaRuntimeConfig } from "./src/config/runtime";
 import { stripePaymentModule } from "./src/config/payment";
 import { notificationModule } from "./src/config/notification";
+import { localFileModule } from "./src/config/media";
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
@@ -15,5 +16,6 @@ module.exports = defineConfig({
   modules: [
     stripePaymentModule(runtime.stripe),
     notificationModule(runtime.smtp),
+    localFileModule(readMediaRuntimeConfig(process.env)),
   ],
 });
