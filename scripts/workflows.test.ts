@@ -114,6 +114,58 @@ const RELEASE = "release.yml";
 /** A pinned Trivy release, as the action's `version:` input spells one. */
 const TRIVY_VERSION = /^v\d+\.\d+\.\d+$/;
 
+/** The repository both publishing workflows must link their packages to. */
+const SOURCE_REPOSITORY_URL = "https://github.com/hannosirkel/plepic";
+
+/**
+ * The repository URL a workflow labels the images it publishes with.
+ *
+ * `org.opencontainers.image.source` is how GitHub links a container package
+ * to a repository, and a linked package inherits that repository's access
+ * rather than being private with nothing to inherit it from — which is what a
+ * cluster's first pull runs into.
+ *
+ * Two properties beyond the value itself, both load bearing:
+ *
+ * 1. **One publishing step, one `docker buildx build` invocation.** Both
+ *    workflows publish two images by calling one shell function twice, so a
+ *    single `--label` covers both. Split into two invocations and the flag
+ *    could come to label one image and not the other, with an assertion that
+ *    merely found a labelled build still green.
+ * 2. **The value arrives through `env:`.** Every `run:` body here is held to
+ *    interpolating no workflow expression, so the URL is a shell variable the
+ *    step declares rather than text substituted into the script before a
+ *    shell ever sees it.
+ *
+ * It is a `--label` rather than a `LABEL` in either Dockerfile because only
+ * one of the two could carry it there: `no-live-hostname.test.ts` scans every
+ * tracked file under `storefront/`, `storefront/Dockerfile` included, and the
+ * forge is not on its allowlist.
+ */
+function sourceLabelUrl(name: string): string {
+  const publishing = Object.keys(jobs(name)).flatMap((id) =>
+    steps(name, id).filter(
+      (step) => typeof step["run"] === "string" && step["run"].includes("docker buildx build"),
+    ),
+  );
+  expect(publishing, `${name} does not publish its images from exactly one step`).toHaveLength(1);
+  const step = publishing[0]!;
+
+  const invocations = commands(asScalar(step["run"]!, `${name} publish run`)).filter((line) =>
+    line.includes("docker buildx build"),
+  );
+  expect(invocations, `${name} does not build both images with one invocation`).toHaveLength(1);
+  expect(
+    invocations[0],
+    `${name} publishes images carrying no source label, so their packages link to no repository`,
+  ).toMatch(/--label "org\.opencontainers\.image\.source=\$SOURCE_URL"/);
+
+  expect(step["env"], `${name}'s publishing step declares no env`).toBeDefined();
+  const url = asMapping(step["env"]!, `${name} publish env`)["SOURCE_URL"];
+  expect(url, `${name} labels with $SOURCE_URL but declares no such variable`).toBeDefined();
+  return asScalar(url!, `${name} SOURCE_URL`);
+}
+
 /** Every Trivy scan step in a workflow, paired with where it was found. */
 function trivyScans(
   name: string,
@@ -868,6 +920,39 @@ describe("the code-import ban itself", () => {
 });
 
 /**
+ * Both workflows push to the same two GHCR packages, so both are held to
+ * linking them.
+ *
+ * `Release` alone is not enough, and the ordering is the whole argument: GHCR
+ * creates a package on its **first** push, and the plan's own sequence is to
+ * label a pull request and then merge. `Deploy Test` is therefore usually the
+ * publisher that brings both packages into existence, and a label carried only
+ * by `Release` would arrive after the fact — GitHub links a package when it is
+ * created, not retroactively. An unlinked package is private with no
+ * repository whose access it could inherit, which is an `ImagePullBackOff` on
+ * a cluster's first pull and manual work landing on the still-open "make the
+ * images pullable by K3s" row.
+ */
+describe("both publishers link the packages they create to this repository", () => {
+  for (const name of [DEPLOY_TEST, RELEASE]) {
+    it(`${name} labels both images it publishes with the source repository`, () => {
+      expect(sourceLabelUrl(name)).toBe(SOURCE_REPOSITORY_URL);
+    });
+  }
+
+  it("names one repository from both publishers, never two", () => {
+    // Stated separately from the value above because drift between the two is
+    // its own failure: the packages are shared, so a `Deploy Test` that
+    // labelled them with something else would decide what they link to and
+    // `Release` would silently disagree with it forever after.
+    expect(
+      [...new Set([sourceLabelUrl(DEPLOY_TEST), sourceLabelUrl(RELEASE)])],
+      "the two publishers label the same packages with different repositories",
+    ).toEqual([SOURCE_REPOSITORY_URL]);
+  });
+});
+
+/**
  * `Release` runs on every push to `main`. Nothing about it is conditional and
  * nothing about it can be undone by removing a label: the merge is the
  * approval, and the digests it writes are the ones the live environment runs.
@@ -966,39 +1051,6 @@ describe("Release validates and builds before it promotes", () => {
     expect(source(RELEASE)).not.toMatch(/--build-arg|NEXT_PUBLIC_/);
     const outputs = asMapping(job(RELEASE, "build")["outputs"]!, "build.outputs");
     expect(Object.keys(outputs).sort()).toEqual(["backend_digest", "storefront_digest"]);
-  });
-
-  it("labels both published images with the repository the packages belong to", () => {
-    // `org.opencontainers.image.source` is how GitHub links a container
-    // package to a repository, and a linked package inherits that
-    // repository's access. Unlinked, a package is private on first push with
-    // no repository to inherit from — which is the `ImagePullBackOff` the
-    // plan's "make the images pullable by K3s" row exists to prevent, and
-    // manual work that row would otherwise have to absorb.
-    //
-    // It is asserted on the *invocation* rather than in either Dockerfile
-    // because only one of the two could carry it: `no-live-hostname.test.ts`
-    // scans every tracked file under `storefront/`, `storefront/Dockerfile`
-    // included, and the forge is not on its allowlist. One `--label` on the
-    // shared `publish()` covers both images, so the count below is part of
-    // the guarantee rather than incidental — two separate invocations could
-    // label one image and not the other.
-    const step = steps(RELEASE, "build").find(
-      (candidate) =>
-        typeof candidate["run"] === "string" && candidate["run"].includes("docker buildx build"),
-    );
-    expect(step, "release.yml has no step that builds an image").toBeDefined();
-    const invocations = commands(asScalar(step!["run"]!, "build.run")).filter((line) =>
-      line.includes("docker buildx build"),
-    );
-    expect(invocations, "the two images are not built by one invocation").toHaveLength(1);
-    expect(
-      invocations[0],
-      "the published images carry no source label, so their packages link to no repository",
-    ).toMatch(/--label "org\.opencontainers\.image\.source=\$SOURCE_URL"/);
-    expect(asMapping(step!["env"]!, "build.env")["SOURCE_URL"]).toBe(
-      "https://github.com/hannosirkel/plepic",
-    );
   });
 
   it("gates the promotion on both published digests scanning clean at CRITICAL", () => {

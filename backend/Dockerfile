@@ -91,16 +91,17 @@ RUN npm ci --omit=dev --workspace backend --include-workspace-root
 FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
 
 # `org.opencontainers.image.source` is deliberately **not** here, and it is
-# not omitted either: `release.yml` passes it to both builds as a `--label` on
-# the one `docker buildx build` invocation that publishes them. It belongs
+# not omitted either: `release.yml` and `deploy-test.yml` each pass it to both
+# builds as a `--label` on their one `docker buildx build`. It belongs
 # there rather than in a Dockerfile because the storefront image cannot carry
 # it in *its* Dockerfile — `storefront/tests/no-live-hostname.test.ts` scans
 # every tracked file under `storefront/`, that Dockerfile included, and the
-# forge hostname is not on its allowlist — so setting it in one place is what
-# keeps the two images labelled identically. The label matters: it is how
-# GitHub links a container package to a repository, and a linked package
-# inherits that repository's access rather than starting private and
-# unreachable. `scripts/workflows.test.ts` asserts the flag and its value.
+# forge hostname is not on its allowlist — so setting it in one place per
+# workflow keeps the two images labelled identically. The label matters: it
+# is how GitHub links a container package to a repository, and a linked
+# package inherits that repository's access rather than being private and
+# unreachable. `scripts/workflows.test.ts` asserts the flag and its value in
+# both workflows.
 LABEL org.opencontainers.image.description="Plepic Games Medusa backend"
 LABEL org.opencontainers.image.licenses=UNLICENSED
 

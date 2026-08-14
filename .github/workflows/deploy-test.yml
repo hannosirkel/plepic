@@ -145,6 +145,25 @@ jobs:
         env:
           BACKEND_IMAGE: ghcr.io/hannosirkel/plepic-backend
           STOREFRONT_IMAGE: ghcr.io/hannosirkel/plepic-storefront
+          # `org.opencontainers.image.source` is what makes GitHub link a
+          # container package to a repository, and a linked package inherits
+          # that repository's access rather than being private with nothing to
+          # inherit it from.
+          #
+          # It matters *here* more than in `release.yml`, which carries the
+          # identical label: GHCR creates a package on its **first** push, and
+          # the ordinary sequence is to label a pull request and only then
+          # merge. These two pushes are therefore the ones that bring both
+          # packages into existence, and a label that arrived only on the
+          # second publisher would be too late to link what the first created.
+          #
+          # It is a `--label` rather than a `LABEL` in either Dockerfile
+          # because only one of the two could carry it there:
+          # `storefront/tests/no-live-hostname.test.ts` scans every tracked
+          # file under `storefront/`, `storefront/Dockerfile` included, and
+          # this forge is not on its allowlist. One flag on the shared
+          # invocation below covers both images.
+          SOURCE_URL: https://github.com/hannosirkel/plepic
         run: |
           set -euo pipefail
           publish() {
@@ -154,6 +173,7 @@ jobs:
             metadata="$RUNNER_TEMP/${output}.json"
             docker buildx build --platform linux/amd64 \
               --provenance=mode=min --sbom=true \
+              --label "org.opencontainers.image.source=$SOURCE_URL" \
               --file "$dockerfile" \
               --tag "${image}:pr-${PR_NUMBER}-sha-${HEAD_SHA}" \
               --push --metadata-file "$metadata" .
