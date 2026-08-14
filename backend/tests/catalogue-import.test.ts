@@ -244,7 +244,7 @@ describe("runCatalogueImport", () => {
     try {
       // Nothing else refused, so the leak is the only thing to report and it is
       // reported by failing: a Job that seeded the catalogue and left the
-      // WooCommerce export on the served volume did not succeed.
+      // WooCommerce export on the assets PVC did not succeed.
       await expect(
         runCatalogueImport({ ...place, archivePath, target: new RecordingTarget(), now }),
       ).rejects.toBeInstanceOf(StagedArchiveDisposalFailure);

@@ -3,7 +3,7 @@ import { ConfigError } from "../config/env.js";
 const ALLOWED_PREFIXES = new Set(["store", "hooks", "static"]);
 
 /**
- * The one directory under the served static root that is never product media.
+ * The one path segment under `/store-api/static/*` that is never product media.
  *
  * The catalogue-import Job stages `catalogue.tar.gz` on the assets PVC under
  * `subPath: import`, while the media root the backend, the worker and the Job

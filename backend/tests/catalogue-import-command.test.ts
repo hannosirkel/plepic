@@ -178,7 +178,8 @@ describe("the catalogue:import command", () => {
    * permissions accident. In both cases the interesting fact is the refusal
    * that stopped the import; a raw `EISDIR` or `EACCES` arriving in its place
    * loses it, and — in the directory case — leaves the WooCommerce export
-   * staged on the volume Medusa serves as its static root.
+   * staged on a production volume with nothing left to clear it: the Job runs
+   * once, with `backoffLimit: 0`.
    */
   describe("disposing of the staged archive", () => {
     it("removes a mis-staged directory as readily as a file", async () => {
