@@ -104,6 +104,39 @@ describe("parseYamlSubset", () => {
     expect(() => parseYamlSubset(["a: {b: c}", ""].join("\n"))).toThrow(/unsupported flow mapping/);
     expect(() => parseYamlSubset(["just a scalar", ""].join("\n"))).toThrow(/unsupported mapping entry/);
   });
+
+  it("refuses a second document rather than merging it into the first", () => {
+    // Merging is the dangerous reading: a second document's `permissions:`
+    // would silently overwrite -- or be overwritten by -- the first's.
+    expect(() => parseYamlSubset(["a: 1", "---", "b: 2", ""].join("\n"))).toThrow(
+      /unsupported second document/,
+    );
+    expect(() => parseYamlSubset(["---", "a: 1", "---", "b: 2", ""].join("\n"))).toThrow(
+      /unsupported second document/,
+    );
+    expect(() => parseYamlSubset(["---", "a: 1", "---", ""].join("\n"))).toThrow(
+      /unsupported second document/,
+    );
+    expect(asMapping(parseYamlSubset(["---", "a: 1", ""].join("\n")), "document")["a"]).toBe("1");
+  });
+
+  it("refuses tab indentation, which YAML does not allow at all", () => {
+    expect(() => parseYamlSubset(["a:", "\tb: 2", ""].join("\n"))).toThrow(
+      /unsupported tab indentation/,
+    );
+    expect(() => parseYamlSubset(["a:", "  \tb: 2", ""].join("\n"))).toThrow(
+      /unsupported tab indentation/,
+    );
+    // A tab inside a value, and inside a block scalar's body, is content.
+    expect(asMapping(parseYamlSubset(["a: one\ttwo", ""].join("\n")), "document")["a"]).toBe(
+      "one\ttwo",
+    );
+    expect(
+      asMapping(parseYamlSubset(["run: |", "  echo one", "  \techo two", ""].join("\n")), "document")[
+        "run"
+      ],
+    ).toBe("echo one\n\techo two");
+  });
 });
 
 describe("the narrowing helpers", () => {

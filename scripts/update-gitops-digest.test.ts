@@ -369,15 +369,33 @@ describe("overlays outside the worktree", () => {
     expect(result.stderr).toMatch(/overlay is unavailable/);
   });
 
-  it("refuses a `..` traversal that escapes the repository entirely", () => {
+  it("refuses a `..` traversal that lands outside any Git worktree", () => {
+    // Four levels up from the overlay is the temporary directory holding the
+    // fixture, so this is the not-a-worktree refusal reached by traversal --
+    // `/digest update rejected: /` matched every refusal the guard has, and
+    // so could not tell which one had fired, or that one had fired at all.
     const repository = fixture();
     const escape = join(repository, "plepic/overlays/test", "..", "..", "..", "..");
 
     const result = run(BACKEND_DIGEST, STOREFRONT_DIGEST, escape);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/digest update rejected: /);
+    expect(result.stderr).toMatch(/digest update rejected: overlay is not in a Git worktree/);
     expect(overlayFile(repository, "plepic/overlays/test")).toBe(kustomization());
+    expect(porcelain(repository)).toBe("");
+  });
+
+  it("refuses a `..` traversal back to the worktree root", () => {
+    // The worktree-escape branch proper: a path that resolves inside a Git
+    // worktree but not underneath its top level.
+    const repository = fixture();
+    const escape = join(repository, "plepic/overlays/test", "..", "..", "..");
+
+    const result = run(BACKEND_DIGEST, STOREFRONT_DIGEST, escape);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/digest update rejected: overlay is outside its Git worktree/);
+    expect(porcelain(repository)).toBe("");
   });
 
   it("resolves `..` before consulting the allowlist", () => {
@@ -572,6 +590,227 @@ describe("malformed overlays", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/expected one digest per image/);
     expect(porcelain(repository)).toBe("");
+  });
+});
+
+describe("the post-write integrity checks", () => {
+  /**
+   * The guard's own rewriter only ever produces two well-formed digest lines,
+   * so from the outside its post-write checks can never be reached: the input
+   * that would trip them cannot be expressed. They are reached here by
+   * replacing the rewriter -- `node - ORIGINAL CANDIDATE BACKEND STOREFRONT`,
+   * the first heredoc -- with a stub that writes chosen bytes and reports a
+   * chosen count. Every other `node` call, including the final exactness
+   * verification, reaches the real interpreter.
+   *
+   * That leaves the checks between lines 237 and 326 as the only thing
+   * standing between a hostile rewrite and a push to hannosirkel/deploys,
+   * which is what they exist for. Delete any one of them and one of these
+   * tests goes red.
+   */
+  interface RewriterStub {
+    /** The exact bytes the stubbed rewriter writes to the candidate file. */
+    readonly candidate: string;
+    /** The number of moved digest lines it claims to have written. */
+    readonly changedCount: string;
+  }
+
+  function runWithStubbedRewriter(
+    stub: RewriterStub,
+    ...args: string[]
+  ): { status: number | null; stdout: string; stderr: string } {
+    const staging = makeRoot();
+    const candidate = join(staging, "candidate.yaml");
+    writeFileSync(candidate, stub.candidate);
+    const shim = join(staging, "node");
+    writeFileSync(
+      shim,
+      [
+        "#!/bin/sh",
+        '# `node - ORIGINAL CANDIDATE BACKEND STOREFRONT` is the rewriter; the',
+        '# four-argument form is the final verification, and passes through.',
+        'if [ "$#" -eq 5 ] && [ "$1" = "-" ]; then',
+        '  cat "$GITOPS_STUB_CANDIDATE" >"$3"',
+        '  printf "%s" "$GITOPS_STUB_CHANGED_COUNT"',
+        "  exit 0",
+        "fi",
+        'exec "$GITOPS_REAL_NODE" "$@"',
+        "",
+      ].join("\n"),
+    );
+    chmodSync(shim, 0o755);
+    const realNode = spawnSync("/bin/sh", ["-c", "command -v node"], {
+      encoding: "utf8",
+    }).stdout.trim();
+
+    const result = spawnSync("sh", [guard, ...args], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${staging}:${process.env["PATH"] ?? ""}`,
+        GITOPS_REAL_NODE: realNode,
+        GITOPS_STUB_CANDIDATE: candidate,
+        GITOPS_STUB_CHANGED_COUNT: stub.changedCount,
+      },
+    });
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+  }
+
+  /** Every one of these must leave the deploys checkout exactly as found. */
+  function expectUntouched(repository: string, before: string): void {
+    expect(overlayFile(repository, "plepic/overlays/test")).toBe(before);
+    expect(overlayFile(repository, "plepic/overlays/live")).toBe(kustomization());
+    expect(porcelain(repository)).toBe("");
+  }
+
+  it("refuses a rewrite that claims to have moved more lines than there are", () => {
+    const repository = fixture();
+    const before = overlayFile(repository, "plepic/overlays/test");
+
+    const result = runWithStubbedRewriter(
+      { candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST), changedCount: "12" },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/unexpected update count/);
+    expectUntouched(repository, before);
+  });
+
+  it("refuses a rewrite that introduces trailing whitespace", () => {
+    const repository = fixture();
+    const before = overlayFile(repository, "plepic/overlays/test");
+
+    const result = runWithStubbedRewriter(
+      {
+        candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST).replace(
+          `digest: ${STOREFRONT_DIGEST}`,
+          `digest: ${STOREFRONT_DIGEST} `,
+        ),
+        changedCount: "2",
+      },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/trailing whitespace/);
+    expectUntouched(repository, before);
+  });
+
+  it("refuses a rewrite whose diff is a different size from the count it reported", () => {
+    const repository = fixture();
+    const before = overlayFile(repository, "plepic/overlays/test");
+
+    const result = runWithStubbedRewriter(
+      { candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST), changedCount: "1" },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/unexpected diff size/);
+    expectUntouched(repository, before);
+  });
+
+  it("refuses a rewrite whose changed lines do not all reach the diff", () => {
+    // The changed-line count and the diff size are close relatives, and this
+    // is the gap between them: `grep -Ev '^(---|\+\+\+)'` drops the removal
+    // of a line that is itself `---`, because the diff renders it `----`.
+    // The document separator therefore vanishes from the counted lines while
+    // still being counted by `--numstat`, and only the changed-line check is
+    // left to notice that the header was rewritten.
+    const repository = fixture({
+      testOverlayContent: kustomization(BACKEND_DIGEST, SENTINEL),
+    });
+    const before = overlayFile(repository, "plepic/overlays/test");
+
+    const result = runWithStubbedRewriter(
+      {
+        candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST).replace(
+          /^---$/m,
+          "--- # tampered",
+        ),
+        changedCount: "2",
+      },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/unexpected changed lines/);
+    expectUntouched(repository, before);
+  });
+
+  it("refuses a rewrite that changes a line other than a digest line", () => {
+    // Both digests land exactly as asked, so the final verification passes;
+    // the namespace does not, and nothing but this check ever looks at it.
+    const repository = fixture({
+      testOverlayContent: kustomization(BACKEND_DIGEST, SENTINEL),
+    });
+    const before = overlayFile(repository, "plepic/overlays/test");
+
+    const result = runWithStubbedRewriter(
+      {
+        candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST).replace(
+          "namespace: plepic-test",
+          "namespace: plepic-live",
+        ),
+        changedCount: "2",
+      },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/non-digest line changed/);
+    expectUntouched(repository, before);
+  });
+
+  it("refuses a rewrite that records a digest nobody asked for", () => {
+    // Two digest lines, two changed lines, a diff of exactly the expected
+    // size -- and the backend image now pinned to an unrelated digest. Only
+    // the closing verification reads what was actually written.
+    const repository = fixture();
+    const before = overlayFile(repository, "plepic/overlays/test");
+    const substituted = `sha256:${"c".repeat(64)}`;
+
+    const result = runWithStubbedRewriter(
+      { candidate: kustomization(substituted, STOREFRONT_DIGEST), changedCount: "2" },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/replacement was not exact/);
+    expectUntouched(repository, before);
+  });
+
+  it("still promotes normally when the rewriter writes what it should", () => {
+    // The stub is only as convincing as its faithful case: with the bytes the
+    // real rewriter would produce, the same path ends in a clean promotion.
+    const repository = fixture();
+
+    const result = runWithStubbedRewriter(
+      { candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST), changedCount: "2" },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(overlayFile(repository, "plepic/overlays/test")).toBe(
+      kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST),
+    );
+    expect(porcelain(repository)).toBe(" M plepic/overlays/test/kustomization.yaml\n");
   });
 });
 

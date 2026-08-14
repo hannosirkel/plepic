@@ -44,6 +44,44 @@ function jobText(name: string, id: string): string {
   return scalars(job(name, id)).join("\n");
 }
 
+/** Every value of a `uses` key reachable from `value`, at any depth. */
+function usesReferences(value: YamlValue): string[] {
+  if (typeof value === "string") return [];
+  if (Array.isArray(value)) return value.flatMap((item) => usesReferences(item));
+  return Object.entries(value).flatMap(([key, item]) =>
+    key === "uses" ? [asScalar(item, "uses")] : usesReferences(item),
+  );
+}
+
+/** Every mapping key reachable from `value`, at any depth. */
+function keysOf(value: YamlValue): string[] {
+  if (typeof value === "string") return [];
+  if (Array.isArray(value)) return value.flatMap((item) => keysOf(item));
+  return Object.entries(value).flatMap(([key, item]) => [key, ...keysOf(item)]);
+}
+
+/** A step's `with:` block, or an empty mapping when it declares none. */
+function withBlock(
+  step: { readonly [key: string]: YamlValue },
+  path: string,
+): { readonly [key: string]: YamlValue } {
+  return step["with"] === undefined ? {} : asMapping(step["with"], `${path}.with`);
+}
+
+/** Each pinned `uses:` reference paired with the comment line above it. */
+function pinAnnotations(name: string): Array<readonly [string, string]> {
+  const lines = source(name).split("\n");
+  return lines.flatMap((line, index) => {
+    const reference = /^\s*uses:\s*(\S+)/.exec(line)?.[1];
+    if (reference === undefined) return [];
+    const previous = lines[index - 1] ?? "";
+    const comment = /^\s*#\s*(.*)$/.exec(previous)?.[1];
+    expect(comment, `${name}:${index + 1} pins ${reference} with no comment saying what it is`)
+      .toBeDefined();
+    return [[reference, comment!] as const];
+  });
+}
+
 const DEPLOY_TEST = "deploy-test.yml";
 
 describe("every workflow in this repository", () => {
@@ -56,10 +94,32 @@ describe("every workflow in this repository", () => {
 
   for (const name of names) {
     it(`${name} pins every action to a 40-character commit SHA`, () => {
-      const uses = [...source(name).matchAll(/^\s*uses:\s*(\S+)$/gm)].map((match) => match[1]!);
-      expect(uses.length).toBeGreaterThan(0);
-      for (const reference of uses) {
-        expect(reference).toMatch(/^[^@\s]+@[0-9a-f]{40}$/);
+      // Read from the parsed document, not from the source. A line-anchored
+      // `uses:\s*(\S+)$` cannot match a line carrying a trailing comment --
+      // which GitHub Actions accepts -- so `uses: x@main # pinned` was never
+      // collected and never checked. The parser keeps the comment in the
+      // value, which is what makes it fail the pin pattern below.
+      const references = usesReferences(workflow(name));
+      expect(references.length).toBeGreaterThan(0);
+      // Every `uses:` in the file must be one of the references checked: a
+      // reference the traversal cannot reach is a reference nothing pins.
+      expect(references.length).toBe([...source(name).matchAll(/^\s*uses:/gm)].length);
+      for (const reference of references) {
+        expect(reference, `${name} does not pin ${reference}`).toMatch(
+          /^[^@\s]+@[0-9a-f]{40}$/,
+        );
+      }
+    });
+
+    it(`${name} says in a comment which release each pinned SHA is`, () => {
+      // The comment is the only human-readable statement of what is pinned,
+      // so it must name the same action and must not contradict another file
+      // pinning the same commit.
+      for (const [reference, comment] of pinAnnotations(name)) {
+        const action = reference.split("@")[0]!;
+        expect(comment, `${name} annotates ${reference} as "${comment}"`).toMatch(
+          new RegExp(`^${action.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} v\\S+$`),
+        );
       }
     });
 
@@ -76,6 +136,26 @@ describe("every workflow in this repository", () => {
       }
     });
   }
+
+  it("annotates one commit SHA the same way in every workflow", () => {
+    // Two files pinning the same SHA to different releases means at least one
+    // comment is false, and a false comment is worse than none: it is what a
+    // reader checks the pin against.
+    const annotations = new Map<string, Map<string, string[]>>();
+    for (const name of names) {
+      for (const [reference, comment] of pinAnnotations(name)) {
+        const byComment = annotations.get(reference) ?? new Map<string, string[]>();
+        byComment.set(comment, [...(byComment.get(comment) ?? []), name]);
+        annotations.set(reference, byComment);
+      }
+    }
+    for (const [reference, byComment] of annotations) {
+      expect(
+        [...byComment].map(([comment, where]) => `${comment} (${where.join(", ")})`),
+        `${reference} is annotated inconsistently`,
+      ).toHaveLength(1);
+    }
+  });
 });
 
 describe("Deploy Test's trigger and concurrency", () => {
@@ -230,6 +310,15 @@ describe("the build holds no GitOps credential", () => {
 });
 
 describe("the promotion writes exactly one overlay", () => {
+  /** The promote step that commits and pushes, as its shell source. */
+  function commitScript(): string {
+    const commit = steps(DEPLOY_TEST, "promote")
+      .map((step) => (typeof step["run"] === "string" ? step["run"] : ""))
+      .find((run) => run.includes("git push"));
+    expect(commit, "promote has no step that pushes").toBeDefined();
+    return commit!;
+  }
+
   it("re-verifies the pull request before spending the credential", () => {
     const recheck = jobText(DEPLOY_TEST, "recheck");
     expect(recheck).toMatch(/\.state == "open"/);
@@ -245,15 +334,43 @@ describe("the promotion writes exactly one overlay", () => {
     const promote = jobText(DEPLOY_TEST, "promote");
     expect(promote).toMatch(/"repositories":\["deploys"\]/);
     expect(promote).toMatch(/::add-mask::/);
-    const checkout = steps(DEPLOY_TEST, "promote").find(
+    const checkouts = steps(DEPLOY_TEST, "promote").filter(
       (step) => typeof step["uses"] === "string" && step["uses"].startsWith("actions/checkout@"),
     );
-    expect(checkout).toBeDefined();
-    const withBlock = asMapping(checkout!["with"]!, "promote checkout with");
-    expect(withBlock["repository"]).toBe("hannosirkel/deploys");
-    expect(withBlock["path"]).toBe("gitops");
-    expect(withBlock["persist-credentials"]).toBe("false");
-    expect(withBlock["ref"]).toBeUndefined();
+    expect(checkouts, "promote checks out more than one tree").toHaveLength(1);
+    const inputs = withBlock(checkouts[0]!, "promote checkout");
+    expect(inputs["repository"]).toBe("hannosirkel/deploys");
+    expect(inputs["path"]).toBe("gitops");
+    expect(inputs["persist-credentials"]).toBe("false");
+    expect(inputs["ref"]).toBeUndefined();
+  });
+
+  it("runs no head code in the job that holds the GitOps credential", () => {
+    // The security claim in this workflow's own header and in README.md.
+    // Checking the *first* checkout in the job proves nothing: a second one,
+    // later in the same job, would put head-authored code on disk next to a
+    // write token for hannosirkel/deploys. So every step is examined, and
+    // examined for all three of the ways head code could arrive.
+    const promoteSteps = steps(DEPLOY_TEST, "promote");
+    for (const [index, step] of promoteSteps.entries()) {
+      const path = `promote.steps[${index}]`;
+      const action = step["uses"];
+      if (action !== undefined) {
+        expect(asScalar(action, `${path}.uses`), `${path} runs an action other than a checkout`)
+          .toMatch(/^actions\/checkout@[0-9a-f]{40}$/);
+        expect(
+          withBlock(step, path)["repository"],
+          `${path} checks out something other than the GitOps repository`,
+        ).toBe("hannosirkel/deploys");
+      }
+      expect(keysOf(step), `${path} names a revision to check out`).not.toContain("ref");
+      for (const [key, value] of Object.entries(withBlock(step, path))) {
+        expect(
+          scalars(value).join("\n"),
+          `${path}.with.${key} hands the head revision to an action`,
+        ).not.toMatch(/head_sha/);
+      }
+    }
   });
 
   it("runs the base-SHA guard against the test overlay with both digests", () => {
@@ -276,11 +393,8 @@ describe("the promotion writes exactly one overlay", () => {
   });
 
   it("renders both overlays and runs the manifest tests before pushing", () => {
-    const commit = steps(DEPLOY_TEST, "promote")
-      .map((step) => (typeof step["run"] === "string" ? step["run"] : ""))
-      .find((run) => run.includes("git push"));
-    expect(commit).toBeDefined();
-    const order = (needle: string): number => commit!.indexOf(needle);
+    const commit = commitScript();
+    const order = (needle: string): number => commit.indexOf(needle);
     const push = order("git push");
     for (const before of [
       "bash plepic/tests/manifests.sh",
@@ -295,7 +409,14 @@ describe("the promotion writes exactly one overlay", () => {
   });
 
   it("treats an already-recorded digest pair as nothing to promote", () => {
-    expect(jobText(DEPLOY_TEST, "promote")).toMatch(/nothing to promote/);
+    // The message is not the behaviour: without the `exit 0` the script falls
+    // through to `git commit`, which fails on an empty index and turns a
+    // re-labelled pull request into a red run. Assert the early exit itself.
+    const commit = commitScript();
+    expect(commit).toMatch(
+      /if \[ -z "\$staged" \]; then\n\s+echo '[^']*nothing to promote'\n\s+exit 0\n\s*fi\n/,
+    );
+    expect(commit.indexOf("exit 0")).toBeLessThan(commit.indexOf("git commit"));
   });
 });
 

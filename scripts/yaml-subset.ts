@@ -7,9 +7,10 @@
  * is a statement about a mapping, and a grep for `permissions: {}` cannot tell
  * the difference between that job and a comment. It is *not* a general YAML
  * implementation: no anchors, no aliases, no multiple documents, no tags, no
- * flow mappings beyond `{}`, and no type coercion — every scalar stays a
- * string, so `cancel-in-progress: false` reads as `"false"` and a workflow
- * that changed it to `off` would be visible rather than silently equal.
+ * flow mappings beyond `{}`, no tab indentation, and no type coercion — every
+ * scalar stays a string, so `cancel-in-progress: false` reads as `"false"` and
+ * a workflow that changed it to `off` would be visible rather than silently
+ * equal.
  *
  * Anything it does not understand throws. That is the point: a workflow this
  * cannot parse is a workflow whose guarantees are not being checked, and the
@@ -26,6 +27,8 @@ interface Line {
 
 const MAPPING_ENTRY = /^("[^"]*"|'[^']*'|[^:]+):(?:[ \t]+(.*))?$/;
 const BLOCK_SCALAR = /^[|>][+-]?$/;
+/** A tab anywhere in a line's leading whitespace. YAML forbids it outright. */
+const TAB_INDENT = /^[ \t]*\t/;
 
 function unquote(value: string): string {
   if (value.length >= 2) {
@@ -48,6 +51,8 @@ function scan(source: string): Line[] {
 class Reader {
   private readonly lines: Line[];
   private index = 0;
+  /** Whether a document has been opened, by `---` or by its first content. */
+  private opened = false;
 
   constructor(source: string) {
     this.lines = scan(source);
@@ -68,10 +73,27 @@ class Reader {
     while (this.index < this.lines.length) {
       const line = this.lines[this.index];
       if (line === undefined) break;
-      if (line.text === "" || line.text.startsWith("#") || line.text === "---") {
+      if (line.text === "" || line.text.startsWith("#")) {
         this.index += 1;
         continue;
       }
+      if (line.text === "---") {
+        // The leading `---` opens the one document this reader supports. A
+        // second one starts a second document, which GitHub Actions rejects
+        // and this reader used to merge into the first without saying so.
+        if (this.opened) {
+          throw new Error(`unsupported second document: ${line.raw}`);
+        }
+        this.opened = true;
+        this.index += 1;
+        continue;
+      }
+      if (TAB_INDENT.test(line.raw)) {
+        // Only structural lines are checked: a block scalar's body is read
+        // by `blockScalar` from the raw text and may legitimately hold tabs.
+        throw new Error(`unsupported tab indentation: ${line.raw}`);
+      }
+      this.opened = true;
       return line;
     }
     return undefined;

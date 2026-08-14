@@ -1035,7 +1035,12 @@ and any diff that is not exactly the digest lines it meant to write — restorin
 the original file when it refuses after writing. Re-running it with digests the
 overlay already records is a no-op. `scripts/update-gitops-digest.test.ts`
 exercises each of those refusals against a real Git fixture; never hand-edit a
-digest line in `deploys`.
+digest line in `deploys`. The checks that run *after* the write cannot be
+reached from outside, because the guard's own rewriter only ever produces
+well-formed digest lines, so those tests replace the rewriter with a stub that
+writes chosen bytes and reports a chosen count. That leaves the post-write
+checks as the only thing between the stub and the repository, which is what
+they are for: delete any one of them and one of those tests goes red.
 
 ### Browser screenshots
 

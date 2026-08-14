@@ -122,14 +122,14 @@ jobs:
       PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
     steps:
       - name: Check out the validated revision
-        # actions/checkout v4.2.2
+        # actions/checkout v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.gate.outputs.head_sha }}
           persist-credentials: false
 
       - name: Set up the attestation-capable Buildx driver
-        # docker/setup-buildx-action v3
+        # docker/setup-buildx-action v4.2.0
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
       - name: Authenticate to GHCR
@@ -194,7 +194,7 @@ jobs:
 
       - name: Retain the vulnerability reports
         if: ${{ always() && hashFiles('trivy-backend.json', 'trivy-storefront.json') != '' }}
-        # actions/upload-artifact v4.6.2
+        # actions/upload-artifact v7.0.1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: trivy-test-${{ needs.gate.outputs.head_sha }}
@@ -286,7 +286,7 @@ jobs:
           echo "token=$token" >>"$GITHUB_OUTPUT"
 
       - name: Check out only the GitOps state
-        # actions/checkout v4.2.2
+        # actions/checkout v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: hannosirkel/deploys
