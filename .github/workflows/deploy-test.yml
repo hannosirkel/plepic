@@ -1,0 +1,331 @@
+---
+name: Deploy Test
+
+# Promotes one pull request's head revision into the test environment.
+#
+# This is a `pull_request_target` workflow: it runs with the base repository's
+# token and secrets against a pull request an outside contributor may have
+# authored. Nothing here trusts the head. The `gate` job checks out no code at
+# all and re-reads the digest guard from the **base** SHA; the `build` job runs
+# head code but holds no GitOps credential; the `promote` job holds the
+# credential but runs no head code.
+
+'on':
+  pull_request_target:
+    branches:
+      - main
+    types: [labeled]
+
+concurrency:
+  group: plepic-gitops-promotion
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  gate:
+    if: >-
+      github.event.label.name == 'deploy-test' &&
+      github.event.pull_request.state == 'open'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      guard: ${{ steps.verify.outputs.guard }}
+      head_sha: ${{ steps.verify.outputs.head_sha }}
+      pr_number: ${{ steps.verify.outputs.pr_number }}
+    steps:
+      - name: Verify trusted pull request metadata and validation
+        id: verify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api='https://api.github.com'
+          headers=(
+            --header "Authorization: Bearer $GITHUB_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$PR_NUMBER" | grep -Eq '^[1-9][0-9]*$'
+          [ "$BASE_REF" = main ]
+          [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]
+
+          pull_request="$(curl --fail --silent --show-error "${headers[@]}" \
+            "${api}/repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          jq -e --arg base_sha "$BASE_SHA" --arg head_sha "$HEAD_SHA" \
+            --arg repository "$REPOSITORY" '
+            .state == "open" and
+            .base.ref == "main" and
+            .base.sha == $base_sha and
+            .head.repo.full_name == $repository and
+            .head.sha == $head_sha
+          ' >/dev/null <<<"$pull_request"
+
+          guard_response="$(curl --fail --silent --show-error "${headers[@]}" \
+            "${api}/repos/${REPOSITORY}/contents/scripts/update-gitops-digest.sh?ref=${BASE_SHA}")"
+          jq -e '
+            .type == "file" and
+            .encoding == "base64" and
+            (.content | type == "string")
+          ' >/dev/null <<<"$guard_response"
+          guard="$RUNNER_TEMP/update-gitops-digest.sh"
+          trap 'rm -f -- "$guard"' EXIT
+          jq -er '.content | gsub("\\n"; "")' <<<"$guard_response" \
+            | base64 --decode >"$guard"
+          grep -qx '#!/bin/sh' "$guard"
+          guard_content="$(base64 --wrap=0 "$guard")"
+
+          for _ in $(seq 1 30); do
+            runs="$(curl --fail --silent --show-error "${headers[@]}" \
+              "${api}/repos/${REPOSITORY}/actions/runs?event=pull_request&status=completed&head_sha=${HEAD_SHA}&per_page=100")"
+            conclusion="$(jq -er --arg head_sha "$HEAD_SHA" '
+              [.workflow_runs[] |
+                select(.name == "Validate" and .head_sha == $head_sha and .status == "completed") |
+                .conclusion
+              ] | first // empty
+            ' <<<"$runs" || true)"
+            if [ -n "$conclusion" ]; then
+              [ "$conclusion" = success ]
+              break
+            fi
+            sleep 10
+          done
+          [ -n "${conclusion:-}" ]
+
+          echo "head_sha=$HEAD_SHA" >>"$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >>"$GITHUB_OUTPUT"
+          echo "guard=$guard_content" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: gate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_digest: ${{ steps.build.outputs.backend_digest }}
+      storefront_digest: ${{ steps.build.outputs.storefront_digest }}
+    env:
+      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+    steps:
+      - name: Check out the validated revision
+        # actions/checkout v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.gate.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Set up the attestation-capable Buildx driver
+        # docker/setup-buildx-action v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Build and publish both validated images
+        id: build
+        env:
+          BACKEND_IMAGE: ghcr.io/hannosirkel/plepic-backend
+          STOREFRONT_IMAGE: ghcr.io/hannosirkel/plepic-storefront
+        run: |
+          set -euo pipefail
+          publish() {
+            image="$1"
+            dockerfile="$2"
+            output="$3"
+            metadata="$RUNNER_TEMP/${output}.json"
+            docker buildx build --platform linux/amd64 \
+              --provenance=mode=min --sbom=true \
+              --file "$dockerfile" \
+              --tag "${image}:pr-${PR_NUMBER}-sha-${HEAD_SHA}" \
+              --push --metadata-file "$metadata" .
+            digest="$(jq -er '."containerimage.digest"' "$metadata")"
+            printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+            echo "${output}=$digest" >>"$GITHUB_OUTPUT"
+          }
+          publish "$BACKEND_IMAGE" backend/Dockerfile backend_digest
+          publish "$STOREFRONT_IMAGE" storefront/Dockerfile storefront_digest
+
+      - name: Scan the published backend digest
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: ghcr.io/hannosirkel/plepic-backend@${{ steps.build.outputs.backend_digest }}
+          format: json
+          output: trivy-backend.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          scanners: vuln
+          version: v0.70.0
+
+      - name: Scan the published storefront digest
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: ghcr.io/hannosirkel/plepic-storefront@${{ steps.build.outputs.storefront_digest }}
+          format: json
+          output: trivy-storefront.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          scanners: vuln
+          version: v0.70.0
+
+      - name: Retain the vulnerability reports
+        if: ${{ always() && hashFiles('trivy-backend.json', 'trivy-storefront.json') != '' }}
+        # actions/upload-artifact v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: trivy-test-${{ needs.gate.outputs.head_sha }}
+          path: |
+            trivy-backend.json
+            trivy-storefront.json
+          if-no-files-found: error
+          retention-days: 7
+
+  recheck:
+    needs: [gate, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Verify the pull request remains promotable
+        run: |
+          set -euo pipefail
+          pull_request="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          jq -e --arg repository "$REPOSITORY" --arg head_sha "$HEAD_SHA" '
+            .state == "open" and
+            .head.repo.full_name == $repository and
+            .head.sha == $head_sha and
+            any(.labels[]; .name == "deploy-test")
+          ' >/dev/null <<<"$pull_request"
+
+  promote:
+    needs: [gate, build, recheck]
+    runs-on: ubuntu-24.04
+    environment: test
+    permissions: {}
+    env:
+      BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+      STOREFRONT_DIGEST: ${{ needs.build.outputs.storefront_digest }}
+      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+    steps:
+      - name: Mint repository-scoped GitHub App token
+        id: app-token
+        env:
+          APP_CLIENT_ID: ${{ secrets.PLEPIC_DEPLOYER_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.PLEPIC_DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/plepic-deployer.pem"
+          trap 'rm -f -- "$key"' EXIT
+          printf '%s' "$APP_PRIVATE_KEY" >"$key"
+
+          b64url() {
+            openssl base64 -A | tr '+/' '-_' | tr -d '='
+          }
+          now="$(date +%s)"
+          header="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+          payload="$(jq -cn --arg iss "$APP_CLIENT_ID" \
+            --argjson iat "$((now - 60))" --argjson exp "$((now + 540))" \
+            '{iat:$iat,exp:$exp,iss:$iss}' | b64url)"
+          unsigned="${header}.${payload}"
+          signature="$(printf '%s' "$unsigned" \
+            | openssl dgst -sha256 -sign "$key" -binary | b64url)"
+          jwt="${unsigned}.${signature}"
+          github_api=https://api.github.com
+          repository=hannosirkel/deploys
+
+          installation_id="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer $jwt" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api}/repos/${repository}/installation" \
+            | jq -er '.id')"
+          token="$(curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer $jwt" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --header 'Content-Type: application/json' \
+            --data '{"repositories":["deploys"]}' \
+            "${github_api}/app/installations/${installation_id}/access_tokens" \
+            | jq -er '.token')"
+          echo "::add-mask::$token"
+          echo "token=$token" >>"$GITHUB_OUTPUT"
+
+      - name: Check out only the GitOps state
+        # actions/checkout v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: hannosirkel/deploys
+          token: ${{ steps.app-token.outputs.token }}
+          path: gitops
+          persist-credentials: false
+
+      - name: Apply the exact test image digests
+        env:
+          GUARD_CONTENT: ${{ needs.gate.outputs.guard }}
+        run: |
+          set -euo pipefail
+          guard="$RUNNER_TEMP/update-gitops-digest.sh"
+          printf '%s' "$GUARD_CONTENT" | base64 --decode >"$guard"
+          chmod 0700 "$guard"
+          "$guard" "$BACKEND_DIGEST" "$STOREFRONT_DIGEST" "$GITHUB_WORKSPACE/gitops/plepic/overlays/test"
+
+      - name: Commit and push the GitOps update
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        working-directory: gitops
+        run: |
+          set -euo pipefail
+          git config user.name 'plepic-deployer[bot]'
+          git config user.email \
+            'plepic-deployer[bot]@users.noreply.github.com'
+          bash plepic/tests/manifests.sh
+          kubectl kustomize plepic/overlays/live >/dev/null
+          kubectl kustomize plepic/overlays/test >/dev/null
+          git diff --check
+          git add plepic/overlays/test/kustomization.yaml
+          staged="$(git diff --cached --name-only)"
+          if [ -z "$staged" ]; then
+            echo 'test overlay already records both digests: nothing to promote'
+            exit 0
+          fi
+          [ "$staged" = 'plepic/overlays/test/kustomization.yaml' ]
+          git diff --cached --check
+          git commit -m \
+            "deploy(test): PR #${PR_NUMBER} ${HEAD_SHA} ${BACKEND_DIGEST} ${STOREFRONT_DIGEST}"
+          git push "https://x-access-token:${APP_TOKEN}@github.com/hannosirkel/deploys.git" \
+            HEAD:main
