@@ -111,6 +111,91 @@ function pinAnnotations(name: string): Array<readonly [string, string]> {
 const DEPLOY_TEST = "deploy-test.yml";
 const RELEASE = "release.yml";
 
+/** A pinned Trivy release, as the action's `version:` input spells one. */
+const TRIVY_VERSION = /^v\d+\.\d+\.\d+$/;
+
+/** Every Trivy scan step in a workflow, paired with where it was found. */
+function trivyScans(
+  name: string,
+): Array<readonly [string, { readonly [key: string]: YamlValue }]> {
+  return Object.keys(jobs(name)).flatMap((id) =>
+    steps(name, id)
+      .map((step, index) => [`${id}.steps[${index}]`, step] as const)
+      .filter(
+        ([, step]) => typeof step["uses"] === "string" && step["uses"].includes("trivy-action@"),
+      ),
+  );
+}
+
+/**
+ * Both Trivy scans in one workflow, held to being a **gate** rather than a
+ * report.
+ *
+ * The `with:` inputs are only half of it, and they were the whole of what this
+ * suite used to check. `severity: CRITICAL` and `exit-code: '1'` say what the
+ * scanner looks for and what it exits with; neither says the step runs, and
+ * neither says the job fails when it does. A `continue-on-error: true` beside
+ * those inputs, or an `if:` that is false, leaves every input assertion true
+ * and removes the gate outright — and `promote` needs `build`, so failing the
+ * build job is the only thing standing between a CRITICAL finding and the
+ * overlay. So the step declares no condition and no error tolerance at all,
+ * and neither does the job holding it: a job-level `continue-on-error` would
+ * report success to `needs` however the scan concluded.
+ *
+ * The scanner version is held here too. The action is pinned by commit SHA,
+ * which pins the *action* and not the vulnerability scanner it downloads, so
+ * an absent or floating `version:` is a gate whose strictness changes under
+ * it. `vuln-type` likewise: without `os,library` the scan covers operating
+ * system packages only, and the Node dependency tree — the half this
+ * repository actually chooses — is scanned by nothing.
+ */
+function expectTrivyGate(name: string, imageRefs: readonly string[]): void {
+  const scans = trivyScans(name);
+  expect(
+    scans.map(([where]) => where),
+    `${name} does not declare exactly two Trivy scans`,
+  ).toHaveLength(2);
+  expect(scans.map(([where, step]) => withBlock(step, where)["image-ref"])).toEqual(imageRefs);
+
+  const versions = new Set<string>();
+  for (const [where, step] of scans) {
+    const jobId = where.split(".")[0]!;
+    expect(
+      step["if"],
+      `${name}.${where} is conditional, so a scan that never runs cannot fail the job`,
+    ).toBeUndefined();
+    expect(
+      step["continue-on-error"],
+      `${name}.${where} tolerates its own failure, so a CRITICAL finding would not fail the job`,
+    ).toBeUndefined();
+    expect(
+      job(name, jobId)["continue-on-error"],
+      `${name}.${jobId} tolerates a failed step, so promotion would proceed past a CRITICAL finding`,
+    ).toBeUndefined();
+
+    const inputs = withBlock(step, `${name}.${where}`);
+    expect(inputs["severity"]).toBe("CRITICAL");
+    expect(inputs["exit-code"]).toBe("1");
+    expect(inputs["ignore-unfixed"]).toBe("true");
+    expect(inputs["scanners"]).toBe("vuln");
+    expect(
+      inputs["vuln-type"],
+      `${name}.${where} does not scan both the OS packages and the dependency tree`,
+    ).toBe("os,library");
+    expect(
+      inputs["version"],
+      `${name}.${where} does not pin the scanner the action downloads`,
+    ).toBeDefined();
+    const version = asScalar(inputs["version"]!, `${name}.${where}.with.version`);
+    expect(version, `${name}.${where} pins no Trivy release`).toMatch(TRIVY_VERSION);
+    versions.add(version);
+  }
+  expect(
+    [...versions],
+    `${name} scans its two images with different Trivy versions`,
+  ).toHaveLength(1);
+}
+
 /** Each `run:` body in one job, paired with the step index holding it. */
 function jobScripts(name: string, id: string): Array<readonly [number, string]> {
   return steps(name, id).flatMap((step, index) =>
@@ -194,8 +279,17 @@ const GIT_SUBCOMMANDS: readonly string[] = ["config", "add", "diff", "commit", "
  * invocation and must be checked. Deliberately not `\bgit\b`, which also
  * matches the `.git` at the end of a push URL and would fail the one line the
  * job exists to run.
+ *
+ * The command word is matched on its **basename**, because a command word is
+ * a path: an expression anchored on a bare `git` refuses `git -C gitops fetch`
+ * and admits `/usr/bin/git -C gitops fetch`, which is the same invocation
+ * spelled the way anyone routing around an allowlist would spell it. The
+ * optional leading `[^\s]*\/` cannot cross whitespace, so it takes the
+ * directory part of the command word and nothing else, and `git` must still be
+ * followed by a space — which is why `…/deploys.git"` in the push URL is not
+ * a match.
  */
-const GIT_INVOCATION = /(?:^|[\s(`{])git\s+/g;
+const GIT_INVOCATION = /(?:^|[\s(`{])(?:[^\s]*\/)?git\s+/g;
 
 /** Every `git` invocation in one logical command that is not on the allowlist. */
 function gitOffences(command: string): string[] {
@@ -510,21 +604,11 @@ describe("the build holds no GitOps credential", () => {
     expect(Object.keys(outputs).sort()).toEqual(["backend_digest", "storefront_digest"]);
   });
 
-  it("scans both published digests at CRITICAL before the promotion job", () => {
-    const scanned = steps(DEPLOY_TEST, "build")
-      .filter((step) => typeof step["uses"] === "string" && step["uses"].includes("trivy-action@"))
-      .map((step) => asMapping(step["with"]!, "trivy with"));
-    expect(scanned).toHaveLength(2);
-    expect(scanned.map((scan) => scan["image-ref"])).toEqual([
+  it("gates the promotion on both published digests scanning clean at CRITICAL", () => {
+    expectTrivyGate(DEPLOY_TEST, [
       "ghcr.io/hannosirkel/plepic-backend@${{ steps.build.outputs.backend_digest }}",
       "ghcr.io/hannosirkel/plepic-storefront@${{ steps.build.outputs.storefront_digest }}",
     ]);
-    for (const scan of scanned) {
-      expect(scan["severity"]).toBe("CRITICAL");
-      expect(scan["exit-code"]).toBe("1");
-      expect(scan["ignore-unfixed"]).toBe("true");
-      expect(scan["scanners"]).toBe("vuln");
-    }
     expect(asSequence(job(DEPLOY_TEST, "promote")["needs"]!, "promote.needs")).toContain("build");
   });
 });
@@ -715,6 +799,24 @@ describe("the code-import ban itself", () => {
     ]);
   });
 
+  it("refuses the same fetch written with an absolute path", () => {
+    // A command word is a path, and the allowlist reads the command word. An
+    // expression anchored on a bare `git` refuses the line above and admits
+    // this one — the identical invocation, spelled the way someone working
+    // around the allowlist would spell it.
+    expect(
+      codeImportOffences(
+        script(
+          '/usr/bin/git -C gitops fetch origin "pull/1/head"',
+          "./tools/git checkout FETCH_HEAD",
+        ),
+      ),
+    ).toEqual([
+      'steps[0] runs git fetch: /usr/bin/git -C gitops fetch origin "pull/1/head"',
+      "steps[0] runs git checkout: ./tools/git checkout FETCH_HEAD",
+    ]);
+  });
+
   it("accepts the git commands the promoting job actually runs", () => {
     expect(
       codeImportOffences(
@@ -866,26 +968,61 @@ describe("Release validates and builds before it promotes", () => {
     expect(Object.keys(outputs).sort()).toEqual(["backend_digest", "storefront_digest"]);
   });
 
-  it("scans both published digests at CRITICAL before the promotion job", () => {
-    const scanned = steps(RELEASE, "build")
-      .filter((step) => typeof step["uses"] === "string" && step["uses"].includes("trivy-action@"))
-      .map((step) => asMapping(step["with"]!, "trivy with"));
-    expect(scanned).toHaveLength(2);
-    expect(scanned.map((scan) => scan["image-ref"])).toEqual([
+  it("labels both published images with the repository the packages belong to", () => {
+    // `org.opencontainers.image.source` is how GitHub links a container
+    // package to a repository, and a linked package inherits that
+    // repository's access. Unlinked, a package is private on first push with
+    // no repository to inherit from — which is the `ImagePullBackOff` the
+    // plan's "make the images pullable by K3s" row exists to prevent, and
+    // manual work that row would otherwise have to absorb.
+    //
+    // It is asserted on the *invocation* rather than in either Dockerfile
+    // because only one of the two could carry it: `no-live-hostname.test.ts`
+    // scans every tracked file under `storefront/`, `storefront/Dockerfile`
+    // included, and the forge is not on its allowlist. One `--label` on the
+    // shared `publish()` covers both images, so the count below is part of
+    // the guarantee rather than incidental — two separate invocations could
+    // label one image and not the other.
+    const step = steps(RELEASE, "build").find(
+      (candidate) =>
+        typeof candidate["run"] === "string" && candidate["run"].includes("docker buildx build"),
+    );
+    expect(step, "release.yml has no step that builds an image").toBeDefined();
+    const invocations = commands(asScalar(step!["run"]!, "build.run")).filter((line) =>
+      line.includes("docker buildx build"),
+    );
+    expect(invocations, "the two images are not built by one invocation").toHaveLength(1);
+    expect(
+      invocations[0],
+      "the published images carry no source label, so their packages link to no repository",
+    ).toMatch(/--label "org\.opencontainers\.image\.source=\$SOURCE_URL"/);
+    expect(asMapping(step!["env"]!, "build.env")["SOURCE_URL"]).toBe(
+      "https://github.com/hannosirkel/plepic",
+    );
+  });
+
+  it("gates the promotion on both published digests scanning clean at CRITICAL", () => {
+    expectTrivyGate(RELEASE, [
       "ghcr.io/hannosirkel/plepic-backend@${{ steps.build.outputs.backend_digest }}",
       "ghcr.io/hannosirkel/plepic-storefront@${{ steps.build.outputs.storefront_digest }}",
     ]);
-    for (const scan of scanned) {
-      expect(scan["severity"]).toBe("CRITICAL");
-      expect(scan["exit-code"]).toBe("1");
-      expect(scan["ignore-unfixed"]).toBe("true");
-      expect(scan["scanners"]).toBe("vuln");
-    }
     expect(asSequence(job(RELEASE, "promote")["needs"]!, "promote.needs")).toEqual([
       "validate",
       "gate",
       "build",
     ]);
+  });
+
+  it("scans with the same Trivy release the test promotion scans with", () => {
+    // The two workflows scan the same two images against the same gate. A
+    // version that drifted between them would mean a digest that passed on
+    // the pull request and a rebuild of the same source failing on merge, or
+    // — worse — the reverse.
+    const versionOf = (name: string): string[] =>
+      trivyScans(name).map(([where, step]) =>
+        asScalar(withBlock(step, where)["version"]!, `${name}.${where}.with.version`),
+      );
+    expect(new Set([...versionOf(RELEASE), ...versionOf(DEPLOY_TEST)]).size).toBe(1);
   });
 });
 

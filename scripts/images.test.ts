@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { asMapping, asSequence, parseYamlSubset, type YamlValue } from "./yaml-subset.js";
+import { asMapping, asScalar, asSequence, parseYamlSubset, type YamlValue } from "./yaml-subset.js";
 
 /**
  * The two images this repository publishes, the ignore-files that decide what
@@ -81,12 +81,67 @@ function instructions(dockerfile: string): string[] {
   return folded.map((line) => line.replace(/\s+/g, " ").trim());
 }
 
-/** Every instruction of one kind, without its keyword. */
-function directives(dockerfile: string, keyword: string): string[] {
+/**
+ * The instructions of the **last** stage — the one that becomes the published
+ * image, and the only one whose `USER`, `WORKDIR`, `EXPOSE`, `ENTRYPOINT` and
+ * `CMD` a runtime ever sees.
+ *
+ * Reasoning over a Dockerfile's instructions file-wide reads as strictly
+ * stronger and is not: a build stage's `USER` and a runtime stage's `USER` are
+ * not the same statement, and a file-wide list cannot tell them apart. The
+ * concrete hole that opened is one stage long — append
+ *
+ *     FROM node@sha256:… AS final
+ *     COPY --from=runtime / /
+ *
+ * and every file-wide assertion below still holds (the base is pinned, there
+ * is one base, `USER 10001:10001` appears exactly once, `ENTRYPOINT` is
+ * `[]`, `EXPOSE` names the port) while the image that ships runs as **root**
+ * from `/` with the base image's own entrypoint restored. Splitting at `FROM`
+ * is what makes those assertions statements about the shipped image.
+ */
+function finalStage(dockerfile: string): string[] {
+  const lines = instructions(dockerfile);
+  const last = lines.findLastIndex((line) => /^FROM\s/i.test(line));
+  expect(last, `${dockerfile} declares no build stage`).toBeGreaterThanOrEqual(0);
+  return lines.slice(last);
+}
+
+function directivesIn(lines: readonly string[], keyword: string): string[] {
   const prefix = new RegExp(`^${keyword}\\s+`, "i");
-  return instructions(dockerfile)
-    .filter((line) => prefix.test(line))
-    .map((line) => line.replace(prefix, ""));
+  return lines.filter((line) => prefix.test(line)).map((line) => line.replace(prefix, ""));
+}
+
+/** Every instruction of one kind in the whole file, without its keyword. */
+function directives(dockerfile: string, keyword: string): string[] {
+  return directivesIn(instructions(dockerfile), keyword);
+}
+
+/** Every instruction of one kind in the stage that becomes the image. */
+function finalDirectives(dockerfile: string, keyword: string): string[] {
+  return directivesIn(finalStage(dockerfile), keyword);
+}
+
+/**
+ * The path the backend image serves media from, derived from the image rather
+ * than written down twice.
+ *
+ * Medusa's file provider resolves `<base>/static`, where `<base>` is its own
+ * working directory, so this is the shipping stage's last `WORKDIR` plus
+ * `static` — and it is the path the assets PVC is mounted at in
+ * `hannosirkel/deploys` and the path `compose.yaml` has to mount its local
+ * stand-in at. Both of those agreements are checked against this, so moving
+ * the working directory fails them together instead of quietly separating the
+ * place media is written from the place it is served.
+ */
+function backendMediaRoot(): string {
+  const workdirs = finalDirectives("backend/Dockerfile", "WORKDIR");
+  const workdir = workdirs[workdirs.length - 1];
+  expect(
+    workdir,
+    "backend/Dockerfile sets no working directory in the stage that ships",
+  ).toBeDefined();
+  return `${workdir}/static`;
 }
 
 describe("both images are built from a pinned base and run as a non-root user", () => {
@@ -132,22 +187,24 @@ describe("both images are built from a pinned base and run as a non-root user", 
       });
 
       it("runs as UID 10001, matching every workload that runs it", () => {
-        expect(directives(image.dockerfile, "USER")).toEqual(["10001:10001"]);
+        // Of the *final* stage, not of the file: a `USER` in a stage that is
+        // only copied out of says nothing about the user the image runs as.
+        expect(finalDirectives(image.dockerfile, "USER")).toEqual(["10001:10001"]);
         // And it is the *last* thing that could be root: an instruction after
         // `USER` that needed root would have to change it back.
-        const lines = instructions(image.dockerfile);
+        const lines = finalStage(image.dockerfile);
         expect(lines.findIndex((line) => /^USER /i.test(line))).toBeGreaterThan(
           lines.findLastIndex((line) => /^RUN /i.test(line)),
         );
       });
 
       it("clears the base image's entrypoint and declares its command", () => {
-        expect(directives(image.dockerfile, "ENTRYPOINT")).toEqual(["[]"]);
-        expect(instructions(image.dockerfile)).toContain(image.command);
+        expect(finalDirectives(image.dockerfile, "ENTRYPOINT")).toEqual(["[]"]);
+        expect(finalStage(image.dockerfile)).toContain(image.command);
       });
 
       it("declares the port the deploys manifests target", () => {
-        expect(directives(image.dockerfile, "EXPOSE")).toEqual([image.port]);
+        expect(finalDirectives(image.dockerfile, "EXPOSE")).toEqual([image.port]);
       });
 
       it("declares no build argument at all", () => {
@@ -204,20 +261,21 @@ describe("both images are built from a pinned base and run as a non-root user", 
   it("puts the backend at /app, where the assets PVC is mounted", () => {
     // The one assertion in this file whose failure mode is silent in
     // production. See this suite's header.
-    const workdirs = directives("backend/Dockerfile", "WORKDIR");
-    expect(workdirs[workdirs.length - 1]).toBe("/app");
+    expect(backendMediaRoot()).toBe("/app/static");
     // And the served media root is created there, owned by the runtime user,
     // so a run without a volume still resolves `<base>/static`.
     expect(
-      directives("backend/Dockerfile", "RUN").some((line) => line.includes("mkdir -p /app/static")),
+      finalDirectives("backend/Dockerfile", "RUN").some((line) =>
+        line.includes(`mkdir -p ${backendMediaRoot()}`),
+      ),
     ).toBe(true);
   });
 
   it("puts the storefront at /app, where its writable cache is mounted", () => {
-    const workdirs = directives("storefront/Dockerfile", "WORKDIR");
+    const workdirs = finalDirectives("storefront/Dockerfile", "WORKDIR");
     expect(workdirs[workdirs.length - 1]).toBe("/app");
     expect(
-      directives("storefront/Dockerfile", "RUN").some((line) =>
+      finalDirectives("storefront/Dockerfile", "RUN").some((line) =>
         line.includes("mkdir -p /app/.next/cache"),
       ),
     ).toBe(true);
@@ -335,6 +393,33 @@ describe("the local stack and the CI services run the same images", () => {
       expect(build["context"], `${name} does not build from the repository root`).toBe(".");
       expect(build["dockerfile"]).toBe(dockerfile);
     }
+  });
+
+  it("mounts the local assets volume exactly where the image serves media from", () => {
+    // The image side of this agreement is held above; this is the other side,
+    // and it was previously held by nothing. `compose.yaml` exists so the
+    // commerce path — the catalogue import included — can be run without a
+    // cluster, and the import's whole media contract is that it writes where
+    // Medusa serves. A stand-in volume mounted anywhere but the image's own
+    // media root reproduces exactly the production failure the header of this
+    // file describes: media uploads, renders, and vanishes on restart, with a
+    // local run that looked green.
+    const mediaRoot = backendMediaRoot();
+    const document = asMapping(parseYamlSubset(read("compose.yaml")), "compose.yaml");
+    const backend = asMapping(services("compose.yaml", ["services"])["backend"]!, "backend");
+    const mounts = asSequence(backend["volumes"]!, "backend.volumes").map((entry, index) =>
+      asScalar(entry, `backend.volumes[${index}]`),
+    );
+    const mounted = mounts.filter((mount) => mount.split(":")[1] === mediaRoot);
+    expect(mounted, `compose.yaml mounts nothing at ${mediaRoot}`).toHaveLength(1);
+    // A named volume declared in this file, not a bind mount of a host path:
+    // the cluster backs this with a PersistentVolumeClaim, and a bind mount
+    // would put a developer's own directory where the import writes.
+    const source = mounted[0]!.split(":")[0]!;
+    expect(
+      Object.keys(asMapping(document["volumes"]!, "compose.yaml volumes")),
+      `${source} is not a named volume this file declares`,
+    ).toContain(source);
   });
 
   it("publishes every local port on the loopback address only", () => {

@@ -54,10 +54,16 @@ RUN NODE_ENV=production npm run build --workspace storefront
 # node:24.18.1-trixie-slim
 FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
 
-# No `org.opencontainers.image.source` label. It would name this repository's
-# own forge by hostname, and `storefront/tests/no-live-hostname.test.ts` holds
-# every file in that workspace to naming no hostname at all — a rule that is
-# worth more intact than the GHCR package page is worth linked.
+# `org.opencontainers.image.source` is not set here, and it is not omitted
+# either: `release.yml` passes it to both builds as a `--label` on the one
+# `docker buildx build` invocation that publishes them. This file *cannot*
+# carry it — `storefront/tests/no-live-hostname.test.ts` scans every tracked
+# file under `storefront/`, this Dockerfile included, and the forge is not on
+# its allowlist — and widening a publication guard to carry a label would be a
+# poor trade. The label is worth having: it is how the forge links a container
+# package to a repository, and a linked package inherits that repository's
+# access rather than starting private and unreachable by the cluster.
+# `scripts/workflows.test.ts` asserts the flag and its value.
 LABEL org.opencontainers.image.description="Plepic Games storefront"
 LABEL org.opencontainers.image.licenses=UNLICENSED
 

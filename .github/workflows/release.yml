@@ -185,6 +185,21 @@ jobs:
         env:
           BACKEND_IMAGE: ghcr.io/hannosirkel/plepic-backend
           STOREFRONT_IMAGE: ghcr.io/hannosirkel/plepic-storefront
+          # `org.opencontainers.image.source` is what makes GitHub link a
+          # container package to a repository, and a linked package inherits
+          # that repository's access. Unlinked, both packages are private on
+          # first push with no repository to inherit from, which is the
+          # `ImagePullBackOff` the "make the images pullable by K3s" row
+          # exists to prevent.
+          #
+          # It is set here rather than in either Dockerfile because
+          # `storefront/tests/no-live-hostname.test.ts` scans every tracked
+          # file under `storefront/`, `storefront/Dockerfile` included, and
+          # this forge is not on its allowlist. Widening a publication guard
+          # to carry a label would be a poor trade — and one `--label` on the
+          # shared invocation below covers both images anyway, which naming it
+          # twice in two Dockerfiles would not.
+          SOURCE_URL: https://github.com/hannosirkel/plepic
         run: |
           set -euo pipefail
           publish() {
@@ -194,6 +209,7 @@ jobs:
             metadata="$RUNNER_TEMP/${output}.json"
             docker buildx build --platform linux/amd64 \
               --provenance=mode=min --sbom=true \
+              --label "org.opencontainers.image.source=$SOURCE_URL" \
               --file "$dockerfile" \
               --tag "${image}:sha-${SOURCE_SHA}" \
               --push --metadata-file "$metadata" .

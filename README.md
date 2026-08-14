@@ -908,6 +908,18 @@ Both pin their base image by digest, run as UID 10001 — the `runAsUser` every
 `ENTRYPOINT`, because the manifests choose what a container runs with `args:`
 and Kubernetes `args` replaces `CMD` while leaving an `ENTRYPOINT` prefixed.
 
+**Both carry `org.opencontainers.image.source`, and `release.yml` is where it
+is set.** That label is how GitHub links a container package to a repository,
+and a linked package inherits that repository's access rather than starting
+private with no repository to inherit it from — which is what a cluster's
+first pull runs into. It is a `--label` on the single `docker buildx build`
+invocation that publishes both images rather than a `LABEL` in either
+Dockerfile, because only one of the two could carry it there:
+`storefront/tests/no-live-hostname.test.ts` scans every tracked file under
+`storefront/`, `storefront/Dockerfile` included, and this forge is not on its
+allowlist. Setting it in one place is also what keeps the two images labelled
+identically. `scripts/workflows.test.ts` asserts the flag and its value.
+
 **Neither declares a build argument.** Next.js inlines every `NEXT_PUBLIC_*`
 value at build time, so a build argument is exactly how a publishable key, a
 base URL, a measurement ID or a site key would end up baked into an image that
