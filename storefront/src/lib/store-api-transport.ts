@@ -1,6 +1,33 @@
 import { ConfigError } from "../config/env.js";
 
 const ALLOWED_PREFIXES = new Set(["store", "hooks", "static"]);
+
+/**
+ * The one path segment under `/store-api/static/*` that is never product media.
+ *
+ * The catalogue-import Job stages `catalogue.tar.gz` on the assets PVC under
+ * `subPath: import`, while the media root the backend, the worker and the Job
+ * serve is that same PVC's `subPath: media` — disjoint sibling subtrees rather
+ * than one subtree seen twice. A staged archive therefore does not appear under
+ * the directory Medusa serves as `/static/*`, and so cannot be reached through
+ * `/store-api/static/*` at all. The `deploys` manifests are what make that
+ * true, including their rule that every `CATALOGUE_IMPORT_ARCHIVE_PATH`
+ * resolves inside the staging mount.
+ *
+ * The refusal stays regardless. The archive is a WooCommerce export carrying
+ * customer accounts, sessions and order history, none of it may be downloadable
+ * from a public site hostname, and the layout that currently makes that
+ * impossible is enforced in a different repository — which this one is not
+ * entitled to assume. A defence with nothing to catch today is not a defence to
+ * delete: it is what a mount-layout regression lands on. Disposing of the
+ * archive on every exit path remains the control that matters.
+ *
+ * It is a refusal rather than a narrower allowlist because
+ * `/store-api/static/*` legitimately serves nested media paths, and it is
+ * matched case-insensitively so that the refusal does not depend on the
+ * case-sensitivity of whatever filesystem backs the volume.
+ */
+const REFUSED_STATIC_SEGMENTS = new Set(["import"]);
 const HOP_BY_HOP_HEADERS = [
   "connection",
   "keep-alive",
@@ -50,6 +77,12 @@ export function resolveStoreApiPath(pathname: string): string | null {
     return null;
   }
   if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
+    return null;
+  }
+  if (
+    namespace === "static" &&
+    segments.some((segment) => REFUSED_STATIC_SEGMENTS.has(segment.toLowerCase()))
+  ) {
     return null;
   }
 

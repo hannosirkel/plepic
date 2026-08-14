@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 
 import type { CatalogueProduct } from "./catalogue.js";
+import { assertBrowserMediaOnly, browserMediaUrls } from "./store-media.js";
 import { medusaMajorToMinor } from "./store-money.js";
 
 interface StoreProductResponse {
@@ -10,6 +11,8 @@ interface StoreProductResponse {
 const STORE_PRODUCT_FIELDS = [
   "id",
   "title",
+  "thumbnail",
+  "images.url",
   "*variants",
   "+variants.calculated_price",
   "+variants.inventory_quantity",
@@ -65,6 +68,21 @@ export function catalogueProductFromStore(
   throw new ConfigError("Medusa Store product has no purchasable EUR variant");
 }
 
+/**
+ * The product's media, in the one form the browser is allowed to receive:
+ * `/store-api/static/<file>` on the current origin. The seeded backend records
+ * `/static/<file>`; anything else — an absolute origin, a traversal, an
+ * encoding — is dropped rather than forwarded. See `store-media.ts`.
+ */
+export function productImageUrlsFromStore(response: StoreProductResponse): readonly string[] {
+  const product = record(response.products?.[0], "product");
+  const images = Array.isArray(product.images) ? product.images : [];
+  return browserMediaUrls([
+    product.thumbnail,
+    ...images.map((image) => (typeof image === "object" && image !== null ? (image as Record<string, unknown>).url : null)),
+  ]);
+}
+
 function variantIdentityFromStore(response: StoreProductResponse): { readonly id: string; readonly available: boolean } {
   const product = record(response.products?.[0], "product");
   if (!Array.isArray(product.variants)) throw new ConfigError("Medusa Store product has no variants");
@@ -103,7 +121,9 @@ export async function loadStoreCatalogueProduct({
     headers: { "x-publishable-api-key": publishableKey },
   });
   if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
-  return catalogueProductFromStore((await response.json()) as StoreProductResponse, presentation);
+  return assertBrowserMediaOnly(
+    catalogueProductFromStore((await response.json()) as StoreProductResponse, presentation),
+  );
 }
 
 export async function loadStoreProduct(input: {
@@ -114,6 +134,7 @@ export async function loadStoreProduct(input: {
   readonly catalogue: CatalogueProduct;
   readonly variantId: string | null;
   readonly analyticsVariantId: string;
+  readonly imageUrls: readonly string[];
 }> {
   const { backendUrl, publishableKey, presentation } = input;
   if (backendUrl === null || publishableKey === null) {
@@ -126,9 +147,14 @@ export async function loadStoreProduct(input: {
   if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
   const body = (await response.json()) as StoreProductResponse;
   const variant = variantIdentityFromStore(body);
-  return {
+  // The raw Store response does not leave this function, and what does leave it
+  // is checked: `assertBrowserMediaOnly` is what makes "every product image URL
+  // the browser receives is the relative form" a property of the seam rather
+  // than of the one page that happens to consume it today.
+  return assertBrowserMediaOnly({
     catalogue: catalogueProductFromStore(body, presentation),
     variantId: variant.available ? variant.id : null,
     analyticsVariantId: variant.id,
-  };
+    imageUrls: productImageUrlsFromStore(body),
+  });
 }

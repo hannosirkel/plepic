@@ -906,6 +906,11 @@ describe("the built storefront's strict /store-api transport", () => {
       "/store-api/app",
       "/store-api/%2e%2e/app",
       "/store-api/store/../admin/users",
+      // The catalogue-import staging directory. It is a sibling subtree of the
+      // served media root on the assets PVC, not part of it — this refusal is
+      // the backstop for a mount layout enforced in another repository.
+      "/store-api/static/import/catalogue.tar.gz",
+      "/store-api/static/IMPORT/catalogue.tar.gz",
     ];
 
     for (const path of denied) {

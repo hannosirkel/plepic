@@ -1,3 +1,17 @@
+import { join } from "node:path";
+
+// Extensionless on purpose, unlike the rest of `src/`. `medusa-config.ts`
+// imports this module, and the Medusa config loader evaluates that file through
+// ts-node before anything is compiled — which resolves a relative specifier
+// literally and cannot map a `.js` suffix back onto the `.ts` file beside it.
+// A `.js` here fails `medusa build` with "Cannot find module", and the Job that
+// runs from the built image never starts.
+import {
+  assertExpectedArchiveDigest,
+  assertExpectedEnvironmentIdentity,
+  type ImportEnvironmentIdentity,
+} from "../catalogue-import/refusal";
+
 export interface BackendRuntimeConfig {
   readonly databaseUrl: string;
   readonly http: {
@@ -40,6 +54,13 @@ export interface NewsletterRateLimitRuntimeConfig {
   readonly redisPassword: string;
   readonly maximum: number;
   readonly windowSeconds: number;
+}
+
+export interface CatalogueImportRuntimeConfig {
+  readonly archivePath: string;
+  readonly mediaRoot: string;
+  readonly expectedArchiveSha256: string;
+  readonly environmentIdentity: ImportEnvironmentIdentity;
 }
 
 export interface OrderConfirmationLegalConfig {
@@ -144,6 +165,80 @@ export function readCheckoutTurnstileRuntimeConfig(
   environment: RuntimeEnvironment,
 ): CheckoutTurnstileRuntimeConfig {
   return { secretKey: requireEnvironmentValue(environment, "TURNSTILE_SECRET_KEY") };
+}
+
+/** The manifest's second mount of the assets PVC, `subPath: import`. */
+const DEFAULT_ARCHIVE_PATH = "/var/lib/plepic/import/catalogue.tar.gz";
+
+/**
+ * Where the staged archive is, without judging anything else.
+ *
+ * This cannot throw, and that is its job. The command has to know which file to
+ * dispose of *before* it knows whether it is configured well enough to run, or
+ * a configuration refusal leaves a WooCommerce export — customer accounts,
+ * sessions and order history — sitting in the staging directory of a production
+ * volume with nothing left that will ever remove it.
+ */
+export function catalogueImportArchivePath(environment: RuntimeEnvironment): string {
+  const configured = environment.CATALOGUE_IMPORT_ARCHIVE_PATH?.trim();
+  return configured === undefined || configured.length === 0 ? DEFAULT_ARCHIVE_PATH : configured;
+}
+
+/**
+ * The directory Medusa serves under `/static/*`, derived from the framework's
+ * own base directory.
+ *
+ * `@medusajs/framework`'s express loader mounts
+ * `express.static(path.join(baseDir, "static"))` unconditionally, and
+ * `@medusajs/file-local` defaults its `upload_dir` to the same
+ * `<cwd>/static` — and under `medusa exec` the base directory *is* the working
+ * directory. Deriving the import's media root from the same value is what keeps
+ * "the import writes where Medusa serves" a mechanical fact rather than a
+ * comment: there is no `MEDIA_ROOT` to set to a fourth directory. The Job
+ * mounts the assets PVC at the app root's `static`, so the same derivation is
+ * what puts the files on the volume.
+ *
+ * `configManager.baseDir` is typed `string` but is `undefined` until a config
+ * is loaded, so the parameter is widened to say so. Guarding only `""` left an
+ * unloaded config manager raising `TypeError: Cannot read properties of
+ * undefined (reading 'trim')` — the archive was still disposed of, but the
+ * operator was told about a dereference rather than about the base directory.
+ */
+export function mediaRootForBaseDir(baseDir: string | undefined): string {
+  if (typeof baseDir !== "string" || baseDir.trim().length === 0) {
+    throw new Error("The Medusa base directory is not known; the media root cannot be derived");
+  }
+  return join(baseDir, "static");
+}
+
+/**
+ * The catalogue import's configuration.
+ *
+ * The expected checksum and the environment identity are read here — from the
+ * deployment's own environment — and never from a file staged next to the
+ * archive, because an archive that carries its own checksum proves only that it
+ * is internally consistent. Both are required, and an unset or malformed one
+ * raises the same `expected-value-unset` refusal every other refusal path
+ * raises: an import that cannot tell which archive it expects, or which
+ * environment it is, refuses rather than proceeding.
+ */
+export function readCatalogueImportRuntimeConfig(
+  environment: RuntimeEnvironment,
+  baseDir: string | undefined,
+): CatalogueImportRuntimeConfig {
+  const expectedArchiveSha256 = assertExpectedArchiveDigest(
+    environment.CATALOGUE_IMPORT_ARCHIVE_SHA256,
+  );
+  const environmentIdentity = assertExpectedEnvironmentIdentity(
+    environment.CATALOGUE_IMPORT_ENVIRONMENT,
+  );
+
+  return {
+    archivePath: catalogueImportArchivePath(environment),
+    mediaRoot: mediaRootForBaseDir(baseDir),
+    expectedArchiveSha256,
+    environmentIdentity,
+  };
 }
 
 export function readNewsletterRateLimitRuntimeConfig(

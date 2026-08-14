@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  mediaRootForBaseDir,
+  readCatalogueImportRuntimeConfig,
   readCheckoutTurnstileRuntimeConfig,
   readBackendRuntimeConfig,
   readNewsletterRateLimitRuntimeConfig,
@@ -196,6 +198,34 @@ describe("readBackendRuntimeConfig", () => {
         NEWSLETTER_RATE_LIMIT_MAX: invalid,
         NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS: "600",
       })).toThrow(/NEWSLETTER_RATE_LIMIT_MAX/);
+    }
+  });
+});
+
+describe("mediaRootForBaseDir", () => {
+  it("derives the media root from the framework's own base directory", () => {
+    expect(mediaRootForBaseDir("/app")).toBe("/app/static");
+  });
+
+  /**
+   * `configManager.baseDir` is typed `string` but is `undefined` until a config
+   * is loaded, so an unloaded config manager reaches this function with nothing
+   * at all. Saying so beats a `TypeError` about reading `trim` of undefined:
+   * the archive is disposed of either way, but only one of the two tells the
+   * operator what went wrong.
+   */
+  it("names the missing base directory rather than dereferencing undefined", () => {
+    for (const absent of [undefined, "", "   "]) {
+      expect(() => mediaRootForBaseDir(absent)).toThrow(/base directory is not known/);
+      expect(() =>
+        readCatalogueImportRuntimeConfig(
+          {
+            CATALOGUE_IMPORT_ARCHIVE_SHA256: "a".repeat(64),
+            CATALOGUE_IMPORT_ENVIRONMENT: "test",
+          },
+          absent,
+        ),
+      ).toThrow(/base directory is not known/);
     }
   });
 });
