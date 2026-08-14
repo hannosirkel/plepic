@@ -5,16 +5,24 @@ const ALLOWED_PREFIXES = new Set(["store", "hooks", "static"]);
 /**
  * The one directory under the served static root that is never product media.
  *
- * The catalogue-import Job mounts the assets PVC at the media root and, with
- * `subPath: import`, at the archive staging path — the same volume seen twice.
- * A staged `catalogue.tar.gz` is therefore also `static/import/catalogue.tar.gz`
- * on the directory Medusa serves, and this storefront is what publishes that
- * directory. The archive is a WooCommerce export carrying customer accounts,
- * sessions and order history, and none of it may be downloadable from a public
- * site hostname.
+ * The catalogue-import Job stages `catalogue.tar.gz` on the assets PVC under
+ * `subPath: import`, while the media root the backend, the worker and the Job
+ * serve is that same PVC's `subPath: media` — disjoint sibling subtrees rather
+ * than one subtree seen twice. A staged archive therefore does not appear under
+ * the directory Medusa serves as `/static/*`, and so cannot be reached through
+ * `/store-api/static/*` at all. The `deploys` manifests are what make that
+ * true, including their rule that every `CATALOGUE_IMPORT_ARCHIVE_PATH`
+ * resolves inside the staging mount.
  *
- * The import disposing of the archive on every exit path is the fix; this is
- * defence in depth. It is a refusal rather than a narrower allowlist because
+ * The refusal stays regardless. The archive is a WooCommerce export carrying
+ * customer accounts, sessions and order history, none of it may be downloadable
+ * from a public site hostname, and the layout that currently makes that
+ * impossible is enforced in a different repository — which this one is not
+ * entitled to assume. A defence with nothing to catch today is not a defence to
+ * delete: it is what a mount-layout regression lands on. Disposing of the
+ * archive on every exit path remains the control that matters.
+ *
+ * It is a refusal rather than a narrower allowlist because
  * `/store-api/static/*` legitimately serves nested media paths, and it is
  * matched case-insensitively so that the refusal does not depend on the
  * case-sensitivity of whatever filesystem backs the volume.

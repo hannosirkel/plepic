@@ -6,17 +6,17 @@ import { forwardStoreApiRequest, resolveStoreApiPath } from "../src/lib/store-ap
 
 /**
  * The staged catalogue archive is a WooCommerce export carrying customer
- * accounts, sessions and order history. The import Job mounts the assets PVC at
- * the media root *and* at the staging path, `subPath: import`, of the same
- * claim — so while an archive is staged it is also a file under the directory
- * Medusa serves as `/static/*`, which this storefront re-exposes as
- * `/store-api/static/*`.
+ * accounts, sessions and order history. It is staged under the assets PVC's
+ * `subPath: import`, a sibling of the `subPath: media` subtree the backend
+ * serves as `/static/*` and this storefront re-exposes as
+ * `/store-api/static/*`, so a staged archive is not reachable through the
+ * public origin to begin with.
  *
- * The import disposing of the archive on every exit path is the fix. This is
- * the second lock: the served surface refuses the staging directory outright,
- * in the same normalized way it refuses `/store-api/admin`, so the window
- * between staging and disposal is not a window in which the export is
- * downloadable through the public origin.
+ * The served surface refuses the staging directory anyway, in the same
+ * normalized way it refuses `/store-api/admin`. That layout is enforced by the
+ * `deploys` manifests, in another repository; this refusal is what a regression
+ * there lands on, and it is pinned here so it cannot be dropped as dead weight.
+ * Disposing of the archive on every exit path is the control that matters.
  */
 describe("the store-api prefix allowlist", () => {
   it("refuses the import staging directory under the static prefix", () => {

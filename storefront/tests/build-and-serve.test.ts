@@ -906,9 +906,9 @@ describe("the built storefront's strict /store-api transport", () => {
       "/store-api/app",
       "/store-api/%2e%2e/app",
       "/store-api/store/../admin/users",
-      // The catalogue-import staging directory. The Job mounts the assets PVC
-      // at the media root and again at `subPath: import`, so a staged
-      // WooCommerce export is also a file under the served static root.
+      // The catalogue-import staging directory. It is a sibling subtree of the
+      // served media root on the assets PVC, not part of it — this refusal is
+      // the backstop for a mount layout enforced in another repository.
       "/store-api/static/import/catalogue.tar.gz",
       "/store-api/static/IMPORT/catalogue.tar.gz",
     ];

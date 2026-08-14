@@ -895,12 +895,26 @@ after a failed one, and after a refusal raised before the import body runs at
 all — an unset or malformed expected value included. That last case is why the
 command resolves the archive path before it reads anything else.
 
-A WooCommerce export left on the assets PVC is not a stray file. The Job mounts
-the same volume at the media root and at the staging path, so a staged archive
-is also a file under the directory Medusa serves as `/static/*`. The storefront
-refuses that directory as a second lock: `/store-api/static/import/...` is 404ed
-without a backend request, in the same normalized way `/store-api/admin/*` is.
-Defence in depth, not the control the deployment relies on.
+A WooCommerce export left on the assets PVC is not a stray file. It carries
+customer accounts, sessions and order history, and nothing ever comes back for
+it: the Job runs with `backoffLimit: 0`, so there is no second attempt to tidy
+up after the first. An archive that survives one run sits on a production volume
+indefinitely. That is why disposal is unconditional rather than a tidy-up step.
+
+The served media root and the staging directory are **disjoint sibling subtrees
+of the same PVC**. The backend, the worker and the Job mount it at `/app/static`
+with `subPath: media`; the Job alone mounts it at `/var/lib/plepic/import` with
+`subPath: import`. A staged archive is therefore *not* a file under the
+directory Medusa serves as `/static/*`, and the `deploys` manifests enforce that
+every `CATALOGUE_IMPORT_ARCHIVE_PATH` resolves inside the staging mount, so an
+override cannot put one back there.
+
+The storefront refuses `import` as a segment under `/store-api/static/*` all the
+same: `/store-api/static/import/...` is 404ed without a backend request, in the
+same normalized way `/store-api/admin/*` is. While the two subtrees stay
+disjoint that refusal has nothing to catch — and it stays, because the mount
+layout is enforced in a different repository and this one does not depend on
+that being true. It is what a mount-layout regression lands on.
 
 | Variable | Required | Meaning |
 |---|---|---|
@@ -942,8 +956,10 @@ storefront exposes the same bytes at `/store-api/static/*` through its prefix
 allowlist, and `storefront/src/lib/store-media.ts` is the one place that
 converts one form into the other — so every product image URL the browser
 receives is that relative form. A URL that is not one is dropped rather than
-forwarded, and product data that still carries a provider URL when it leaves the
-Store seam is refused outright, so a future page cannot reintroduce one.
+forwarded, and product data whose **media-bearing fields** still carry an
+absolute URL when it leaves the Store seam is refused outright, so a future page
+cannot reintroduce one. Catalogue text is not inspected: a product retitled to
+look like a media path is data, not a bug, and must not take the page down.
 
 The File module itself is left at the framework's default. The import does not
 use it — it writes with `fs` and computes its own URLs — and pinning it bought

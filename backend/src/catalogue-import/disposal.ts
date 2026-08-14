@@ -1,8 +1,9 @@
 import { rm } from "node:fs/promises";
 
 /**
- * The staged archive could not be removed, so it is still on the assets PVC —
- * which is the same volume Medusa serves as its static root.
+ * The staged archive could not be removed, so it is still on the assets PVC: a
+ * WooCommerce export left at rest on a production volume, with no later run
+ * coming back for it.
  *
  * The underlying filesystem error is the `cause`. The message names the path
  * and nothing else: the archive is a WooCommerce export, and a Job log is not

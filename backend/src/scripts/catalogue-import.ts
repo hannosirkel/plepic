@@ -22,9 +22,14 @@ import {
  * **The staged archive is disposed of on every exit path**, and that is why the
  * path is resolved before anything that can refuse. The archive is a
  * WooCommerce export carrying customer accounts, sessions and order history,
- * and the volume it is staged on is the same volume Medusa serves as its static
- * root — so an archive left behind by a configuration refusal is not a stray
- * file, it is a published one. Reading the configuration *inside* the wrapper
+ * and an archive left behind by a configuration refusal is not a stray file —
+ * it is a customer-data export at rest on a production volume, for good. The
+ * Job runs with `backoffLimit: 0`, so there is no second attempt that would
+ * clear it, and nothing else on the cluster ever looks in the staging
+ * directory. The staging subtree is a sibling of the media root rather than
+ * part of it, so this is not a publication; it is an indefinite retention of
+ * exactly the data this import exists to refuse. Reading the configuration
+ * *inside* the wrapper
  * is the whole of that guarantee: it used to sit above `runCatalogueImport`,
  * whose own disposal never ran when the configuration read threw, and four of
  * the five refusal paths left the export staged.

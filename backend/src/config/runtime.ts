@@ -175,8 +175,9 @@ const DEFAULT_ARCHIVE_PATH = "/var/lib/plepic/import/catalogue.tar.gz";
  *
  * This cannot throw, and that is its job. The command has to know which file to
  * dispose of *before* it knows whether it is configured well enough to run, or
- * a configuration refusal leaves a WooCommerce export staged on a volume that
- * is also the served assets root.
+ * a configuration refusal leaves a WooCommerce export — customer accounts,
+ * sessions and order history — sitting in the staging directory of a production
+ * volume with nothing left that will ever remove it.
  */
 export function catalogueImportArchivePath(environment: RuntimeEnvironment): string {
   const configured = environment.CATALOGUE_IMPORT_ARCHIVE_PATH?.trim();
