@@ -1,3 +1,17 @@
+import { join } from "node:path";
+
+// Extensionless on purpose, unlike the rest of `src/`. `medusa-config.ts`
+// imports this module, and the Medusa config loader evaluates that file through
+// ts-node before anything is compiled — which resolves a relative specifier
+// literally and cannot map a `.js` suffix back onto the `.ts` file beside it.
+// A `.js` here fails `medusa build` with "Cannot find module", and the Job that
+// runs from the built image never starts.
+import {
+  assertExpectedArchiveDigest,
+  assertExpectedEnvironmentIdentity,
+  type ImportEnvironmentIdentity,
+} from "../catalogue-import/refusal";
+
 export interface BackendRuntimeConfig {
   readonly databaseUrl: string;
   readonly http: {
@@ -42,16 +56,11 @@ export interface NewsletterRateLimitRuntimeConfig {
   readonly windowSeconds: number;
 }
 
-export interface MediaRuntimeConfig {
-  /** The assets PVC mount, and Medusa's local file provider `upload_dir`. */
-  readonly root: string;
-}
-
 export interface CatalogueImportRuntimeConfig {
   readonly archivePath: string;
   readonly mediaRoot: string;
   readonly expectedArchiveSha256: string;
-  readonly environmentIdentity: "live" | "test";
+  readonly environmentIdentity: ImportEnvironmentIdentity;
 }
 
 export interface OrderConfirmationLegalConfig {
@@ -158,19 +167,41 @@ export function readCheckoutTurnstileRuntimeConfig(
   return { secretKey: requireEnvironmentValue(environment, "TURNSTILE_SECRET_KEY") };
 }
 
-/**
- * The assets root. The Job manifest mounts the assets PVC at `/app/static` in
- * both environments, so this default is a property of the base manifest rather
- * than a per-environment value; `MEDIA_ROOT` exists for a local run against a
- * different directory.
- */
-const DEFAULT_MEDIA_ROOT = "/app/static";
-/** The manifest's second mount of the same PVC, `subPath: import`. */
+/** The manifest's second mount of the assets PVC, `subPath: import`. */
 const DEFAULT_ARCHIVE_PATH = "/var/lib/plepic/import/catalogue.tar.gz";
 
-export function readMediaRuntimeConfig(environment: RuntimeEnvironment): MediaRuntimeConfig {
-  const root = environment.MEDIA_ROOT?.trim();
-  return { root: root === undefined || root.length === 0 ? DEFAULT_MEDIA_ROOT : root };
+/**
+ * Where the staged archive is, without judging anything else.
+ *
+ * This cannot throw, and that is its job. The command has to know which file to
+ * dispose of *before* it knows whether it is configured well enough to run, or
+ * a configuration refusal leaves a WooCommerce export staged on a volume that
+ * is also the served assets root.
+ */
+export function catalogueImportArchivePath(environment: RuntimeEnvironment): string {
+  const configured = environment.CATALOGUE_IMPORT_ARCHIVE_PATH?.trim();
+  return configured === undefined || configured.length === 0 ? DEFAULT_ARCHIVE_PATH : configured;
+}
+
+/**
+ * The directory Medusa serves under `/static/*`, derived from the framework's
+ * own base directory.
+ *
+ * `@medusajs/framework`'s express loader mounts
+ * `express.static(path.join(baseDir, "static"))` unconditionally, and
+ * `@medusajs/file-local` defaults its `upload_dir` to the same
+ * `<cwd>/static` — and under `medusa exec` the base directory *is* the working
+ * directory. Deriving the import's media root from the same value is what keeps
+ * "the import writes where Medusa serves" a mechanical fact rather than a
+ * comment: there is no `MEDIA_ROOT` to set to a fourth directory. The Job
+ * mounts the assets PVC at the app root's `static`, so the same derivation is
+ * what puts the files on the volume.
+ */
+export function mediaRootForBaseDir(baseDir: string): string {
+  if (baseDir.trim().length === 0) {
+    throw new Error("The Medusa base directory is not known; the media root cannot be derived");
+  }
+  return join(baseDir, "static");
 }
 
 /**
@@ -179,32 +210,25 @@ export function readMediaRuntimeConfig(environment: RuntimeEnvironment): MediaRu
  * The expected checksum and the environment identity are read here — from the
  * deployment's own environment — and never from a file staged next to the
  * archive, because an archive that carries its own checksum proves only that it
- * is internally consistent. Both are required: an import that cannot tell which
- * archive it expects, or which environment it is, refuses rather than
- * proceeding.
+ * is internally consistent. Both are required, and an unset or malformed one
+ * raises the same `expected-value-unset` refusal every other refusal path
+ * raises: an import that cannot tell which archive it expects, or which
+ * environment it is, refuses rather than proceeding.
  */
 export function readCatalogueImportRuntimeConfig(
   environment: RuntimeEnvironment,
+  baseDir: string,
 ): CatalogueImportRuntimeConfig {
-  const expectedArchiveSha256 = requireEnvironmentValue(
-    environment,
-    "CATALOGUE_IMPORT_ARCHIVE_SHA256",
+  const expectedArchiveSha256 = assertExpectedArchiveDigest(
+    environment.CATALOGUE_IMPORT_ARCHIVE_SHA256,
   );
-  if (!/^[0-9a-f]{64}$/.test(expectedArchiveSha256)) {
-    throw new Error("CATALOGUE_IMPORT_ARCHIVE_SHA256 must be 64 lowercase hex digits");
-  }
-
-  const environmentIdentity = requireEnvironmentValue(environment, "CATALOGUE_IMPORT_ENVIRONMENT");
-  if (environmentIdentity !== "live" && environmentIdentity !== "test") {
-    throw new Error("CATALOGUE_IMPORT_ENVIRONMENT must be exactly live or test");
-  }
-
-  const archivePath = environment.CATALOGUE_IMPORT_ARCHIVE_PATH?.trim();
+  const environmentIdentity = assertExpectedEnvironmentIdentity(
+    environment.CATALOGUE_IMPORT_ENVIRONMENT,
+  );
 
   return {
-    archivePath:
-      archivePath === undefined || archivePath.length === 0 ? DEFAULT_ARCHIVE_PATH : archivePath,
-    mediaRoot: readMediaRuntimeConfig(environment).root,
+    archivePath: catalogueImportArchivePath(environment),
+    mediaRoot: mediaRootForBaseDir(baseDir),
     expectedArchiveSha256,
     environmentIdentity,
   };

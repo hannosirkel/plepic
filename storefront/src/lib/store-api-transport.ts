@@ -1,6 +1,25 @@
 import { ConfigError } from "../config/env.js";
 
 const ALLOWED_PREFIXES = new Set(["store", "hooks", "static"]);
+
+/**
+ * The one directory under the served static root that is never product media.
+ *
+ * The catalogue-import Job mounts the assets PVC at the media root and, with
+ * `subPath: import`, at the archive staging path — the same volume seen twice.
+ * A staged `catalogue.tar.gz` is therefore also `static/import/catalogue.tar.gz`
+ * on the directory Medusa serves, and this storefront is what publishes that
+ * directory. The archive is a WooCommerce export carrying customer accounts,
+ * sessions and order history, and none of it may be downloadable from a public
+ * site hostname.
+ *
+ * The import disposing of the archive on every exit path is the fix; this is
+ * defence in depth. It is a refusal rather than a narrower allowlist because
+ * `/store-api/static/*` legitimately serves nested media paths, and it is
+ * matched case-insensitively so that the refusal does not depend on the
+ * case-sensitivity of whatever filesystem backs the volume.
+ */
+const REFUSED_STATIC_SEGMENTS = new Set(["import"]);
 const HOP_BY_HOP_HEADERS = [
   "connection",
   "keep-alive",
@@ -50,6 +69,12 @@ export function resolveStoreApiPath(pathname: string): string | null {
     return null;
   }
   if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
+    return null;
+  }
+  if (
+    namespace === "static" &&
+    segments.some((segment) => REFUSED_STATIC_SEGMENTS.has(segment.toLowerCase()))
+  ) {
     return null;
   }
 

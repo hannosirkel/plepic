@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CatalogueImportRefusal } from "../src/catalogue-import/refusal.js";
-import { runCatalogueImport } from "../src/catalogue-import/run.js";
+import { runCatalogueImport, type ExpectedImportIdentity } from "../src/catalogue-import/run.js";
 import type { CatalogueSeedTarget, SeedRecord } from "../src/catalogue-import/seed.js";
 import {
   boxImage,
@@ -44,7 +44,7 @@ const roots: string[] = [];
 async function workspace(archive: Buffer = validArchive()): Promise<{
   readonly archivePath: string;
   readonly mediaRoot: string;
-  readonly expected: { archiveSha256: string; environment: string };
+  readonly expected: ExpectedImportIdentity;
 }> {
   const root = await mkdtemp(join(tmpdir(), "plepic-import-"));
   roots.push(root);
@@ -260,7 +260,16 @@ describe("runCatalogueImport", () => {
     expect(await exists(place.mediaRoot)).toBe(false);
   });
 
-  it("refuses when no archive is staged, and when the expected values are unset", async () => {
+  /**
+   * The unset-expected-value half of this test used to live here, as
+   * `expected: {archiveSha256: undefined}`. It has moved to
+   * `tests/catalogue-import-command.test.ts`, which drives it through the
+   * command the Job runs. The type no longer admits the state at all: an
+   * unconfigured import is refused by the configuration gate, above this
+   * function, and proving it here proved nothing about the path production
+   * takes.
+   */
+  it("refuses when no archive is staged", async () => {
     const place = await workspace();
 
     await expect(
@@ -271,15 +280,6 @@ describe("runCatalogueImport", () => {
         now,
       }),
     ).rejects.toMatchObject({ reason: "archive-missing" });
-
-    await expect(
-      runCatalogueImport({
-        ...place,
-        expected: { archiveSha256: undefined, environment: undefined },
-        target: new RecordingTarget(),
-        now,
-      }),
-    ).rejects.toMatchObject({ reason: "expected-value-unset" });
   });
 
   it("never writes a media file outside the assets root", async () => {

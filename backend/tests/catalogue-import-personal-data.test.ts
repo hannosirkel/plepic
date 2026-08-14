@@ -72,6 +72,70 @@ describe("personal data refusal", () => {
     }
   });
 
+  it("refuses a personal-data section nested inside an accepted one", () => {
+    const nested: readonly { readonly name: string; readonly document: unknown }[] = [
+      {
+        name: "product.customers",
+        document: { ...manifest, product: { ...manifest.product, customers: [] } },
+      },
+      {
+        name: "product.orders",
+        document: { ...manifest, product: { ...manifest.product, orders: [] } },
+      },
+      {
+        name: "product.variant.sessions",
+        document: {
+          ...manifest,
+          product: {
+            ...manifest.product,
+            variant: { ...manifest.product.variant, sessions: [] },
+          },
+        },
+      },
+      {
+        name: "shippingZones[0].users",
+        document: {
+          ...manifest,
+          shippingZones: [{ ...manifest.shippingZones[0], users: [] }, manifest.shippingZones[1]],
+        },
+      },
+      {
+        name: "coupons[0].customers",
+        document: {
+          ...manifest,
+          coupons: [{ ...manifest.coupons[0], customers: [] }, manifest.coupons[1]],
+        },
+      },
+    ];
+
+    for (const { name, document } of nested) {
+      const error = refusal(() => {
+        assertNoPersonalData(readArchiveMembers(validArchive([], document)));
+      });
+      expect(error.reason, name).toBe("personal-data-present");
+    }
+  });
+
+  it("names the nested section without quoting anything inside it", () => {
+    const error = refusal(() => {
+      assertNoPersonalData(
+        readArchiveMembers(
+          validArchive([], {
+            ...manifest,
+            product: {
+              ...manifest.product,
+              customers: [{ email: "buyer@example.invalid", first_name: "Ada" }],
+            },
+          }),
+        ),
+      );
+    });
+
+    expect(error.message).toContain("customers");
+    expect(error.message).not.toContain("buyer@example.invalid");
+    expect(error.message).not.toContain("Ada");
+  });
+
   it("refuses a manifest section that is merely unrecognised, rather than ignoring it", () => {
     const error = refusal(() => {
       readCatalogueImportPlan(

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { MEDIA_PUBLIC_PREFIX, mediaPublicUrl, resolveMediaRequest } from "../src/catalogue-import/media.js";
 import { CatalogueImportRefusal } from "../src/catalogue-import/refusal.js";
-import { runCatalogueImport } from "../src/catalogue-import/run.js";
+import { runCatalogueImport, type ExpectedImportIdentity } from "../src/catalogue-import/run.js";
 import type { CatalogueSeedTarget, SeedRecord } from "../src/catalogue-import/seed.js";
 import { boxImage, sha256, validArchive } from "./helpers/catalogue-archive.js";
 
@@ -36,7 +36,7 @@ describe("media delivery contract", () => {
     const archivePath = join(root, "catalogue.tar.gz");
     const mediaRoot = join(root, "static");
     const archive = validArchive();
-    const expected = { archiveSha256: sha256(archive), environment: "test" };
+    const expected: ExpectedImportIdentity = { archiveSha256: sha256(archive), environment: "test" };
 
     // Import.
     await writeFile(archivePath, archive);

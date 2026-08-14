@@ -8,14 +8,25 @@ import {
   CatalogueImportRefusal,
   assertArchiveChecksum,
   assertEnvironmentIdentity,
+  type ImportEnvironmentIdentity,
 } from "./refusal.js";
 import { seedRecords, type CatalogueSeedTarget } from "./seed.js";
 
+/**
+ * The identity the archive must have, already validated.
+ *
+ * Both fields are required. They used to be optional, which let a test hand
+ * this function `{archiveSha256: undefined}` — a state the command cannot
+ * reach, because the configuration gate refuses it first — and call the result
+ * proof that an unconfigured import refuses. The type now says what production
+ * says: {@link assertExpectedArchiveDigest} and
+ * {@link assertExpectedEnvironmentIdentity} are the only producers.
+ */
 export interface ExpectedImportIdentity {
   /** 64 lowercase hex digits, from `CATALOGUE_IMPORT_ARCHIVE_SHA256`. */
-  readonly archiveSha256: string | undefined;
+  readonly archiveSha256: string;
   /** `live` or `test`, from `CATALOGUE_IMPORT_ENVIRONMENT`. */
-  readonly environment: string | undefined;
+  readonly environment: ImportEnvironmentIdentity;
 }
 
 export interface CatalogueImportInput {
@@ -54,6 +65,12 @@ async function readStagedArchive(path: string): Promise<Uint8Array> {
  * is gone after a successful import and after a failed or refused one alike: a
  * WooCommerce export sitting on a PVC is a liability whether or not the import
  * that was supposed to consume it worked.
+ *
+ * This `finally` covers only what happens once this function is entered. The
+ * disposal guarantee the deployment actually depends on belongs to the command
+ * in `src/scripts/catalogue-import.ts`, which disposes of the archive around
+ * the configuration read as well — a refusal raised before the first line here
+ * runs is still a refusal that must not leave the export staged.
  */
 export async function runCatalogueImport(
   input: CatalogueImportInput,

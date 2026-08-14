@@ -40,6 +40,23 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
     return data[0] as T | undefined;
   }
 
+  /**
+   * The lowest-identified row of an entity that has no natural key here.
+   *
+   * Three lookups — the default shipping profile, the default stock location
+   * and the fulfillment set — ask for "a" row rather than a named one, and an
+   * unordered query returns whichever row the database hands back first.
+   * PostgreSQL promises nothing about that order, so with a second row present
+   * a rerun could bind the product to a different shipping profile than the run
+   * before it, and the import would stop converging. Sorting by identifier is
+   * arbitrary but stable, which is the whole requirement.
+   */
+  private async lowestIdentified(entity: string): Promise<{ id: string } | undefined> {
+    const { data } = await this.query.graph({ entity, fields: ["id"], filters: {} });
+    const rows = (data as { id: string }[]).filter((row) => typeof row.id === "string");
+    return rows.sort((left, right) => left.id.localeCompare(right.id))[0];
+  }
+
   private async defaultSalesChannelId(): Promise<string> {
     const store = await this.one<{ default_sales_channel_id?: string | null }>(
       "store",
@@ -54,7 +71,7 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
   }
 
   private async defaultShippingProfileId(): Promise<string> {
-    const profile = await this.one<{ id: string }>("shipping_profile", ["id"], {});
+    const profile = await this.lowestIdentified("shipping_profile");
     if (profile === undefined) {
       throw new Error("No shipping profile exists; create one before importing the catalogue");
     }
@@ -62,7 +79,7 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
   }
 
   private async defaultStockLocationId(): Promise<string> {
-    const location = await this.one<{ id: string }>("stock_location", ["id"], {});
+    const location = await this.lowestIdentified("stock_location");
     if (location === undefined) {
       throw new Error("No stock location exists; create one before importing the catalogue");
     }
@@ -350,7 +367,7 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
     const existing = await this.one<{ id: string }>("service_zone", ["id"], { name });
     if (existing !== undefined) return existing.id;
 
-    const fulfillmentSet = await this.one<{ id: string }>("fulfillment_set", ["id"], {});
+    const fulfillmentSet = await this.lowestIdentified("fulfillment_set");
     if (fulfillmentSet === undefined) {
       throw new Error("No fulfillment set exists; create one before importing shipping zones");
     }

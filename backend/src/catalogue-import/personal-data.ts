@@ -84,13 +84,44 @@ export function assertNoPersonalData(members: readonly ArchiveMember[]): void {
     throw new CatalogueImportRefusal("malformed-archive", "manifest.json is not a JSON object");
   }
 
-  for (const key of Object.keys(document)) {
-    const refused = refusedSection(key);
-    if (refused !== null) {
-      throw new CatalogueImportRefusal(
-        "personal-data-present",
-        `the manifest declares a "${refused}" section; WordPress users, WooCommerce customer accounts, sessions and order history are never imported`,
-      );
+  assertNoRefusedKeyAnywhere(document);
+}
+
+/**
+ * Walks the whole manifest tree, not just its top level.
+ *
+ * Top-level detection alone accepted `product.customers`,
+ * `product.variant.sessions`, `shippingZones[0].users` and their like: the plan
+ * reader ignores keys it does not read, so none of it reached PostgreSQL, but
+ * the run reported success and deleted the archive, and the operator was left
+ * believing the export was clean. That is exactly the harm the refusal exists
+ * to prevent — the refusal is louder than a filter on purpose.
+ *
+ * The walk is iterative rather than recursive so that a deeply nested hostile
+ * manifest is a refusal rather than a stack overflow, and it visits arrays
+ * because a WooCommerce export nests its rows inside them.
+ */
+function assertNoRefusedKeyAnywhere(document: object): void {
+  const pending: unknown[] = [document];
+
+  while (pending.length > 0) {
+    const value = pending.pop();
+
+    if (Array.isArray(value)) {
+      pending.push(...value);
+      continue;
+    }
+    if (typeof value !== "object" || value === null) continue;
+
+    for (const [key, nested] of Object.entries(value)) {
+      const refused = refusedSection(key);
+      if (refused !== null) {
+        throw new CatalogueImportRefusal(
+          "personal-data-present",
+          `the manifest declares a "${refused}" section; WordPress users, WooCommerce customer accounts, sessions and order history are never imported`,
+        );
+      }
+      pending.push(nested);
     }
   }
 }

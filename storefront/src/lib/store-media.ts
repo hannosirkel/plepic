@@ -46,3 +46,67 @@ export function browserMediaUrls(values: readonly unknown[]): readonly string[] 
     return url === null ? [] : [url];
   });
 }
+
+/**
+ * Is this string a URL the file provider hands out, rather than one this module
+ * produced? Both forms count: the relative `/static/<file>` the seeded backend
+ * records, and any absolute URL whose path is under `/static/` — which is what
+ * `@medusajs/file-local` returns by default (`http://localhost:9000/static/…`)
+ * and what an S3 or CDN provider would return if one were ever configured.
+ *
+ * `/store-api/static/<file>` is not one: it does not start with `/static/`, and
+ * it is relative, so it has no origin to inspect.
+ */
+function isProviderMediaUrl(value: string): boolean {
+  if (value.startsWith(BACKEND_MEDIA_PREFIX)) return true;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
+  try {
+    return new URL(value).pathname.startsWith(BACKEND_MEDIA_PREFIX);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Refuses any product payload that carries a provider media URL, anywhere in
+ * it, and returns it otherwise.
+ *
+ * This is the render leg of the media delivery contract, enforced where the
+ * product data is built rather than where it is displayed. `browserMediaUrl`
+ * converts; this makes conversion the only way out. Nothing in the payload the
+ * storefront builds today can trip it — which is the point: it is what stops a
+ * later consumer adding `thumbnail: product.thumbnail` to that payload and
+ * quietly shipping a `http://localhost:9000/static/…` URL to a shopper's
+ * browser. Every future consumer of the Store seam inherits the refusal without
+ * having to know the contract exists.
+ *
+ * It throws where {@link browserMediaUrl} drops, and the difference is
+ * deliberate. Dropping is right for one hostile URL among a product's images —
+ * an odd image must not take the product page down. Throwing is right here,
+ * because a provider URL in this payload is not hostile data, it is a
+ * programming error in this repository, and it should stop CI rather than
+ * reach a browser.
+ */
+export function assertBrowserMediaOnly<T>(payload: T): T {
+  const pending: unknown[] = [payload];
+
+  while (pending.length > 0) {
+    const value = pending.pop();
+
+    if (typeof value === "string") {
+      if (isProviderMediaUrl(value)) {
+        throw new Error(
+          `refused to hand the browser a provider media URL; convert it with browserMediaUrl first`,
+        );
+      }
+      continue;
+    }
+    if (Array.isArray(value)) {
+      pending.push(...value);
+      continue;
+    }
+    if (typeof value === "object" && value !== null) pending.push(...Object.values(value));
+  }
+
+  return payload;
+}

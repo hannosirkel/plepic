@@ -890,16 +890,29 @@ file staged beside the archive — an archive that carries its own checksum prov
 only that it is internally consistent. When either is unset, empty or malformed
 the import refuses; an unconfigured import never proceeds.
 
-The staged archive is deleted after a successful import **and after a failed or
-refused one alike**. A WooCommerce export sitting on a PVC is a liability
-whether or not the import that was supposed to consume it worked.
+The staged archive is deleted on **every** exit path: after a successful import,
+after a failed one, and after a refusal raised before the import body runs at
+all — an unset or malformed expected value included. That last case is why the
+command resolves the archive path before it reads anything else.
+
+A WooCommerce export left on the assets PVC is not a stray file. The Job mounts
+the same volume at the media root and at the staging path, so a staged archive
+is also a file under the directory Medusa serves as `/static/*`. The storefront
+refuses that directory as a second lock: `/store-api/static/import/...` is 404ed
+without a backend request, in the same normalized way `/store-api/admin/*` is.
+Defence in depth, not the control the deployment relies on.
 
 | Variable | Required | Meaning |
 |---|---|---|
 | `CATALOGUE_IMPORT_ARCHIVE_SHA256` | yes | 64 lowercase hex digits; the expected archive digest |
 | `CATALOGUE_IMPORT_ENVIRONMENT` | yes | exactly `live` or `test`; must equal the archive's recorded identity |
 | `CATALOGUE_IMPORT_ARCHIVE_PATH` | no | defaults to `/var/lib/plepic/import/catalogue.tar.gz` |
-| `MEDIA_ROOT` | no | defaults to `/app/static`, the assets PVC mount |
+
+There is no media-root variable. The import writes to `<base>/static`, where
+`<base>` is the framework's own base directory — the same value
+`@medusajs/framework`'s express loader mounts `/static/*` from, and the same
+directory `@medusajs/file-local` defaults its `upload_dir` to. A variable there
+would only be a way for the three to disagree.
 
 ### Rerunning it
 
@@ -910,17 +923,32 @@ shipping option by zone and name — so applying the same record twice is applyi
 it once. Media is written to a `.plepic-import-partial` sibling and moved into
 place with one rename, and a file already present with identical bytes is left
 untouched. Running it twice leaves one product, one price, one stock figure and
-one copy of each media file; a run interrupted halfway can simply be run again.
+one copy of each media file, and a run interrupted halfway converges when it is
+run again.
+
+**Rerunning it means staging the archive again first.** The Job runs at
+`backoffLimit: 0`, so a failed attempt is not retried, and the import deletes
+the staged archive whether it succeeded or not. `kubectl cp` the archive back
+onto the PVC and unsuspend the Job again; the import's idempotency is about the
+state it converges to, not about the archive still being there.
 
 ### Media delivery
 
-Imported media lands on the assets PVC. Medusa's local file provider is pinned
-to that directory and serves it under `/static/*`, and stamps that relative path
-into every product image URL. The storefront exposes the same bytes at
-`/store-api/static/*` through its prefix allowlist, and
-`storefront/src/lib/store-media.ts` is the one place that converts one form into
-the other — so every product image URL the browser receives is that relative
-form, and a URL that is not one is dropped rather than forwarded.
+Imported media lands on the assets PVC, in `<base>/static` — the directory
+`@medusajs/framework` serves at `/static/*`, derived from the framework's own
+base directory rather than configured next to it. The import records that
+relative `/static/<file>` path in every product image URL it seeds. The
+storefront exposes the same bytes at `/store-api/static/*` through its prefix
+allowlist, and `storefront/src/lib/store-media.ts` is the one place that
+converts one form into the other — so every product image URL the browser
+receives is that relative form. A URL that is not one is dropped rather than
+forwarded, and product data that still carries a provider URL when it leaves the
+Store seam is refused outright, so a future page cannot reintroduce one.
+
+The File module itself is left at the framework's default. The import does not
+use it — it writes with `fs` and computes its own URLs — and pinning it bought
+nothing while breaking every Admin upload: `@medusajs/file-local` calls
+`new URL(backend_url)`, which a relative value cannot satisfy.
 
 A crafted filename cannot escape the assets root. The archive reader accepts
 only regular files and directories, so a symlink, a hard link, a device node and

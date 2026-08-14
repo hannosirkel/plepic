@@ -5,7 +5,10 @@ import {
   assertArchiveChecksum,
   assertEnvironmentIdentity,
 } from "../src/catalogue-import/refusal.js";
-import { readCatalogueImportRuntimeConfig } from "../src/config/runtime.js";
+import {
+  catalogueImportArchivePath,
+  readCatalogueImportRuntimeConfig,
+} from "../src/config/runtime.js";
 import { sha256 } from "./helpers/catalogue-archive.js";
 
 const archive = Buffer.from("synthetic-archive-bytes", "utf8");
@@ -53,16 +56,30 @@ describe("catalogue import refusal gate", () => {
     })).toBe("environment-identity-mismatch");
   });
 
+  /**
+   * Fail-closed is asserted through the configuration reader, because that is
+   * where the command meets it. It used to be asserted by handing
+   * `assertArchiveChecksum` an `undefined` expected value — a state the command
+   * cannot produce — and the branch that answered was unreachable from the real
+   * entry point. `tests/catalogue-import-command.test.ts` drives the same
+   * refusals through `npm run catalogue:import` itself.
+   */
   it("fails closed when either expected value is unset, empty or malformed", () => {
-    for (const expected of [undefined, "", "   ", "not-a-digest", digest.toUpperCase(), `${digest}0`]) {
+    for (const value of [undefined, "", "   ", "not-a-digest", digest.toUpperCase(), `${digest}0`]) {
       expect(refusalReason(() => {
-        assertArchiveChecksum(archive, expected);
+        readCatalogueImportRuntimeConfig(
+          { CATALOGUE_IMPORT_ARCHIVE_SHA256: value, CATALOGUE_IMPORT_ENVIRONMENT: "test" },
+          "/app",
+        );
       })).toBe("expected-value-unset");
     }
 
-    for (const expected of [undefined, "", "   "]) {
+    for (const value of [undefined, "", "   ", "staging", "Live", "live test"]) {
       expect(refusalReason(() => {
-        assertEnvironmentIdentity("test", expected);
+        readCatalogueImportRuntimeConfig(
+          { CATALOGUE_IMPORT_ARCHIVE_SHA256: digest, CATALOGUE_IMPORT_ENVIRONMENT: value },
+          "/app",
+        );
       })).toBe("expected-value-unset");
     }
   });
@@ -82,8 +99,8 @@ describe("readCatalogueImportRuntimeConfig", () => {
     CATALOGUE_IMPORT_ENVIRONMENT: "test",
   };
 
-  it("defaults the staged archive and media paths to the Job's mount points", () => {
-    expect(readCatalogueImportRuntimeConfig(environment)).toEqual({
+  it("defaults the staged archive path to the Job's mount point and derives the media root", () => {
+    expect(readCatalogueImportRuntimeConfig(environment, "/app")).toEqual({
       archivePath: "/var/lib/plepic/import/catalogue.tar.gz",
       mediaRoot: "/app/static",
       expectedArchiveSha256: digest,
@@ -92,33 +109,53 @@ describe("readCatalogueImportRuntimeConfig", () => {
   });
 
   it("names the missing variable rather than proceeding unconfigured", () => {
-    expect(() => readCatalogueImportRuntimeConfig({})).toThrow(
+    expect(() => readCatalogueImportRuntimeConfig({}, "/app")).toThrow(
       /CATALOGUE_IMPORT_ARCHIVE_SHA256/,
     );
     expect(() =>
-      readCatalogueImportRuntimeConfig({ CATALOGUE_IMPORT_ARCHIVE_SHA256: digest }),
+      readCatalogueImportRuntimeConfig({ CATALOGUE_IMPORT_ARCHIVE_SHA256: digest }, "/app"),
     ).toThrow(/CATALOGUE_IMPORT_ENVIRONMENT/);
   });
 
   it("rejects a malformed digest and an unrecognised environment identity", () => {
     expect(() =>
-      readCatalogueImportRuntimeConfig({ ...environment, CATALOGUE_IMPORT_ARCHIVE_SHA256: "abc" }),
+      readCatalogueImportRuntimeConfig(
+        { ...environment, CATALOGUE_IMPORT_ARCHIVE_SHA256: "abc" },
+        "/app",
+      ),
     ).toThrow(/CATALOGUE_IMPORT_ARCHIVE_SHA256/);
     expect(() =>
-      readCatalogueImportRuntimeConfig({ ...environment, CATALOGUE_IMPORT_ENVIRONMENT: "staging" }),
+      readCatalogueImportRuntimeConfig(
+        { ...environment, CATALOGUE_IMPORT_ENVIRONMENT: "staging" },
+        "/app",
+      ),
     ).toThrow(/CATALOGUE_IMPORT_ENVIRONMENT/);
   });
 
-  it("takes the staged archive path and media root from configuration when supplied", () => {
+  it("takes the staged archive path from configuration when supplied", () => {
     expect(
-      readCatalogueImportRuntimeConfig({
-        ...environment,
-        CATALOGUE_IMPORT_ARCHIVE_PATH: "/var/lib/plepic/import/other.tar.gz",
-        MEDIA_ROOT: "/app/assets",
-      }),
+      readCatalogueImportRuntimeConfig(
+        { ...environment, CATALOGUE_IMPORT_ARCHIVE_PATH: "/var/lib/plepic/import/other.tar.gz" },
+        "/srv/medusa",
+      ),
     ).toMatchObject({
       archivePath: "/var/lib/plepic/import/other.tar.gz",
-      mediaRoot: "/app/assets",
+      mediaRoot: "/srv/medusa/static",
     });
+  });
+
+  /**
+   * The command has to know which file to dispose of before it knows whether it
+   * is configured well enough to run at all, or a configuration refusal leaves
+   * the staged WooCommerce export on the assets PVC.
+   */
+  it("resolves the staged archive path without judging anything else", () => {
+    expect(catalogueImportArchivePath({})).toBe("/var/lib/plepic/import/catalogue.tar.gz");
+    expect(catalogueImportArchivePath({ CATALOGUE_IMPORT_ARCHIVE_PATH: "  " })).toBe(
+      "/var/lib/plepic/import/catalogue.tar.gz",
+    );
+    expect(
+      catalogueImportArchivePath({ CATALOGUE_IMPORT_ARCHIVE_PATH: "/tmp/staged.tar.gz" }),
+    ).toBe("/tmp/staged.tar.gz");
   });
 });
