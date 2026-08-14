@@ -1,0 +1,62 @@
+# The build context for `storefront/Dockerfile`, which is the repository root.
+#
+# BuildKit reads this file because it is named after the Dockerfile and sits
+# beside it; a plain `storefront/.dockerignore` would be read only if the
+# context were `storefront/`, which it cannot be — the application imports
+# `content/` and `design/` by relative path and its dependency tree comes from
+# the workspace lockfile at the repository root. `scripts/images.test.ts`
+# asserts the name.
+
+# Build output and dependency trees. Every one of these is produced inside the
+# image from the lockfile; a copy from the developer's machine would silently
+# replace it with whatever that machine happens to have — and a stale `.next`
+# copied into the context is the classic way a build-time value from somebody's
+# workstation ends up in a published image.
+**/node_modules
+**/.next
+**/.next-test
+**/.medusa
+**/coverage
+**/*.tsbuildinfo
+
+# Version control, CI definitions and hooks. None of it is application code.
+.git
+.gitignore
+.githooks
+.github
+
+# Tests, fixtures and the committed screenshot baselines — 5.9 MB of PNGs that
+# exist to be compared in CI, never to be served.
+**/tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/vitest.config.ts
+**/vitest.config.mts
+**/playwright.config.ts
+
+# Design masters. `storefront/public/` carries web derivatives only, held to a
+# byte ceiling by `storefront/tests/no-live-hostname.test.ts`; a master that
+# ever does get committed by mistake must not also reach a published image.
+**/*.psd
+**/*.ai
+**/*.sketch
+**/*.fig
+**/*.xcf
+**/*.afdesign
+**/*.afphoto
+**/*.tif
+**/*.tiff
+
+# Prose, plans and local environment files.
+**/*.md
+docs
+**/.env
+**/.env.*
+
+# The other workspace. Its `package.json` is re-included because npm reads
+# every workspace manifest before it resolves anything, even when installing
+# only this one.
+backend
+!backend/package.json

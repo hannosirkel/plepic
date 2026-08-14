@@ -849,6 +849,95 @@ npm run typecheck
 npm run test:unit
 ```
 
+## Running the stack locally
+
+`compose.yaml` brings up PostgreSQL, Redis, an SMTP sink, the backend and the
+storefront, so the commerce path can be exercised without a cluster:
+
+```bash
+docker compose up --build
+docker compose down --volumes
+```
+
+The storefront is then on <http://localhost:3000>, the backend on
+<http://localhost:9000>, and whatever the backend tried to send is readable in
+Mailpit on <http://127.0.0.1:8025>. Every published port is bound to
+`127.0.0.1`. Both application services build from the same Dockerfiles CI
+publishes, so a local run exercises the image rather than a `next dev` server
+that resembles it.
+
+The data services are pinned to the **same digests** as the StatefulSets in
+`hannosirkel/deploys` and as the service containers in
+`.github/workflows/validate.yml` — `scripts/images.test.ts` asserts the files
+in this repository agree, and `compose.yaml` records the agreement with the
+fourth. A local run against a different PostgreSQL major version than the
+cluster runs proves less than it appears to.
+
+**There is no credential in `compose.yaml`.** The local PostgreSQL uses `trust`
+authentication and has no password at all; the local Redis is given the
+project's own name. Everything that is a real credential in a real environment
+is an obvious placeholder, and a developer who needs a working one exports it
+before `docker compose up`:
+
+```bash
+export STRIPE_SECRET_KEY=…            # a Stripe sandbox key
+export MEDUSA_PUBLISHABLE_API_KEY=…   # created against the local database
+```
+
+Two things the local stack deliberately does not paper over. The backend needs
+its database migrated before it will serve, and the migration is the predeploy
+step the cluster runs as a Job rather than something `compose.yaml` does behind
+your back. And the SMTP sender does `requireTLS: true` with certificate
+verification, which is not relaxed for local convenience — Mailpit accepts the
+connection, and to complete a delivery give it a certificate
+(`MP_SMTP_TLS_CERT`, `MP_SMTP_TLS_KEY`) and the backend a `NODE_EXTRA_CA_CERTS`
+that trusts it.
+
+## Images
+
+Two images, both built from the **repository root** because this is an npm
+workspace and the tree they install is the one `package-lock.json` describes:
+
+| Image | Dockerfile | Runs |
+|---|---|---|
+| `ghcr.io/hannosirkel/plepic-backend` | `backend/Dockerfile` | the API, the worker, the predeploy migration Job and the catalogue-import Job — one image, four argument lists |
+| `ghcr.io/hannosirkel/plepic-storefront` | `storefront/Dockerfile` | the Next.js server, built with `output: "standalone"` |
+
+Both pin their base image by digest, run as UID 10001 — the `runAsUser` every
+`deploys` workload gives them — and clear the `node` base image's
+`ENTRYPOINT`, because the manifests choose what a container runs with `args:`
+and Kubernetes `args` replaces `CMD` while leaving an `ENTRYPOINT` prefixed.
+
+**Neither declares a build argument.** Next.js inlines every `NEXT_PUBLIC_*`
+value at build time, so a build argument is exactly how a publishable key, a
+base URL, a measurement ID or a site key would end up baked into an image that
+has to serve both environments. Refusing the mechanism is what makes that a
+property of the files rather than of a reviewer:
+`storefront/tests/no-next-public-env.test.ts` holds the source to it,
+`storefront/tests/build-and-serve.test.ts` builds the application with a unique
+canary for every declared variable and greps the output for each one, and
+`scripts/images.test.ts` holds the Dockerfiles to it.
+
+**The backend image's working directory is `/app`, and a test says so.** The
+catalogue import derives its media root from Medusa's own base directory —
+`<base>/static` — rather than from a variable, so that the import writes
+exactly where Medusa serves; the `deploys` manifests mount the assets PVC at
+`/app/static` with `subPath: media`. Those two facts meet only at `/app`. A
+base image that moved the working directory would leave imported media on the
+container's own filesystem under a path no volume backs: it would upload, it
+would render in the pod that wrote it, and it would vanish on the next restart
+— with nothing in CI failing, because CI never mounts a PVC.
+
+The ignore-files are named `backend/Dockerfile.dockerignore` and
+`storefront/Dockerfile.dockerignore`, which is not a stylistic choice. With a
+build context of `.` and `--file backend/Dockerfile`, BuildKit reads
+`<dockerfile>.dockerignore` beside the Dockerfile and otherwise falls back to
+`.dockerignore` at the **context root**; a `backend/.dockerignore` would be
+read by nothing at all, while sitting in the tree looking authoritative. They
+exclude dependency trees, build output, tests and the committed screenshot
+baselines, and name the design-master file formats so that a master committed
+by mistake cannot also reach a published image.
+
 ## Catalogue import
 
 `npm run catalogue:import`, in the `backend` workspace, seeds a Medusa
@@ -995,6 +1084,24 @@ history, using a pinned and checksum-verified `gitleaks` release. Every
 GitHub Action is pinned by commit SHA, and the workflow is granted
 `contents: read` only.
 
+### Service containers
+
+The validation job declares PostgreSQL, Redis and an SMTP sink as service
+containers, digest-pinned to the same images `compose.yaml` uses, reachable at
+`127.0.0.1` on 5432, 6379 and 587. **No suite consumes them yet** — the suites
+this repository has today are pure, and
+`storefront/tests/build-and-serve.test.ts` starts the servers it needs itself.
+They are declared ahead of the first suite that needs one because those
+addresses are the contract such a suite is written against, and because a
+service introduced alongside the suite that first uses it cannot be told apart
+from that suite when it fails.
+
+PostgreSQL uses `trust` authentication, so there is no password in the
+workflow. Redis runs unauthenticated in CI and authenticated in `compose.yaml`:
+GitHub Actions service containers cannot override a container's command, so
+`--requirepass` is not expressible there. What the two are held to being
+identical about is the image.
+
 ### Promotion to the test environment
 
 `.github/workflows/deploy-test.yml` publishes a pull request's head revision
@@ -1041,6 +1148,45 @@ well-formed digest lines, so those tests replace the rewriter with a stub that
 writes chosen bytes and reports a chosen count. That leaves the post-write
 checks as the only thing between the stub and the repository, which is what
 they are for: delete any one of them and one of those tests goes red.
+
+### Promotion to the live environment
+
+`.github/workflows/release.yml` runs on every push to `main`. **Once it is on
+`main`, every merge to `main` is a live deployment**: there is no label, no
+second gate and no approval beyond the `live` GitHub Environment. It validates
+the pushed revision, builds and publishes both images with
+`--provenance=mode=min --sbom=true`, scans both published digests with a pinned
+Trivy that exits non-zero on a CRITICAL finding, and writes them into
+`plepic/overlays/live/kustomization.yaml` in `hannosirkel/deploys` with the
+commit message `deploy(live): <source-sha> <backend-digest>
+<storefront-digest>`. Before it pushes, it re-runs `plepic/tests/manifests.sh`
+and both `kubectl kustomize` renders in the checkout it is about to commit.
+
+**What is approved is a source revision, not a digest.** Live is rebuilt from
+merged `main` rather than re-tagging the digest the test environment was
+approved on, so the two digests differ. That is acceptable only because no
+per-environment value is baked into an image: the same source produces an image
+that serves either environment, and the locked dependency tree plus
+digest-pinned base images keep the rebuild faithful.
+
+It shares the `plepic-gitops-promotion` concurrency group with
+`deploy-test.yml`, so a live promotion and a test promotion never write those
+overlays at the same time, and it uses the same job split for the same reasons:
+`gate` checks out nothing and reads the guard through the API, `build` runs
+repository code but holds no GitOps credential, and `promote` holds the
+credential — a GitHub App token minted for `deploys` alone — but brings no code
+into the job that holds it.
+
+That last property is enforced rather than described. `scripts/workflows.test.ts`
+folds every `run:` body in a promoting job into logical commands, drops comment
+lines, and holds what is left to an **allowlist** of the git subcommands the
+job actually runs — `config`, `add`, `diff`, `commit`, `push`, with `-C <path>`
+tolerated — plus a refusal of the `gh` CLI, a download piped into an
+interpreter, any Node package manager and any container build. It also refuses
+`${{ … }}` in *every* `run:` body in *every* workflow: an expression is
+substituted into the script before a shell sees it, so text from a pull request
+would become shell in a credentialed job. Values reach a script through `env:`,
+where they arrive as variables and stay data.
 
 ### Browser screenshots
 

@@ -1,0 +1,344 @@
+---
+name: Release
+
+# Promotes merged `main` into the live environment.
+#
+# **Once this file exists, every merge to `main` is a live deployment.** There
+# is no label, no second gate and no manual approval step beyond the `live`
+# GitHub Environment: the merge is the approval, and what is approved is a
+# source revision rather than a digest. Live is rebuilt from merged `main`
+# instead of re-tagging the digest the test environment was approved on, so the
+# two digests differ. That is only acceptable because no per-environment value
+# is ever baked into an image — the same source produces an image that serves
+# either environment, and the locked dependency tree plus digest-pinned base
+# images keep the rebuild faithful.
+#
+# It shares `concurrency: plepic-gitops-promotion` with `deploy-test.yml`, so a
+# live promotion and a test promotion never write the `deploys` repository at
+# the same time.
+#
+# The job split is the same one `deploy-test.yml` uses, and for the same
+# reason: `gate` checks out no code and reads the reviewed guard through the
+# API; `build` runs repository code but holds no GitOps credential; `promote`
+# holds the credential — a GitHub App token minted for `hannosirkel/deploys`
+# alone — but brings no code into the job that holds it. `scripts/workflows.test.ts`
+# asserts every one of those against the parsed document.
+
+'on':
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: plepic-gitops-promotion
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    # The same three service containers `validate.yml` declares, pinned to the
+    # same digests, so `Release` validates against the world every pull request
+    # was validated against. `scripts/images.test.ts` asserts they stay
+    # identical.
+    services:
+      postgresql:
+        # postgres:17.10-bookworm
+        image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+        env:
+          POSTGRES_USER: plepic
+          POSTGRES_DB: plepic
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U plepic -d plepic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        # redis:7.4.6-bookworm
+        image: redis:7.4.6-bookworm@sha256:a9cc41d6d01da2aa26c219e4f99ecbeead955a7b656c1c499cce8922311b2514
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      smtp:
+        # axllent/mailpit:v1.30.7
+        image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+        env:
+          MP_SMTP_BIND_ADDR: 0.0.0.0:587
+          MP_UI_BIND_ADDR: 0.0.0.0:8025
+          MP_SMTP_AUTH_ACCEPT_ANY: "true"
+          MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+          MP_MAX_MESSAGES: "500"
+        ports:
+          - 587:587
+          - 8025:8025
+    env:
+      DATABASE_URL: postgres://plepic@127.0.0.1:5432/plepic
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "587"
+    steps:
+      - name: Check out the pushed revision
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run canonical validation
+        run: |
+          set -euo pipefail
+          bash scripts/validate
+
+  gate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      guard: ${{ steps.verify.outputs.guard }}
+      source_sha: ${{ steps.verify.outputs.source_sha }}
+    steps:
+      - name: Read the digest guard from the pushed revision
+        id: verify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          api='https://api.github.com'
+          headers=(
+            --header "Authorization: Bearer $GITHUB_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          printf '%s' "$SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$'
+
+          # Read rather than check out. The guard is the one file from this
+          # repository the credentialed job executes, and fetching it as bytes
+          # is what keeps that job free of a working tree it could run
+          # anything else from.
+          guard_response="$(curl --fail --silent --show-error "${headers[@]}" \
+            "${api}/repos/${REPOSITORY}/contents/scripts/update-gitops-digest.sh?ref=${SOURCE_SHA}")"
+          jq -e '
+            .type == "file" and
+            .encoding == "base64" and
+            (.content | type == "string")
+          ' >/dev/null <<<"$guard_response"
+          guard="$RUNNER_TEMP/update-gitops-digest.sh"
+          trap 'rm -f -- "$guard"' EXIT
+          jq -er '.content | gsub("\\n"; "")' <<<"$guard_response" \
+            | base64 --decode >"$guard"
+          grep -qx '#!/bin/sh' "$guard"
+          guard_content="$(base64 --wrap=0 "$guard")"
+
+          echo "source_sha=$SOURCE_SHA" >>"$GITHUB_OUTPUT"
+          echo "guard=$guard_content" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: [validate, gate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_digest: ${{ steps.build.outputs.backend_digest }}
+      storefront_digest: ${{ steps.build.outputs.storefront_digest }}
+    env:
+      SOURCE_SHA: ${{ needs.gate.outputs.source_sha }}
+    steps:
+      - name: Check out the validated revision
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.gate.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Set up the attestation-capable Buildx driver
+        # docker/setup-buildx-action v4.2.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Build and publish both images
+        id: build
+        env:
+          BACKEND_IMAGE: ghcr.io/hannosirkel/plepic-backend
+          STOREFRONT_IMAGE: ghcr.io/hannosirkel/plepic-storefront
+        run: |
+          set -euo pipefail
+          publish() {
+            image="$1"
+            dockerfile="$2"
+            output="$3"
+            metadata="$RUNNER_TEMP/${output}.json"
+            docker buildx build --platform linux/amd64 \
+              --provenance=mode=min --sbom=true \
+              --file "$dockerfile" \
+              --tag "${image}:sha-${SOURCE_SHA}" \
+              --push --metadata-file "$metadata" .
+            digest="$(jq -er '."containerimage.digest"' "$metadata")"
+            printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+            echo "${output}=$digest" >>"$GITHUB_OUTPUT"
+          }
+          publish "$BACKEND_IMAGE" backend/Dockerfile backend_digest
+          publish "$STOREFRONT_IMAGE" storefront/Dockerfile storefront_digest
+
+      - name: Scan the published backend digest
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: ghcr.io/hannosirkel/plepic-backend@${{ steps.build.outputs.backend_digest }}
+          format: json
+          output: trivy-backend.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          scanners: vuln
+          version: v0.70.0
+
+      - name: Scan the published storefront digest
+        # aquasecurity/trivy-action v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: ghcr.io/hannosirkel/plepic-storefront@${{ steps.build.outputs.storefront_digest }}
+          format: json
+          output: trivy-storefront.json
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          scanners: vuln
+          version: v0.70.0
+
+      - name: Retain the vulnerability reports
+        if: ${{ always() && hashFiles('trivy-backend.json', 'trivy-storefront.json') != '' }}
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: trivy-live-${{ needs.gate.outputs.source_sha }}
+          path: |
+            trivy-backend.json
+            trivy-storefront.json
+          if-no-files-found: error
+          retention-days: 7
+
+  promote:
+    needs: [validate, gate, build]
+    runs-on: ubuntu-24.04
+    environment: live
+    permissions: {}
+    env:
+      BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+      STOREFRONT_DIGEST: ${{ needs.build.outputs.storefront_digest }}
+      SOURCE_SHA: ${{ needs.gate.outputs.source_sha }}
+    steps:
+      - name: Mint repository-scoped GitHub App token
+        id: app-token
+        env:
+          APP_CLIENT_ID: ${{ secrets.PLEPIC_DEPLOYER_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.PLEPIC_DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/plepic-deployer.pem"
+          trap 'rm -f -- "$key"' EXIT
+          printf '%s' "$APP_PRIVATE_KEY" >"$key"
+
+          b64url() {
+            openssl base64 -A | tr '+/' '-_' | tr -d '='
+          }
+          now="$(date +%s)"
+          header="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+          payload="$(jq -cn --arg iss "$APP_CLIENT_ID" \
+            --argjson iat "$((now - 60))" --argjson exp "$((now + 540))" \
+            '{iat:$iat,exp:$exp,iss:$iss}' | b64url)"
+          unsigned="${header}.${payload}"
+          signature="$(printf '%s' "$unsigned" \
+            | openssl dgst -sha256 -sign "$key" -binary | b64url)"
+          jwt="${unsigned}.${signature}"
+          github_api=https://api.github.com
+          repository=hannosirkel/deploys
+
+          installation_id="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer $jwt" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${github_api}/repos/${repository}/installation" \
+            | jq -er '.id')"
+          token="$(curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer $jwt" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --header 'Content-Type: application/json' \
+            --data '{"repositories":["deploys"]}' \
+            "${github_api}/app/installations/${installation_id}/access_tokens" \
+            | jq -er '.token')"
+          echo "::add-mask::$token"
+          echo "token=$token" >>"$GITHUB_OUTPUT"
+
+      - name: Check out only the GitOps state
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: hannosirkel/deploys
+          token: ${{ steps.app-token.outputs.token }}
+          path: gitops
+          persist-credentials: false
+
+      - name: Apply the exact live image digests
+        env:
+          GUARD_CONTENT: ${{ needs.gate.outputs.guard }}
+        run: |
+          set -euo pipefail
+          guard="$RUNNER_TEMP/update-gitops-digest.sh"
+          printf '%s' "$GUARD_CONTENT" | base64 --decode >"$guard"
+          chmod 0700 "$guard"
+          "$guard" "$BACKEND_DIGEST" "$STOREFRONT_DIGEST" "$GITHUB_WORKSPACE/gitops/plepic/overlays/live"
+
+      - name: Commit and push the GitOps update
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        working-directory: gitops
+        run: |
+          set -euo pipefail
+          git config user.name 'plepic-deployer[bot]'
+          git config user.email \
+            'plepic-deployer[bot]@users.noreply.github.com'
+          bash plepic/tests/manifests.sh
+          kubectl kustomize plepic/overlays/live >/dev/null
+          kubectl kustomize plepic/overlays/test >/dev/null
+          git diff --check
+          git add plepic/overlays/live/kustomization.yaml
+          staged="$(git diff --cached --name-only)"
+          if [ -z "$staged" ]; then
+            echo 'live overlay already records both digests: nothing to promote'
+            exit 0
+          fi
+          [ "$staged" = 'plepic/overlays/live/kustomization.yaml' ]
+          git diff --cached --check
+          git commit -m \
+            "deploy(live): ${SOURCE_SHA} ${BACKEND_DIGEST} ${STOREFRONT_DIGEST}"
+          git push "https://x-access-token:${APP_TOKEN}@github.com/hannosirkel/deploys.git" \
+            HEAD:main
