@@ -196,9 +196,15 @@ export function catalogueImportArchivePath(environment: RuntimeEnvironment): str
  * comment: there is no `MEDIA_ROOT` to set to a fourth directory. The Job
  * mounts the assets PVC at the app root's `static`, so the same derivation is
  * what puts the files on the volume.
+ *
+ * `configManager.baseDir` is typed `string` but is `undefined` until a config
+ * is loaded, so the parameter is widened to say so. Guarding only `""` left an
+ * unloaded config manager raising `TypeError: Cannot read properties of
+ * undefined (reading 'trim')` — the archive was still disposed of, but the
+ * operator was told about a dereference rather than about the base directory.
  */
-export function mediaRootForBaseDir(baseDir: string): string {
-  if (baseDir.trim().length === 0) {
+export function mediaRootForBaseDir(baseDir: string | undefined): string {
+  if (typeof baseDir !== "string" || baseDir.trim().length === 0) {
     throw new Error("The Medusa base directory is not known; the media root cannot be derived");
   }
   return join(baseDir, "static");
@@ -217,7 +223,7 @@ export function mediaRootForBaseDir(baseDir: string): string {
  */
 export function readCatalogueImportRuntimeConfig(
   environment: RuntimeEnvironment,
-  baseDir: string,
+  baseDir: string | undefined,
 ): CatalogueImportRuntimeConfig {
   const expectedArchiveSha256 = assertExpectedArchiveDigest(
     environment.CATALOGUE_IMPORT_ARCHIVE_SHA256,

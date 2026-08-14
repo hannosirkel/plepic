@@ -1,9 +1,10 @@
-import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { StagedArchiveDisposalFailure } from "../src/catalogue-import/disposal.js";
 import { CatalogueImportRefusal } from "../src/catalogue-import/refusal.js";
 import { runCatalogueImport, type ExpectedImportIdentity } from "../src/catalogue-import/run.js";
 import type { CatalogueSeedTarget, SeedRecord } from "../src/catalogue-import/seed.js";
@@ -69,6 +70,7 @@ async function exists(path: string): Promise<boolean> {
 
 afterEach(() => {
   roots.length = 0;
+  vi.restoreAllMocks();
 });
 
 describe("runCatalogueImport", () => {
@@ -229,6 +231,26 @@ describe("runCatalogueImport", () => {
       runCatalogueImport({ ...failed, target: new RecordingTarget(0), now }),
     ).rejects.toThrow(/synthetic interruption/);
     expect(await exists(failed.archivePath)).toBe(false);
+  });
+
+  it("fails the run when a successful import cannot dispose of the staged archive", async () => {
+    const place = await workspace();
+    const staging = await mkdtemp(join(tmpdir(), "plepic-import-staging-"));
+    const archivePath = join(staging, "catalogue.tar.gz");
+    await copyFile(place.archivePath, archivePath);
+    await chmod(staging, 0o500);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      // Nothing else refused, so the leak is the only thing to report and it is
+      // reported by failing: a Job that seeded the catalogue and left the
+      // WooCommerce export on the served volume did not succeed.
+      await expect(
+        runCatalogueImport({ ...place, archivePath, target: new RecordingTarget(), now }),
+      ).rejects.toBeInstanceOf(StagedArchiveDisposalFailure);
+    } finally {
+      await chmod(staging, 0o700);
+    }
   });
 
   it("refuses before touching the media root when the checksum does not match", async () => {

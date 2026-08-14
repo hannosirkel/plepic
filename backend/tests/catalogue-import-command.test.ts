@@ -1,11 +1,12 @@
-import { mkdtemp, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { configManager } from "@medusajs/framework/config";
 import type { MedusaContainer } from "@medusajs/framework/types";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { StagedArchiveDisposalFailure } from "../src/catalogue-import/disposal.js";
 import { CatalogueImportRefusal } from "../src/catalogue-import/refusal.js";
 import catalogueImport from "../src/scripts/catalogue-import.js";
 import { sha256, validArchive } from "./helpers/catalogue-archive.js";
@@ -62,8 +63,12 @@ beforeEach(async () => {
   process.env.CATALOGUE_IMPORT_ENVIRONMENT = "test";
 });
 
-afterEach(() => {
+afterEach(async () => {
   process.env = previousEnvironment;
+  vi.restoreAllMocks();
+  // A test that made the staging directory unwritable must not leave it that
+  // way, or the temporary tree cannot be cleaned up.
+  await chmod(root, 0o700);
 });
 
 async function refusalFrom(): Promise<CatalogueImportRefusal> {
@@ -162,5 +167,50 @@ describe("the catalogue:import command", () => {
 
     expect(error.reason).toBe("archive-missing");
     expect(await exists(join(root, "absent.tar.gz"))).toBe(false);
+  });
+
+  /**
+   * Disposal has to survive a mis-staged archive, and it must never become the
+   * only thing the operator hears about.
+   *
+   * `kubectl cp` of a *directory* onto the archive path is an easy operator
+   * slip, and a staging directory the Job cannot unlink from is an ordinary
+   * permissions accident. In both cases the interesting fact is the refusal
+   * that stopped the import; a raw `EISDIR` or `EACCES` arriving in its place
+   * loses it, and — in the directory case — leaves the WooCommerce export
+   * staged on the volume Medusa serves as its static root.
+   */
+  describe("disposing of the staged archive", () => {
+    it("removes a mis-staged directory as readily as a file", async () => {
+      const staged = join(root, "mis-staged");
+      await mkdir(join(staged, "wp-content"), { recursive: true });
+      await writeFile(join(staged, "wp-content", "export.json"), "{}");
+      process.env.CATALOGUE_IMPORT_ARCHIVE_PATH = staged;
+
+      const error = await refusalFrom();
+
+      expect(error.reason).toBe("archive-missing");
+      expect(
+        await exists(staged),
+        "a directory mis-staged onto the archive path survived the refusal",
+      ).toBe(false);
+    });
+
+    it("reports a disposal failure alongside the refusal, never instead of it", async () => {
+      const reported = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      process.env.CATALOGUE_IMPORT_ARCHIVE_SHA256 = otherDigest;
+      // The staging directory is not writable, so unlinking the archive from it
+      // fails however the removal is spelled.
+      await chmod(root, 0o500);
+
+      const error = await refusalFrom();
+
+      expect(error.reason).toBe("archive-checksum-mismatch");
+      expect(error.cause).toBeInstanceOf(StagedArchiveDisposalFailure);
+      expect((error.cause as StagedArchiveDisposalFailure).archivePath).toBe(archivePath);
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(String(reported.mock.calls[0]?.[0])).toContain(archivePath);
+      expect(await exists(archivePath)).toBe(true);
+    });
   });
 });

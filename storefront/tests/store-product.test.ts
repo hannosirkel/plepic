@@ -144,17 +144,77 @@ describe("Store catalogue boundary", () => {
       expect(JSON.stringify(loaded)).not.toContain("cdn.example.invalid");
     });
 
-    it("refuses a product payload that carries a provider URL, wherever it sits", () => {
+    it("refuses a provider URL in any media-bearing field, however deep", () => {
       for (const payload of [
         { thumbnail: "/static/lunar-base-box.webp" },
         { catalogue: { hero: "http://localhost:9000/static/admin-upload.webp" } },
         { imageUrls: ["/store-api/static/ok.webp", "/static/leaked.webp"] },
-        { nested: [{ deeper: { url: "https://cdn.example.invalid/static/leaked.webp" } }] },
+        { catalogue: { images: [{ url: "https://cdn.example.invalid/static/leaked.webp" }] } },
       ]) {
         expect(() => assertBrowserMediaOnly(payload), JSON.stringify(payload)).toThrow(
           /provider media URL/,
         );
       }
+    });
+
+    /**
+     * The backstop has to cover the origins it claims to cover.
+     *
+     * Matching only `/static/` caught what `@medusajs/file-local` hands out and
+     * nothing else: an S3 URL, a CDN URL and a protocol-relative
+     * `//host/static/…` all passed it. `browserMediaUrl` dropped them on the
+     * live path, so nothing leaked — but the guard that is supposed to catch a
+     * future consumer forwarding one unconverted did not catch these at all.
+     */
+    it("refuses an absolute media URL whatever its origin and path", () => {
+      for (const url of [
+        // The shape an S3-style provider hands out: a bucket origin of its own
+        // and a path that owes nothing to `/static/`.
+        "https://plepic-assets.s3.example.invalid/uploads/box.webp",
+        "https://cdn.example.invalid/media/box.webp",
+        "//cdn.example.invalid/static/box.webp",
+        "http://localhost:9000/static/box.webp",
+        "HTTPS://CDN.EXAMPLE.INVALID/box.webp",
+      ]) {
+        expect(() => assertBrowserMediaOnly({ imageUrls: [url] }), url).toThrow(
+          /provider media URL/,
+        );
+        expect(() => assertBrowserMediaOnly({ thumbnail: url }), url).toThrow(
+          /provider media URL/,
+        );
+      }
+    });
+
+    /**
+     * And it must not cover what it never claimed to.
+     *
+     * `product.title` is Admin-editable text that arrives from Medusa, so a
+     * product retitled `/static/anything` is ordinary catalogue data. Walking
+     * every string in the payload turned that into a thrown error on the one
+     * canonical product page — a page taken down by a title.
+     */
+    it("leaves catalogue text alone, including a product retitled like a media path", async () => {
+      const retitled = {
+        products: [{
+          ...withMedia.products[0],
+          title: "/static/anything",
+        }],
+      };
+
+      const loaded = await loadWith(retitled);
+
+      expect(loaded.catalogue.name).toBe("/static/anything");
+      expect(loaded.imageUrls).toEqual([
+        "/store-api/static/lunar-base-box.webp",
+        "/store-api/static/lunar-base-table.webp",
+      ]);
+      expect(() =>
+        assertBrowserMediaOnly({
+          catalogue: { name: "https://cdn.example.invalid/marketing", availability: "InStock" },
+          canonical: "https://plepicgames.example/shop/lunar-base",
+          jsonLd: { "@type": "Product", url: "https://plepicgames.example/shop/lunar-base" },
+        }),
+      ).not.toThrow();
     });
 
     it("admits the product data the page is actually built from", async () => {

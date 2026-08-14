@@ -1,6 +1,7 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import { readArchiveMembers } from "./archive.js";
+import { withStagedArchiveDisposal } from "./disposal.js";
 import { syncMedia } from "./media.js";
 import { assertNoPersonalData } from "./personal-data.js";
 import { readCatalogueImportPlan, readManifestEnvironment } from "./plan.js";
@@ -61,23 +62,28 @@ async function readStagedArchive(path: string): Promise<Uint8Array> {
  * The order is the contract. The checksum is verified before the archive is
  * parsed, the archive is parsed and refused before the assets root is touched,
  * and the seed records are applied last — so a refusal leaves the environment
- * exactly as it found it. The staged archive is deleted in a `finally`, so it
- * is gone after a successful import and after a failed or refused one alike: a
- * WooCommerce export sitting on a PVC is a liability whether or not the import
- * that was supposed to consume it worked.
+ * exactly as it found it. The staged archive is disposed of around the whole of
+ * it, so it is gone after a successful import and after a failed or refused one
+ * alike: a WooCommerce export sitting on a PVC is a liability whether or not
+ * the import that was supposed to consume it worked.
  *
- * This `finally` covers only what happens once this function is entered. The
- * disposal guarantee the deployment actually depends on belongs to the command
- * in `src/scripts/catalogue-import.ts`, which disposes of the archive around
- * the configuration read as well — a refusal raised before the first line here
- * runs is still a refusal that must not leave the export staged.
+ * {@link withStagedArchiveDisposal} rather than a `finally` of its own, for two
+ * reasons it owns: a mis-staged *directory* is removed as readily as a file,
+ * and a disposal failure is reported alongside the refusal that caused it
+ * rather than thrown in its place.
+ *
+ * That disposal covers only what happens once this function is entered. The
+ * guarantee the deployment actually depends on belongs to the command in
+ * `src/scripts/catalogue-import.ts`, which wraps the configuration read as
+ * well — a refusal raised before the first line here runs is still a refusal
+ * that must not leave the export staged.
  */
 export async function runCatalogueImport(
   input: CatalogueImportInput,
 ): Promise<CatalogueImportSummary> {
   const now = input.now ?? new Date();
 
-  try {
+  return withStagedArchiveDisposal(input.archivePath, async () => {
     const archive = await readStagedArchive(input.archivePath);
     assertArchiveChecksum(archive, input.expected.archiveSha256);
 
@@ -99,7 +105,5 @@ export async function runCatalogueImport(
       mediaWritten: media.written,
       mediaUnchanged: media.unchanged,
     };
-  } finally {
-    await rm(input.archivePath, { force: true });
-  }
+  });
 }

@@ -1,8 +1,7 @@
-import { rm } from "node:fs/promises";
-
 import { configManager } from "@medusajs/framework/config";
 import type { ExecArgs } from "@medusajs/framework/types";
 
+import { withStagedArchiveDisposal } from "../catalogue-import/disposal.js";
 import { MedusaCatalogueSeedTarget } from "../catalogue-import/medusa-target.js";
 import { runCatalogueImport } from "../catalogue-import/run.js";
 import {
@@ -25,10 +24,20 @@ import {
  * WooCommerce export carrying customer accounts, sessions and order history,
  * and the volume it is staged on is the same volume Medusa serves as its static
  * root — so an archive left behind by a configuration refusal is not a stray
- * file, it is a published one. Reading the configuration inside the `try` is
- * the whole of that guarantee: it used to sit above `runCatalogueImport`, whose
- * own `finally` never ran when the configuration read threw, and four of the
- * five refusal paths left the export staged.
+ * file, it is a published one. Reading the configuration *inside* the wrapper
+ * is the whole of that guarantee: it used to sit above `runCatalogueImport`,
+ * whose own disposal never ran when the configuration read threw, and four of
+ * the five refusal paths left the export staged.
+ *
+ * {@link withStagedArchiveDisposal} owns the two things that guarantee needs in
+ * order to survive contact with a real staging directory. A mis-staged
+ * **directory** — `kubectl cp` of a directory onto the archive path is an easy
+ * operator slip — is removed as readily as a file, rather than answered with
+ * `EISDIR` and left in place. And where the archive genuinely cannot be
+ * removed, the disposal failure is reported *alongside* the refusal that caused
+ * it rather than thrown in its place: an operator needs to know the import
+ * refused on a checksum mismatch at least as much as they need to know a file
+ * survived.
  *
  * The media root is not configured either. It is derived from the framework's
  * own base directory, the same value the express loader mounts
@@ -42,7 +51,7 @@ import {
 export default async function catalogueImport({ container }: ExecArgs): Promise<void> {
   const archivePath = catalogueImportArchivePath(process.env);
 
-  try {
+  await withStagedArchiveDisposal(archivePath, async () => {
     const config = readCatalogueImportRuntimeConfig(process.env, configManager.baseDir);
 
     const summary = await runCatalogueImport({
@@ -58,7 +67,5 @@ export default async function catalogueImport({ container }: ExecArgs): Promise<
     console.log(
       `catalogue import complete: environment=${summary.environment} records=${String(summary.records)} media_written=${String(summary.mediaWritten)} media_unchanged=${String(summary.mediaUnchanged)}`,
     );
-  } finally {
-    await rm(archivePath, { force: true });
-  }
+  });
 }
