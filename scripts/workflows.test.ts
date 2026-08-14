@@ -118,6 +118,36 @@ const TRIVY_VERSION = /^v\d+\.\d+\.\d+$/;
 const SOURCE_REPOSITORY_URL = "https://github.com/hannosirkel/plepic";
 
 /**
+ * The one `docker buildx build` a workflow publishes both its images with:
+ * the step declaring it, that step's whole script, and the invocation itself
+ * folded to a single line.
+ *
+ * Both workflows publish two images by calling one shell function twice, so
+ * one invocation carries every flag that applies to both. That is why the
+ * count is asserted here rather than left implicit — split into two
+ * invocations and any per-invocation guarantee below could hold for one image
+ * and not the other, while a check that merely found *a* correct build stayed
+ * green.
+ */
+function publishInvocation(name: string): {
+  readonly step: { readonly [key: string]: YamlValue };
+  readonly script: string;
+  readonly invocation: string;
+} {
+  const publishing = Object.keys(jobs(name)).flatMap((id) =>
+    steps(name, id).filter(
+      (step) => typeof step["run"] === "string" && step["run"].includes("docker buildx build"),
+    ),
+  );
+  expect(publishing, `${name} does not publish its images from exactly one step`).toHaveLength(1);
+  const step = publishing[0]!;
+  const script = asScalar(step["run"]!, `${name} publish run`);
+  const invocations = commands(script).filter((line) => line.includes("docker buildx build"));
+  expect(invocations, `${name} does not build both images with one invocation`).toHaveLength(1);
+  return { step, script, invocation: invocations[0]! };
+}
+
+/**
  * The repository URL a workflow labels the images it publishes with.
  *
  * `org.opencontainers.image.source` is how GitHub links a container package
@@ -143,22 +173,33 @@ const SOURCE_REPOSITORY_URL = "https://github.com/hannosirkel/plepic";
  * forge is not on its allowlist.
  */
 function sourceLabelUrl(name: string): string {
-  const publishing = Object.keys(jobs(name)).flatMap((id) =>
-    steps(name, id).filter(
-      (step) => typeof step["run"] === "string" && step["run"].includes("docker buildx build"),
-    ),
-  );
-  expect(publishing, `${name} does not publish its images from exactly one step`).toHaveLength(1);
-  const step = publishing[0]!;
+  const { step, script, invocation } = publishInvocation(name);
 
-  const invocations = commands(asScalar(step["run"]!, `${name} publish run`)).filter((line) =>
-    line.includes("docker buildx build"),
-  );
-  expect(invocations, `${name} does not build both images with one invocation`).toHaveLength(1);
   expect(
-    invocations[0],
+    invocation,
     `${name} publishes images carrying no source label, so their packages link to no repository`,
   ).toMatch(/--label "org\.opencontainers\.image\.source=\$SOURCE_URL"/);
+
+  // Exactly once. `docker buildx build` takes the **last** `--label` for a
+  // given key, so a second one appended after the asserted one decides what
+  // the packages link to while the match above still succeeds. Counting is
+  // the only form of this check that cannot be walked past.
+  expect(
+    invocation.match(/org\.opencontainers\.image\.source=/g) ?? [],
+    `${name} sets the source label more than once, and buildx takes the last`,
+  ).toHaveLength(1);
+
+  // And the variable the flag reads is the one the step declares. The value
+  // is asserted on `env:`, which says nothing about what the shell does with
+  // it afterwards: a plain `SOURCE_URL=…` anywhere ahead of the invocation
+  // overrides the declaration entirely, with `env:` still reading correctly.
+  const assignments = commands(script).filter((line) =>
+    /(?:^|[\s;&|(])SOURCE_URL=/.test(line),
+  );
+  expect(
+    assignments,
+    `${name} reassigns SOURCE_URL in the shell, so its env: declaration is not what is labelled`,
+  ).toEqual([]);
 
   expect(step["env"], `${name}'s publishing step declares no env`).toBeDefined();
   const url = asMapping(step["env"]!, `${name} publish env`)["SOURCE_URL"];
@@ -950,6 +991,40 @@ describe("both publishers link the packages they create to this repository", () 
       "the two publishers label the same packages with different repositories",
     ).toEqual([SOURCE_REPOSITORY_URL]);
   });
+});
+
+/**
+ * What both publishers put *in* the packages, as opposed to what they link
+ * them to.
+ *
+ * Every guarantee `scripts/images.test.ts` makes about these images is a
+ * statement about the **last `FROM` in its Dockerfile**: non-root, `WORKDIR
+ * /app`, the cleared entrypoint, the media root the assets PVC is mounted at.
+ * `docker buildx build` publishes that stage only when it is not told
+ * otherwise, and it can be told otherwise without either Dockerfile changing
+ * — so those assertions describe the published image only for as long as this
+ * one holds.
+ *
+ * This is the other half of the final-stage split in `images.test.ts`. That
+ * split is what makes those assertions statements about the shipped image;
+ * this is what keeps the shipped image the stage they are statements about.
+ */
+describe("both publishers ship the stage those Dockerfile assertions describe", () => {
+  for (const name of [DEPLOY_TEST, RELEASE]) {
+    it(`${name} publishes each Dockerfile's final stage, naming no other target`, () => {
+      // `--target build` would ship the compiler stage: root, `WORKDIR /src`,
+      // the `node` base image's own entrypoint restored, and the whole
+      // development dependency tree — with every assertion in
+      // `images.test.ts` still green, because the file it reads did not
+      // change. It fails loudly rather than silently, because
+      // `runAsNonRoot: true` in `hannosirkel/deploys` refuses the pod, which
+      // is the only reason this is a small assertion rather than a large one.
+      expect(
+        publishInvocation(name).invocation,
+        `${name} publishes a named stage, so the Dockerfile assertions describe a different image`,
+      ).not.toMatch(/(?:^|\s)--target(?:[=\s]|$)/);
+    });
+  }
 });
 
 /**
