@@ -995,6 +995,53 @@ history, using a pinned and checksum-verified `gitleaks` release. Every
 GitHub Action is pinned by commit SHA, and the workflow is granted
 `contents: read` only.
 
+### Promotion to the test environment
+
+`.github/workflows/deploy-test.yml` publishes a pull request's head revision
+into the test environment when the `deploy-test` label is applied. It builds
+`ghcr.io/hannosirkel/plepic-backend` and
+`ghcr.io/hannosirkel/plepic-storefront`, scans both published digests, and
+writes them into `plepic/overlays/test/kustomization.yaml` in
+`hannosirkel/deploys`. It shares the `plepic-gitops-promotion` concurrency
+group with the release workflow, so only one promotion touches those overlays
+at a time.
+
+**It is a `pull_request_target` workflow, so it runs with this repository's
+token and secrets against a pull request an outside contributor may have
+authored.** Every structural property that makes that safe is asserted in
+`scripts/workflows.test.ts` against the parsed document, not merely described
+here:
+
+- the `gate` job checks out nothing and runs no head code. It verifies through
+  the API that the pull request is open, comes from this repository, and
+  targets `main`, and that the head SHA's own `Validate` run concluded
+  `success`;
+- the guard it hands on is re-read from the pull request's **base** SHA — the
+  reviewed script on `main`, never the version proposed by the head;
+- the `build` job runs head code but holds no GitOps credential and never sees
+  the deploys repository;
+- the `promote` job holds the credential — a GitHub App token minted for
+  `deploys` alone, in the `test` GitHub Environment — but runs no head code,
+  and declares `permissions: {}`.
+
+`scripts/update-gitops-digest.sh` is the guard those jobs pass around. It takes
+the backend digest, the storefront digest, and one overlay directory, and its
+job is to make anything other than "the digest lines changed, in exactly one
+file" fail. It refuses a malformed digest, an overlay other than
+`plepic/overlays/live` or `plepic/overlays/test`, an overlay that is not inside
+a Git worktree, a symlinked or hard-linked `kustomization.yaml`, a checkout
+that is not clean, an overlay that does not carry exactly one entry per image,
+and any diff that is not exactly the digest lines it meant to write — restoring
+the original file when it refuses after writing. Re-running it with digests the
+overlay already records is a no-op. `scripts/update-gitops-digest.test.ts`
+exercises each of those refusals against a real Git fixture; never hand-edit a
+digest line in `deploys`. The checks that run *after* the write cannot be
+reached from outside, because the guard's own rewriter only ever produces
+well-formed digest lines, so those tests replace the rewriter with a stub that
+writes chosen bytes and reports a chosen count. That leaves the post-write
+checks as the only thing between the stub and the repository, which is what
+they are for: delete any one of them and one of those tests goes red.
+
 ### Browser screenshots
 
 The browser suite covers real Chromium interaction and the eight committed
