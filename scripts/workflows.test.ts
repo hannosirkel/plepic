@@ -68,11 +68,37 @@ function withBlock(
   return step["with"] === undefined ? {} : asMapping(step["with"], `${path}.with`);
 }
 
+/**
+ * A `uses:` line, however the step is laid out. When `uses` is a step's first
+ * key it carries the sequence dash — `- uses: …` — which GitHub Actions
+ * accepts and an expression anchored to `^\s*uses:` does not match.
+ */
+const USES_LINE = /^\s*(?:-\s+)?uses:/gm;
+
+/** The pin check, as applied to one workflow's source. */
+function expectEveryActionPinned(name: string, text: string): void {
+  // Read from the parsed document, not from the source. A line-anchored
+  // `uses:\s*(\S+)$` cannot match a line carrying a trailing comment --
+  // which GitHub Actions accepts -- so `uses: x@main # pinned` was never
+  // collected and never checked. The parser keeps the comment in the
+  // value, which is what makes it fail the pin pattern below.
+  const references = usesReferences(parseYamlSubset(text));
+  expect(references.length).toBeGreaterThan(0);
+  // Every `uses:` in the file must be one of the references checked: a
+  // reference the traversal cannot reach is a reference nothing pins. The
+  // cross-check has to recognise every way a step may be written, or it
+  // fails a correctly pinned action for its layout instead of its pin.
+  expect(references.length).toBe([...text.matchAll(USES_LINE)].length);
+  for (const reference of references) {
+    expect(reference, `${name} does not pin ${reference}`).toMatch(/^[^@\s]+@[0-9a-f]{40}$/);
+  }
+}
+
 /** Each pinned `uses:` reference paired with the comment line above it. */
 function pinAnnotations(name: string): Array<readonly [string, string]> {
   const lines = source(name).split("\n");
   return lines.flatMap((line, index) => {
-    const reference = /^\s*uses:\s*(\S+)/.exec(line)?.[1];
+    const reference = /^\s*(?:-\s+)?uses:\s*(\S+)/.exec(line)?.[1];
     if (reference === undefined) return [];
     const previous = lines[index - 1] ?? "";
     const comment = /^\s*#\s*(.*)$/.exec(previous)?.[1];
@@ -94,21 +120,7 @@ describe("every workflow in this repository", () => {
 
   for (const name of names) {
     it(`${name} pins every action to a 40-character commit SHA`, () => {
-      // Read from the parsed document, not from the source. A line-anchored
-      // `uses:\s*(\S+)$` cannot match a line carrying a trailing comment --
-      // which GitHub Actions accepts -- so `uses: x@main # pinned` was never
-      // collected and never checked. The parser keeps the comment in the
-      // value, which is what makes it fail the pin pattern below.
-      const references = usesReferences(workflow(name));
-      expect(references.length).toBeGreaterThan(0);
-      // Every `uses:` in the file must be one of the references checked: a
-      // reference the traversal cannot reach is a reference nothing pins.
-      expect(references.length).toBe([...source(name).matchAll(/^\s*uses:/gm)].length);
-      for (const reference of references) {
-        expect(reference, `${name} does not pin ${reference}`).toMatch(
-          /^[^@\s]+@[0-9a-f]{40}$/,
-        );
-      }
+      expectEveryActionPinned(name, source(name));
     });
 
     it(`${name} says in a comment which release each pinned SHA is`, () => {
@@ -155,6 +167,73 @@ describe("every workflow in this repository", () => {
         `${reference} is annotated inconsistently`,
       ).toHaveLength(1);
     }
+  });
+});
+
+describe("the pin check itself", () => {
+  // The check above is only as good as what it accepts and what it refuses,
+  // and neither is observable from workflows that all happen to be written
+  // one way. These drive it with sources this repository does not contain.
+
+  /** A minimal single-job workflow wrapped around the given `steps:` lines. */
+  function workflowAround(step: readonly string[]): string {
+    return [
+      "---",
+      "name: Fixture",
+      "'on': push",
+      "permissions: {}",
+      "jobs:",
+      "  build:",
+      "    runs-on: ubuntu-24.04",
+      "    steps:",
+      ...step,
+      "",
+    ].join("\n");
+  }
+
+  const PINNED = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+
+  it("accepts a correctly pinned step whose first key is `uses`", () => {
+    // `- uses: …` is ordinary GitHub Actions. A cross-check anchored to
+    // `^\s*uses:` never matched the line, so the parsed reference had no
+    // counterpart in the source and the count disagreed -- rejecting a
+    // properly pinned action for how its step is laid out.
+    expect(() =>
+      expectEveryActionPinned(
+        "fixture.yml",
+        workflowAround([
+          "      # actions/checkout v7.0.1",
+          `      - uses: ${PINNED}`,
+          "        with:",
+          "          persist-credentials: false",
+        ]),
+      ),
+    ).not.toThrow();
+  });
+
+  it("still refuses a mutable ref hidden behind a trailing comment", () => {
+    expect(() =>
+      expectEveryActionPinned(
+        "fixture.yml",
+        workflowAround([
+          "      - name: Set up Buildx",
+          "        # docker/setup-buildx-action v4.2.0",
+          "        uses: docker/setup-buildx-action@main # unpinned, mutable ref",
+        ]),
+      ),
+    ).toThrow(/does not pin/);
+  });
+
+  it("refuses a mutable ref on a step whose first key is `uses`", () => {
+    expect(() =>
+      expectEveryActionPinned(
+        "fixture.yml",
+        workflowAround([
+          "      # docker/setup-buildx-action v4.2.0",
+          "      - uses: docker/setup-buildx-action@main # unpinned, mutable ref",
+        ]),
+      ),
+    ).toThrow(/does not pin/);
   });
 });
 
@@ -319,6 +398,29 @@ describe("the promotion writes exactly one overlay", () => {
     return commit!;
   }
 
+  /** Each `run:` body in `promote`, paired with the step index holding it. */
+  function promoteScripts(): Array<readonly [number, string]> {
+    return steps(DEPLOY_TEST, "promote").flatMap((step, index) =>
+      step["run"] === undefined
+        ? []
+        : [[index, asScalar(step["run"], `promote.steps[${index}].run`)] as const],
+    );
+  }
+
+  /** Shell lines with `\` continuations folded, so one command is one entry. */
+  function commands(script: string): string[] {
+    const folded: string[] = [];
+    for (const line of script.split("\n")) {
+      const previous = folded[folded.length - 1];
+      if (previous !== undefined && previous.endsWith("\\")) {
+        folded[folded.length - 1] = `${previous.slice(0, -1).trimEnd()} ${line.trim()}`;
+      } else {
+        folded.push(line.trim());
+      }
+    }
+    return folded;
+  }
+
   it("re-verifies the pull request before spending the credential", () => {
     const recheck = jobText(DEPLOY_TEST, "recheck");
     expect(recheck).toMatch(/\.state == "open"/);
@@ -369,6 +471,51 @@ describe("the promotion writes exactly one overlay", () => {
           scalars(value).join("\n"),
           `${path}.with.${key} hands the head revision to an action`,
         ).not.toMatch(/head_sha/);
+      }
+    }
+  });
+
+  it("names the head revision only as an argument to git commit", () => {
+    // The test above reads the declarative surface -- `uses`, any `ref`, and
+    // every `with:` input. It does not read `run:` bodies, and `promote`'s
+    // env carries `HEAD_SHA` so the commit message can record it. That gap
+    // admits a step such as
+    //
+    //   run: git clone … && git -C head checkout "$HEAD_SHA" && bash head/hook.sh
+    //
+    // which is head-authored code executing in the one job that holds a write
+    // token for hannosirkel/deploys, with every declarative assertion still
+    // green. The head revision is a value this job *records*; it is never a
+    // value this job acts on, so its only legitimate appearance in a script
+    // is inside the `git commit -m` invocation.
+    const offending: string[] = [];
+    for (const [index, script] of promoteScripts()) {
+      for (const command of commands(script)) {
+        if (!/head_sha/i.test(command)) continue;
+        if (/^git commit -m /.test(command)) continue;
+        offending.push(`promote.steps[${index}]: ${command}`);
+      }
+    }
+    expect(offending, "promote acts on the head revision outside its commit message")
+      .toEqual([]);
+  });
+
+  it("brings no code into the job that holds the GitOps credential", () => {
+    // The confinement above turns on the head SHA being named, and a clone of
+    // the pull request's branch names no SHA at all. So the fetch itself is
+    // refused: the only tree `promote` reads is the one `actions/checkout`
+    // placed there from hannosirkel/deploys, and the only direction code
+    // moves in this job is out.
+    const forbidden: ReadonlyArray<readonly [string, RegExp]> = [
+      ["clones or checks out a second tree", /\bgit\s+(?:clone|fetch|pull|checkout|worktree|remote)\b/],
+      ["reaches GitHub through the gh CLI", /\bgh\s+(?:pr|repo|api|run|release)\b/],
+      ["pipes a download into an interpreter", /\bcurl\b[^\n]*\|\s*(?:sh|bash|node|python3?)\b/],
+      ["runs a Node package manager", /\b(?:npm|npx|pnpm|yarn)\b/],
+      ["builds or runs a container", /\bdocker\s+(?:build|run)\b/],
+    ];
+    for (const [index, script] of promoteScripts()) {
+      for (const [what, pattern] of forbidden) {
+        expect(script, `promote.steps[${index}] ${what}`).not.toMatch(pattern);
       }
     }
   });

@@ -613,6 +613,13 @@ describe("the post-write integrity checks", () => {
     readonly candidate: string;
     /** The number of moved digest lines it claims to have written. */
     readonly changedCount: string;
+    /**
+     * A tracked file the stubbed rewriter also writes, and its contents. The
+     * dirty-checkout refusal runs before the rewriter, so a file that moves
+     * *during* the rewrite is the only out-of-band tampering the checks after
+     * it can still see.
+     */
+    readonly tamper?: { readonly file: string; readonly content: string };
   }
 
   function runWithStubbedRewriter(
@@ -622,6 +629,8 @@ describe("the post-write integrity checks", () => {
     const staging = makeRoot();
     const candidate = join(staging, "candidate.yaml");
     writeFileSync(candidate, stub.candidate);
+    const tamperContent = join(staging, "tamper.yaml");
+    writeFileSync(tamperContent, stub.tamper?.content ?? "");
     const shim = join(staging, "node");
     writeFileSync(
       shim,
@@ -631,6 +640,9 @@ describe("the post-write integrity checks", () => {
         '# four-argument form is the final verification, and passes through.',
         'if [ "$#" -eq 5 ] && [ "$1" = "-" ]; then',
         '  cat "$GITOPS_STUB_CANDIDATE" >"$3"',
+        '  if [ -n "$GITOPS_STUB_TAMPER_TARGET" ]; then',
+        '    cat "$GITOPS_STUB_TAMPER_CONTENT" >"$GITOPS_STUB_TAMPER_TARGET"',
+        "  fi",
         '  printf "%s" "$GITOPS_STUB_CHANGED_COUNT"',
         "  exit 0",
         "fi",
@@ -651,6 +663,8 @@ describe("the post-write integrity checks", () => {
         GITOPS_REAL_NODE: realNode,
         GITOPS_STUB_CANDIDATE: candidate,
         GITOPS_STUB_CHANGED_COUNT: stub.changedCount,
+        GITOPS_STUB_TAMPER_TARGET: stub.tamper?.file ?? "",
+        GITOPS_STUB_TAMPER_CONTENT: tamperContent,
       },
     });
     return { status: result.status, stdout: result.stdout, stderr: result.stderr };
@@ -791,6 +805,75 @@ describe("the post-write integrity checks", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/replacement was not exact/);
     expectUntouched(repository, before);
+  });
+
+  // `changed_count == 0` is the re-promotion path: the overlay already
+  // records both digests, so the guard writes nothing and exits successfully.
+  // It is the quietest branch in the script and the two refusals guarding it
+  // were the only ones with no test. Neither can produce a bad write here --
+  // the candidate is never moved into place on this path -- so what they
+  // actually protect is the claim that a no-op run is a no-op, and that a
+  // deploys checkout which moved under the guard is reported rather than
+  // shrugged off.
+
+  it("refuses an unchanged update that rewrote the kustomization anyway", () => {
+    // A rewriter reporting no change must produce bytes identical to what is
+    // already on disk. Different bytes and a count of zero is a contradiction:
+    // one of the two is a lie, and the guard cannot tell which.
+    const repository = fixture({
+      testOverlayContent: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST),
+    });
+    const before = overlayFile(repository, "plepic/overlays/test");
+
+    const result = runWithStubbedRewriter(
+      {
+        candidate: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST).replace(
+          "namespace: plepic-test",
+          "namespace: plepic-live",
+        ),
+        changedCount: "0",
+      },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /digest update rejected: unchanged update rewrote the kustomization/,
+    );
+    expectUntouched(repository, before);
+  });
+
+  it("refuses an unchanged update that modified a tracked file", () => {
+    // The one check on this path that never looks at the candidate. The
+    // checkout was clean when the guard inspected it, so a tracked file that
+    // has moved by the time the rewriter returns moved during the rewrite --
+    // and a no-op run that leaves the deploys checkout dirty would hand the
+    // next step a change nobody asked for.
+    const repository = fixture({
+      testOverlayContent: kustomization(BACKEND_DIGEST, STOREFRONT_DIGEST),
+    });
+    const before = overlayFile(repository, "plepic/overlays/test");
+    const live = join(repository, "plepic/overlays/live/kustomization.yaml");
+
+    const result = runWithStubbedRewriter(
+      {
+        candidate: before,
+        changedCount: "0",
+        tamper: { file: live, content: "tampered\n" },
+      },
+      BACKEND_DIGEST,
+      STOREFRONT_DIGEST,
+      join(repository, "plepic/overlays/test"),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /digest update rejected: unchanged update modified a tracked file/,
+    );
+    expect(overlayFile(repository, "plepic/overlays/test")).toBe(before);
+    expect(readFileSync(live, "utf8")).toBe("tampered\n");
   });
 
   it("still promotes normally when the rewriter writes what it should", () => {
