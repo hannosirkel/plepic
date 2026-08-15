@@ -135,17 +135,30 @@ RUN npm ci --omit=dev --workspace backend --include-workspace-root
 # to. It looks for what the *scanner* looks for rather than for a name:
 # `Go buildinf:` is the ASCII part of the build-information magic that Go
 # stamps into every binary it links, and it is what Trivy's `gobinary` analyzer
-# keys on — so this fails the build on any Go binary left in the tree that
-# ships, whatever package or file it arrived under. Scanning is cheap because
-# it is bounded to the files a Go binary could be: 640 executables and 49 files
-# over a megabyte in this whole tree.
+# reads to decide a file is one. Keying on the same marker is what makes this
+# as strong as the gate rather than a second guess at it — whatever this misses
+# the scanner misses too — and it fails the build on any Go binary left in the
+# tree that ships, under whatever package or file name it arrived.
+#
+# `-a` is load-bearing rather than tidiness. Without it, whether a binary file
+# can match at all is left to the grep implementation's own heuristics: GNU grep
+# reports a match here, but an implementation that treats binary files as
+# non-matching reports nothing, and this check would then pass while the binary
+# ships. That is failing **open**, the one direction a guard must not fail. `-a`
+# says to treat every file as text and takes the decision away from the
+# implementation.
+#
+# Cost is bounded by the filter rather than by the tree: of roughly 92,000 files
+# here, `-perm -u+x -o -size +1M` selects under 200 and the scan takes about
+# 0.4 s. Measured in this stage and after the removal above, which is the tree
+# this `find` actually walks.
 #
 # So a dependency tree that *moves* the binary fails here, loudly, at build
 # time; a dependency tree that *drops* it passes. `scripts/images.test.ts`
 # holds this file to carrying both halves.
 RUN find . -depth \( -name esbuild -o -name '@esbuild' \) -exec rm -rf {} + \
   && test -z "$(find . -type f \( -perm -u+x -o -size +1M \) \
-       -exec grep -l 'Go buildinf:' {} + 2>/dev/null)"
+       -exec grep -la 'Go buildinf:' {} + 2>/dev/null)"
 
 # node:24.18.1-trixie-slim
 FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
@@ -227,6 +240,31 @@ ENV NODE_PATH=/app/node_modules
 # and hide it. Dead weight that nothing can even read.
 RUN npm install --global npm@11.19.0 \
   && rm -rf /tmp/.npm /tmp/node-compile-cache
+
+# corepack and yarn go, and only npm stays.
+#
+# npm stays because it is this image's entrypoint. corepack and yarn are not:
+# nothing in either workspace, in `compose.yaml`, in the `deploys` manifests or
+# in the Medusa runtime path invokes them, and the four things this image can be
+# asked to do are all `npm run <script>`.
+#
+# They go for the reason the storefront image gives at greater length. Each
+# carries a vendored dependency tree that `package-lock.json` does not describe
+# and no `overrides` entry here governs, which is exactly the shape of the
+# finding that stopped the last promotion — npm's own vendored `tar`. Neither
+# produces a finding today. The point is that the next one either does not
+# arrive or arrives in the one package manager this image cannot remove,
+# instead of in one it never had a use for. yarn 1.22.22 is unmaintained.
+#
+# `command -v npm` at the end is not decoration either: it is the difference
+# between this instruction and the storefront's, asserted rather than described,
+# so a removal that took npm with it fails here rather than in a crash-looping
+# Deployment whose `args: [npm, run, start]` no longer resolve.
+RUN test -x /usr/local/bin/corepack \
+  && rm -rf /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+  && ! command -v corepack && ! command -v yarn && ! command -v yarnpkg \
+  && command -v npm && command -v node
 
 # UID and GID 10001, matching `runAsUser`/`runAsGroup`/`fsGroup` on every
 # workload in `hannosirkel/deploys` that runs this image. The manifests already
