@@ -935,12 +935,32 @@ Deployments differ by exactly the script they name.
 
 `predeploy` is two commands rather than two Jobs because everything else is
 gated on one sync hook: migrate, seed, and only then let an API, worker, or
-storefront pod start. The seeding step is idempotent — it looks for the
-administrator first and returns `already-present` — because the hook runs again
-on every promoted digest, and it never re-registers an existing administrator's
-credentials, so a password rotated through Medusa is not quietly reset from a
-Secret on the next sync. `medusa user` is not used for either reason: it creates
-unconditionally, and it exits non-zero after having already created the user.
+storefront pod start.
+
+The seeding step is idempotent, and the condition it tests is **whether the
+administrator can sign in** — not whether a user row exists. A usable
+administrator is three things at once: the user, an `emailpass` identity for the
+same address, and that identity's `app_metadata.user_id` naming that user.
+Seeding writes them in three steps and no transaction spans two Medusa modules,
+so a run can die between any two of them:
+
+| Outcome | Meaning |
+|---|---|
+| `created` | There was no administrator; there is one now |
+| `repaired` | A user existed with no identity linked to it — an earlier run died mid-way — and the link was completed |
+| `already-present` | The administrator exists and can sign in; nothing was written |
+
+The repair matters because `backoffLimit` makes the second attempt the expected
+path. A run that reported `already-present` on the bare user would exit 0, stop
+the retries, turn the sync green, and leave an Admin nobody can sign in to —
+found at cutover, and only fixable by hand.
+
+It never re-registers over an identity that works, so a password rotated through
+Medusa is not quietly reset from a Secret on the next sync; registration happens
+only where no identity exists and there is therefore no password to keep.
+`medusa user` is used for neither half: it creates unconditionally, and it exits
+non-zero *after* having already created the user — which is how the half-built
+state gets made in the first place.
 
 ### The CORS origins are declared empty, on purpose
 

@@ -46,10 +46,12 @@ const partNames = [
  * A refusal that names the part and carries nothing else.
  *
  * The message reaches an operator through `kubectl logs` on a crash-looping
- * pod or a failed PreSync Job, so it says which value is missing and what the
- * alternative is. It never interpolates a *value*: the password is one of the
- * five, and a refusal that quoted what it received would publish it into the
- * cluster's log pipeline and into Loki for thirty days.
+ * pod or a failed predeploy Job — an Argo CD `Sync` hook at sync-wave `-10`,
+ * behind the data services at `-20` and ahead of everything else at `0` — so it
+ * says which value is missing and what the alternative is. It never
+ * interpolates a *value*: the password is one of the five, and a refusal that
+ * quoted what it received would publish it into the cluster's log pipeline and
+ * into Loki for thirty days.
  */
 function refuse(name: string, why: string): never {
   throw new Error(

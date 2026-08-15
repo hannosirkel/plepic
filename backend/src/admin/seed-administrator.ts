@@ -28,17 +28,38 @@ export interface AdministratorCredentials {
   readonly password: string;
 }
 
+/**
+ * An `emailpass` identity as the seeding needs to see it.
+ *
+ * `app_metadata` is part of the port rather than an implementation detail
+ * because it carries the *link*: an identity whose `app_metadata.user_id` does
+ * not name the administrator cannot sign that administrator in, and an identity
+ * fetched without it cannot be told apart from one that is properly linked.
+ * Medusa types it as an open record, so the link is read through
+ * {@link linkedUserId} rather than by assertion.
+ */
+export interface AdministratorAuthIdentity {
+  readonly id: string;
+  readonly app_metadata?: Record<string, unknown> | null;
+}
+
 export interface AdministratorSeedPort {
   /** The administrator user, if one already exists for this address. */
   findAdministrator(email: string): Promise<{ readonly id: string } | undefined>;
   /** The `emailpass` auth identity, if one already exists for this address. */
-  findAuthIdentity(email: string): Promise<{ readonly id: string } | undefined>;
-  registerAuthIdentity(email: string, password: string): Promise<{ readonly id: string }>;
+  findAuthIdentity(email: string): Promise<AdministratorAuthIdentity | undefined>;
+  registerAuthIdentity(email: string, password: string): Promise<AdministratorAuthIdentity>;
   createAdministrator(email: string): Promise<{ readonly id: string }>;
   linkAuthIdentity(authIdentityId: string, userId: string): Promise<void>;
 }
 
-export type AdministratorSeedOutcome = "created" | "already-present";
+export type AdministratorSeedOutcome = "created" | "repaired" | "already-present";
+
+/** The user this identity can sign in, if it can sign in anyone. */
+function linkedUserId(identity: AdministratorAuthIdentity): string | undefined {
+  const userId = identity.app_metadata?.user_id;
+  return typeof userId === "string" && userId.length > 0 ? userId : undefined;
+}
 
 /**
  * Read the credentials, fail closed, and never echo the password.
@@ -70,35 +91,63 @@ export function readAdministratorCredentials(
 }
 
 /**
- * Create the initial administrator if there is not one already.
+ * Ensure there is an administrator for this address who can actually sign in.
  *
- * The order — identity, then user, then link — is the one that survives an
- * interruption. Medusa's CLI creates the user first, so a failure between the
- * two steps leaves a user with no way to sign in, and every subsequent run
- * sees that user and skips. Registering first inverts the residue into an
- * identity with no user, which the next run adopts.
+ * **The condition is the link, not the user.** An administrator is only usable
+ * when three things hold together: the user exists, an `emailpass` identity
+ * exists for the same address, and that identity's `app_metadata.user_id` names
+ * that user. Seeding writes them in three steps, so either gap between them can
+ * be a pod's last instant, and there is no transaction spanning two Medusa
+ * modules that would make it otherwise.
  *
- * The existing-administrator check is on the **user**, and no branch ever
- * re-registers. The Job runs on every sync with a Secret in hand; a branch that
- * re-registered would quietly reset a password an operator had since rotated
- * through Medusa itself.
+ * Checking only the user was a real defect, not a theoretical one. An
+ * interruption between {@link AdministratorSeedPort.createAdministrator} and
+ * {@link AdministratorSeedPort.linkAuthIdentity} leaves a user nothing points
+ * at; a run that returned `already-present` on that user exited **0**, so
+ * Kubernetes stopped retrying, the Argo CD sync went green, and the environment
+ * had an Admin nobody could sign in to. It never self-healed, because every
+ * later run short-circuited on the same wreckage. Under `backoffLimit` the
+ * second attempt is the *expected* path, which is precisely why it must not be
+ * the one that hides the damage.
+ *
+ * So a run that finds an existing administrator verifies the link and repairs
+ * it — adopting an identity that is already there, registering one only when
+ * there is none at all. What it never does is re-register over an identity that
+ * works: the Job holds the Secret on every sync, and re-registering would undo
+ * a password rotated through Medusa at the next promoted digest. Registration
+ * happens only where no identity exists, where there is no password to keep.
+ *
+ * The order is identity, then user, then link, which makes the *other* window
+ * self-healing without any repair: a failure before the user exists leaves an
+ * orphaned identity, and the next run adopts it rather than re-registering —
+ * `register` refuses a duplicate, so a run that tried would fail forever on a
+ * state it created itself.
  */
 export async function seedInitialAdministrator(
   port: AdministratorSeedPort,
   credentials: AdministratorCredentials,
 ): Promise<AdministratorSeedOutcome> {
   const existing = await port.findAdministrator(credentials.email);
+  const identity = await port.findAuthIdentity(credentials.email);
 
   if (existing !== undefined) {
-    return "already-present";
+    if (identity !== undefined && linkedUserId(identity) === existing.id) {
+      return "already-present";
+    }
+
+    const usable =
+      identity ?? (await port.registerAuthIdentity(credentials.email, credentials.password));
+
+    await port.linkAuthIdentity(usable.id, existing.id);
+
+    return "repaired";
   }
 
-  const identity =
-    (await port.findAuthIdentity(credentials.email)) ??
-    (await port.registerAuthIdentity(credentials.email, credentials.password));
+  const registered =
+    identity ?? (await port.registerAuthIdentity(credentials.email, credentials.password));
 
   const user = await port.createAdministrator(credentials.email);
-  await port.linkAuthIdentity(identity.id, user.id);
+  await port.linkAuthIdentity(registered.id, user.id);
 
   return "created";
 }

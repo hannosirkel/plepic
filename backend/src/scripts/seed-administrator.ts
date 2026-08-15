@@ -36,6 +36,10 @@ export default async function seedAdministrator({ container }: ExecArgs): Promis
   const port: AdministratorSeedPort = {
     findAdministrator: async (email) => (await users.listUsers({ email }, { take: 1 }))[0],
 
+    // No `select` on purpose: `app_metadata` carries the link to the user, and
+    // the seeding decides whether the administrator can sign in by reading it.
+    // Narrowing the projection here would make every existing administrator
+    // look unlinked and send every run down the repair path.
     findAuthIdentity: async (email) =>
       (
         await auth.listAuthIdentities(
