@@ -9,6 +9,9 @@
     "build": "NODE_PATH=./node_modules medusa build",
     "dev": "medusa develop",
     "start": "medusa start",
+    "start:worker": "MEDUSA_WORKER_MODE=worker medusa start",
+    "predeploy": "medusa db:migrate && npm run seed:administrator",
+    "seed:administrator": "medusa exec \"$(test -f ./src/scripts/seed-administrator.js && echo ./src/scripts/seed-administrator.js || echo ./src/scripts/seed-administrator.ts)\"",
     "catalogue:import": "medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test:unit": "vitest run"

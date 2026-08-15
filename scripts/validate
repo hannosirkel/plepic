@@ -40,9 +40,40 @@ env \
 test -s backend/.medusa/server/medusa-config.js
 test -s backend/.medusa/server/src/config/runtime.js
 test ! -e backend/.medusa/server/tests/runtime-config.test.js
-# The catalogue-import Job runs `npm run catalogue:import` from the built
-# image, so the script and the file it executes must both survive the build.
-# Without this, the Job's only failure mode is at cutover.
+# Every workload in `hannosirkel/deploys` runs this one image and chooses what
+# it does with `args: [npm, run, <script>]`. Kubernetes `args` replaces the
+# image's `CMD`, so a manifest naming a script the built image does not declare
+# is `npm ERR! Missing script` and an immediate exit -- with no failure mode
+# before cutover.
+#
+# This assertion previously covered `catalogue:import` alone, which is exactly
+# why that row was sound while `start:worker` and `predeploy` were merged as
+# manifest `args` with no script behind them.
+#
+# **The list is declared, not derived.** Deriving it would mean reading the
+# manifests, and they are in a repository this build cannot see: CI checks out
+# `plepic` alone, and fetching another repository at validation time would make
+# a green run depend on that repository's availability and on whatever happened
+# to be on its `main` at that moment -- so a `deploys` commit could turn this
+# build red with no change here. A declared list is checked by hand instead, and
+# each entry names the manifest it comes from so that check is mechanical.
+# `backend/tests/deployment-contract.test.ts` holds the same list against the
+# *source* manifest; this holds it against the built artifact, which is the
+# thing the cluster actually runs.
+for cluster_invoked_script in \
+  start `# deploys/plepic/base/backend.yaml` \
+  start:worker `# deploys/plepic/base/worker.yaml` \
+  predeploy `# deploys/plepic/base/predeploy-job.yaml` \
+  catalogue:import `# deploys/plepic/base/import-job.yaml`; do
+  node -e 'process.exit(
+    require("./backend/.medusa/server/package.json").scripts[process.argv[1]] ? 0 : 1
+  )' "${cluster_invoked_script}" ||
+    { echo "the built image declares no \"${cluster_invoked_script}\" script" >&2; exit 1; }
+done
+# The two `medusa exec` scripts each name a file, and the built image is the
+# only place the compiled half of that name exists. `predeploy` reaches
+# `seed-administrator` through `seed:administrator`, so it is asserted by file
+# as well as by script name.
 test -s backend/.medusa/server/src/scripts/catalogue-import.js
-node -e 'process.exit(require("./backend/.medusa/server/package.json").scripts["catalogue:import"] ? 0 : 1)'
+test -s backend/.medusa/server/src/scripts/seed-administrator.js
 npm run test:unit

@@ -887,11 +887,140 @@ export MEDUSA_PUBLISHABLE_API_KEY=…   # created against the local database
 Two things the local stack deliberately does not paper over. The backend needs
 its database migrated before it will serve, and the migration is the predeploy
 step the cluster runs as a Job rather than something `compose.yaml` does behind
-your back. And the SMTP sender does `requireTLS: true` with certificate
+your back — run it yourself, once, against the running stack:
+
+```bash
+docker compose run --rm \
+  -e MEDUSA_ADMIN_EMAIL=admin@example.test \
+  -e MEDUSA_ADMIN_PASSWORD="$(openssl rand -base64 24)" \
+  backend npm run predeploy
+```
+
+And the SMTP sender does `requireTLS: true` with certificate
 verification, which is not relaxed for local convenience — Mailpit accepts the
 connection, and to complete a delivery give it a certificate
 (`MP_SMTP_TLS_CERT`, `MP_SMTP_TLS_KEY`) and the backend a `NODE_EXTRA_CA_CERTS`
 that trusts it.
+
+## What the cluster runs
+
+Four workloads in `hannosirkel/deploys` run this one backend image and choose
+what it does with `args: [npm, run, <script>]`. Kubernetes `args` replaces the
+image's `CMD` and leaves `ENTRYPOINT` prefixed, which is why `backend/Dockerfile`
+clears the entrypoint the `node` base image ships: the manifests in the other
+repository say what the container runs, and what they say should be the whole of
+it.
+
+| Script | Workload | What it does |
+|---|---|---|
+| `start` | `plepic-backend` Deployment | The API and the Admin, on the framework's default worker mode |
+| `start:worker` | `plepic-worker` Deployment | The same image with `MEDUSA_WORKER_MODE=worker` |
+| `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator |
+| `catalogue:import` | `plepic-catalogue-import` Job, suspended | The one-shot WooCommerce catalogue import |
+
+**The script name is the whole of the contract, and it has nothing behind it.**
+A manifest naming a script this `package.json` does not declare is
+`npm ERR! Missing script` and an immediate exit — a first-start failure that no
+review of either repository on its own can see, because each side reads only as
+a sensible list of its own. Both sides are now tested:
+`backend/tests/deployment-contract.test.ts` holds the list against the source
+manifest and `scripts/validate` holds it against the built
+`.medusa/server/package.json`, so a script the cluster calls cannot be absent
+from a published image without CI failing.
+
+Neither `backend.yaml` nor `worker.yaml` sets `MEDUSA_WORKER_MODE`, so worker
+mode is selected inside `start:worker` and nowhere else. Putting it in
+`medusa-config.ts` would have moved the API off the default too; the two
+Deployments differ by exactly the script they name.
+
+`predeploy` is two commands rather than two Jobs because everything else is
+gated on one sync hook: migrate, seed, and only then let an API, worker, or
+storefront pod start.
+
+The seeding step is idempotent, and the condition it tests is **whether the
+administrator can sign in** — not whether a user row exists. A usable
+administrator is three things at once: the user, an `emailpass` identity for the
+same address, and that identity's `app_metadata.user_id` naming that user.
+Seeding writes them in three steps and no transaction spans two Medusa modules,
+so a run can die between any two of them:
+
+| Outcome | Meaning |
+|---|---|
+| `created` | There was no administrator; there is one now |
+| `repaired` | A user existed with no identity linked to it — an earlier run died mid-way — and the link was completed |
+| `already-present` | The administrator exists and can sign in; nothing was written |
+
+The repair matters because `backoffLimit` makes the second attempt the expected
+path. A run that reported `already-present` on the bare user would exit 0, stop
+the retries, turn the sync green, and leave an Admin nobody can sign in to —
+found at cutover, and only fixable by hand.
+
+It never re-registers over an identity that works, so a password rotated through
+Medusa is not quietly reset from a Secret on the next sync; registration happens
+only where no identity exists and there is therefore no password to keep.
+`medusa user` is used for neither half: it creates unconditionally, and it exits
+non-zero *after* having already created the user — which is how the half-built
+state gets made in the first place.
+
+### The CORS origins are declared empty, on purpose
+
+`STORE_CORS`, `ADMIN_CORS` and `AUTH_CORS` are required to be **declared** and
+permitted to be **empty**, and they are the only three variables that are.
+Every workload in `hannosirkel/deploys` sets all three to `value: ""`, because
+cart and checkout require no CORS origin at all: the storefront proxies
+`/store-api` on its own origin and the Admin is same-origin on the backend, so
+a hostname here would be a second way in that the exposure boundary does not
+allow.
+
+An empty list is restrictive, not permissive, which is the only reason this is
+safe to accept. `parseCorsOrigins("")` returns `[]`, and the `cors` middleware
+given `origin: []` matches nothing and sends no `Access-Control-Allow-Origin`
+header to any caller — it is also Medusa's own default for all three.
+
+Three states, three outcomes:
+
+| Manifest | Result |
+|---|---|
+| absent | Refuses: `Missing required backend environment variable: STORE_CORS` |
+| `value: ""` | Accepted — no cross-origin caller is allowed |
+| whitespace only | Refuses: `STORE_CORS may be declared empty, but must not be whitespace only` |
+
+Whitespace is refused deliberately. `value: ""` is how a manifest *says* empty;
+whitespace is never a deliberate way to say it, so refusing costs nothing
+anyone meant. Accepting it would absorb a templating slip into a backend that
+starts, looks healthy, and quietly denies an origin somebody meant to allow —
+found at checkout, if ever. An empty **secret** is still an absent secret: a
+`JWT_SECRET` of `""` refuses exactly as it did.
+
+### The database connection
+
+The backend accepts the connection in **two forms, and prefers the explicit
+one**:
+
+1. `DATABASE_URL`, used verbatim if it is set and non-empty.
+2. Otherwise `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`
+   and `DATABASE_PASSWORD`, assembled into a URL.
+
+`compose.yaml` and `.github/workflows/validate.yml` both set an explicit
+`DATABASE_URL` and neither sets a single part, so the precedence is what keeps
+the local and CI paths working untouched; the URL is also the more expressive
+form, and a socket, a `?sslmode=require`, or a managed instance's URL is not
+reachable through five parts. Every `deploys` workload supplies the parts and no
+URL, so the two forms never compete in a real deployment.
+
+The assembly is on this side rather than in the manifests deliberately. A full
+URL embeds the password, so supplying one would turn four non-secret values into
+a secret needing its own ESO projection and put the password in a second place
+it can leak from; the five-part form keeps it in its own Secret key, which is
+what `deploys/plepic/tests/manifests.sh` asserts.
+
+Both refusals are closed and quiet. A missing or empty part refuses by name and
+says what the alternative is, rather than dialling a malformed URL and reporting
+it as a connection failure against a host nobody configured. Every component is
+percent-encoded, because the password is generated rather than chosen and an
+unencoded `@` in it would move the host. And no refusal ever contains a value —
+these messages are read from a crash-looping pod's log, which is the cluster's
+log pipeline and thirty days of Loki.
 
 ## Images
 

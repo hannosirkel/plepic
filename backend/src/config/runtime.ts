@@ -11,6 +11,7 @@ import {
   assertExpectedEnvironmentIdentity,
   type ImportEnvironmentIdentity,
 } from "../catalogue-import/refusal";
+import { resolveDatabaseUrl } from "./database-url";
 
 export interface BackendRuntimeConfig {
   readonly databaseUrl: string;
@@ -72,13 +73,16 @@ export interface OrderConfirmationLegalConfig {
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
+/**
+ * `DATABASE_URL` is deliberately absent from this list. The database connection
+ * has two accepted forms — an explicit URL, or the five `DATABASE_*` parts the
+ * `deploys` manifests project — and only {@link resolveDatabaseUrl} can say
+ * whether the environment supplies either. Demanding the URL here is what made
+ * the backend Deployment crash-loop against manifests that supply the parts.
+ */
 const requiredEnvironmentVariables = [
-  "DATABASE_URL",
   "JWT_SECRET",
   "COOKIE_SECRET",
-  "STORE_CORS",
-  "ADMIN_CORS",
-  "AUTH_CORS",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "STRIPE_PAYMENT_METHOD_CONFIGURATION_ID",
@@ -95,11 +99,67 @@ const requiredEnvironmentVariables = [
   "MERCHANT_RETURN_ADDRESS",
 ] as const;
 
+/**
+ * Required to be **declared**, permitted to be empty — and nothing else is.
+ *
+ * Every `deploys` workload running this image sets all three to `value: ""`, on
+ * purpose. Cart and checkout require no CORS origin at all: the storefront
+ * proxies `/store-api` on its own origin and the Admin is same-origin on the
+ * backend, so a hostname here would be a second way in that the exposure
+ * boundary does not allow.
+ *
+ * An empty list is genuinely restrictive rather than permissive, which is the
+ * only reason this is safe. `parseCorsOrigins("")` returns `[]`, and the `cors`
+ * middleware given `origin: []` matches nothing and sends no
+ * `Access-Control-Allow-Origin` header at all — every cross-origin caller is
+ * denied. It is Medusa's own default for all three, not a value it treats
+ * specially.
+ */
+const requiredPossiblyEmptyEnvironmentVariables = [
+  "STORE_CORS",
+  "ADMIN_CORS",
+  "AUTH_CORS",
+] as const;
+
 function requireEnvironmentValue(environment: RuntimeEnvironment, name: string): string {
   const value = environment[name]?.trim();
 
   if (value === undefined || value.length === 0) {
     throw new Error(`Missing required backend environment variable: ${name}`);
+  }
+
+  return value;
+}
+
+/**
+ * Require the variable to be declared, and permit it to be declared empty.
+ *
+ * The distinction the plain requirement could not draw: an **absent** variable
+ * is a workload that forgot it and must not start, while `value: ""` is a
+ * deliberate statement that there are no origins. Both used to raise the same
+ * refusal, so a manifest that said exactly what the plan mandates could not
+ * start either.
+ *
+ * **Whitespace is refused**, which is a choice between two ways of being wrong.
+ * `value: ""` is how a manifest says empty; whitespace is never a deliberate
+ * way to say it, so refusing it costs nothing anyone meant. Accepting it would
+ * absorb a templating slip into a backend that starts, looks healthy, and
+ * quietly denies an origin somebody meant to allow — found at checkout, if
+ * ever. Refusing surfaces it at start, before any traffic, which is the one
+ * moment an operator is already watching. It is the same direction every other
+ * refusal in this file goes.
+ */
+function requireDeclaredEnvironmentValue(environment: RuntimeEnvironment, name: string): string {
+  const declared = environment[name];
+
+  if (declared === undefined) {
+    throw new Error(`Missing required backend environment variable: ${name}`);
+  }
+
+  const value = declared.trim();
+
+  if (declared.length > 0 && value.length === 0) {
+    throw new Error(`${name} may be declared empty, but must not be whitespace only`);
   }
 
   return value;
@@ -261,8 +321,16 @@ export function readNewsletterRateLimitRuntimeConfig(
  * environment-specific defaults to the application image.
  */
 export function readBackendRuntimeConfig(environment: RuntimeEnvironment): BackendRuntimeConfig {
+  // First, because it is the one a workload is most likely to be missing and
+  // the one whose refusal has to be the first thing in the log.
+  const databaseUrl = resolveDatabaseUrl(environment);
+
   for (const name of requiredEnvironmentVariables) {
     requireEnvironmentValue(environment, name);
+  }
+
+  for (const name of requiredPossiblyEmptyEnvironmentVariables) {
+    requireDeclaredEnvironmentValue(environment, name);
   }
 
   const smtpPort = requireEnvironmentValue(environment, "SMTP_PORT");
@@ -272,11 +340,11 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   }
 
   return {
-    databaseUrl: requireEnvironmentValue(environment, "DATABASE_URL"),
+    databaseUrl,
     http: {
-      storeCors: requireEnvironmentValue(environment, "STORE_CORS"),
-      adminCors: requireEnvironmentValue(environment, "ADMIN_CORS"),
-      authCors: requireEnvironmentValue(environment, "AUTH_CORS"),
+      storeCors: requireDeclaredEnvironmentValue(environment, "STORE_CORS"),
+      adminCors: requireDeclaredEnvironmentValue(environment, "ADMIN_CORS"),
+      authCors: requireDeclaredEnvironmentValue(environment, "AUTH_CORS"),
       jwtSecret: requireEnvironmentValue(environment, "JWT_SECRET"),
       cookieSecret: requireEnvironmentValue(environment, "COOKIE_SECRET"),
     },
