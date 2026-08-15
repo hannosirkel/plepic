@@ -122,11 +122,30 @@ RUN npm ci --omit=dev --workspace backend --include-workspace-root
 # past vite's range would change the compiler that `medusa build` runs with in
 # the stage above, to fix a binary that never executes in the stage below.
 #
-# The `test` is not decoration: if a future dependency tree moves the binary,
-# this build fails rather than quietly shipping it again.
-RUN test -n "$(find . -type d -name '@esbuild' -print -quit)" \
-  && find . -depth \( -name esbuild -o -name '@esbuild' \) -exec rm -rf {} + \
-  && test -z "$(find . \( -name esbuild -o -name '@esbuild' \) -print -quit)"
+# The two halves below are a removal and an assertion, and they are separate on
+# purpose, because a removal by name can only ever delete what it was told to
+# look for.
+#
+# The `find … -exec rm -rf` is the removal. It matches on names, and it is
+# allowed to match nothing: a future dependency tree that has dropped esbuild
+# is a clean tree, not a build failure, so this must not insist the package was
+# there.
+#
+# The `test -z` is the assertion, and it is what the removal is actually held
+# to. It looks for what the *scanner* looks for rather than for a name:
+# `Go buildinf:` is the ASCII part of the build-information magic that Go
+# stamps into every binary it links, and it is what Trivy's `gobinary` analyzer
+# keys on — so this fails the build on any Go binary left in the tree that
+# ships, whatever package or file it arrived under. Scanning is cheap because
+# it is bounded to the files a Go binary could be: 640 executables and 49 files
+# over a megabyte in this whole tree.
+#
+# So a dependency tree that *moves* the binary fails here, loudly, at build
+# time; a dependency tree that *drops* it passes. `scripts/images.test.ts`
+# holds this file to carrying both halves.
+RUN find . -depth \( -name esbuild -o -name '@esbuild' \) -exec rm -rf {} + \
+  && test -z "$(find . -type f \( -perm -u+x -o -size +1M \) \
+       -exec grep -l 'Go buildinf:' {} + 2>/dev/null)"
 
 # node:24.18.1-trixie-slim
 FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
@@ -182,18 +201,32 @@ ENV NODE_PATH=/app/node_modules
 # through `package-lock.json` — `npm ls tar` in this repository is empty — so
 # no `overrides` entry in any `package.json` here can touch it.
 #
-# 11.19.0 is the newest npm 11, and the first npm at all whose vendored `tar`
-# is a fixed 7.5.19. The major is deliberately unchanged from the 11.16.0 the
-# base image ships, so `npm run` behaves exactly as it did. Upgrading npm in
-# place is the smallest lever available: no Node release on the 24 LTS line
-# ships a fixed npm — 24.19.0, the newest, is still on 11.17.0 — so the
-# alternative is moving both images off LTS onto the Node 26 current line to
-# change a package manager's vendored library.
+# 11.19.0 is the newest npm 11. 11.18.0 is where the vendored `tar` was first
+# fixed to 7.5.19 and would clear the finding too; the newest of the major is
+# taken because it also carries everything fixed between the two, and the major
+# is deliberately unchanged from the 11.16.0 the base image ships, so `npm run`
+# behaves exactly as it did.
+#
+# Upgrading npm in place is the smallest lever available: no Node release on
+# the 24 LTS line ships a fixed npm — 24.19.0, the newest, is still on 11.17.0,
+# whose vendored `tar` is 7.5.16 — so the alternative is moving both images off
+# LTS onto the Node 26 current line to change a package manager's vendored
+# library.
 #
 # Pinned exactly, never a range: a floating package manager would make two
 # builds of one source revision differ, which is the property the whole
 # rebuild-live-from-source argument rests on.
-RUN npm install --global npm@11.19.0
+# `scripts/images.test.ts` refuses any `npm install` in either Dockerfile that
+# is not exactly this shape, so the one instruction in this repository that is
+# not `npm ci` cannot quietly become a dependency install.
+#
+# The cache goes in the same layer that creates it. `npm_config_cache` above
+# points npm at `/tmp/.npm`, which is right at run time and wrong here: a
+# global install leaves 30 MB of cache and a Node compile cache in the layer
+# that ships, and the `deploys` manifests then mount an `emptyDir` over `/tmp`
+# and hide it. Dead weight that nothing can even read.
+RUN npm install --global npm@11.19.0 \
+  && rm -rf /tmp/.npm /tmp/node-compile-cache
 
 # UID and GID 10001, matching `runAsUser`/`runAsGroup`/`fsGroup` on every
 # workload in `hannosirkel/deploys` that runs this image. The manifests already

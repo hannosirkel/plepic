@@ -100,31 +100,44 @@ COPY --from=build /src/storefront/public ./public
 
 RUN mkdir -p /app/.next/cache && chown 10001:10001 /app/.next/cache
 
-# npm is removed from the image that ships, because this image never runs it.
+# Every package manager is removed from the image that ships, because this
+# image runs none of them.
 #
 # The command below is `node server.js`, and the storefront container in
 # `hannosirkel/deploys` declares neither `command:` nor `args:`, so that is the
-# whole of what this image executes. Everything npm was needed for happened in
-# the build stage above, which is a different image.
+# whole of what this image executes. Everything a package manager was needed
+# for happened in the build stage above, which is a different image.
 #
-# It is removed rather than upgraded because it is not needed at all, and what
-# is not in the image cannot be a finding. The base image's npm vendors its own
-# dependency tree — `tar` 7.5.15 at the moment, which the Trivy gate in
-# `release.yml` fails on — and that tree is not described by
-# `package-lock.json`, so no `overrides` entry in any `package.json` here
-# governs its version. Deleting the package manager from a runtime image
-# retires that whole class of finding rather than chasing each instance of it.
-# It does not make the image smaller — the layer below still carries the files
-# and this one only records their removal — but it does take a package manager
-# out of the filesystem a running container has, which is worth having on its
-# own.
+# npm is the one the scanner named. It is removed rather than upgraded because
+# it is not needed at all, and what is not in the image cannot be a finding:
+# the base image's npm vendors its own dependency tree — `tar` 7.5.15 at the
+# moment, which the Trivy gate in `release.yml` fails on — and that tree is not
+# described by `package-lock.json`, so no `overrides` entry in any
+# `package.json` here governs its version.
 #
-# The `test` before the removal and the `!` after it are what keep this honest
-# across a base image change: the build fails if npm was not where this expects
-# it, and fails if it survived the removal.
-RUN test -x /usr/local/bin/npm \
+# corepack and yarn go with it, and that is the point rather than a tidy-up.
+# The claim being made is that deleting the package manager retires a whole
+# class of finding instead of chasing each instance of it; leaving two more
+# package managers behind, each with a vendored tree this repository equally
+# does not govern, would have left the claim false and the class open. yarn
+# 1.22.22 in particular is an unmaintained bundle this image has no use for.
+# `node` is what stays, because `node` is what runs.
+#
+# This does not make the image smaller — the layer below still carries the
+# files and this one only records their removal — but the filesystem a running
+# container has no longer holds a package manager.
+#
+# The `test` before the removal and the `!` after it keep it honest across a
+# base image change: the build fails if these were not where it expects them,
+# and fails if any survived. `scripts/images.test.ts` holds this file to
+# carrying the removal at all.
+RUN test -x /usr/local/bin/npm && test -x /usr/local/bin/corepack \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
-  && ! command -v npm
+    /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+  && ! command -v npm && ! command -v npx && ! command -v corepack \
+  && ! command -v yarn && ! command -v yarnpkg \
+  && command -v node
 
 USER 10001:10001
 

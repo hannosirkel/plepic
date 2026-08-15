@@ -1096,22 +1096,28 @@ no `.trivyignore`, no allowlist, and `--ignore-unfixed` is the only thing
 narrowing the gate — it excludes the handful of `perl-base` CVEs Debian has
 published no fix for.
 
-**The storefront image has no npm.** Its command is `node server.js` and its
-`deploys` Deployment declares neither `command:` nor `args:`, so npm was in the
-image only because the `node` base image ships it. npm vendors its own
-dependency tree, which `package-lock.json` does not describe and no `overrides`
-entry here can reach — the base image's npm 11.16.0 vendors `tar` 7.5.15, which
-the gate fails on. Deleting the package manager from a runtime that never runs
-it retires that whole class of finding instead of chasing each instance of it.
+**The storefront image has no package manager at all.** Its command is
+`node server.js` and its `deploys` Deployment declares neither `command:` nor
+`args:`, so npm, npx, corepack and yarn were in the image only because the
+`node` base image ships them. npm is the one the scanner named: it vendors its
+own dependency tree, which `package-lock.json` does not describe and no
+`overrides` entry here can reach — the base image's npm 11.16.0 vendors `tar`
+7.5.15, which the gate fails on. Deleting the package manager from a runtime
+that never runs one retires that whole class of finding instead of chasing each
+instance of it, which is why corepack and yarn go with npm rather than being
+left behind with vendored trees this repository equally does not govern. `node`
+stays, because `node` is what runs.
 
 **The backend image upgrades npm rather than removing it**, because npm *is*
 its entrypoint: all four `deploys` workloads run it as
-`args: [npm, run, <script>]`. It is pinned to exactly 11.19.0, the newest npm 11
-and the first npm at all whose vendored `tar` is a fixed 7.5.19. The major is
-deliberately unchanged from the base image's, so `npm run` behaves as it did,
-and the pin is exact rather than a range because a floating package manager
-would make two builds of one source revision differ. No Node release on the 24
-LTS line ships a fixed npm — 24.19.0, the newest, is still on 11.17.0 — so the
+`args: [npm, run, <script>]`. It is pinned to exactly 11.19.0, the newest npm
+11. 11.18.0 is where the vendored `tar` was first fixed to 7.5.19 and would
+clear the finding too; the newest of the major is taken because it also carries
+everything fixed between the two, and because the major stays what the base
+image ships, so `npm run` behaves as it did. The pin is exact rather than a
+range because a floating package manager would make two builds of one source
+revision differ. No Node release on the 24 LTS line ships a fixed npm — 24.19.0,
+the newest, is still on 11.17.0, whose vendored `tar` is 7.5.16 — so the
 alternative was moving both images onto the Node current line to change a
 package manager's vendored library.
 
@@ -1135,10 +1141,23 @@ that would change the compiler `medusa build` runs with in order to fix a binary
 that never executes. The removal takes the whole package because the same binary
 is present twice — esbuild's `install.js` copies the platform binary over its
 own `bin/esbuild` shim — and Trivy reports one finding for the two identical
-files, so removing one copy moves the finding rather than clearing it. Both
-Dockerfiles `test` for what they are about to delete and `test` again that it is
-gone, so a dependency tree that moves either one fails the build instead of
-quietly shipping it.
+files, so removing one copy moves the finding rather than clearing it.
+
+**Each of the three is a removal plus an assertion, and the assertion is the
+part that is worth anything.** A removal by name can only delete what it was
+told to look for, so neither Dockerfile is trusted to have been right about the
+name: the storefront proves `! command -v npm` and the same for every other
+package manager, and the backend refuses to build if any file in the tree it
+ships still carries `Go buildinf:`, the build-information magic Go stamps into
+everything it links and the thing Trivy's own `gobinary` analyzer keys on. So a
+dependency tree that *moves* a Go binary fails the build, under whatever name
+it arrives; a dependency tree that *drops* esbuild passes, because a clean tree
+is not a failure. `scripts/images.test.ts` holds both files to carrying both
+halves, and holds any `npm install` in either of them to being an exact
+package-manager pin rather than a dependency install — without that, deleting
+any of the three instructions would leave the whole suite green and the only
+thing left to notice would be the gate, which runs *after* `Release` has
+already published both images.
 
 ## Catalogue import
 

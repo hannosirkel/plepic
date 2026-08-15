@@ -242,14 +242,30 @@ describe("both images are built from a pinned base and run as a non-root user", 
           (line) => !line.startsWith("--from="),
         );
         expect(copied.some((line) => line.startsWith("package.json package-lock.json"))).toBe(true);
-        for (const install of directives(image.dockerfile, "RUN").filter((line) =>
-          line.includes("npm ci"),
-        )) {
-          // `npm install` would resolve afresh and could publish a dependency
-          // tree no lockfile describes; the plan's whole argument for
-          // rebuilding live from source rather than re-tagging the tested
-          // digest rests on this being `npm ci`.
-          expect(install).not.toMatch(/npm install/);
+        // Every `RUN`, not only the ones that already say `npm ci`.
+        //
+        // `npm install` would resolve afresh and could publish a dependency
+        // tree no lockfile describes; the plan's whole argument for rebuilding
+        // live from source rather than re-tagging the tested digest rests on
+        // the dependency install being `npm ci`. Filtering to the lines that
+        // contain `npm ci` left a hole open right beside the rule: a separate
+        // `RUN` saying `npm install` was never inspected at all, because it
+        // does not contain the string being filtered on.
+        //
+        // One shape is permitted, and it is not a dependency install: pinning
+        // the **package manager** to an exact version, which the backend image
+        // does because npm is its entrypoint and the base image's npm vendors
+        // a `tar` the Trivy gate fails on. Exact rather than a range, because
+        // a floating package manager would make two builds of one source
+        // revision differ — the same property this assertion exists to
+        // protect.
+        for (const run of directives(image.dockerfile, "RUN")) {
+          for (const install of run.match(/npm install[^&|;]*/g) ?? []) {
+            expect(
+              install.trim(),
+              `${image.dockerfile} runs an npm install that is not an exact package-manager pin`,
+            ).toMatch(/^npm install --global npm@\d+\.\d+\.\d+$/);
+          }
         }
         expect(directives(image.dockerfile, "RUN").some((line) => line.includes("npm ci"))).toBe(
           true,
@@ -286,6 +302,93 @@ describe("both images are built from a pinned base and run as a non-root user", 
     // that directory exist. Neither is any use without the other.
     expect(read("storefront/next.config.ts")).toMatch(/output:\s*"standalone"/);
     expect(read("storefront/Dockerfile")).toContain(".next/standalone");
+  });
+});
+
+/**
+ * What the shipping images are held to **not** contain.
+ *
+ * These three instructions each clear a CRITICAL that the Trivy gate in
+ * `release.yml` fails a promotion on, and none of the three is reachable from
+ * `package.json`: two are npm's own vendored `tar`, arriving through the base
+ * image, and one is the Go standard library compiled into esbuild's platform
+ * binary, arriving as a *production* transitive dependency that `--omit=dev`
+ * does not remove.
+ *
+ * They are asserted here because deleting any one of them leaves every other
+ * check in this repository green. The only other thing that would notice is
+ * the gate itself — and the gate runs **after** `Release` has already built
+ * and published both images, so a regression caught there is a promotion that
+ * has already put the vulnerable image on the registry. That is exactly how
+ * these findings arrived. A silent regression to a passing suite is worth less
+ * than a red one here.
+ */
+describe("the shipping images carry no tooling their runtime does not use", () => {
+  /** Everything the `node` base image provides for installing packages. */
+  const PACKAGE_MANAGERS = ["npm", "npx", "corepack", "yarn", "yarnpkg"] as const;
+
+  it("removes every package manager from the storefront, which runs `node server.js`", () => {
+    const stage = finalStage("storefront/Dockerfile");
+    // The premise: this image's command is not a package manager, so it needs
+    // none. If that ever changes, this assertion should be the thing that
+    // fails first rather than the removal below being quietly wrong.
+    expect(finalDirectives("storefront/Dockerfile", "CMD")).toEqual(['["node", "server.js"]']);
+
+    const runs = directivesIn(stage, "RUN");
+    for (const manager of PACKAGE_MANAGERS) {
+      // Each removal proves itself at build time. Asserting on the proof
+      // rather than on the `rm` is deliberate: an `rm -rf` of a path that
+      // moved in a new base image succeeds and removes nothing, while
+      // `! command -v npm` is a statement about the filesystem that results.
+      expect(
+        runs.some((line) => line.includes(`! command -v ${manager}`)),
+        `storefront/Dockerfile does not prove ${manager} is gone from the image it ships`,
+      ).toBe(true);
+    }
+    // And the interpreter that actually runs the command survives.
+    expect(runs.some((line) => /&& command -v node$/.test(line))).toBe(true);
+  });
+
+  it("keeps npm in the backend, which runs it, and pins it to an exact version", () => {
+    // The mirror of the assertion above, and the reason the two images differ.
+    // All four `deploys` workloads run this image as `args: [npm, run, …]`, so
+    // npm here is the entrypoint and cannot be removed — which is why it is
+    // upgraded instead, and why that upgrade has to be exact.
+    expect(finalDirectives("backend/Dockerfile", "CMD")).toEqual(['["npm", "run", "start"]']);
+    const runs = finalDirectives("backend/Dockerfile", "RUN");
+    expect(runs.some((line) => line.includes("! command -v npm"))).toBe(false);
+    expect(
+      runs.some((line) => /npm install --global npm@\d+\.\d+\.\d+(\s|$)/.test(line)),
+      "backend/Dockerfile does not pin npm to an exact version",
+    ).toBe(true);
+    // The cache that pin creates does not ship. `npm_config_cache` points npm
+    // at `/tmp/.npm`, which is right at run time and wrong at build time: the
+    // `deploys` manifests mount an `emptyDir` over `/tmp`, so a cache left in
+    // the layer is tens of megabytes nothing can even read.
+    expect(
+      runs.some((line) => /npm install --global/.test(line) && /rm -rf [^&|;]*\/tmp\//.test(line)),
+      "backend/Dockerfile leaves npm's cache in the layer that ships",
+    ).toBe(true);
+  });
+
+  it("deletes esbuild from the backend's runtime dependency tree", () => {
+    const runs = directives("backend/Dockerfile", "RUN");
+    expect(
+      runs.some((line) => /find .*-name .?@esbuild.? .*rm -rf/.test(line)),
+      "backend/Dockerfile does not remove esbuild from the tree it ships",
+    ).toBe(true);
+    // The half that matters more. A removal by name can only delete what it
+    // was told to look for, so the build also refuses any Go binary left in
+    // the tree — `Go buildinf:` is the ASCII part of the build-information
+    // magic Go stamps into everything it links, and it is what Trivy's
+    // `gobinary` analyzer keys on. That makes the check a statement about what
+    // the image *contains* rather than about what a package is *called*, so a
+    // dependency tree that moves the binary fails the build instead of moving
+    // the finding.
+    expect(
+      runs.some((line) => line.includes("Go buildinf:")),
+      "backend/Dockerfile does not refuse a Go binary in the tree it ships",
+    ).toBe(true);
   });
 });
 
