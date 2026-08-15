@@ -205,6 +205,94 @@ describe("readBackendRuntimeConfig", () => {
     );
   });
 
+  /**
+   * The environment `deploys/plepic/base/backend.yaml` projects, with the three
+   * CORS origins declared **empty** — which is what the plan mandates rather
+   * than an omission. Cart and checkout require no CORS origin at all: the
+   * storefront proxies `/store-api` on its own origin and the Admin is
+   * same-origin on the backend, so a hostname here would be a second, unneeded
+   * way in and would breach the exposure boundary.
+   */
+  const manifestEnvironment = {
+    NODE_ENV: "production",
+    DATABASE_HOST: "plepic-postgresql",
+    DATABASE_PORT: "5432",
+    DATABASE_NAME: "plepic",
+    DATABASE_USER: "medusa",
+    DATABASE_PASSWORD: "projected-from-the-secret",
+    JWT_SECRET: "jwt-secret",
+    COOKIE_SECRET: "cookie-secret",
+    STORE_CORS: "",
+    ADMIN_CORS: "",
+    AUTH_CORS: "",
+    STRIPE_SECRET_KEY: "sk_test_example",
+    STRIPE_WEBHOOK_SECRET: "whsec_example",
+    STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
+    SMTP_HOST: "smtp.example.test",
+    SMTP_PORT: "587",
+    SMTP_USERNAME: "smtp-user",
+    SMTP_PASSWORD: "smtp-password",
+    SMTP_ENVELOPE_FROM: "orders@example.test",
+    CONTACT_MAIL_RECIPIENT: "contact@example.test",
+    TURNSTILE_SECRET_KEY: "turnstile-secret",
+    MERCHANT_LEGAL_NAME: "Lunar Base OÜ",
+    MERCHANT_REGISTERED_ADDRESS: "Moon Street 1, Tallinn",
+    MERCHANT_CONTACT_ADDRESS: "legal@example.test",
+    MERCHANT_RETURN_ADDRESS: "Return Street 2, Tallinn",
+  } as const;
+
+  const corsVariables = ["STORE_CORS", "ADMIN_CORS", "AUTH_CORS"] as const;
+
+  it("accepts the CORS origins declared empty, and passes the empty list through", () => {
+    const config = readBackendRuntimeConfig(manifestEnvironment);
+
+    expect(config.http.storeCors).toBe("");
+    expect(config.http.adminCors).toBe("");
+    expect(config.http.authCors).toBe("");
+  });
+
+  /**
+   * Declared-empty is permitted; **absent** is not. A workload whose manifest
+   * forgets the variable entirely is not making the same statement as one that
+   * declares it empty on purpose, and it should not start.
+   */
+  it.each(corsVariables)("still refuses %s when it is absent altogether", (name) => {
+    const withoutIt: Record<string, string | undefined> = { ...manifestEnvironment };
+    delete withoutIt[name];
+
+    expect(() => readBackendRuntimeConfig(withoutIt)).toThrow(
+      `Missing required backend environment variable: ${name}`,
+    );
+  });
+
+  /**
+   * Whitespace is refused, and that is a deliberate choice between two ways of
+   * being wrong. `value: ""` is how a manifest *says* empty; whitespace is
+   * never a deliberate way to say it, so refusing costs nothing intentional.
+   * Accepting it would absorb a templating slip into a backend that starts,
+   * looks healthy, and denies an origin somebody meant to allow — discovered at
+   * checkout, if ever. Refusing surfaces it at start, which is the one moment
+   * an operator is already watching.
+   */
+  it.each(corsVariables)("refuses a whitespace-only %s", (name) => {
+    expect(() => readBackendRuntimeConfig({ ...manifestEnvironment, [name]: "   " })).toThrow(
+      new RegExp(`${name}.*whitespace`),
+    );
+  });
+
+  /**
+   * The permission is those three and nothing else. An empty secret is an
+   * absent secret however it got that way.
+   */
+  it.each(["JWT_SECRET", "COOKIE_SECRET", "STRIPE_SECRET_KEY", "SMTP_HOST", "TURNSTILE_SECRET_KEY"])(
+    "still refuses an empty %s",
+    (name) => {
+      expect(() => readBackendRuntimeConfig({ ...manifestEnvironment, [name]: "" })).toThrow(
+        new RegExp(name),
+      );
+    },
+  );
+
   it("parses newsletter credentials only for the subscribing Store route", () => {
     expect(readNewsletterRuntimeConfig({
       NEWSLETTER_API_KEY: "newsletter-api-key",

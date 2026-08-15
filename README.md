@@ -942,6 +942,36 @@ credentials, so a password rotated through Medusa is not quietly reset from a
 Secret on the next sync. `medusa user` is not used for either reason: it creates
 unconditionally, and it exits non-zero after having already created the user.
 
+### The CORS origins are declared empty, on purpose
+
+`STORE_CORS`, `ADMIN_CORS` and `AUTH_CORS` are required to be **declared** and
+permitted to be **empty**, and they are the only three variables that are.
+Every workload in `hannosirkel/deploys` sets all three to `value: ""`, because
+cart and checkout require no CORS origin at all: the storefront proxies
+`/store-api` on its own origin and the Admin is same-origin on the backend, so
+a hostname here would be a second way in that the exposure boundary does not
+allow.
+
+An empty list is restrictive, not permissive, which is the only reason this is
+safe to accept. `parseCorsOrigins("")` returns `[]`, and the `cors` middleware
+given `origin: []` matches nothing and sends no `Access-Control-Allow-Origin`
+header to any caller — it is also Medusa's own default for all three.
+
+Three states, three outcomes:
+
+| Manifest | Result |
+|---|---|
+| absent | Refuses: `Missing required backend environment variable: STORE_CORS` |
+| `value: ""` | Accepted — no cross-origin caller is allowed |
+| whitespace only | Refuses: `STORE_CORS may be declared empty, but must not be whitespace only` |
+
+Whitespace is refused deliberately. `value: ""` is how a manifest *says* empty;
+whitespace is never a deliberate way to say it, so refusing costs nothing
+anyone meant. Accepting it would absorb a templating slip into a backend that
+starts, looks healthy, and quietly denies an origin somebody meant to allow —
+found at checkout, if ever. An empty **secret** is still an absent secret: a
+`JWT_SECRET` of `""` refuses exactly as it did.
+
 ### The database connection
 
 The backend accepts the connection in **two forms, and prefers the explicit
