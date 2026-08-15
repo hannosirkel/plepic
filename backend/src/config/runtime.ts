@@ -11,6 +11,7 @@ import {
   assertExpectedEnvironmentIdentity,
   type ImportEnvironmentIdentity,
 } from "../catalogue-import/refusal";
+import { resolveDatabaseUrl } from "./database-url";
 
 export interface BackendRuntimeConfig {
   readonly databaseUrl: string;
@@ -72,8 +73,14 @@ export interface OrderConfirmationLegalConfig {
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
+/**
+ * `DATABASE_URL` is deliberately absent from this list. The database connection
+ * has two accepted forms — an explicit URL, or the five `DATABASE_*` parts the
+ * `deploys` manifests project — and only {@link resolveDatabaseUrl} can say
+ * whether the environment supplies either. Demanding the URL here is what made
+ * the backend Deployment crash-loop against manifests that supply the parts.
+ */
 const requiredEnvironmentVariables = [
-  "DATABASE_URL",
   "JWT_SECRET",
   "COOKIE_SECRET",
   "STORE_CORS",
@@ -261,6 +268,10 @@ export function readNewsletterRateLimitRuntimeConfig(
  * environment-specific defaults to the application image.
  */
 export function readBackendRuntimeConfig(environment: RuntimeEnvironment): BackendRuntimeConfig {
+  // First, because it is the one a workload is most likely to be missing and
+  // the one whose refusal has to be the first thing in the log.
+  const databaseUrl = resolveDatabaseUrl(environment);
+
   for (const name of requiredEnvironmentVariables) {
     requireEnvironmentValue(environment, name);
   }
@@ -272,7 +283,7 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   }
 
   return {
-    databaseUrl: requireEnvironmentValue(environment, "DATABASE_URL"),
+    databaseUrl,
     http: {
       storeCors: requireEnvironmentValue(environment, "STORE_CORS"),
       adminCors: requireEnvironmentValue(environment, "ADMIN_CORS"),

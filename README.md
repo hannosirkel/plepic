@@ -887,11 +887,90 @@ export MEDUSA_PUBLISHABLE_API_KEY=…   # created against the local database
 Two things the local stack deliberately does not paper over. The backend needs
 its database migrated before it will serve, and the migration is the predeploy
 step the cluster runs as a Job rather than something `compose.yaml` does behind
-your back. And the SMTP sender does `requireTLS: true` with certificate
+your back — run it yourself, once, against the running stack:
+
+```bash
+docker compose run --rm \
+  -e MEDUSA_ADMIN_EMAIL=admin@example.test \
+  -e MEDUSA_ADMIN_PASSWORD="$(openssl rand -base64 24)" \
+  backend npm run predeploy
+```
+
+And the SMTP sender does `requireTLS: true` with certificate
 verification, which is not relaxed for local convenience — Mailpit accepts the
 connection, and to complete a delivery give it a certificate
 (`MP_SMTP_TLS_CERT`, `MP_SMTP_TLS_KEY`) and the backend a `NODE_EXTRA_CA_CERTS`
 that trusts it.
+
+## What the cluster runs
+
+Four workloads in `hannosirkel/deploys` run this one backend image and choose
+what it does with `args: [npm, run, <script>]`. Kubernetes `args` replaces the
+image's `CMD` and leaves `ENTRYPOINT` prefixed, which is why `backend/Dockerfile`
+clears the entrypoint the `node` base image ships: the manifests in the other
+repository say what the container runs, and what they say should be the whole of
+it.
+
+| Script | Workload | What it does |
+|---|---|---|
+| `start` | `plepic-backend` Deployment | The API and the Admin, on the framework's default worker mode |
+| `start:worker` | `plepic-worker` Deployment | The same image with `MEDUSA_WORKER_MODE=worker` |
+| `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator |
+| `catalogue:import` | `plepic-catalogue-import` Job, suspended | The one-shot WooCommerce catalogue import |
+
+**The script name is the whole of the contract, and it has nothing behind it.**
+A manifest naming a script this `package.json` does not declare is
+`npm ERR! Missing script` and an immediate exit — a first-start failure that no
+review of either repository on its own can see, because each side reads only as
+a sensible list of its own. Both sides are now tested:
+`backend/tests/deployment-contract.test.ts` holds the list against the source
+manifest and `scripts/validate` holds it against the built
+`.medusa/server/package.json`, so a script the cluster calls cannot be absent
+from a published image without CI failing.
+
+Neither `backend.yaml` nor `worker.yaml` sets `MEDUSA_WORKER_MODE`, so worker
+mode is selected inside `start:worker` and nowhere else. Putting it in
+`medusa-config.ts` would have moved the API off the default too; the two
+Deployments differ by exactly the script they name.
+
+`predeploy` is two commands rather than two Jobs because everything else is
+gated on one sync hook: migrate, seed, and only then let an API, worker, or
+storefront pod start. The seeding step is idempotent — it looks for the
+administrator first and returns `already-present` — because the hook runs again
+on every promoted digest, and it never re-registers an existing administrator's
+credentials, so a password rotated through Medusa is not quietly reset from a
+Secret on the next sync. `medusa user` is not used for either reason: it creates
+unconditionally, and it exits non-zero after having already created the user.
+
+### The database connection
+
+The backend accepts the connection in **two forms, and prefers the explicit
+one**:
+
+1. `DATABASE_URL`, used verbatim if it is set and non-empty.
+2. Otherwise `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`
+   and `DATABASE_PASSWORD`, assembled into a URL.
+
+`compose.yaml` and `.github/workflows/validate.yml` both set an explicit
+`DATABASE_URL` and neither sets a single part, so the precedence is what keeps
+the local and CI paths working untouched; the URL is also the more expressive
+form, and a socket, a `?sslmode=require`, or a managed instance's URL is not
+reachable through five parts. Every `deploys` workload supplies the parts and no
+URL, so the two forms never compete in a real deployment.
+
+The assembly is on this side rather than in the manifests deliberately. A full
+URL embeds the password, so supplying one would turn four non-secret values into
+a secret needing its own ESO projection and put the password in a second place
+it can leak from; the five-part form keeps it in its own Secret key, which is
+what `deploys/plepic/tests/manifests.sh` asserts.
+
+Both refusals are closed and quiet. A missing or empty part refuses by name and
+says what the alternative is, rather than dialling a malformed URL and reporting
+it as a connection failure against a host nobody configured. Every component is
+percent-encoded, because the password is generated rather than chosen and an
+unencoded `@` in it would move the host. And no refusal ever contains a value —
+these messages are read from a crash-looping pod's log, which is the cluster's
+log pipeline and thirty days of Loki.
 
 ## Images
 

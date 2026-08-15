@@ -163,6 +163,48 @@ describe("readBackendRuntimeConfig", () => {
     });
   });
 
+  /**
+   * The environment `deploys/plepic/base/backend.yaml` actually projects. It
+   * supplies the five `DATABASE_*` parts and no `DATABASE_URL`, and the
+   * Deployment crash-looped on a configuration read that demanded the URL.
+   *
+   * This is the manifest's own list, transcribed, minus the values that are
+   * irrelevant to the database read.
+   */
+  it("accepts the five DATABASE_* parts the deploys manifests project", () => {
+    const config = readBackendRuntimeConfig({
+      NODE_ENV: "production",
+      DATABASE_HOST: "plepic-postgresql",
+      DATABASE_PORT: "5432",
+      DATABASE_NAME: "plepic",
+      DATABASE_USER: "medusa",
+      DATABASE_PASSWORD: "projected-from-the-secret",
+      JWT_SECRET: "jwt-secret",
+      COOKIE_SECRET: "cookie-secret",
+      STORE_CORS: "https://store.example.test",
+      ADMIN_CORS: "https://admin.example.test",
+      AUTH_CORS: "https://store.example.test",
+      STRIPE_SECRET_KEY: "sk_test_example",
+      STRIPE_WEBHOOK_SECRET: "whsec_example",
+      STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
+      SMTP_HOST: "smtp.example.test",
+      SMTP_PORT: "587",
+      SMTP_USERNAME: "smtp-user",
+      SMTP_PASSWORD: "smtp-password",
+      SMTP_ENVELOPE_FROM: "orders@example.test",
+      CONTACT_MAIL_RECIPIENT: "contact@example.test",
+      TURNSTILE_SECRET_KEY: "turnstile-secret",
+      MERCHANT_LEGAL_NAME: "Lunar Base OÜ",
+      MERCHANT_REGISTERED_ADDRESS: "Moon Street 1, Tallinn",
+      MERCHANT_CONTACT_ADDRESS: "legal@example.test",
+      MERCHANT_RETURN_ADDRESS: "Return Street 2, Tallinn",
+    });
+
+    expect(config.databaseUrl).toBe(
+      "postgres://medusa:projected-from-the-secret@plepic-postgresql:5432/plepic",
+    );
+  });
+
   it("parses newsletter credentials only for the subscribing Store route", () => {
     expect(readNewsletterRuntimeConfig({
       NEWSLETTER_API_KEY: "newsletter-api-key",
