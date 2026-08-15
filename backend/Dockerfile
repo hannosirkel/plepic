@@ -87,6 +87,47 @@ COPY storefront/package.json storefront/package.json
 
 RUN npm ci --omit=dev --workspace backend --include-workspace-root
 
+# esbuild is deleted from the runtime tree, because it is a build tool that
+# ships a compiled Go standard library and nothing in the runtime path calls
+# it.
+#
+# It is here at all as a *production* transitive dependency, so `--omit=dev`
+# does not remove it:
+#
+#     @medusajs/medusa -> @medusajs/admin-bundler -> vite ^5.4.21
+#       -> esbuild ^0.21.3 -> @esbuild/linux-x64 (bin/esbuild, a Go binary)
+#
+# The whole package goes, not just the `@esbuild/*` platform package, because
+# there are **two** copies of that one binary: esbuild's `install.js` copies
+# the platform binary over its own `bin/esbuild` shim on install, so the tree
+# carries it at both `@esbuild/linux-x64/bin/esbuild` and
+# `@medusajs/admin-bundler/node_modules/esbuild/bin/esbuild`. Trivy reports
+# one finding for the two identical files, so removing only the first moves
+# the finding rather than clearing it.
+#
+# `@medusajs/admin-bundler` exports four entry points. Three of them —
+# `build`, `develop` and `plugin` — `await import("vite")`, and all three are
+# build-time commands that run in the `build` stage above, never here. The
+# fourth, `serve`, is the only one `medusa start` reaches: the framework's
+# admin loader calls it for every non-development `NODE_ENV`, and it is
+# `compression`, `express`, `fs` and `path` serving the pre-built bundle out
+# of `.medusa/server/public`. Because the vite imports are dynamic and inside
+# those three functions, loading `@medusajs/admin-bundler` does not load vite,
+# and nothing loads esbuild.
+#
+# Deleting it rather than overriding the version is deliberate. vite 5.4.21
+# accepts `esbuild@^0.21.3`, and the newest release in that range, 0.21.5, is
+# the one already here — built against Go 1.20.12, which is what the scanner
+# reports. Only much later esbuild minors carry a patched Go, and forcing one
+# past vite's range would change the compiler that `medusa build` runs with in
+# the stage above, to fix a binary that never executes in the stage below.
+#
+# The `test` is not decoration: if a future dependency tree moves the binary,
+# this build fails rather than quietly shipping it again.
+RUN test -n "$(find . -type d -name '@esbuild' -print -quit)" \
+  && find . -depth \( -name esbuild -o -name '@esbuild' \) -exec rm -rf {} + \
+  && test -z "$(find . \( -name esbuild -o -name '@esbuild' \) -print -quit)"
+
 # node:24.18.1-trixie-slim
 FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
 
@@ -128,6 +169,31 @@ ENV MEDUSA_DISABLE_TELEMETRY=true
 # path. Without this line `medusa db:migrate` fails with `Cannot find module`,
 # which means the predeploy Job never migrates and no pod ever serves.
 ENV NODE_PATH=/app/node_modules
+
+# npm is upgraded, in the image that ships, because it is this image's
+# entrypoint and it carries its own vendored dependency tree.
+#
+# `hannosirkel/deploys` runs all four of this image's roles with
+# `args: [npm, run, <script>]`, so npm cannot be removed here the way it is
+# from the storefront image. That leaves its vendored copy of `tar` in the
+# scan: the base image's npm 11.16.0 vendors `tar` 7.5.15 at
+# `/usr/local/lib/node_modules/npm/node_modules/tar`, which the Trivy gate in
+# `release.yml` fails on. It reaches the image through the base image and not
+# through `package-lock.json` — `npm ls tar` in this repository is empty — so
+# no `overrides` entry in any `package.json` here can touch it.
+#
+# 11.19.0 is the newest npm 11, and the first npm at all whose vendored `tar`
+# is a fixed 7.5.19. The major is deliberately unchanged from the 11.16.0 the
+# base image ships, so `npm run` behaves exactly as it did. Upgrading npm in
+# place is the smallest lever available: no Node release on the 24 LTS line
+# ships a fixed npm — 24.19.0, the newest, is still on 11.17.0 — so the
+# alternative is moving both images off LTS onto the Node 26 current line to
+# change a package manager's vendored library.
+#
+# Pinned exactly, never a range: a floating package manager would make two
+# builds of one source revision differ, which is the property the whole
+# rebuild-live-from-source argument rests on.
+RUN npm install --global npm@11.19.0
 
 # UID and GID 10001, matching `runAsUser`/`runAsGroup`/`fsGroup` on every
 # workload in `hannosirkel/deploys` that runs this image. The manifests already

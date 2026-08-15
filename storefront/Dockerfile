@@ -100,6 +100,32 @@ COPY --from=build /src/storefront/public ./public
 
 RUN mkdir -p /app/.next/cache && chown 10001:10001 /app/.next/cache
 
+# npm is removed from the image that ships, because this image never runs it.
+#
+# The command below is `node server.js`, and the storefront container in
+# `hannosirkel/deploys` declares neither `command:` nor `args:`, so that is the
+# whole of what this image executes. Everything npm was needed for happened in
+# the build stage above, which is a different image.
+#
+# It is removed rather than upgraded because it is not needed at all, and what
+# is not in the image cannot be a finding. The base image's npm vendors its own
+# dependency tree — `tar` 7.5.15 at the moment, which the Trivy gate in
+# `release.yml` fails on — and that tree is not described by
+# `package-lock.json`, so no `overrides` entry in any `package.json` here
+# governs its version. Deleting the package manager from a runtime image
+# retires that whole class of finding rather than chasing each instance of it.
+# It does not make the image smaller — the layer below still carries the files
+# and this one only records their removal — but it does take a package manager
+# out of the filesystem a running container has, which is worth having on its
+# own.
+#
+# The `test` before the removal and the `!` after it are what keep this honest
+# across a base image change: the build fails if npm was not where this expects
+# it, and fails if it survived the removal.
+RUN test -x /usr/local/bin/npm \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && ! command -v npm
+
 USER 10001:10001
 
 EXPOSE 3000

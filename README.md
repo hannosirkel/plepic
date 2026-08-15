@@ -1087,6 +1087,59 @@ exclude dependency trees, build output, tests and the committed screenshot
 baselines, and name the design-master file formats so that a master committed
 by mistake cannot also reach a published image.
 
+### What the runtime images deliberately do not contain
+
+The Trivy gate in `release.yml` fails a promotion on any CRITICAL with a fix
+available, and two of the things it found were not in `package-lock.json` at
+all. Both fixes are in the Dockerfiles, and neither is a suppression: there is
+no `.trivyignore`, no allowlist, and `--ignore-unfixed` is the only thing
+narrowing the gate — it excludes the handful of `perl-base` CVEs Debian has
+published no fix for.
+
+**The storefront image has no npm.** Its command is `node server.js` and its
+`deploys` Deployment declares neither `command:` nor `args:`, so npm was in the
+image only because the `node` base image ships it. npm vendors its own
+dependency tree, which `package-lock.json` does not describe and no `overrides`
+entry here can reach — the base image's npm 11.16.0 vendors `tar` 7.5.15, which
+the gate fails on. Deleting the package manager from a runtime that never runs
+it retires that whole class of finding instead of chasing each instance of it.
+
+**The backend image upgrades npm rather than removing it**, because npm *is*
+its entrypoint: all four `deploys` workloads run it as
+`args: [npm, run, <script>]`. It is pinned to exactly 11.19.0, the newest npm 11
+and the first npm at all whose vendored `tar` is a fixed 7.5.19. The major is
+deliberately unchanged from the base image's, so `npm run` behaves as it did,
+and the pin is exact rather than a range because a floating package manager
+would make two builds of one source revision differ. No Node release on the 24
+LTS line ships a fixed npm — 24.19.0, the newest, is still on 11.17.0 — so the
+alternative was moving both images onto the Node current line to change a
+package manager's vendored library.
+
+**The backend image has no esbuild.** It arrives as a *production* transitive
+dependency, so `--omit=dev` leaves it: `@medusajs/medusa` →
+`@medusajs/admin-bundler` → `vite ^5.4.21` → `esbuild ^0.21.3`, whose platform
+package ships a Go binary, and the Go standard library compiled into that
+binary is what the scanner reports. Nothing in the runtime path calls it.
+`@medusajs/admin-bundler` exports four entry points; `build`, `develop` and
+`plugin` `await import("vite")` and are all build-time commands that run in the
+build stage, while `serve` — the only one `medusa start` reaches, through the
+framework's admin loader — is `compression`, `express`, `fs` and `path` serving
+the pre-built bundle out of `public/admin`. Because those vite imports are
+dynamic and inside those three functions, loading `@medusajs/admin-bundler`
+loads neither vite nor esbuild.
+
+Deleting it beats overriding its version. vite 5.4.21 accepts `esbuild@^0.21.3`
+and the newest release in that range is the one already installed, so an
+override that fixed anything would have to be forced past vite's range, and
+that would change the compiler `medusa build` runs with in order to fix a binary
+that never executes. The removal takes the whole package because the same binary
+is present twice — esbuild's `install.js` copies the platform binary over its
+own `bin/esbuild` shim — and Trivy reports one finding for the two identical
+files, so removing one copy moves the finding rather than clearing it. Both
+Dockerfiles `test` for what they are about to delete and `test` again that it is
+gone, so a dependency tree that moves either one fails the build instead of
+quietly shipping it.
+
 ## Catalogue import
 
 `npm run catalogue:import`, in the `backend` workspace, seeds a Medusa
