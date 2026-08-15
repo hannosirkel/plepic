@@ -1,20 +1,33 @@
 ---
-name: Deploy Test
+name: Release
 
-# Promotes one pull request's head revision into the test environment.
+# Promotes merged `main` into the live environment.
 #
-# This is a `pull_request_target` workflow: it runs with the base repository's
-# token and secrets against a pull request an outside contributor may have
-# authored. Nothing here trusts the head. The `gate` job checks out no code at
-# all and re-reads the digest guard from the **base** SHA; the `build` job runs
-# head code but holds no GitOps credential; the `promote` job holds the
-# credential but runs no head code.
+# **Once this file exists, every merge to `main` is a live deployment.** There
+# is no label, no second gate and no manual approval step beyond the `live`
+# GitHub Environment: the merge is the approval, and what is approved is a
+# source revision rather than a digest. Live is rebuilt from merged `main`
+# instead of re-tagging the digest the test environment was approved on, so the
+# two digests differ. That is only acceptable because no per-environment value
+# is ever baked into an image — the same source produces an image that serves
+# either environment, and the locked dependency tree plus digest-pinned base
+# images keep the rebuild faithful.
+#
+# It shares `concurrency: plepic-gitops-promotion` with `deploy-test.yml`, so a
+# live promotion and a test promotion never write the `deploys` repository at
+# the same time.
+#
+# The job split is the same one `deploy-test.yml` uses, and for the same
+# reason: `gate` checks out no code and reads the reviewed guard through the
+# API; `build` runs repository code but holds no GitOps credential; `promote`
+# holds the credential — a GitHub App token minted for `hannosirkel/deploys`
+# alone — but brings no code into the job that holds it. `scripts/workflows.test.ts`
+# asserts every one of those against the parsed document.
 
 'on':
-  pull_request_target:
+  push:
     branches:
       - main
-    types: [labeled]
 
 concurrency:
   group: plepic-gitops-promotion
@@ -23,30 +36,87 @@ concurrency:
 permissions: {}
 
 jobs:
-  gate:
-    if: >-
-      github.event.label.name == 'deploy-test' &&
-      github.event.pull_request.state == 'open'
+  validate:
     runs-on: ubuntu-24.04
     permissions:
-      actions: read
       contents: read
-      pull-requests: read
+    # The same three service containers `validate.yml` declares, pinned to the
+    # same digests, so `Release` validates against the world every pull request
+    # was validated against. `scripts/images.test.ts` asserts they stay
+    # identical.
+    services:
+      postgresql:
+        # postgres:17.10-bookworm
+        image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+        env:
+          POSTGRES_USER: plepic
+          POSTGRES_DB: plepic
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U plepic -d plepic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        # redis:7.4.6-bookworm
+        image: redis:7.4.6-bookworm@sha256:a9cc41d6d01da2aa26c219e4f99ecbeead955a7b656c1c499cce8922311b2514
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      smtp:
+        # axllent/mailpit:v1.30.7
+        image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+        env:
+          MP_SMTP_BIND_ADDR: 0.0.0.0:587
+          MP_UI_BIND_ADDR: 0.0.0.0:8025
+          MP_SMTP_AUTH_ACCEPT_ANY: "true"
+          MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+          MP_MAX_MESSAGES: "500"
+        ports:
+          - 587:587
+          - 8025:8025
+    env:
+      DATABASE_URL: postgres://plepic@127.0.0.1:5432/plepic
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "587"
+    steps:
+      - name: Check out the pushed revision
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run canonical validation
+        run: |
+          set -euo pipefail
+          bash scripts/validate
+
+  gate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
       guard: ${{ steps.verify.outputs.guard }}
-      head_sha: ${{ steps.verify.outputs.head_sha }}
-      pr_number: ${{ steps.verify.outputs.pr_number }}
+      source_sha: ${{ steps.verify.outputs.source_sha }}
     steps:
-      - name: Verify trusted pull request metadata and validation
+      - name: Read the digest guard from the pushed revision
         id: verify
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           api='https://api.github.com'
@@ -56,25 +126,14 @@ jobs:
             --header 'X-GitHub-Api-Version: 2022-11-28'
           )
 
-          printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
-          printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$'
-          printf '%s' "$PR_NUMBER" | grep -Eq '^[1-9][0-9]*$'
-          [ "$BASE_REF" = main ]
-          [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]
+          printf '%s' "$SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$'
 
-          pull_request="$(curl --fail --silent --show-error "${headers[@]}" \
-            "${api}/repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
-          jq -e --arg base_sha "$BASE_SHA" --arg head_sha "$HEAD_SHA" \
-            --arg repository "$REPOSITORY" '
-            .state == "open" and
-            .base.ref == "main" and
-            .base.sha == $base_sha and
-            .head.repo.full_name == $repository and
-            .head.sha == $head_sha
-          ' >/dev/null <<<"$pull_request"
-
+          # Read rather than check out. The guard is the one file from this
+          # repository the credentialed job executes, and fetching it as bytes
+          # is what keeps that job free of a working tree it could run
+          # anything else from.
           guard_response="$(curl --fail --silent --show-error "${headers[@]}" \
-            "${api}/repos/${REPOSITORY}/contents/scripts/update-gitops-digest.sh?ref=${BASE_SHA}")"
+            "${api}/repos/${REPOSITORY}/contents/scripts/update-gitops-digest.sh?ref=${SOURCE_SHA}")"
           jq -e '
             .type == "file" and
             .encoding == "base64" and
@@ -87,29 +146,11 @@ jobs:
           grep -qx '#!/bin/sh' "$guard"
           guard_content="$(base64 --wrap=0 "$guard")"
 
-          for _ in $(seq 1 30); do
-            runs="$(curl --fail --silent --show-error "${headers[@]}" \
-              "${api}/repos/${REPOSITORY}/actions/runs?event=pull_request&status=completed&head_sha=${HEAD_SHA}&per_page=100")"
-            conclusion="$(jq -er --arg head_sha "$HEAD_SHA" '
-              [.workflow_runs[] |
-                select(.name == "Validate" and .head_sha == $head_sha and .status == "completed") |
-                .conclusion
-              ] | first // empty
-            ' <<<"$runs" || true)"
-            if [ -n "$conclusion" ]; then
-              [ "$conclusion" = success ]
-              break
-            fi
-            sleep 10
-          done
-          [ -n "${conclusion:-}" ]
-
-          echo "head_sha=$HEAD_SHA" >>"$GITHUB_OUTPUT"
-          echo "pr_number=$PR_NUMBER" >>"$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >>"$GITHUB_OUTPUT"
           echo "guard=$guard_content" >>"$GITHUB_OUTPUT"
 
   build:
-    needs: gate
+    needs: [validate, gate]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -118,14 +159,13 @@ jobs:
       backend_digest: ${{ steps.build.outputs.backend_digest }}
       storefront_digest: ${{ steps.build.outputs.storefront_digest }}
     env:
-      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
-      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+      SOURCE_SHA: ${{ needs.gate.outputs.source_sha }}
     steps:
       - name: Check out the validated revision
         # actions/checkout v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ needs.gate.outputs.head_sha }}
+          ref: ${{ needs.gate.outputs.source_sha }}
           persist-credentials: false
 
       - name: Set up the attestation-capable Buildx driver
@@ -140,29 +180,25 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
             --username "${GITHUB_ACTOR}" --password-stdin
 
-      - name: Build and publish both validated images
+      - name: Build and publish both images
         id: build
         env:
           BACKEND_IMAGE: ghcr.io/hannosirkel/plepic-backend
           STOREFRONT_IMAGE: ghcr.io/hannosirkel/plepic-storefront
           # `org.opencontainers.image.source` is what makes GitHub link a
           # container package to a repository, and a linked package inherits
-          # that repository's access rather than being private with nothing to
-          # inherit it from.
+          # that repository's access. Unlinked, both packages are private on
+          # first push with no repository to inherit from, which is the
+          # `ImagePullBackOff` the "make the images pullable by K3s" row
+          # exists to prevent.
           #
-          # It matters *here* more than in `release.yml`, which carries the
-          # identical label: GHCR creates a package on its **first** push, and
-          # the ordinary sequence is to label a pull request and only then
-          # merge. These two pushes are therefore the ones that bring both
-          # packages into existence, and a label that arrived only on the
-          # second publisher would be too late to link what the first created.
-          #
-          # It is a `--label` rather than a `LABEL` in either Dockerfile
-          # because only one of the two could carry it there:
+          # It is set here rather than in either Dockerfile because
           # `storefront/tests/no-live-hostname.test.ts` scans every tracked
           # file under `storefront/`, `storefront/Dockerfile` included, and
-          # this forge is not on its allowlist. One flag on the shared
-          # invocation below covers both images.
+          # this forge is not on its allowlist. Widening a publication guard
+          # to carry a label would be a poor trade — and one `--label` on the
+          # shared invocation below covers both images anyway, which naming it
+          # twice in two Dockerfiles would not.
           SOURCE_URL: https://github.com/hannosirkel/plepic
         run: |
           set -euo pipefail
@@ -175,7 +211,7 @@ jobs:
               --provenance=mode=min --sbom=true \
               --label "org.opencontainers.image.source=$SOURCE_URL" \
               --file "$dockerfile" \
-              --tag "${image}:pr-${PR_NUMBER}-sha-${HEAD_SHA}" \
+              --tag "${image}:sha-${SOURCE_SHA}" \
               --push --metadata-file "$metadata" .
             digest="$(jq -er '."containerimage.digest"' "$metadata")"
             printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
@@ -217,49 +253,22 @@ jobs:
         # actions/upload-artifact v7.0.1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: trivy-test-${{ needs.gate.outputs.head_sha }}
+          name: trivy-live-${{ needs.gate.outputs.source_sha }}
           path: |
             trivy-backend.json
             trivy-storefront.json
           if-no-files-found: error
           retention-days: 7
 
-  recheck:
-    needs: [gate, build]
-    runs-on: ubuntu-24.04
-    permissions:
-      pull-requests: read
-    env:
-      GITHUB_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
-      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
-      REPOSITORY: ${{ github.repository }}
-    steps:
-      - name: Verify the pull request remains promotable
-        run: |
-          set -euo pipefail
-          pull_request="$(curl --fail --silent --show-error \
-            --header "Authorization: Bearer $GITHUB_TOKEN" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
-          jq -e --arg repository "$REPOSITORY" --arg head_sha "$HEAD_SHA" '
-            .state == "open" and
-            .head.repo.full_name == $repository and
-            .head.sha == $head_sha and
-            any(.labels[]; .name == "deploy-test")
-          ' >/dev/null <<<"$pull_request"
-
   promote:
-    needs: [gate, build, recheck]
+    needs: [validate, gate, build]
     runs-on: ubuntu-24.04
-    environment: test
+    environment: live
     permissions: {}
     env:
       BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
       STOREFRONT_DIGEST: ${{ needs.build.outputs.storefront_digest }}
-      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
-      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+      SOURCE_SHA: ${{ needs.gate.outputs.source_sha }}
     steps:
       - name: Mint repository-scoped GitHub App token
         id: app-token
@@ -314,7 +323,7 @@ jobs:
           path: gitops
           persist-credentials: false
 
-      - name: Apply the exact test image digests
+      - name: Apply the exact live image digests
         env:
           GUARD_CONTENT: ${{ needs.gate.outputs.guard }}
         run: |
@@ -322,7 +331,7 @@ jobs:
           guard="$RUNNER_TEMP/update-gitops-digest.sh"
           printf '%s' "$GUARD_CONTENT" | base64 --decode >"$guard"
           chmod 0700 "$guard"
-          "$guard" "$BACKEND_DIGEST" "$STOREFRONT_DIGEST" "$GITHUB_WORKSPACE/gitops/plepic/overlays/test"
+          "$guard" "$BACKEND_DIGEST" "$STOREFRONT_DIGEST" "$GITHUB_WORKSPACE/gitops/plepic/overlays/live"
 
       - name: Commit and push the GitOps update
         env:
@@ -337,15 +346,15 @@ jobs:
           kubectl kustomize plepic/overlays/live >/dev/null
           kubectl kustomize plepic/overlays/test >/dev/null
           git diff --check
-          git add plepic/overlays/test/kustomization.yaml
+          git add plepic/overlays/live/kustomization.yaml
           staged="$(git diff --cached --name-only)"
           if [ -z "$staged" ]; then
-            echo 'test overlay already records both digests: nothing to promote'
+            echo 'live overlay already records both digests: nothing to promote'
             exit 0
           fi
-          [ "$staged" = 'plepic/overlays/test/kustomization.yaml' ]
+          [ "$staged" = 'plepic/overlays/live/kustomization.yaml' ]
           git diff --cached --check
           git commit -m \
-            "deploy(test): PR #${PR_NUMBER} ${HEAD_SHA} ${BACKEND_DIGEST} ${STOREFRONT_DIGEST}"
+            "deploy(live): ${SOURCE_SHA} ${BACKEND_DIGEST} ${STOREFRONT_DIGEST}"
           git push "https://x-access-token:${APP_TOKEN}@github.com/hannosirkel/deploys.git" \
             HEAD:main

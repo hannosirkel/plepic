@@ -165,7 +165,17 @@ function stripXmlNamespaceUris(text: string): string {
  * script can — `url(https://…)` in a `background-image` or an `@font-face
  * src` — and this unit is the first to add any `.css` file under `src/`.
  */
-const TEXT_EXTENSIONS: readonly string[] = [".ts", ".tsx", ".json", ".svg", ".css"];
+const TEXT_EXTENSIONS: readonly string[] = [
+  ".ts",
+  ".tsx",
+  ".json",
+  ".svg",
+  ".css",
+  // `Dockerfile.dockerignore` — the name BuildKit reads when the build context
+  // is the repository root. It is a list of paths, which is exactly the kind of
+  // file a hostname gets written into by accident.
+  ".dockerignore",
+];
 
 /**
  * Adapted SVG icon components (`src/components/icons/FeatureIcons.tsx`)
@@ -195,7 +205,7 @@ function stripSvgPathData(text: string): string {
  * by pattern, so a *different* extensionless file added later still fails
  * closed instead of silently inheriting this exemption.
  */
-const EXTENSIONLESS_TEXT_BASENAMES: readonly string[] = [".gitignore"];
+const EXTENSIONLESS_TEXT_BASENAMES: readonly string[] = [".gitignore", "Dockerfile"];
 
 /**
  * Not read as text. Held instead to existence, non-emptiness, and a byte

@@ -13,6 +13,69 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    # PostgreSQL, Redis and an SMTP sink, so a suite that needs a real data
+    # service has one. All three are pinned to the **same digests** as the
+    # services in `compose.yaml` and in `release.yml`, which is the point:
+    # `compose.yaml` is the local development stack, and a local run only means
+    # something if it ran against the versions CI ran against.
+    # `scripts/images.test.ts` asserts the three files agree.
+    #
+    # No suite consumes them yet — the suites this repository has today are
+    # pure, and `storefront/tests/build-and-serve.test.ts` starts the servers it
+    # needs itself. They are declared here rather than later because the
+    # addresses below are the contract a data-backed suite is written against,
+    # and because a service added at the same time as the first suite that
+    # needs it cannot be told apart from that suite when it fails.
+    #
+    # PostgreSQL uses `trust` authentication and therefore has no password to
+    # commit. Redis runs unauthenticated here and authenticated in
+    # `compose.yaml`, and that difference is not an oversight: GitHub Actions
+    # service containers cannot override a container's command, so
+    # `--requirepass` is not expressible. What CI and local development are
+    # held to being identical about is the image.
+    services:
+      postgresql:
+        # postgres:17.10-bookworm
+        image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+        env:
+          POSTGRES_USER: plepic
+          POSTGRES_DB: plepic
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U plepic -d plepic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        # redis:7.4.6-bookworm
+        image: redis:7.4.6-bookworm@sha256:a9cc41d6d01da2aa26c219e4f99ecbeead955a7b656c1c499cce8922311b2514
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      smtp:
+        # axllent/mailpit:v1.30.7
+        image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+        env:
+          MP_SMTP_BIND_ADDR: 0.0.0.0:587
+          MP_UI_BIND_ADDR: 0.0.0.0:8025
+          MP_SMTP_AUTH_ACCEPT_ANY: "true"
+          MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+          MP_MAX_MESSAGES: "500"
+        ports:
+          - 587:587
+          - 8025:8025
+    env:
+      DATABASE_URL: postgres://plepic@127.0.0.1:5432/plepic
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "587"
     steps:
       - name: Check out repository
         # actions/checkout v7.0.1

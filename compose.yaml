@@ -1,0 +1,191 @@
+# The local development stack: PostgreSQL, Redis, an SMTP sink, the backend
+# and the storefront, so the commerce path can be run without a cluster.
+#
+#     docker compose up --build
+#
+# `README.md` ("Running the stack locally") documents the two commands and what
+# each service is for.
+#
+# ## Why the data services are pinned to these exact digests
+#
+# `postgresql` and `redis` carry the **same digests** as the StatefulSets in
+# `hannosirkel/deploys` (`plepic/base/postgresql.yaml`, `plepic/base/redis.yaml`)
+# and as the service containers in `.github/workflows/validate.yml` and
+# `.github/workflows/release.yml`. `scripts/images.test.ts` asserts the three
+# files in *this* repository agree; the fourth agreement is with another
+# repository and is stated here so a divergence is at least visible. A local
+# run that passes against a different PostgreSQL major version than the cluster
+# runs is a local run that proves less than it appears to.
+#
+# ## There is no credential in this file
+#
+# The local PostgreSQL uses `trust` authentication and has no password at all;
+# the local Redis is given the project's own name, which is a string this
+# repository already contains several thousand times and is not a secret to
+# anything. Both are published on `127.0.0.1` only. Everything that is a real
+# credential in a real environment — Stripe keys, the submission password, the
+# newsletter API key — is left as an obvious placeholder, and a developer who
+# needs a working one exports it into the shell before `docker compose up`.
+#
+# Nothing here is what a deployed environment reads. The images are the same;
+# every value below arrives at run time, which is the whole point.
+
+name: plepic
+
+services:
+  postgresql:
+    # postgres:17.10-bookworm
+    image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+    environment:
+      POSTGRES_USER: plepic
+      POSTGRES_DB: plepic
+      # No password, deliberately: a committed database password is a
+      # committed database password even when it only guards a container on
+      # loopback. The port is published on 127.0.0.1 only.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plepic -d plepic"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    # redis:7.4.6-bookworm
+    image: redis:7.4.6-bookworm@sha256:a9cc41d6d01da2aa26c219e4f99ecbeead955a7b656c1c499cce8922311b2514
+    # Authenticated, and AOF-persistent, because that is how the cluster runs
+    # it: Redis is a cache and a rate-limit counter here, never a restorable
+    # source of business data. `REDIS_PASSWORD` is required by the backend's
+    # configuration reader, so it cannot simply be left off.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${PLEPIC_LOCAL_REDIS_PASSWORD:-plepic}
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - --no-auth-warning
+        - -a
+        - ${PLEPIC_LOCAL_REDIS_PASSWORD:-plepic}
+        - ping
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  smtp:
+    # axllent/mailpit:v1.30.7
+    image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+    # Bound to 587 rather than Mailpit's default 1025 because the backend
+    # refuses any other submission port — see `SMTP_PORT must be exactly 587`
+    # in `backend/src/config/runtime.ts`. Read what it caught at
+    # <http://127.0.0.1:8025>.
+    #
+    # The sender does `requireTLS: true` with certificate verification, and
+    # that is not relaxed for local convenience. To exercise delivery end to
+    # end, give Mailpit a certificate (`MP_SMTP_TLS_CERT`, `MP_SMTP_TLS_KEY`)
+    # and the backend a `NODE_EXTRA_CA_CERTS` that trusts it. Without that the
+    # sink still accepts connections and the failure a developer sees is the
+    # same failure a misconfigured deployment would see, which is the more
+    # useful of the two outcomes.
+    environment:
+      MP_SMTP_BIND_ADDR: 0.0.0.0:587
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  backend:
+    build:
+      # The repository root, because this is an npm workspace and the tree the
+      # image installs is the one `package-lock.json` describes.
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://plepic@postgresql:5432/plepic
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${PLEPIC_LOCAL_REDIS_PASSWORD:-plepic}
+      NEWSLETTER_RATE_LIMIT_MAX: "20"
+      NEWSLETTER_RATE_LIMIT_WINDOW_SECONDS: "600"
+      JWT_SECRET: ${PLEPIC_LOCAL_JWT_SECRET:-local-development-only}
+      COOKIE_SECRET: ${PLEPIC_LOCAL_COOKIE_SECRET:-local-development-only}
+      STORE_CORS: http://localhost:3000
+      ADMIN_CORS: http://localhost:9000
+      AUTH_CORS: http://localhost:3000
+      # Export a Stripe sandbox key into your shell to exercise payment; the
+      # default is a placeholder that is not a key of any kind and cannot
+      # charge anything.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-local-development-placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-local-development-placeholder}
+      STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: ${STRIPE_PAYMENT_METHOD_CONFIGURATION_ID:-local-development-placeholder}
+      SMTP_HOST: smtp
+      SMTP_PORT: "587"
+      SMTP_USERNAME: plepic
+      SMTP_PASSWORD: ${PLEPIC_LOCAL_SMTP_PASSWORD:-local-development-only}
+      SMTP_ENVELOPE_FROM: orders@example.test
+      CONTACT_MAIL_RECIPIENT: contact@example.test
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-local-development-placeholder}
+      NEWSLETTER_API_KEY: ${NEWSLETTER_API_KEY:-local-development-placeholder}
+      NEWSLETTER_LIST_ID: ${NEWSLETTER_LIST_ID:-1}
+      MERCHANT_LEGAL_NAME: Example Games OÜ
+      MERCHANT_REGISTERED_ADDRESS: Example Street 1, Tallinn
+      MERCHANT_CONTACT_ADDRESS: legal@example.test
+      MERCHANT_RETURN_ADDRESS: Return Street 2, Tallinn
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      # The assets PVC's local stand-in. The catalogue import writes imported
+      # media to `<base>/static`, which in this image is `/app/static`, and
+      # Medusa serves it from there — the same round trip the cluster does with
+      # a PersistentVolumeClaim.
+      - backend-assets:/app/static
+
+  storefront:
+    build:
+      context: .
+      dockerfile: storefront/Dockerfile
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      # A reserved example hostname, because the storefront requires a dotted
+      # canonical host and `localhost` is not one. Browsing
+      # <http://localhost:3000> still works — an unrecognised `Host` is served
+      # normally; only the canonical links and the sitemap name this.
+      SITE_BASE_URL: http://plepic.example.test:3000
+      SITE_CANONICAL_HOST: plepic.example.test
+      # Reached over the compose network, never from the browser: the browser
+      # talks to the storefront's own `/store-api` prefix allowlist.
+      MEDUSA_BACKEND_URL: http://backend:9000
+      MEDUSA_PUBLISHABLE_API_KEY: ${MEDUSA_PUBLISHABLE_API_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      MERCHANT_LEGAL_NAME: Example Games OÜ
+      MERCHANT_REGISTERED_ADDRESS: Example Street 1, Tallinn
+      MERCHANT_CONTACT_ADDRESS: legal@example.test
+      MERCHANT_RETURN_ADDRESS: Return Street 2, Tallinn
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  postgresql-data:
+  redis-data:
+  backend-assets:

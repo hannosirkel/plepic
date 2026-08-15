@@ -109,14 +109,342 @@ function pinAnnotations(name: string): Array<readonly [string, string]> {
 }
 
 const DEPLOY_TEST = "deploy-test.yml";
+const RELEASE = "release.yml";
+
+/** A pinned Trivy release, as the action's `version:` input spells one. */
+const TRIVY_VERSION = /^v\d+\.\d+\.\d+$/;
+
+/** The repository both publishing workflows must link their packages to. */
+const SOURCE_REPOSITORY_URL = "https://github.com/hannosirkel/plepic";
+
+/**
+ * The one `docker buildx build` a workflow publishes both its images with:
+ * the step declaring it, that step's whole script, and the invocation itself
+ * folded to a single line.
+ *
+ * Both workflows publish two images by calling one shell function twice, so
+ * one invocation carries every flag that applies to both. That is why the
+ * count is asserted here rather than left implicit — split into two
+ * invocations and any per-invocation guarantee below could hold for one image
+ * and not the other, while a check that merely found *a* correct build stayed
+ * green.
+ */
+function publishInvocation(name: string): {
+  readonly step: { readonly [key: string]: YamlValue };
+  readonly script: string;
+  readonly invocation: string;
+} {
+  const publishing = Object.keys(jobs(name)).flatMap((id) =>
+    steps(name, id).filter(
+      (step) => typeof step["run"] === "string" && step["run"].includes("docker buildx build"),
+    ),
+  );
+  expect(publishing, `${name} does not publish its images from exactly one step`).toHaveLength(1);
+  const step = publishing[0]!;
+  const script = asScalar(step["run"]!, `${name} publish run`);
+  const invocations = commands(script).filter((line) => line.includes("docker buildx build"));
+  expect(invocations, `${name} does not build both images with one invocation`).toHaveLength(1);
+  return { step, script, invocation: invocations[0]! };
+}
+
+/**
+ * The repository URL a workflow labels the images it publishes with.
+ *
+ * `org.opencontainers.image.source` is how GitHub links a container package
+ * to a repository, and a linked package inherits that repository's access
+ * rather than being private with nothing to inherit it from — which is what a
+ * cluster's first pull runs into.
+ *
+ * Two properties beyond the value itself, both load bearing:
+ *
+ * 1. **One publishing step, one `docker buildx build` invocation.** Both
+ *    workflows publish two images by calling one shell function twice, so a
+ *    single `--label` covers both. Split into two invocations and the flag
+ *    could come to label one image and not the other, with an assertion that
+ *    merely found a labelled build still green.
+ * 2. **The value arrives through `env:`.** Every `run:` body here is held to
+ *    interpolating no workflow expression, so the URL is a shell variable the
+ *    step declares rather than text substituted into the script before a
+ *    shell ever sees it.
+ *
+ * It is a `--label` rather than a `LABEL` in either Dockerfile because only
+ * one of the two could carry it there: `no-live-hostname.test.ts` scans every
+ * tracked file under `storefront/`, `storefront/Dockerfile` included, and the
+ * forge is not on its allowlist.
+ */
+function sourceLabelUrl(name: string): string {
+  const { step, script, invocation } = publishInvocation(name);
+
+  expect(
+    invocation,
+    `${name} publishes images carrying no source label, so their packages link to no repository`,
+  ).toMatch(/--label "org\.opencontainers\.image\.source=\$SOURCE_URL"/);
+
+  // Exactly once. `docker buildx build` takes the **last** `--label` for a
+  // given key, so a second one appended after the asserted one decides what
+  // the packages link to while the match above still succeeds. Counting is
+  // the only form of this check that cannot be walked past.
+  expect(
+    invocation.match(/org\.opencontainers\.image\.source=/g) ?? [],
+    `${name} sets the source label more than once, and buildx takes the last`,
+  ).toHaveLength(1);
+
+  // And the variable the flag reads is the one the step declares. The value
+  // is asserted on `env:`, which says nothing about what the shell does with
+  // it afterwards: a plain `SOURCE_URL=…` anywhere ahead of the invocation
+  // overrides the declaration entirely, with `env:` still reading correctly.
+  const assignments = commands(script).filter((line) =>
+    /(?:^|[\s;&|(])SOURCE_URL=/.test(line),
+  );
+  expect(
+    assignments,
+    `${name} reassigns SOURCE_URL in the shell, so its env: declaration is not what is labelled`,
+  ).toEqual([]);
+
+  expect(step["env"], `${name}'s publishing step declares no env`).toBeDefined();
+  const url = asMapping(step["env"]!, `${name} publish env`)["SOURCE_URL"];
+  expect(url, `${name} labels with $SOURCE_URL but declares no such variable`).toBeDefined();
+  return asScalar(url!, `${name} SOURCE_URL`);
+}
+
+/** Every Trivy scan step in a workflow, paired with where it was found. */
+function trivyScans(
+  name: string,
+): Array<readonly [string, { readonly [key: string]: YamlValue }]> {
+  return Object.keys(jobs(name)).flatMap((id) =>
+    steps(name, id)
+      .map((step, index) => [`${id}.steps[${index}]`, step] as const)
+      .filter(
+        ([, step]) => typeof step["uses"] === "string" && step["uses"].includes("trivy-action@"),
+      ),
+  );
+}
+
+/**
+ * Both Trivy scans in one workflow, held to being a **gate** rather than a
+ * report.
+ *
+ * The `with:` inputs are only half of it, and they were the whole of what this
+ * suite used to check. `severity: CRITICAL` and `exit-code: '1'` say what the
+ * scanner looks for and what it exits with; neither says the step runs, and
+ * neither says the job fails when it does. A `continue-on-error: true` beside
+ * those inputs, or an `if:` that is false, leaves every input assertion true
+ * and removes the gate outright — and `promote` needs `build`, so failing the
+ * build job is the only thing standing between a CRITICAL finding and the
+ * overlay. So the step declares no condition and no error tolerance at all,
+ * and neither does the job holding it: a job-level `continue-on-error` would
+ * report success to `needs` however the scan concluded.
+ *
+ * The scanner version is held here too. The action is pinned by commit SHA,
+ * which pins the *action* and not the vulnerability scanner it downloads, so
+ * an absent or floating `version:` is a gate whose strictness changes under
+ * it. `vuln-type` likewise: without `os,library` the scan covers operating
+ * system packages only, and the Node dependency tree — the half this
+ * repository actually chooses — is scanned by nothing.
+ */
+function expectTrivyGate(name: string, imageRefs: readonly string[]): void {
+  const scans = trivyScans(name);
+  expect(
+    scans.map(([where]) => where),
+    `${name} does not declare exactly two Trivy scans`,
+  ).toHaveLength(2);
+  expect(scans.map(([where, step]) => withBlock(step, where)["image-ref"])).toEqual(imageRefs);
+
+  const versions = new Set<string>();
+  for (const [where, step] of scans) {
+    const jobId = where.split(".")[0]!;
+    expect(
+      step["if"],
+      `${name}.${where} is conditional, so a scan that never runs cannot fail the job`,
+    ).toBeUndefined();
+    expect(
+      step["continue-on-error"],
+      `${name}.${where} tolerates its own failure, so a CRITICAL finding would not fail the job`,
+    ).toBeUndefined();
+    expect(
+      job(name, jobId)["continue-on-error"],
+      `${name}.${jobId} tolerates a failed step, so promotion would proceed past a CRITICAL finding`,
+    ).toBeUndefined();
+
+    const inputs = withBlock(step, `${name}.${where}`);
+    expect(inputs["severity"]).toBe("CRITICAL");
+    expect(inputs["exit-code"]).toBe("1");
+    expect(inputs["ignore-unfixed"]).toBe("true");
+    expect(inputs["scanners"]).toBe("vuln");
+    expect(
+      inputs["vuln-type"],
+      `${name}.${where} does not scan both the OS packages and the dependency tree`,
+    ).toBe("os,library");
+    expect(
+      inputs["version"],
+      `${name}.${where} does not pin the scanner the action downloads`,
+    ).toBeDefined();
+    const version = asScalar(inputs["version"]!, `${name}.${where}.with.version`);
+    expect(version, `${name}.${where} pins no Trivy release`).toMatch(TRIVY_VERSION);
+    versions.add(version);
+  }
+  expect(
+    [...versions],
+    `${name} scans its two images with different Trivy versions`,
+  ).toHaveLength(1);
+}
+
+/** Each `run:` body in one job, paired with the step index holding it. */
+function jobScripts(name: string, id: string): Array<readonly [number, string]> {
+  return steps(name, id).flatMap((step, index) =>
+    step["run"] === undefined
+      ? []
+      : [[index, asScalar(step["run"], `${name}.${id}.steps[${index}].run`)] as const],
+  );
+}
+
+/** Every `run:` body in a workflow, paired with where it was found. */
+function everyScript(name: string): Array<readonly [string, string]> {
+  return Object.keys(jobs(name)).flatMap((id) =>
+    jobScripts(name, id).map(([index, script]) => [`${id}.steps[${index}]`, script] as const),
+  );
+}
+
+/**
+ * Shell lines with `\` continuations folded, so one command is one entry, and
+ * comment lines dropped, so prose about a command is not mistaken for one.
+ *
+ * The dropping matters: every check below is a search for something a script
+ * must not do, and a comment saying "this deliberately does not run `npm
+ * install`" is the sentence most likely to be written next to a script that
+ * deliberately does not run `npm install`.
+ */
+function commands(script: string): string[] {
+  const folded: string[] = [];
+  for (const line of script.split("\n")) {
+    const previous = folded[folded.length - 1];
+    if (previous !== undefined && previous.endsWith("\\")) {
+      folded[folded.length - 1] = `${previous.slice(0, -1).trimEnd()} ${line.trim()}`;
+    } else {
+      folded.push(line.trim());
+    }
+  }
+  return folded.filter((line) => !line.startsWith("#"));
+}
+
+/**
+ * Every `run:` body that interpolates a workflow expression into the shell.
+ *
+ * `${{ … }}` is substituted into the script *before* a shell ever sees it, so
+ * an expression carrying head-controlled text — a branch name, a commit
+ * message, a pull request title — becomes head-controlled shell in a job that
+ * may hold a credential. Nothing in this repository needs it: every workflow
+ * here passes values through `env:`, where they arrive as shell variables and
+ * stay data. That makes the rule "never", which is the only version of it that
+ * can be checked without judgement.
+ */
+function interpolationOffences(scripts: ReadonlyArray<readonly [string, string]>): string[] {
+  return scripts.filter(([, body]) => body.includes("${{")).map(([where]) => where);
+}
+
+/**
+ * One folded line split at the shell's own command boundaries, so a check on
+ * "the command" is not fooled by `true && git fetch origin`.
+ */
+function logicalCommands(line: string): string[] {
+  return line
+    .split(/&&|\|\||[;|]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+/**
+ * Everything a promoting job is allowed to do with `git`.
+ *
+ * This is an **allowlist**, and it replaced a blacklist of forbidden
+ * subcommands that leaked in the one direction this repository actually writes
+ * git commands in: the blacklist required the subcommand to follow `git`
+ * immediately, so `git -C gitops fetch origin pull/1/head` walked straight past
+ * it — and `git -C <path>` is the form `scripts/update-gitops-digest.sh` uses
+ * throughout. Listing what the job does instead of guessing what an attacker
+ * would means a subcommand nobody considered is refused by default.
+ */
+const GIT_SUBCOMMANDS: readonly string[] = ["config", "add", "diff", "commit", "push"];
+
+/**
+ * `git` as the start of a command: at the start of a logical command, after
+ * whitespace, or inside a substitution — `staged="$(git diff …)"` is a real
+ * invocation and must be checked. Deliberately not `\bgit\b`, which also
+ * matches the `.git` at the end of a push URL and would fail the one line the
+ * job exists to run.
+ *
+ * The command word is matched on its **basename**, because a command word is
+ * a path: an expression anchored on a bare `git` refuses `git -C gitops fetch`
+ * and admits `/usr/bin/git -C gitops fetch`, which is the same invocation
+ * spelled the way anyone routing around an allowlist would spell it. The
+ * optional leading `[^\s]*\/` cannot cross whitespace, so it takes the
+ * directory part of the command word and nothing else, and `git` must still be
+ * followed by a space — which is why `…/deploys.git"` in the push URL is not
+ * a match.
+ */
+const GIT_INVOCATION = /(?:^|[\s(`{])(?:[^\s]*\/)?git\s+/g;
+
+/** Every `git` invocation in one logical command that is not on the allowlist. */
+function gitOffences(command: string): string[] {
+  const offences: string[] = [];
+  for (const match of command.matchAll(GIT_INVOCATION)) {
+    const rest = command.slice(match.index + match[0].length).trim().split(/\s+/);
+    // `-C <path>` is tolerated and nothing else is: it selects the worktree,
+    // not the operation, and this repository's own guard writes every one of
+    // its git calls that way.
+    const subcommand = rest[0] === "-C" ? rest[2] : rest[0];
+    if (subcommand === undefined || !GIT_SUBCOMMANDS.includes(subcommand)) {
+      offences.push(`git ${subcommand ?? "(nothing)"}`);
+    }
+  }
+  return offences;
+}
+
+const FORBIDDEN_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["reaches GitHub through the gh CLI", /\bgh\s+(?:pr|repo|api|run|release)\b/],
+  ["pipes a download into an interpreter", /\bcurl\b[^\n]*\|\s*(?:sh|bash|node|python3?)\b/],
+  ["runs a Node package manager", /\b(?:npm|npx|pnpm|yarn)\b/],
+  ["builds or runs a container", /\bdocker\s+(?:build|run)\b/],
+];
+
+/**
+ * Everything wrong with the `run:` bodies of a job that holds the GitOps
+ * credential: code arriving, or an expression being interpolated into a shell.
+ */
+function codeImportOffences(scripts: ReadonlyArray<readonly [number, string]>): string[] {
+  const offences: string[] = [];
+  for (const [index, script] of scripts) {
+    for (const line of commands(script)) {
+      for (const [what, pattern] of FORBIDDEN_COMMANDS) {
+        if (pattern.test(line)) offences.push(`steps[${index}] ${what}: ${line}`);
+      }
+      for (const command of logicalCommands(line)) {
+        for (const offence of gitOffences(command)) {
+          offences.push(`steps[${index}] runs ${offence}: ${command}`);
+        }
+      }
+    }
+  }
+  return offences;
+}
 
 describe("every workflow in this repository", () => {
   const names = readdirSync(workflowDirectory).filter((entry) => entry.endsWith(".yml"));
 
-  it("includes the validation and the test-promotion workflows", () => {
+  it("includes the validation, the test-promotion and the release workflows", () => {
     expect(names).toContain("validate.yml");
     expect(names).toContain(DEPLOY_TEST);
+    expect(names).toContain(RELEASE);
   });
+
+  for (const name of names) {
+    it(`${name} interpolates no expression into any run: body`, () => {
+      expect(
+        interpolationOffences(everyScript(name)),
+        `${name} interpolates a workflow expression into a shell script`,
+      ).toEqual([]);
+    });
+  }
 
   for (const name of names) {
     it(`${name} pins every action to a 40-character commit SHA`, () => {
@@ -369,58 +697,25 @@ describe("the build holds no GitOps credential", () => {
     expect(Object.keys(outputs).sort()).toEqual(["backend_digest", "storefront_digest"]);
   });
 
-  it("scans both published digests at CRITICAL before the promotion job", () => {
-    const scanned = steps(DEPLOY_TEST, "build")
-      .filter((step) => typeof step["uses"] === "string" && step["uses"].includes("trivy-action@"))
-      .map((step) => asMapping(step["with"]!, "trivy with"));
-    expect(scanned).toHaveLength(2);
-    expect(scanned.map((scan) => scan["image-ref"])).toEqual([
+  it("gates the promotion on both published digests scanning clean at CRITICAL", () => {
+    expectTrivyGate(DEPLOY_TEST, [
       "ghcr.io/hannosirkel/plepic-backend@${{ steps.build.outputs.backend_digest }}",
       "ghcr.io/hannosirkel/plepic-storefront@${{ steps.build.outputs.storefront_digest }}",
     ]);
-    for (const scan of scanned) {
-      expect(scan["severity"]).toBe("CRITICAL");
-      expect(scan["exit-code"]).toBe("1");
-      expect(scan["ignore-unfixed"]).toBe("true");
-      expect(scan["scanners"]).toBe("vuln");
-    }
     expect(asSequence(job(DEPLOY_TEST, "promote")["needs"]!, "promote.needs")).toContain("build");
   });
 });
 
+/** The promote step that commits and pushes, as its shell source. */
+function commitScript(name: string): string {
+  const commit = steps(name, "promote")
+    .map((step) => (typeof step["run"] === "string" ? step["run"] : ""))
+    .find((run) => run.includes("git push"));
+  expect(commit, `${name} promote has no step that pushes`).toBeDefined();
+  return commit!;
+}
+
 describe("the promotion writes exactly one overlay", () => {
-  /** The promote step that commits and pushes, as its shell source. */
-  function commitScript(): string {
-    const commit = steps(DEPLOY_TEST, "promote")
-      .map((step) => (typeof step["run"] === "string" ? step["run"] : ""))
-      .find((run) => run.includes("git push"));
-    expect(commit, "promote has no step that pushes").toBeDefined();
-    return commit!;
-  }
-
-  /** Each `run:` body in `promote`, paired with the step index holding it. */
-  function promoteScripts(): Array<readonly [number, string]> {
-    return steps(DEPLOY_TEST, "promote").flatMap((step, index) =>
-      step["run"] === undefined
-        ? []
-        : [[index, asScalar(step["run"], `promote.steps[${index}].run`)] as const],
-    );
-  }
-
-  /** Shell lines with `\` continuations folded, so one command is one entry. */
-  function commands(script: string): string[] {
-    const folded: string[] = [];
-    for (const line of script.split("\n")) {
-      const previous = folded[folded.length - 1];
-      if (previous !== undefined && previous.endsWith("\\")) {
-        folded[folded.length - 1] = `${previous.slice(0, -1).trimEnd()} ${line.trim()}`;
-      } else {
-        folded.push(line.trim());
-      }
-    }
-    return folded;
-  }
-
   it("re-verifies the pull request before spending the credential", () => {
     const recheck = jobText(DEPLOY_TEST, "recheck");
     expect(recheck).toMatch(/\.state == "open"/);
@@ -489,7 +784,7 @@ describe("the promotion writes exactly one overlay", () => {
     // value this job acts on, so its only legitimate appearance in a script
     // is inside the `git commit -m` invocation.
     const offending: string[] = [];
-    for (const [index, script] of promoteScripts()) {
+    for (const [index, script] of jobScripts(DEPLOY_TEST, "promote")) {
       for (const command of commands(script)) {
         if (!/head_sha/i.test(command)) continue;
         if (/^git commit -m /.test(command)) continue;
@@ -505,19 +800,8 @@ describe("the promotion writes exactly one overlay", () => {
     // the pull request's branch names no SHA at all. So the fetch itself is
     // refused: the only tree `promote` reads is the one `actions/checkout`
     // placed there from hannosirkel/deploys, and the only direction code
-    // moves in this job is out.
-    const forbidden: ReadonlyArray<readonly [string, RegExp]> = [
-      ["clones or checks out a second tree", /\bgit\s+(?:clone|fetch|pull|checkout|worktree|remote)\b/],
-      ["reaches GitHub through the gh CLI", /\bgh\s+(?:pr|repo|api|run|release)\b/],
-      ["pipes a download into an interpreter", /\bcurl\b[^\n]*\|\s*(?:sh|bash|node|python3?)\b/],
-      ["runs a Node package manager", /\b(?:npm|npx|pnpm|yarn)\b/],
-      ["builds or runs a container", /\bdocker\s+(?:build|run)\b/],
-    ];
-    for (const [index, script] of promoteScripts()) {
-      for (const [what, pattern] of forbidden) {
-        expect(script, `promote.steps[${index}] ${what}`).not.toMatch(pattern);
-      }
-    }
+    // moves in this job is out. See `codeImportOffences`.
+    expect(codeImportOffences(jobScripts(DEPLOY_TEST, "promote"))).toEqual([]);
   });
 
   it("runs the base-SHA guard against the test overlay with both digests", () => {
@@ -540,7 +824,7 @@ describe("the promotion writes exactly one overlay", () => {
   });
 
   it("renders both overlays and runs the manifest tests before pushing", () => {
-    const commit = commitScript();
+    const commit = commitScript(DEPLOY_TEST);
     const order = (needle: string): number => commit.indexOf(needle);
     const push = order("git push");
     for (const before of [
@@ -559,7 +843,7 @@ describe("the promotion writes exactly one overlay", () => {
     // The message is not the behaviour: without the `exit 0` the script falls
     // through to `git commit`, which fails on an empty index and turns a
     // re-labelled pull request into a red run. Assert the early exit itself.
-    const commit = commitScript();
+    const commit = commitScript(DEPLOY_TEST);
     expect(commit).toMatch(
       /if \[ -z "\$staged" \]; then\n\s+echo '[^']*nothing to promote'\n\s+exit 0\n\s*fi\n/,
     );
@@ -580,5 +864,411 @@ describe("Deploy Test never reaches another application", () => {
     expect(text).not.toMatch(/packages: write/);
     expect(text).not.toMatch(/update-gitops-digest/);
     expect(text).not.toMatch(/plepic\/overlays/);
+  });
+});
+
+describe("the code-import ban itself", () => {
+  // The ban is only as good as what it refuses and what it lets through, and
+  // neither is observable from a workflow that happens to be written correctly.
+  // These drive it with scripts this repository does not contain.
+
+  /** One `run:` body, in the shape `codeImportOffences` reads. */
+  function script(...lines: readonly string[]): Array<readonly [number, string]> {
+    return [[0, lines.join("\n")] as const];
+  }
+
+  it("refuses a fetch written the way this repository writes git commands", () => {
+    // The bypass the previous revision had. Its blacklist matched
+    // `git\s+(?:clone|fetch|…)`, which requires the subcommand to follow `git`
+    // immediately — so the `-C <path>` form walked past it, and `-C` is the
+    // form the guard beside this file uses on every one of its git calls.
+    expect(
+      codeImportOffences(
+        script('git -C gitops fetch origin "pull/1/head"', "git -C gitops checkout FETCH_HEAD"),
+      ),
+    ).toEqual([
+      "steps[0] runs git fetch: git -C gitops fetch origin \"pull/1/head\"",
+      "steps[0] runs git checkout: git -C gitops checkout FETCH_HEAD",
+    ]);
+  });
+
+  it("refuses the same fetch written with an absolute path", () => {
+    // A command word is a path, and the allowlist reads the command word. An
+    // expression anchored on a bare `git` refuses the line above and admits
+    // this one — the identical invocation, spelled the way someone working
+    // around the allowlist would spell it.
+    expect(
+      codeImportOffences(
+        script(
+          '/usr/bin/git -C gitops fetch origin "pull/1/head"',
+          "./tools/git checkout FETCH_HEAD",
+        ),
+      ),
+    ).toEqual([
+      'steps[0] runs git fetch: /usr/bin/git -C gitops fetch origin "pull/1/head"',
+      "steps[0] runs git checkout: ./tools/git checkout FETCH_HEAD",
+    ]);
+  });
+
+  it("accepts the git commands the promoting job actually runs", () => {
+    expect(
+      codeImportOffences(
+        script(
+          "git config user.name 'plepic-deployer[bot]'",
+          "git -C gitops diff --check",
+          "git add plepic/overlays/live/kustomization.yaml",
+          'staged="$(git diff --cached --name-only)"',
+          "git commit -m 'deploy(live): …'",
+          'git push "https://x-access-token:${APP_TOKEN}@github.com/hannosirkel/deploys.git" HEAD:main',
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses a forbidden command hidden behind a shell operator", () => {
+    expect(codeImportOffences(script("true && git clone https://example.test/x head"))).toEqual([
+      "steps[0] runs git clone: git clone https://example.test/x head",
+    ]);
+  });
+
+  it("does not fail a script for a comment that mentions a forbidden command", () => {
+    // The over-reach the previous revision had. `promote` deliberately runs no
+    // package manager, and saying so beside the script that does not run one
+    // turned the file red.
+    expect(
+      codeImportOffences(
+        script(
+          "# This job installs nothing: no npm install, no docker build, no gh api.",
+          "git diff --check",
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses an expression interpolated into a shell script", () => {
+    // Driven directly, because no workflow in this repository contains one and
+    // a rule with no failing case is a rule nothing has ever exercised. The
+    // commit message is the example on purpose: it is head-controlled text
+    // that reaches a workflow expression on every push.
+    expect(
+      interpolationOffences([["promote.steps[0]", "echo ${{ github.event.head_commit.message }}"]]),
+    ).toEqual(["promote.steps[0]"]);
+  });
+
+  it("accepts the same value passed through env, which is how it is written here", () => {
+    expect(interpolationOffences([["promote.steps[0]", 'echo "$COMMIT_MESSAGE"']])).toEqual([]);
+  });
+});
+
+/**
+ * Both workflows push to the same two GHCR packages, so both are held to
+ * linking them.
+ *
+ * `Release` alone is not enough, and the ordering is the whole argument: GHCR
+ * creates a package on its **first** push, and the plan's own sequence is to
+ * label a pull request and then merge. `Deploy Test` is therefore usually the
+ * publisher that brings both packages into existence, and a label carried only
+ * by `Release` would arrive after the fact — GitHub links a package when it is
+ * created, not retroactively. An unlinked package is private with no
+ * repository whose access it could inherit, which is an `ImagePullBackOff` on
+ * a cluster's first pull and manual work landing on the still-open "make the
+ * images pullable by K3s" row.
+ */
+describe("both publishers link the packages they create to this repository", () => {
+  for (const name of [DEPLOY_TEST, RELEASE]) {
+    it(`${name} labels both images it publishes with the source repository`, () => {
+      expect(sourceLabelUrl(name)).toBe(SOURCE_REPOSITORY_URL);
+    });
+  }
+
+  it("names one repository from both publishers, never two", () => {
+    // Stated separately from the value above because drift between the two is
+    // its own failure: the packages are shared, so a `Deploy Test` that
+    // labelled them with something else would decide what they link to and
+    // `Release` would silently disagree with it forever after.
+    expect(
+      [...new Set([sourceLabelUrl(DEPLOY_TEST), sourceLabelUrl(RELEASE)])],
+      "the two publishers label the same packages with different repositories",
+    ).toEqual([SOURCE_REPOSITORY_URL]);
+  });
+});
+
+/**
+ * What both publishers put *in* the packages, as opposed to what they link
+ * them to.
+ *
+ * Every guarantee `scripts/images.test.ts` makes about these images is a
+ * statement about the **last `FROM` in its Dockerfile**: non-root, `WORKDIR
+ * /app`, the cleared entrypoint, the media root the assets PVC is mounted at.
+ * `docker buildx build` publishes that stage only when it is not told
+ * otherwise, and it can be told otherwise without either Dockerfile changing
+ * — so those assertions describe the published image only for as long as this
+ * one holds.
+ *
+ * This is the other half of the final-stage split in `images.test.ts`. That
+ * split is what makes those assertions statements about the shipped image;
+ * this is what keeps the shipped image the stage they are statements about.
+ */
+describe("both publishers ship the stage those Dockerfile assertions describe", () => {
+  for (const name of [DEPLOY_TEST, RELEASE]) {
+    it(`${name} publishes each Dockerfile's final stage, naming no other target`, () => {
+      // `--target build` would ship the compiler stage: root, `WORKDIR /src`,
+      // the `node` base image's own entrypoint restored, and the whole
+      // development dependency tree — with every assertion in
+      // `images.test.ts` still green, because the file it reads did not
+      // change. It fails loudly rather than silently, because
+      // `runAsNonRoot: true` in `hannosirkel/deploys` refuses the pod, which
+      // is the only reason this is a small assertion rather than a large one.
+      expect(
+        publishInvocation(name).invocation,
+        `${name} publishes a named stage, so the Dockerfile assertions describe a different image`,
+      ).not.toMatch(/(?:^|\s)--target(?:[=\s]|$)/);
+    });
+  }
+});
+
+/**
+ * `Release` runs on every push to `main`. Nothing about it is conditional and
+ * nothing about it can be undone by removing a label: the merge is the
+ * approval, and the digests it writes are the ones the live environment runs.
+ */
+describe("Release's trigger and concurrency", () => {
+  it("fires only on a push to main", () => {
+    const document = workflow(RELEASE);
+    expect(document["name"]).toBe("Release");
+    const on = asMapping(document["on"]!, "on");
+    expect(Object.keys(on)).toEqual(["push"]);
+    expect(asSequence(asMapping(on["push"]!, "push")["branches"]!, "branches")).toEqual(["main"]);
+  });
+
+  it("shares one non-cancelling GitOps promotion lane with Deploy Test", () => {
+    const concurrency = asMapping(workflow(RELEASE)["concurrency"]!, "concurrency");
+    expect(concurrency["group"]).toBe("plepic-gitops-promotion");
+    expect(concurrency["cancel-in-progress"]).toBe("false");
+    // Not merely equal to a string: equal to the *other* workflow's, because
+    // the point of the group is that the two never write `deploys` at once.
+    expect(concurrency["group"]).toBe(
+      asMapping(workflow(DEPLOY_TEST)["concurrency"]!, "concurrency")["group"],
+    );
+  });
+
+  it("grants the workflow no permissions by default", () => {
+    expect(asMapping(workflow(RELEASE)["permissions"]!, "permissions")).toEqual({});
+  });
+});
+
+describe("Release's job permissions", () => {
+  const expected: ReadonlyArray<readonly [string, Record<string, string>]> = [
+    ["validate", { contents: "read" }],
+    ["gate", { contents: "read" }],
+    ["build", { contents: "read", packages: "write" }],
+    ["promote", {}],
+  ];
+
+  it("declares exactly these four jobs", () => {
+    expect(Object.keys(jobs(RELEASE))).toEqual(expected.map(([id]) => id));
+  });
+
+  for (const [id, permissions] of expected) {
+    it(`gives ${id} exactly ${JSON.stringify(permissions)}`, () => {
+      expect(asMapping(job(RELEASE, id)["permissions"]!, `${id}.permissions`)).toEqual(permissions);
+    });
+  }
+
+  it("scopes the deployer credential to the promote job's live environment", () => {
+    for (const id of ["validate", "gate", "build"]) {
+      expect(job(RELEASE, id)["environment"]).toBeUndefined();
+      expect(jobText(RELEASE, id)).not.toMatch(/PLEPIC_DEPLOYER_/);
+    }
+    expect(job(RELEASE, "promote")["environment"]).toBe("live");
+    expect(jobText(RELEASE, "promote")).toMatch(/PLEPIC_DEPLOYER_CLIENT_ID/);
+    expect(jobText(RELEASE, "promote")).toMatch(/PLEPIC_DEPLOYER_PRIVATE_KEY/);
+  });
+});
+
+describe("Release validates and builds before it promotes", () => {
+  it("runs the canonical validation on the pushed revision", () => {
+    const validate = jobText(RELEASE, "validate");
+    expect(validate).toMatch(/npm ci/);
+    expect(validate).toMatch(/bash scripts\/validate/);
+    for (const id of ["build", "promote"]) {
+      expect(asSequence(job(RELEASE, id)["needs"]!, `${id}.needs`)).toContain("validate");
+    }
+  });
+
+  it("reads the digest guard from the pushed SHA, checking nothing out to do it", () => {
+    for (const step of steps(RELEASE, "gate")) {
+      expect(step["uses"]).toBeUndefined();
+    }
+    const gate = jobText(RELEASE, "gate");
+    expect(gate).toMatch(/github\.sha/);
+    expect(gate).toMatch(/contents\/scripts\/update-gitops-digest\.sh\?ref=\$\{SOURCE_SHA\}/);
+    expect(gate).toMatch(/grep -qx '#!\/bin\/sh'/);
+    expect(gate).toMatch(/\^\[0-9a-f\]\{40\}\$/);
+    expect(asMapping(job(RELEASE, "gate")["outputs"]!, "gate.outputs")["guard"]).toBe(
+      "${{ steps.verify.outputs.guard }}",
+    );
+    expect(jobText(RELEASE, "build")).not.toMatch(/guard/);
+    expect(jobText(RELEASE, "promote")).toMatch(/needs\.gate\.outputs\.guard/);
+  });
+
+  it("builds and publishes both images with attestations, and no build argument", () => {
+    const build = jobText(RELEASE, "build");
+    expect(build).toMatch(/--provenance=mode=min/);
+    expect(build).toMatch(/--sbom=true/);
+    expect(build).not.toMatch(/--provenance=false/);
+    expect(build).toMatch(/ghcr\.io\/hannosirkel\/plepic-backend/);
+    expect(build).toMatch(/ghcr\.io\/hannosirkel\/plepic-storefront/);
+    expect(build).toMatch(/\^sha256:\[0-9a-f\]\{64\}\$/);
+    // The images serve either environment, so nothing may be handed to a
+    // build. `--build-arg` at all is the check, because a build argument is
+    // the only way a value reaches `docker buildx build` from outside.
+    expect(source(RELEASE)).not.toMatch(/--build-arg|NEXT_PUBLIC_/);
+    const outputs = asMapping(job(RELEASE, "build")["outputs"]!, "build.outputs");
+    expect(Object.keys(outputs).sort()).toEqual(["backend_digest", "storefront_digest"]);
+  });
+
+  it("gates the promotion on both published digests scanning clean at CRITICAL", () => {
+    expectTrivyGate(RELEASE, [
+      "ghcr.io/hannosirkel/plepic-backend@${{ steps.build.outputs.backend_digest }}",
+      "ghcr.io/hannosirkel/plepic-storefront@${{ steps.build.outputs.storefront_digest }}",
+    ]);
+    expect(asSequence(job(RELEASE, "promote")["needs"]!, "promote.needs")).toEqual([
+      "validate",
+      "gate",
+      "build",
+    ]);
+  });
+
+  it("scans with the same Trivy release the test promotion scans with", () => {
+    // The two workflows scan the same two images against the same gate. A
+    // version that drifted between them would mean a digest that passed on
+    // the pull request and a rebuild of the same source failing on merge, or
+    // — worse — the reverse.
+    const versionOf = (name: string): string[] =>
+      trivyScans(name).map(([where, step]) =>
+        asScalar(withBlock(step, where)["version"]!, `${name}.${where}.with.version`),
+      );
+    expect(new Set([...versionOf(RELEASE), ...versionOf(DEPLOY_TEST)]).size).toBe(1);
+  });
+});
+
+describe("Release promotes exactly one overlay, and it is live", () => {
+  it("mints a token scoped to the deploys repository alone", () => {
+    const promote = jobText(RELEASE, "promote");
+    expect(promote).toMatch(/"repositories":\["deploys"\]/);
+    expect(promote).toMatch(/::add-mask::/);
+    const checkouts = steps(RELEASE, "promote").filter(
+      (step) => typeof step["uses"] === "string" && step["uses"].startsWith("actions/checkout@"),
+    );
+    expect(checkouts, "promote checks out more than one tree").toHaveLength(1);
+    const inputs = withBlock(checkouts[0]!, "promote checkout");
+    expect(inputs["repository"]).toBe("hannosirkel/deploys");
+    expect(inputs["path"]).toBe("gitops");
+    expect(inputs["persist-credentials"]).toBe("false");
+    expect(inputs["ref"]).toBeUndefined();
+  });
+
+  it("runs no repository code in the job that holds the GitOps credential", () => {
+    for (const [index, step] of steps(RELEASE, "promote").entries()) {
+      const path = `promote.steps[${index}]`;
+      const action = step["uses"];
+      if (action !== undefined) {
+        expect(asScalar(action, `${path}.uses`), `${path} runs an action other than a checkout`)
+          .toMatch(/^actions\/checkout@[0-9a-f]{40}$/);
+        expect(
+          withBlock(step, path)["repository"],
+          `${path} checks out something other than the GitOps repository`,
+        ).toBe("hannosirkel/deploys");
+      }
+      expect(keysOf(step), `${path} names a revision to check out`).not.toContain("ref");
+      for (const [key, value] of Object.entries(withBlock(step, path))) {
+        expect(
+          scalars(value).join("\n"),
+          `${path}.with.${key} hands the built revision to an action`,
+        ).not.toMatch(/source_sha/);
+      }
+    }
+  });
+
+  it("names the source revision only as an argument to git commit", () => {
+    // The same confinement `Deploy Test` gets, for the same reason: the source
+    // SHA is a value this job *records*, never one it acts on. A `git checkout
+    // "$SOURCE_SHA"` here would be repository code executing beside a write
+    // token for hannosirkel/deploys.
+    const offending: string[] = [];
+    for (const [index, script] of jobScripts(RELEASE, "promote")) {
+      for (const command of commands(script)) {
+        if (!/source_sha/i.test(command)) continue;
+        if (/^git commit -m /.test(command)) continue;
+        offending.push(`promote.steps[${index}]: ${command}`);
+      }
+    }
+    expect(offending, "promote acts on the source revision outside its commit message").toEqual([]);
+  });
+
+  it("brings no code into the job that holds the GitOps credential", () => {
+    expect(codeImportOffences(jobScripts(RELEASE, "promote"))).toEqual([]);
+  });
+
+  it("runs the guard against the live overlay with both digests", () => {
+    const promote = jobText(RELEASE, "promote");
+    expect(promote).toMatch(
+      /"\$guard" "\$BACKEND_DIGEST" "\$STOREFRONT_DIGEST" "\$GITHUB_WORKSPACE\/gitops\/plepic\/overlays\/live"/,
+    );
+    expect(promote).not.toMatch(/"\$guard".*plepic\/overlays\/test/);
+  });
+
+  it("stages, validates and commits only the live overlay", () => {
+    const promote = jobText(RELEASE, "promote");
+    expect(promote).toMatch(/git add plepic\/overlays\/live\/kustomization\.yaml/);
+    expect(promote).not.toMatch(/git add plepic\/overlays\/test\/kustomization\.yaml/);
+    expect(promote).not.toMatch(/git add --all|git commit -a\b/);
+    expect(promote).not.toMatch(/--force|git rebase/);
+  });
+
+  it("records the source SHA and both digests in the commit message", () => {
+    expect(jobText(RELEASE, "promote")).toMatch(
+      /deploy\(live\): \$\{SOURCE_SHA\} \$\{BACKEND_DIGEST\} \$\{STOREFRONT_DIGEST\}/,
+    );
+  });
+
+  it("runs the guard before anything is staged, and both renders before the push", () => {
+    const commit = commitScript(RELEASE);
+    const order = (needle: string): number => commit.indexOf(needle);
+    const push = order("git push");
+    for (const before of [
+      "bash plepic/tests/manifests.sh",
+      "kubectl kustomize plepic/overlays/live",
+      "kubectl kustomize plepic/overlays/test",
+      "git diff --check",
+      "git diff --cached --check",
+    ]) {
+      expect(order(before), `${before} must run before git push`).toBeGreaterThanOrEqual(0);
+      expect(order(before)).toBeLessThan(push);
+    }
+
+    // The guard writes the digest lines, so it has to be a step *earlier* than
+    // the one that stages them — a guard that ran after `git add` would be
+    // checking a file the index no longer reflects.
+    const scripts = jobScripts(RELEASE, "promote");
+    const guardStep = scripts.find(([, body]) => body.includes('"$guard" "$BACKEND_DIGEST"'));
+    const commitStep = scripts.find(([, body]) => body.includes("git push"));
+    expect(guardStep, "promote never runs the guard").toBeDefined();
+    expect(guardStep![0]).toBeLessThan(commitStep![0]);
+  });
+
+  it("treats an already-recorded digest pair as nothing to promote", () => {
+    const commit = commitScript(RELEASE);
+    expect(commit).toMatch(
+      /if \[ -z "\$staged" \]; then\n\s+echo '[^']*nothing to promote'\n\s+exit 0\n\s*fi\n/,
+    );
+    expect(commit.indexOf("exit 0")).toBeLessThan(commit.indexOf("git commit"));
+  });
+
+  it("names no repository or overlay outside plepic and deploys", () => {
+    const text = source(RELEASE);
+    expect(text).not.toMatch(/servitium/);
+    expect(text).not.toMatch(/hannosirkel\/(?!deploys|plepic)/);
   });
 });
