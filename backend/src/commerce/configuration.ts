@@ -35,6 +35,26 @@
  * digest**. A key-addressed upsert is idempotent because the second application
  * of a record is the same assertion as the first, and a run interrupted halfway
  * converges when it is run again.
+ *
+ * **Idempotent is not the same as silent.** Seven of the nine record kinds write
+ * nothing at all on a second run, because they compare before they write. The
+ * region and the shipping options do not: they re-issue their update whenever
+ * the row exists, so every promoted digest rewrites the region's country list
+ * and both flat prices and emits `region.updated` and `shipping_option.updated`.
+ * The end state is the same either way, which is what idempotence means here —
+ * but a reader watching the event bus will see those two.
+ *
+ * ## The natural keys are display names, and renaming one in the Admin hurts
+ *
+ * {@link REGION_NAME}, {@link STOCK_LOCATION_NAME}, {@link FULFILLMENT_SET_NAME}
+ * and the two zone names in {@link ./shipping-model.js} are both what the Admin
+ * shows an operator *and* the key every upsert here addresses. An operator who
+ * renames the region in the Admin does not rename this record: the next
+ * predeploy finds no row called `Worldwide`, creates a **second** region, and
+ * `storefront/src/lib/cart-store.tsx` — which lists regions with `limit: 2` and
+ * refuses unless it finds exactly one — then answers every add-to-cart with
+ * "Medusa Store catalogue is not ready". Renaming any of these five in the
+ * Admin is therefore a change to this file, not a cosmetic edit.
  */
 
 import { STRIPE_PAYMENT_PROVIDER_ID } from "../config/payment.js";

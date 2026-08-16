@@ -1034,10 +1034,28 @@ charged to stop being what the operator froze, and the export is the *old*
 shop's shipping configuration rather than Task 1's model.
 
 Every record is a lookup by natural key followed by a create **or** an update, so
-the Job — an Argo CD sync hook that runs again on every promoted digest — is a
-no-op the second time and converges after a run interrupted halfway. A service
-zone whose country set has drifted is rewritten; one that already matches is left
-untouched.
+the Job — an Argo CD sync hook that runs again on every promoted digest —
+converges after a run interrupted halfway and reaches the same end state however
+often it runs. A service zone whose country set has drifted is rewritten; one
+that already matches is left untouched.
+
+It is not, however, silent the second time. Seven of the nine record kinds
+compare before they write and so write nothing at all on a re-run; the **region**
+and the **shipping options** re-issue their update unconditionally whenever the
+row exists, so every promoted digest rewrites the region's country list and
+both flat prices and emits `region.updated` and `shipping_option.updated`. The
+end state is unchanged either way. `backend/tests/commerce-medusa-semantics.test.ts`
+asserts that exact set of second-run writes, so the claim cannot quietly drift.
+
+**The natural keys are display names.** `Worldwide`, `Plepic Games`, `Plepic
+Games delivery` and the two zone names are both what the Admin shows and the key
+every upsert here addresses. Renaming one in the Admin does not rename the
+record: the next predeploy finds no row under the old name and creates a
+**second** one — and a second region is a storefront that answers every
+add-to-cart with "Medusa Store catalogue is not ready", because
+`storefront/src/lib/cart-store.tsx` lists regions with `limit: 2` and refuses
+unless it finds exactly one. Renaming any of the five is a change to
+`backend/src/commerce/configuration.ts`, not a cosmetic edit.
 
 ### The Stripe webhook is one endpoint reached two ways
 
@@ -1068,9 +1086,13 @@ holds all of that, and
 storefront and asserts the bytes that reach the backend.
 
 The route only enqueues. Medusa emits the received event onto the event bus with
-a delay and retries, so it is the **worker** that verifies the signature and
-advances the payment — which is why webhook failures are a worker concern rather
-than an API one.
+a delay and retries, so the signature is verified and the payment advanced by
+whichever pod's subscriber picks the event up — **and that can be either of
+them**. `backend.yaml` runs `npm run start`, which leaves `workerMode` at the
+framework's default of `shared`, so the API pod runs subscribers too;
+`worker.yaml` runs `npm run start:worker`, which sets `MEDUSA_WORKER_MODE=worker`.
+Launch alerting on webhook failures therefore has to cover both workloads, not
+the worker alone.
 
 ### The CORS origins are declared empty, on purpose
 
