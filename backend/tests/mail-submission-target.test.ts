@@ -40,8 +40,8 @@ import { notificationModule } from "../src/config/notification.js";
  * broadens the port coverage from one spelling to twelve: ten refused
  * (`"25"`, `" 25"`, `"025"`, `"465"`, `"2525"`, `"1025"`, `"0587"`, `"587a"`,
  * `""`, `"smtp"`) and two accepted (`"587"` and `" 587 "`, the second there to
- * pin that `requireEnvironmentValue` trims, so a whitespace-padded 587 is not
- * read as some other port).
+ * pin that `requireEnvironmentValue` trims, so a whitespace-padded 587 is
+ * still read as 587 rather than refused).
  */
 
 const smtpOptions: SmtpOptions = {
