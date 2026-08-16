@@ -427,6 +427,21 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   // workload that cannot name its Redis must refuse at start, in front of an
   // operator who is watching, rather than run as two processes that ignore each
   // other until a Stripe capture retry is lost.
+  //
+  // **What this refuses is an unnamed Redis, not an unreachable one.** Nothing
+  // here dials the server, and the module loaders cannot be relied on to notice
+  // either: against a closed port `event-bus-redis` logs *"Connection to Redis …
+  // established"*, `workflow-engine-redis` logs it twice, `locking-redis` logs
+  // an error, and none of the three throws.
+  //
+  // The workloads fail anyway, a step later. `medusa start` ends in *"Error
+  // starting server: Reached the max retries per request limit"* and never
+  // serves `/health`, in every worker mode, and `medusa exec` exits 1 — against
+  // a closed port and against a `WRONGPASS` alike. The single exception is
+  // `medusa db:migrate`, which exits 0 with no Redis at all; `predeploy` runs it
+  // first and `medusa exec` second, so the Job still fails, but a green
+  // migration on its own is not evidence that Redis is reachable. `README.md`
+  // ("What the cluster runs") is where that belongs for an operator.
   const redis = readRedisRuntimeConfig(environment);
 
   return {

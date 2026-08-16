@@ -653,13 +653,17 @@ The Plepic Games storefront and Medusa backend monorepo.
   is still unused when the storefront ships, returning it to Next's own
   optional resolution is a one-line change.
 - `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams.
-  Redis is required, not optional: `medusa-config.ts` registers the Redis event
-  bus, the Redis workflow engine and the Redis locking provider, and
-  `REDIS_HOST`, `REDIS_PORT` and `REDIS_PASSWORD` are read fail-closed at start.
-  Without them Medusa installs its in-process defaults in every workload and
-  `plepic-worker` shares no queue with the API that enqueues to it — with no
-  failing probe and no failing checkout, because the API runs its own
-  subscribers in the default `shared` worker mode.
+  `medusa-config.ts` registers the Redis event bus, the Redis workflow engine
+  and the Redis locking provider, and `REDIS_HOST`, `REDIS_PORT` and
+  `REDIS_PASSWORD` are read fail-closed at start. Without them Medusa installs
+  its in-process defaults in every workload and `plepic-worker` shares no queue
+  with the API that enqueues to it — with no failing probe and no failing
+  checkout, because the API runs its own subscribers in the default `shared`
+  worker mode.
+  **What is checked here is that Redis is named, not that it answers** — see
+  "What the cluster runs" for what each workload actually does when it is
+  named and unreachable, which is not what the module loaders' own log lines
+  suggest.
   It carries one maintained Stripe provider and a custom email notification
   provider.
   Order confirmations use Medusa's idempotent persisted notification lifecycle;
@@ -958,6 +962,89 @@ gated on one sync hook: migrate, seed, configure, and only then let an API,
 worker, or storefront pod start. It is also the only place a fourth step could
 go — `deploys` names the workloads it runs, and a fourth `args: [npm, run, …]`
 would be a script this repository declares and no manifest ever invokes.
+
+### Naming a Redis is fail-closed; reaching one is not checked anywhere
+
+`src/config/runtime.ts` refuses to build a configuration whose `REDIS_HOST`,
+`REDIS_PORT` or `REDIS_PASSWORD` is missing, and that is the whole of what this
+repository verifies. Nothing dials the server, and **the three module loaders
+report success when they have not connected.** Against a closed port:
+
+| Loader | What it does |
+|---|---|
+| `event-bus-redis` | logs `Connection to Redis in module 'event-bus-redis' established` |
+| `workflow-engine-redis` | logs the equivalent **twice**, for the module and its PubSub pair |
+| `locking-redis` | logs an error |
+
+None of the three throws, and two of them state the opposite of what happened.
+Only `locking-redis` complains, so a log read for *"established"* lines confirms
+nothing at all — which is the trap this note exists to close.
+
+What does stop a misconfigured workload is the first Redis *command* after boot.
+Measured against a closed port, and against a Redis that answers `WRONGPASS`:
+
+| Command | Workload | Unreachable or wrong password |
+|---|---|---|
+| `medusa start` | `plepic-backend`, `plepic-worker` | **Refuses.** `Error starting server: Reached the max retries per request limit`, and `/health` never answers — in `shared`, `worker` and `server` worker mode alike |
+| `medusa exec` | seeding, commerce configuration, catalogue import | **Exits 1** |
+| `medusa db:migrate` | the first third of `predeploy` | **Exits 0**, logging `Migrations completed` |
+
+So both Deployments crash-loop rather than serve, and the predeploy Job still
+fails — but it fails on its *second* command, not its first. A `db:migrate` that
+reports success is not evidence that Redis is reachable. Reachability itself
+belongs to `hannosirkel/deploys`: the NetworkPolicy, the Redis StatefulSet, and
+the recovery ordering that brings Redis up before the worker.
+
+### One query to run before the first migration onto the Redis workflow engine
+
+This applies **once**, to any database that has already been migrated by a build
+of this backend from before `medusa-config.ts` registered
+`@medusajs/medusa/workflow-engine-redis`. A database that has never run this
+backend is unaffected, and so is every migration after the first.
+
+`medusa db:migrate` records migrations by **name**, for every module, in one
+shared `mikro_orm_migrations` table. Swapping `workflow-engine-inmemory` for
+`workflow-engine-redis` therefore does not replay the lineage from the
+beginning: the two packages ship eight and seven migrations, two of which are
+named identically and have already run, which leaves **six pending**:
+
+```text
+Migration20241206123341  Migration20250120111059  Migration20250128174354
+Migration20250505101505  Migration20250819110923  Migration20250908080326
+```
+
+Five are name-shifted duplicates of work the in-memory lineage already did and
+re-apply harmlessly. **The sixth is not.** `Migration20250120111059` runs
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS "IDX_workflow_execution_workflow_id_transaction_id_unique"
+  ON "workflow_execution" (workflow_id, transaction_id) WHERE deleted_at IS NULL;
+```
+
+and the in-memory lineage's own `Migration20250505092459` **drops** that index
+and moves the primary key to `(workflow_id, transaction_id, run_id)`, which makes
+two live rows sharing `(workflow_id, transaction_id)` legal — a second run of one
+transaction id writes a second row with a new `run_id`. `IF NOT EXISTS` does not
+save it: the index genuinely is absent, so it is created rather than skipped, and
+the creation fails on those rows. `Migration20250505101505`, later in the same
+pending set, drops it again — so the index is created only to be dropped, and a
+step that leaves no trace in the final schema is what blocks the rollout.
+
+So run this against the environment's database **before** promoting an image
+that carries this configuration:
+
+```sql
+select workflow_id, transaction_id, count(*) from workflow_execution
+where deleted_at is null group by 1, 2 having count(*) > 1;
+```
+
+No rows means the transition is safe. Any rows means `medusa db:migrate` exits
+non-zero, the predeploy Job fails, and no API, worker, or storefront pod starts.
+Nothing is corrupted and nothing is half-applied — MikroORM runs the pending set
+in one transaction and rolls the whole batch back — but a retry starts over and
+fails in the same place until the duplicate rows are resolved, so the sync stays
+red until someone runs this query anyway. It is written here so that happens
+before the rollout rather than during a failed one.
 
 The seeding step is idempotent, and the condition it tests is **whether the
 administrator can sign in** — not whether a user row exists. A usable

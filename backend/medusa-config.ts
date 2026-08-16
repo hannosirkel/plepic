@@ -45,8 +45,22 @@ const redisOptions = redisConnectionOptions(runtime.redis);
  *    to die with that pod.
  * 4. **Locking.** Once two processes run workflows, per-process mutual
  *    exclusion excludes nothing. This one is the `locking` module with a
- *    provider, not a `locking-redis` module — Medusa registers the in-memory
- *    provider first and only a provider marked `is_default` displaces it.
+ *    provider, not a `locking-redis` module — Medusa's provider loader
+ *    registers the in-memory provider as `LockingDefaultProvider` first, and
+ *    then promotes a declared provider over it when that provider is marked
+ *    `is_default` **or** when it is the only one in the list. Both are true
+ *    below, so the promotion does not depend on which rule fires; `is_default`
+ *    is written anyway, because it is the half that survives a second provider
+ *    being added.
+ *
+ * **Do not read these four as a reachability check.** What is fail-closed is
+ * naming a Redis, in `readBackendRuntimeConfig`; nothing here dials one, and
+ * the loaders below report success when they have not connected — against a
+ * closed port `event-bus-redis` logs *"Connection to Redis … established"*,
+ * `workflow-engine-redis` logs it twice, `locking-redis` logs an error, and
+ * none of them throws. What actually stops a misconfigured workload is the
+ * first Redis command after boot: `medusa start` and `medusa exec` both fail
+ * on it, `medusa db:migrate` does not. `README.md` has the measured table.
  *
  * The keys these declarations land on are Medusa's, not ours:
  * `REVERSED_MODULE_PACKAGE_NAMES` maps each package name back onto
