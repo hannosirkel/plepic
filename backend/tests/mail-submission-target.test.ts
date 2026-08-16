@@ -40,7 +40,8 @@ import { notificationModule } from "../src/config/notification.js";
  * broadens the port coverage from one spelling to twelve: ten refused
  * (`"25"`, `" 25"`, `"025"`, `"465"`, `"2525"`, `"1025"`, `"0587"`, `"587a"`,
  * `""`, `"smtp"`) and two accepted (`"587"` and `" 587 "`, the second there to
- * pin that trimming is what refuses `" 25"`).
+ * pin that `requireEnvironmentValue` trims, so a whitespace-padded 587 is not
+ * read as some other port).
  */
 
 const smtpOptions: SmtpOptions = {
@@ -181,8 +182,13 @@ describe("port 25 cannot be configured, by any spelling of it", () => {
     expect(readBackendRuntimeConfig({ ...environment }).smtp.port).toBe(587);
 
     // `requireEnvironmentValue` trims, so surrounding whitespace is not a
-    // different port — asserted rather than assumed, because it is also why
-    // `" 25"` below is refused rather than slipping past a literal compare.
+    // different port — asserted rather than assumed. Note which way it cuts.
+    // The rule is an allowlist (`smtpPort !== "587"`), so trimming can only
+    // widen what is accepted, never narrow it: of the twelve spellings this
+    // test exercises, `" 587 "` is the only one whose outcome depends on
+    // trimming at all, and trimming is what turns it from a refusal into an
+    // acceptance. None of the refusals below owe anything to it — `" 25"`
+    // fails the comparison padded or trimmed.
     expect(readBackendRuntimeConfig({ ...environment, SMTP_PORT: " 587 " }).smtp.port).toBe(587);
 
     for (const port of ["25", " 25", "025", "465", "2525", "1025", "0587", "587a", "", "smtp"]) {
