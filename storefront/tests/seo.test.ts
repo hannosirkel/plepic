@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { pagesByLocale } from "../../content/index.js";
@@ -7,10 +10,19 @@ import {
   LOCALE_DEFINITIONS,
   ROUTE_PATHS,
 } from "../../content/routes.js";
-import { alternateLinksFor, buildPageMetadata, localesPublishing, pagesIn } from "../src/lib/seo.js";
+import {
+  OG_IMAGE_HEIGHT,
+  OG_IMAGE_PATHS,
+  OG_IMAGE_WIDTH,
+  alternateLinksFor,
+  buildPageMetadata,
+  localesPublishing,
+  pagesIn,
+} from "../src/lib/seo.js";
 import { canonicalUrl } from "../src/lib/urls.js";
 
 const BASE_URL = "https://example.com";
+const storefrontDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const defaultPages = pagesIn(DEFAULT_LOCALE);
 
@@ -199,5 +211,92 @@ describe("exactly one canonical per page per locale", () => {
       }
     }
     expect(Object.keys(pagesByLocale).toSorted()).toEqual([...LOCALES].toSorted());
+  });
+});
+
+/**
+ * The share card, which had no test because it had no implementation.
+ *
+ * Both PNGs sat in `public/og/` from the redesign onwards, referenced by
+ * nothing: every page emitted `og:title`, `og:description`, `og:url` and a
+ * `summary` Twitter card with no image at all, and every existing SEO test
+ * passed, because none of them asked. That is the shape of defect this row
+ * exists to find — the surface is not wrong, it is absent.
+ */
+describe("the Open Graph share card", () => {
+  it("gives every route in the table an image, sized as Open Graph expects", () => {
+    for (const page of defaultPages) {
+      const metadata = buildPageMetadata(page.route, {
+        baseUrl: BASE_URL,
+        isTestHost: false,
+        locale: DEFAULT_LOCALE,
+      });
+
+      const images = metadata.openGraph?.images;
+      expect(Array.isArray(images) ? images : [], page.route).toHaveLength(1);
+      expect(Array.isArray(images) ? images[0] : undefined, page.route).toEqual({
+        url: `${BASE_URL}${OG_IMAGE_PATHS[page.route]}`,
+        width: OG_IMAGE_WIDTH,
+        height: OG_IMAGE_HEIGHT,
+        alt: page.title,
+      });
+    }
+  });
+
+  it("builds the image URL absolutely, from this request's base URL", () => {
+    const other = buildPageMetadata("home", {
+      baseUrl: "https://other.example.org",
+      isTestHost: false,
+      locale: DEFAULT_LOCALE,
+    });
+    const images = other.openGraph?.images;
+    const first = Array.isArray(images) ? images[0] : undefined;
+    const url = typeof first === "object" && first !== null && "url" in first ? String(first.url) : "";
+
+    expect(url).toBe("https://other.example.org/og/publisher-og.png");
+    expect(() => new URL(url)).not.toThrow();
+  });
+
+  it("declares a large card, since a 1.91:1 asset on a summary card is cropped square", () => {
+    const metadata = buildPageMetadata("home", {
+      baseUrl: BASE_URL,
+      isTestHost: false,
+      locale: DEFAULT_LOCALE,
+    });
+    // `Metadata["twitter"]` is a union whose members each declare `card`, but
+    // the union itself does not, so read it as a record rather than widening
+    // the production type to suit a test.
+    const twitter = metadata.twitter as Record<string, unknown> | null | undefined;
+    expect(twitter?.card).toBe("summary_large_image");
+    expect(twitter?.images).toEqual(metadata.openGraph?.images);
+  });
+
+  it("gives the three Lunar Base routes the product card and everything else the publisher card", () => {
+    expect(OG_IMAGE_PATHS.lunarBase).toBe("/og/lunar-base-og.png");
+    expect(OG_IMAGE_PATHS.support).toBe("/og/lunar-base-og.png");
+    expect(OG_IMAGE_PATHS.rulebook).toBe("/og/lunar-base-og.png");
+    expect(OG_IMAGE_PATHS.home).toBe("/og/publisher-og.png");
+    expect(OG_IMAGE_PATHS.about).toBe("/og/publisher-og.png");
+  });
+
+  /**
+   * The map is total over `RouteId` at the type level; this is the runtime
+   * half — that every route the table declares is a key, and that no key names
+   * a file the repository does not actually ship.
+   */
+  it("names, for every route, a file that exists at the declared Open Graph size", () => {
+    expect(Object.keys(OG_IMAGE_PATHS).toSorted()).toEqual(Object.keys(ROUTE_PATHS).toSorted());
+
+    for (const [route, imagePath] of Object.entries(OG_IMAGE_PATHS)) {
+      const file = join(storefrontDir, "public", imagePath);
+      expect(existsSync(file), `${route} names a missing file: ${imagePath}`).toBe(true);
+
+      // PNG IHDR: an 8-byte signature, then a length and the "IHDR" tag, then
+      // width and height as big-endian 32-bit integers.
+      const header = readFileSync(file).subarray(0, 24);
+      expect(header.subarray(12, 16).toString("ascii"), imagePath).toBe("IHDR");
+      expect(header.readUInt32BE(16), `${imagePath} width`).toBe(OG_IMAGE_WIDTH);
+      expect(header.readUInt32BE(20), `${imagePath} height`).toBe(OG_IMAGE_HEIGHT);
+    }
   });
 });

@@ -6,10 +6,27 @@
  * `Page` in one locale into a `Metadata` object: a self-referencing canonical,
  * the `hreflang` alternates, and Open Graph / Twitter card fields.
  *
- * No product photography is attached here. The plan forbids fabricated
- * imagery, and no real photography has landed in this unit — `openGraph` and
- * `twitter` simply carry no `images` until the design/pages unit supplies a
- * real asset. A card with no image is a smaller card, not a broken one.
+ * ## The share card image
+ *
+ * Two real assets, both 1200x630, both committed by the accepted redesign and
+ * — until this unit — referenced by nothing at all: `public/og/publisher-og.png`
+ * is the Plepic wordmark on the publisher ground, and `public/og/lunar-base-og.png`
+ * is the photographed retail box, cards and tokens on the Lunar Base ground.
+ * Neither is fabricated imagery; both are the same assets the pages already
+ * paint from, so attaching them breaks no rule this module was written under.
+ * The earlier revision's note that "no real photography has landed in this
+ * unit" was true when it was written and stopped being true when the redesign
+ * merged, which is exactly how a page ends up shipping with no share card and
+ * nothing failing.
+ *
+ * {@link OG_IMAGE_PATHS} maps each route to whichever of the two it belongs
+ * to: the three Lunar Base routes get the product card, everything else gets
+ * the publisher card. The URL is built from the request's `baseUrl`, so it is
+ * absolute — required, since a crawler resolves `og:image` against nothing —
+ * without any host being baked into the artifact.
+ *
+ * The card is `summary_large_image` accordingly. Declaring `summary` while
+ * supplying a 1.91:1 asset would crop it to a square thumbnail.
  *
  * `isTestHost` is part of the input rather than a property of the route,
  * because indexability is a property of *this request*: `proxy.ts` sends
@@ -60,7 +77,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../../content/routes.js";
-import { canonicalUrl, localizedPath } from "./urls.js";
+import { absoluteUrl, canonicalUrl, localizedPath } from "./urls.js";
 
 /** The pages `locale` publishes. Total over `Locale` by construction. */
 export function pagesIn(locale: Locale): readonly Page[] {
@@ -175,6 +192,35 @@ export function alternateLinksFor(
   return links;
 }
 
+/** The intrinsic size of both share cards, and the ratio Open Graph expects. */
+export const OG_IMAGE_WIDTH = 1200;
+export const OG_IMAGE_HEIGHT = 630;
+
+const PUBLISHER_OG_IMAGE = "/og/publisher-og.png";
+const LUNAR_BASE_OG_IMAGE = "/og/lunar-base-og.png";
+
+/**
+ * The share card each route carries. Total over `RouteId` by construction, so
+ * a route added to `content/routes.ts` cannot reach production without someone
+ * choosing which of the two cards it shares — the alternative, a lookup with a
+ * default, is how a Lunar Base route quietly ends up wearing the publisher
+ * wordmark.
+ */
+export const OG_IMAGE_PATHS: Readonly<Record<RouteId, string>> = {
+  home: PUBLISHER_OG_IMAGE,
+  about: PUBLISHER_OG_IMAGE,
+  cart: PUBLISHER_OG_IMAGE,
+  checkout: PUBLISHER_OG_IMAGE,
+  legalImprint: PUBLISHER_OG_IMAGE,
+  legalTerms: PUBLISHER_OG_IMAGE,
+  legalPrivacy: PUBLISHER_OG_IMAGE,
+  legalShipping: PUBLISHER_OG_IMAGE,
+  legalReturns: PUBLISHER_OG_IMAGE,
+  lunarBase: LUNAR_BASE_OG_IMAGE,
+  support: LUNAR_BASE_OG_IMAGE,
+  rulebook: LUNAR_BASE_OG_IMAGE,
+};
+
 export interface PageMetadataContext {
   readonly baseUrl: string;
   /** From validated host configuration, for *this* request — never a string sniff. */
@@ -187,6 +233,12 @@ export function buildPageMetadata(routeId: RouteId, context: PageMetadataContext
   const page = findPage(routeId, context.locale);
   const url = canonicalUrl(context.baseUrl, context.locale, routeId);
   const indexable = page.indexable && !context.isTestHost;
+  const image = {
+    url: absoluteUrl(context.baseUrl, OG_IMAGE_PATHS[routeId]),
+    width: OG_IMAGE_WIDTH,
+    height: OG_IMAGE_HEIGHT,
+    alt: page.title,
+  };
 
   return {
     title: page.title,
@@ -205,11 +257,13 @@ export function buildPageMetadata(routeId: RouteId, context: PageMetadataContext
       siteName: "Plepic Games",
       type: "website",
       locale: LOCALE_DEFINITIONS[context.locale].languageTag,
+      images: [image],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: page.title,
       description: page.description,
+      images: [image],
     },
   };
 }
