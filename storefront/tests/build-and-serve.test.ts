@@ -2742,3 +2742,96 @@ describe("page weight stays inside a budget on the routes that matter", () => {
     }
   });
 });
+
+/**
+ * "No route other than the allowlisted `/store-api` prefixes needs the
+ * backend."
+ *
+ * The suite already proves the other half — that those prefixes reach the
+ * backend with `/store-api` stripped, and that nothing else reaches it at all.
+ * This is the converse, and it is the one that decides whether the tunnel
+ * needs a path rule: if a marketing or legal route could not render without a
+ * Store credential, then the site as a whole would depend on the backend being
+ * up, and an outage there would take the publisher site down with it.
+ *
+ * Measured on the *unconfigured* server, whose `MEDUSA_BACKEND_URL` is empty,
+ * so "did not need the backend" is not a claim about a request that happened
+ * to be fast — there is no backend to reach.
+ */
+describe("the publisher site renders without a backend at all", () => {
+  const commercial = new Set<string>([
+    ROUTE_PATHS.home,
+    ROUTE_PATHS.lunarBase,
+    ROUTE_PATHS.cart,
+    ROUTE_PATHS.checkout,
+  ]);
+
+  const editorial = Object.values(ROUTE_PATHS).filter((path) => !commercial.has(path));
+
+  it("serves every non-commercial route with no Store configuration and no backend traffic", async () => {
+    expect(editorial.length).toBeGreaterThan(3);
+
+    for (const path of editorial) {
+      backendRequests.length = 0;
+      const response = await requestWithHost(unconfiguredServer.port, path, "runtime.example.com");
+
+      expect(response.status, `${path} did not render without a backend`).toBe(200);
+      expect(
+        backendRequests.map((request) => request.path),
+        `${path} reached the backend`,
+      ).toEqual([]);
+    }
+  });
+
+  it("serves robots.txt and the sitemap without one either", async () => {
+    for (const path of ["/robots.txt", "/sitemap.xml"]) {
+      backendRequests.length = 0;
+      const response = await requestWithHost(unconfiguredServer.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(200);
+      expect(backendRequests, path).toHaveLength(0);
+    }
+  });
+});
+
+/**
+ * The precondition a redirect loop needs, checked against configuration rather
+ * than argued from the shape of the map: no host that redirects is also a host
+ * this deployment serves.
+ *
+ * `proxy.ts` guards the canonical host with an early return, and
+ * `tests/proxy.test.ts` drives that guard with a map that deliberately names
+ * it. What neither covers is the *test* hostnames, which are served by the
+ * same process and are not the canonical host — a redirect entry for one of
+ * them would be admitted by the guard and would 301 the test environment's own
+ * hostname away to the live apex.
+ */
+describe("no host this deployment serves is also a host it redirects", () => {
+  it("keeps the redirecting hosts disjoint from the canonical and test hostnames", async () => {
+    const served = [
+      new URL(RUNTIME_ENV.SITE_BASE_URL).host,
+      RUNTIME_ENV.SITE_CANONICAL_HOST,
+      ...RUNTIME_ENV.SITE_TEST_HOSTNAMES.split(","),
+    ].map((host) => host.trim().toLowerCase());
+
+    const configured = JSON.parse(readFileSync(runtimeRedirectMapPath, "utf8")) as {
+      hosts: Record<string, unknown>;
+    };
+    const redirecting = Object.keys(configured.hosts);
+    expect(redirecting.length).toBeGreaterThan(2);
+
+    for (const host of redirecting) {
+      expect(served, `${host} is both served and redirected`).not.toContain(host.toLowerCase());
+    }
+  });
+
+  it("answers 200 rather than a 301 on every hostname it serves", async () => {
+    for (const host of [
+      RUNTIME_ENV.SITE_CANONICAL_HOST,
+      ...RUNTIME_ENV.SITE_TEST_HOSTNAMES.split(",").map((value) => value.trim()),
+    ]) {
+      const response = await requestWithHost(server.port, ROUTE_PATHS.about, host);
+      expect(response.status, `${host} redirected its own visitors`).toBe(200);
+      expect(response.headers.location, host).toBeUndefined();
+    }
+  });
+});

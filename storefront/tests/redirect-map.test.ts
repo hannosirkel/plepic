@@ -287,3 +287,91 @@ describe("redirects carry no locale", () => {
     }
   });
 });
+
+/**
+ * "No chains or loops", stated as the three facts that make it true rather
+ * than as one observation about today's fixture.
+ *
+ * The served proof is in `tests/build-and-serve.test.ts` — every configured
+ * host answers exactly one 301 whose `Location` answers 200 with no `Location`
+ * of its own, and the canonical host is never redirected. What that suite
+ * cannot show is *why* a second hop is not expressible, which is what stops
+ * the next operator map from introducing one. Three properties do it, and each
+ * is mechanical:
+ *
+ * 1. a target is a `RouteId`, so it resolves to a bare same-site path and can
+ *    never be another host, another redirect, or an off-site URL;
+ * 2. a parsed entry carries nothing but `path` and `target`, so there is no
+ *    field in which a destination host could be smuggled;
+ * 3. therefore the only shape a loop could take is the destination host being
+ *    itself a key in the map — and `proxy.ts` refuses to redirect the
+ *    canonical host at all, which `tests/proxy.test.ts` drives with a map that
+ *    deliberately contains it.
+ */
+describe("the redirect graph has no chains and no loops", () => {
+  const map = loadRedirectMap({});
+
+  it("resolves every host and path in one step to a terminal route path", () => {
+    const routePaths = new Set<string>(Object.values(ROUTE_PATHS));
+    let checked = 0;
+
+    for (const host of redirectMapHosts(map)) {
+      for (const entry of map.hosts[host] ?? []) {
+        const probe = entry.path === "*" ? "/nothing-anticipated-here" : entry.path;
+        const first = resolveRedirect(host, probe, map);
+        expect(first, `${host}${probe}`).not.toBeNull();
+
+        // Terminal: the answer is a route this site serves, not an input the
+        // resolver could be handed again for a second answer.
+        expect(routePaths.has(first?.targetPath ?? ""), `${host}${probe}`).toBe(true);
+        checked += 1;
+      }
+    }
+
+    expect(checked, "walked no entries at all").toBeGreaterThan(4);
+  });
+
+  it("offers no way to express a destination host, so a redirect cannot leave the site", () => {
+    const parsed = parseRedirectMap(
+      {
+        hosts: {
+          "operator.example.org": [
+            { path: "*", target: "home", host: "elsewhere.example.net", url: "https://elsewhere.example.net/" },
+          ],
+        },
+      },
+      "chain-probe",
+    );
+
+    expect(Object.keys(parsed.hosts["operator.example.org"]?.[0] ?? {}).toSorted()).toEqual([
+      "path",
+      "target",
+    ]);
+  });
+
+  it("rejects a target naming another mapped host rather than a route", () => {
+    expect(() =>
+      parseRedirectMap(
+        { hosts: { "a.example.org": [{ path: "*", target: "b.example.org" }] } },
+        "chain-probe",
+      ),
+    ).toThrow(/RouteId/);
+  });
+
+  /**
+   * The one remaining loop shape, checked where it can be checked: a map that
+   * names a host on both sides. `resolveRedirect` still answers — it is a
+   * lookup, not a policy — and the refusal lives one layer up in `proxy.ts`,
+   * so this pins that the lookup at least does not *hide* the situation from
+   * the layer that decides.
+   */
+  it("still reports a self-referential host, rather than silently dropping it", () => {
+    const parsed = parseRedirectMap(
+      { hosts: { "loop.example.org": [{ path: "*", target: "home" }] } },
+      "loop-probe",
+    );
+
+    expect(redirectMapHosts(parsed)).toEqual(["loop.example.org"]);
+    expect(resolveRedirect("loop.example.org", "/", parsed)?.targetPath).toBe(ROUTE_PATHS.home);
+  });
+});
