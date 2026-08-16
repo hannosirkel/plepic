@@ -37,7 +37,10 @@ import { notificationModule } from "../src/config/notification.js";
  * rest read the captured argument, which keeps them pointed at what the
  * transport is actually built from if that line ever changes. Alongside that
  * it names the nodemailer settings that would route mail elsewhere, and
- * broadens the port coverage from one spelling to eleven.
+ * broadens the port coverage from one spelling to twelve: ten refused
+ * (`"25"`, `" 25"`, `"025"`, `"465"`, `"2525"`, `"1025"`, `"0587"`, `"587a"`,
+ * `""`, `"smtp"`) and two accepted (`"587"` and `" 587 "`, the second there to
+ * pin that trimming is what refuses `" 25"`).
  */
 
 const smtpOptions: SmtpOptions = {
