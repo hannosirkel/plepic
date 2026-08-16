@@ -111,11 +111,26 @@ interface RedisConstruction {
  * time, so the substitution has to be in the CommonJS cache *before* the module
  * is first required — which is why the whole package subtree is evicted and
  * re-required rather than mocked at the import site.
+ *
+ * `redisPackage` is the subtree to evict and re-require under the recorder. It
+ * is the module being loaded in every case but one: the `locking` module reaches
+ * `ioredis` through its **provider**, so loading it means substituting inside
+ * `locking-redis` while running `locking`'s own loader.
+ *
+ * The cache is left as it was found, in both directions. Restoring the evicted
+ * keys is the obvious half; deleting keys under `redisPackage` that this call
+ * loaded *fresh* is the half that is easy to miss, and without it the process
+ * could hold two copies of one class from one package. Today it removes nothing
+ * — the `require` at the top of this function warms the whole subtree before
+ * anything is evicted, so every key that comes back was evicted first — and it
+ * is written anyway, because that is a property of these three packages rather
+ * than of the helper.
  */
 async function runModuleLoaders(
   specifier: string,
   loaderArgument: Record<string, unknown>,
   moduleDeclaration: Record<string, unknown> = { worker_mode: "shared" },
+  redisPackage: string = specifier,
 ): Promise<RedisConstruction[]> {
   const constructions: RedisConstruction[] = [];
 
@@ -135,15 +150,18 @@ async function runModuleLoaders(
     disconnect(): void {}
   }
 
-  const shimPath = require_.resolve(specifier);
-  const { discoveryPath } = require_(specifier) as { discoveryPath: string };
+  const shimPath = require_.resolve(redisPackage);
+  const { discoveryPath } = require_(redisPackage) as { discoveryPath: string };
   const packageRoot = discoveryPath.slice(0, discoveryPath.indexOf("/dist/") + 1);
   const ioredisPath = createRequire(discoveryPath).resolve("ioredis");
+
+  const substituted = (key: string): boolean =>
+    key === shimPath || key === ioredisPath || key.startsWith(packageRoot);
 
   const cache = require_.cache as Record<string, unknown>;
   const evicted = new Map<string, unknown>();
   for (const key of Object.keys(cache)) {
-    if (key === shimPath || key === ioredisPath || key.startsWith(packageRoot)) {
+    if (substituted(key)) {
       evicted.set(key, cache[key]);
       delete cache[key];
     }
@@ -168,6 +186,11 @@ async function runModuleLoaders(
       await loader(loaderArgument, moduleDeclaration);
     }
   } finally {
+    for (const key of Object.keys(cache)) {
+      if (substituted(key) && !evicted.has(key)) {
+        delete cache[key];
+      }
+    }
     delete cache[ioredisPath];
     for (const [key, value] of evicted) {
       cache[key] = value;
@@ -175,6 +198,44 @@ async function runModuleLoaders(
   }
 
   return constructions;
+}
+
+/**
+ * Run `body` with the module resolution the **image** has, not the one vitest has.
+ *
+ * `npm ci` resolves this workspace to two levels: most of `@medusajs/*` hoists to
+ * the repository root, while `@medusajs/medusa` nests under `backend/`. Medusa
+ * loads a provider by giving its `resolve` string to `dynamicImport`, which does
+ * a plain `require` from inside `@medusajs/utils` — hoisted to the root, where
+ * `@medusajs/medusa` is not. `backend/Dockerfile` closes that with
+ * `ENV NODE_PATH=/app/node_modules` and calls it load-bearing; `medusa build`
+ * sets the same thing. Under vitest neither applies, so a provider declared the
+ * way the running image declares it does not resolve at all.
+ *
+ * Reproduced here rather than worked around, because a test that resolved the
+ * provider some other way would stop testing the declaration in
+ * `medusa-config.ts`. Node reads `NODE_PATH` once at startup, so the private
+ * `_initPaths` is the only way to re-read it; both it and the variable are put
+ * back before returning.
+ */
+async function withImageModulePaths<T>(body: () => Promise<T>): Promise<T> {
+  const nodeModule = require_("node:module") as { _initPaths: () => void };
+  const previous = process.env.NODE_PATH;
+
+  const manifest = require_.resolve("@medusajs/medusa/package.json");
+  process.env.NODE_PATH = manifest.slice(0, manifest.indexOf("/@medusajs/medusa/"));
+  nodeModule._initPaths();
+
+  try {
+    return await body();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.NODE_PATH;
+    } else {
+      process.env.NODE_PATH = previous;
+    }
+    nodeModule._initPaths();
+  }
 }
 
 /** A container with the registrations a module loader may resolve. */
@@ -322,6 +383,41 @@ describe("the connections Medusa's own loaders build from this configuration", (
       expect(options.password).toBe(EXPECTED_PASSWORD);
     }
   });
+
+  /**
+   * The step above proves the *provider* connects where it is told. It does not
+   * prove the provider is the one anything uses — that is the `locking` module's
+   * decision, and it is the only link in this chain that was ever taken on
+   * reading. So run `@medusajs/medusa/locking`'s own provider loader against the
+   * options this configuration produces and read back what it registered.
+   *
+   * `LockingDefaultProvider` starts as the in-memory provider's identifier and
+   * is overwritten for a declared provider that is `is_default` **or** the only
+   * one in the list. Resolving it to `locking-redis` is the fact the whole
+   * locking wiring rests on, and a Medusa upgrade that changes either rule, the
+   * registration key, or the identifier turns this red.
+   */
+  it("makes that provider the locking module's default, by running the module's loader", async () => {
+    const locking = config.modules[Modules.LOCKING];
+    const container = loaderContainer();
+
+    await withImageModulePaths(() =>
+      runModuleLoaders(
+        "@medusajs/medusa/locking",
+        { container, logger: undefined, options: locking?.options },
+        { worker_mode: "shared" },
+        "@medusajs/medusa/locking-redis",
+      ),
+    );
+
+    const { LockingDefaultProvider } = require_("@medusajs/locking/dist/types") as {
+      LockingDefaultProvider: string;
+    };
+    const providers = locking?.options?.providers as { id?: string }[];
+
+    expect(container.resolve(LockingDefaultProvider)).toBe(providers[0]?.id);
+    expect(container.resolve(LockingDefaultProvider)).toBe("locking-redis");
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -348,6 +444,14 @@ describe("the option shapes the loaders refuse", () => {
    * given the event bus's flat shape does not fall back to a default or warn —
    * it destructures `options.redis` and fails. Proving it fails here is what
    * makes the nested literal in `medusa-config.ts` a fact rather than a guess.
+   *
+   * Matched, like its two siblings, rather than left as a bare `toThrow()`: an
+   * unmatched rejection is also satisfied by the *harness* throwing — a renamed
+   * export, a moved `discoveryPath`, a package that no longer resolves — which
+   * would leave this reading green while proving nothing. The real refusal is
+   * `TypeError: Cannot destructure property 'url' of '(intermediate value)'`, so
+   * `url` is matched: it is Medusa's own identifier rather than V8's wording,
+   * and no way of failing to reach the loader mentions it.
    */
   it("refuses a workflow engine given the event bus's flat shape", async () => {
     await expect(
@@ -356,7 +460,7 @@ describe("the option shapes the loaders refuse", () => {
         logger: undefined,
         options: { redisUrl: EXPECTED_URL },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/url/i);
   });
 
   it("refuses a locking provider with no redisUrl", async () => {
