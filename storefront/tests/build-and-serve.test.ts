@@ -2413,10 +2413,16 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
    * observable from outside", which this file disproves twice. "lets Next
    * normalize a repeated slash once" and "normalises a trailing slash before
    * routing" each read a 308 off the wire that this application's own code
-   * does not emit — the only redirect it issues is the 301 in `src/proxy.ts`,
-   * and that branch is gated on a non-canonical host. What no external probe
-   * can attribute is *dot-segment resolution* specifically, because by the
-   * time the probe can look, something else has already done it:
+   * does not construct: there is no `308` anywhere under `src/`, and
+   * `next.config.ts` sets no `redirects` and no `trailingSlash`. Redirects
+   * this code does write include the 301 in `src/proxy.ts`, gated on a
+   * non-canonical host, and the ungated 303 from `POST /checkout/order`. One
+   * status it copies rather than chooses is the backend's, relayed by
+   * `/store-api` under `redirect: "manual"` — but `/en/` never reaches that
+   * route, and the repeated-slash probe asserts the backend saw nothing. What
+   * no external probe can attribute is *dot-segment resolution* specifically,
+   * because by the time the probe can look, something else has already done
+   * it:
    *
    * - The `Request` the handler is given has already been through the URL
    *   parser. The WHATWG `Request` constructor serializes its input, so
