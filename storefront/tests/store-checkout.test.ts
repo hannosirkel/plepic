@@ -257,8 +257,8 @@ describe("checkout shipping option address binding", () => {
  * rather than deleted: the nearest thing the model has to an excluded address is
  * one inside the European Union that is not in an EU *member state*, and it is
  * served at the rest-of-world rate rather than refused. The backend holds the
- * same three cases against the frozen model in
- * `backend/tests/commerce-shipping-model.test.ts`; this holds them against the
+ * same three cases against Medusa's own totals arithmetic in
+ * `backend/tests/commerce-medusa-semantics.test.ts`; this holds them against the
  * code path that actually produces the figures the Article 8(2) disclosure block
  * renders.
  *

@@ -144,27 +144,18 @@ export function shippingZoneForCountry(countryCode: string): ShippingZoneModel |
   return SHIPPING_ZONES.find((zone) => zone.countryCodes.includes(code)) ?? null;
 }
 
-/** The flat charge for a destination, in minor units, or `null` for no zone. */
+/**
+ * The flat charge for a destination, in minor units, or `null` for no zone.
+ *
+ * This is the only figure this file knows. There is deliberately **no**
+ * `orderTotalMinorForCountry` here: the total a buyer is presented with before
+ * payment is computed by Medusa from the prices, the tax lines and the
+ * currency's tax-inclusivity preference, and a `goods + shipping` helper next
+ * to the constants it adds would restate two numbers rather than check any.
+ * `tests/commerce-medusa-semantics.test.ts` asserts that total by running
+ * Medusa's own totals code over the configuration this repository declares,
+ * which is the only way the assertion can be wrong when the configuration is.
+ */
 export function shippingAmountMinorForCountry(countryCode: string): number | null {
   return shippingZoneForCountry(countryCode)?.amountMinor ?? null;
-}
-
-/**
- * The exact total a buyer is asked to pay before payment, in minor units.
- *
- * Goods **plus** shipping, and nothing else. That is only arithmetic because the
- * advertised price is tax inclusive and so is the shipping charge — see
- * `configuration.ts`'s region record, which carries `taxInclusivePrices` and
- * `automaticTaxes`. Where VAT is due it is contained within both figures
- * rather than added to them, so the destination's VAT rate moves the *tax
- * portion* of this number and never the number itself, which is exactly what
- * `content/legal/shipping.ts` promises: "the same figure for every visitor, in
- * every country".
- */
-export function orderTotalMinorForCountry(
-  goodsAmountMinor: number,
-  countryCode: string,
-): number | null {
-  const shipping = shippingAmountMinorForCountry(countryCode);
-  return shipping === null ? null : goodsAmountMinor + shipping;
 }

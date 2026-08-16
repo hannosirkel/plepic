@@ -10,7 +10,6 @@ import {
   REST_OF_WORLD_SHIPPING_AMOUNT_MINOR,
   SHIPPING_CURRENCY,
   SHIPPING_ZONES,
-  orderTotalMinorForCountry,
   shippingAmountMinorForCountry,
   shippingZoneForCountry,
 } from "../src/commerce/shipping-model.js";
@@ -18,10 +17,14 @@ import {
 /**
  * The commercial model Task 1 froze, held to the figures the operator froze it
  * with and to the two surfaces that state them to a buyer.
+ *
+ * The **total** a buyer is presented with before payment is not asserted here.
+ * It used to be, against a `goods + shipping` helper in the module under test,
+ * which restated two constants declared a hundred lines above and went green
+ * while the shop as configured would have presented EUR 39.04 for the EUR 32.00
+ * it claimed. It now lives in `commerce-medusa-semantics.test.ts`, computed by
+ * Medusa's own totals code from the configuration this repository declares.
  */
-
-/** The advertised price, from `storefront/mock/catalogue.json`. Minor units. */
-const GOODS_AMOUNT_MINOR = 2500;
 
 function storefrontJson<T>(relative: string): T {
   return JSON.parse(
@@ -150,63 +153,11 @@ describe("the frozen shipping model", () => {
     expect(shippingZoneForCountry("")).toBeNull();
     expect(shippingZoneForCountry("Estonia")).toBeNull();
     expect(shippingAmountMinorForCountry("ZZ")).toBeNull();
-    expect(orderTotalMinorForCountry(GOODS_AMOUNT_MINOR, "ZZ")).toBeNull();
   });
 
   it("reads a country code in either case, because ISO codes arrive both ways", () => {
     expect(shippingAmountMinorForCountry("ee")).toBe(700);
     expect(shippingAmountMinorForCountry("EE")).toBe(700);
     expect(shippingAmountMinorForCountry(" us ")).toBe(1200);
-  });
-});
-
-/**
- * The three address cases the checkbox names, with the exact total each is
- * presented with before payment.
- *
- * Goods are EUR 25.00 including VAT, and the shipping charge is tax inclusive
- * too, so the total is goods plus shipping and the destination's VAT rate moves
- * only the tax *portion* of it. That is why one figure can be asserted per case
- * rather than one per tax region.
- */
-describe("the exact total presented before payment", () => {
-  const cases: readonly {
-    readonly label: string;
-    readonly countryCode: string;
-    readonly shippingMinor: number;
-    readonly totalMinor: number;
-  }[] = [
-    // An included country: an EU member state.
-    { label: "Estonia", countryCode: "EE", shippingMinor: 700, totalMinor: 3200 },
-    // A second member state, so the zone is not one country wide.
-    { label: "Germany", countryCode: "DE", shippingMinor: 700, totalMinor: 3200 },
-    /*
-     * The checkbox asks for "an excluded one". NO COUNTRY IS EXCLUDED — the
-     * operator's decision is worldwide delivery — so the case is the nearest
-     * thing the model has: a delivery address inside the European Union that is
-     * not in an EU *member state*. It is served, at the rest-of-world rate,
-     * rather than refused.
-     */
-    { label: "French Guiana", countryCode: "GF", shippingMinor: 1200, totalMinor: 3700 },
-    { label: "Åland Islands", countryCode: "AX", shippingMinor: 1200, totalMinor: 3700 },
-    // A non-EU country.
-    { label: "United States", countryCode: "US", shippingMinor: 1200, totalMinor: 3700 },
-    { label: "Japan", countryCode: "JP", shippingMinor: 1200, totalMinor: 3700 },
-  ];
-
-  it.each(cases)(
-    "charges $label EUR $shippingMinor of shipping on a $totalMinor total",
-    ({ countryCode, shippingMinor, totalMinor }) => {
-      expect(shippingAmountMinorForCountry(countryCode)).toBe(shippingMinor);
-      expect(orderTotalMinorForCountry(GOODS_AMOUNT_MINOR, countryCode)).toBe(totalMinor);
-    },
-  );
-
-  it("formats those totals as the two figures a buyer reads", () => {
-    const euro = (minor: number) =>
-      new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(minor / 100);
-
-    expect(euro(orderTotalMinorForCountry(GOODS_AMOUNT_MINOR, "EE")!)).toBe("€32.00");
-    expect(euro(orderTotalMinorForCountry(GOODS_AMOUNT_MINOR, "US")!)).toBe("€37.00");
   });
 });

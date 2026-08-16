@@ -100,7 +100,8 @@ export async function prepareGuestShipping(
  * consistent with its own total. `content/legal/shipping.ts` says the advertised
  * figure "is the price a consumer pays for the goods", and `cart.item_total` —
  * line items after discounts, **including** tax — is the field that is that.
- * `backend/tests/commerce-shipping-model.test.ts` carries the arithmetic.
+ * `backend/tests/commerce-medusa-semantics.test.ts` carries the arithmetic, run
+ * through Medusa's own `decorateCartTotals` rather than restated.
  *
  * `storefront/src/lib/store-payment.ts`'s `returnOrderDisclosure` already read
  * `item_total` for the same three figures on the order-confirmation path. This
