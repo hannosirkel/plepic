@@ -154,8 +154,8 @@ export function shippingAmountMinorForCountry(countryCode: string): number | nul
  *
  * Goods **plus** shipping, and nothing else. That is only arithmetic because the
  * advertised price is tax inclusive and so is the shipping charge — see
- * {@link ../commerce/configuration.ts}'s region record, which carries
- * `taxInclusivePrices`. Where VAT is due it is contained within both figures
+ * `configuration.ts`'s region record, which carries `taxInclusivePrices` and
+ * `automaticTaxes`. Where VAT is due it is contained within both figures
  * rather than added to them, so the destination's VAT rate moves the *tax
  * portion* of this number and never the number itself, which is exactly what
  * `content/legal/shipping.ts` promises: "the same figure for every visitor, in
