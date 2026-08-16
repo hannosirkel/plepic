@@ -2409,8 +2409,14 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
    * normalization the allowlist deliberately no longer relies on" and was
    * credited in the audit as the tripwire for a Next.js upgrade that stopped
    * resolving `%2e%2e`. **It cannot be that**, and neither can any served
-   * test, because the framework's behaviour is not observable from outside
-   * this application:
+   * test — though the reason is narrower than "the framework is not
+   * observable from outside", which this file disproves twice. "lets Next
+   * normalize a repeated slash once" and "normalises a trailing slash before
+   * routing" each read a 308 off the wire that this application's own code
+   * does not emit — the only redirect it issues is the 301 in `src/proxy.ts`,
+   * and that branch is gated on a non-canonical host. What no external probe
+   * can attribute is *dot-segment resolution* specifically, because by the
+   * time the probe can look, something else has already done it:
    *
    * - The `Request` the handler is given has already been through the URL
    *   parser. The WHATWG `Request` constructor serializes its input, so
@@ -2428,14 +2434,21 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
    * - Next.js's router may resolve such segments earlier still. Plausible,
    *   unverified here, and deliberately not relied on.
    *
-   * So at least two independent defences stand in front of this request,
-   * either sufficient, and no external probe can tell which one acted. A
-   * Next.js upgrade that changed its half would leave every assertion in this
-   * file green. Nothing here pins it; that is a limit of what a served test
-   * can see rather than a gap someone forgot to close, and the allowlist's own
-   * dot-segment refusals — the defence that would then become live — are
-   * unit-tested in `tests/store-api-transport.test.ts` where they can be
-   * called directly.
+   * So at least two defences stand in front of this request, either alone
+   * sufficient, and no external probe can tell which one acted. They are not
+   * independent, though: both are the same WHATWG double-dot rule, the second
+   * reading the first's already-serialized output, so a single revision of
+   * that rule would defeat them together. If Next.js's router does resolve
+   * these segments, a version that stopped would not be caught here either —
+   * the `Request` constructor resolves the segment regardless, so the
+   * assertion below would go on passing. That last one is inference from the
+   * first bullet rather than a measurement; nobody here has run a Next.js that
+   * stops resolving `%2e%2e`. Nothing pins the router, which is a limit of
+   * what a served test can see rather than a gap someone forgot to close, and
+   * the allowlist's own dot-segment refusals — live only for a caller that
+   * hands it a path the URL parser has not already resolved — are unit-tested
+   * in `tests/store-api-transport.test.ts`, which calls `resolveStoreApiPath`
+   * directly with exactly such paths.
    *
    * What this test does catch is a future "hardening" of
    * `src/app/store-api/[...path]/route.ts` that ran the allowlist against the
