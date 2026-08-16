@@ -28,6 +28,14 @@ const ALLOWED_PREFIXES = new Set(["store", "hooks", "static"]);
  * case-sensitivity of whatever filesystem backs the volume.
  */
 const REFUSED_STATIC_SEGMENTS = new Set(["import"]);
+
+/**
+ * The origin dot segments are resolved against when this module normalizes a
+ * candidate path for itself. Opaque and unroutable on purpose: nothing is ever
+ * fetched from it, it exists only so the WHATWG URL parser has a base.
+ */
+const NORMALIZATION_BASE = "http://store-api.invalid";
+
 const HOP_BY_HOP_HEADERS = [
   "connection",
   "keep-alive",
@@ -62,9 +70,60 @@ function backendOrigin(value: string): URL {
 }
 
 /**
- * Resolves an already-normalized storefront pathname to its Medusa target.
- * Returning `null` is the local 404 branch; no network operation happens in
- * this function or before the caller observes that result.
+ * Percent-decodes one path segment, treating a malformed escape as its own
+ * literal text rather than throwing. A segment that cannot be decoded is
+ * compared as written, which can only make the refusals below stricter.
+ */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
+ * Whether a segment may not appear in a forwarded path: empty, a dot segment
+ * in *any* encoding, or one hiding a separator.
+ *
+ * The encoding clause is the load-bearing one. `..` written out is obvious;
+ * `%2e%2e`, `%2E%2E`, `.%2e` and `%2e.` are the same segment to the WHATWG URL
+ * parser — its "double-dot path segment" rule is defined on the decoded form
+ * and is case-insensitive — and the parser is what `resolveStoreApiTarget`
+ * runs the path through on its way to `fetch`. So a comparison against the
+ * literal string `".."` alone lets `/store-api/store/%2e%2e/admin/users`
+ * through this function and the URL parser then resolves the forwarded target
+ * to `/admin/users` on the backend: the entire Medusa Admin API, reachable
+ * from the public site origin.
+ *
+ * Nothing here has ever shipped that reachable, and the reason is **two**
+ * defences rather than one. Next.js resolves percent-encoded dot segments
+ * before a route handler is called; and the route handler itself
+ * (`src/app/store-api/[...path]/route.ts`) reads
+ * `new URL(request.url).pathname`, which applies the identical WHATWG rule
+ * again. Either alone is sufficient, so the pre-existing literal-`".."`
+ * comparison was not one framework upgrade away from publishing `/admin` —
+ * the earlier revision of this comment named only the framework and was wrong
+ * about that. Both are still properties of a *caller*, not of this allowlist,
+ * and this function is entitled to assume neither: it is called with whatever
+ * pathname it is handed, and the refusals below are what make it safe on its
+ * own terms.
+ */
+function isRefusedSegment(segment: string): boolean {
+  if (segment.length === 0) return true;
+  const decoded = decodeSegment(segment);
+  return decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\");
+}
+
+/**
+ * Resolves a storefront pathname to its Medusa target path, or `null` for the
+ * local 404 branch. No network operation happens in this function or before
+ * the caller observes that result.
+ *
+ * The returned path is the **normalized** one: the allowlist is re-checked
+ * against the path the URL parser will actually produce, not against the one
+ * this function was handed, so "match after normalization" holds here on its
+ * own rather than only because a caller normalized first.
  */
 export function resolveStoreApiPath(pathname: string): string | null {
   const prefix = "/store-api/";
@@ -76,17 +135,25 @@ export function resolveStoreApiPath(pathname: string): string | null {
   if (namespace === undefined || !ALLOWED_PREFIXES.has(namespace) || segments.length < 2) {
     return null;
   }
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
+  if (segments.some(isRefusedSegment)) {
     return null;
   }
   if (
     namespace === "static" &&
-    segments.some((segment) => REFUSED_STATIC_SEGMENTS.has(segment.toLowerCase()))
+    segments.some((segment) => REFUSED_STATIC_SEGMENTS.has(decodeSegment(segment).toLowerCase()))
   ) {
     return null;
   }
 
-  return `/${upstreamPath}`;
+  // Belt and braces over the segment refusals above: whatever the parser does
+  // to this path — today's dot-segment rules or a future revision of them —
+  // the result still has to sit under the namespace that was allowlisted.
+  const normalized = new URL(`/${upstreamPath}`, NORMALIZATION_BASE).pathname;
+  if (!normalized.startsWith(`/${namespace}/`)) {
+    return null;
+  }
+
+  return normalized;
 }
 
 export function resolveStoreApiTarget(

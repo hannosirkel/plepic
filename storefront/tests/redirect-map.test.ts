@@ -287,3 +287,72 @@ describe("redirects carry no locale", () => {
     }
   });
 });
+
+/**
+ * "No chains or loops", stated as the three facts that make it true rather
+ * than as one observation about today's fixture.
+ *
+ * The served proof is in `tests/build-and-serve.test.ts` — every configured
+ * host answers exactly one 301 whose `Location` answers 200 with no `Location`
+ * of its own, and the canonical host is never redirected. What that suite
+ * cannot show is *why* a second hop is not expressible, which is what stops
+ * the next operator map from introducing one. Three properties do it, and each
+ * is mechanical:
+ *
+ * 1. a target is a `RouteId`, so it resolves to a bare same-site path and can
+ *    never be another host, another redirect, or an off-site URL — the two
+ *    tests below;
+ * 2. a parsed entry carries nothing but `path` and `target`, so there is no
+ *    field in which a destination host could be smuggled. Held by
+ *    "keeps a parsed entry to exactly path and target" above, which drops any
+ *    key the parser does not name, whatever it is called. This block used to
+ *    restate it with `host` and `url` as the discarded keys; that was the same
+ *    assertion against the same code path, and has been deleted rather than
+ *    kept for illustration;
+ * 3. therefore the only shape a loop could take is the destination host being
+ *    itself a key in the map — and `proxy.ts` refuses to redirect the
+ *    canonical host, which is the only host a target can resolve onto.
+ *    `tests/proxy.test.ts` drives that guard with a map that deliberately
+ *    contains it, and, next to it, pins the guard's edge: a *test* hostname
+ *    named in the map is not covered and is redirected. Nothing about that is
+ *    assertable from this module, which sees no host configuration at all.
+ *
+ * A fourth test here previously claimed to check "a self-referential host". It
+ * built `{ "loop.example.org": [{ path: "*", target: "home" }] }`, in which
+ * nothing refers to itself — `target` is a `RouteId`, not a host — and then
+ * asserted the lookup returns what a lookup returns. It established nothing
+ * about loops and is gone.
+ */
+describe("the redirect graph has no chains and no loops", () => {
+  const map = loadRedirectMap({});
+
+  it("resolves every host and path in one step to a terminal route path", () => {
+    const routePaths = new Set<string>(Object.values(ROUTE_PATHS));
+    let checked = 0;
+
+    for (const host of redirectMapHosts(map)) {
+      for (const entry of map.hosts[host] ?? []) {
+        const probe = entry.path === "*" ? "/nothing-anticipated-here" : entry.path;
+        const first = resolveRedirect(host, probe, map);
+        expect(first, `${host}${probe}`).not.toBeNull();
+
+        // Terminal: the answer is a route this site serves, not an input the
+        // resolver could be handed again for a second answer.
+        expect(routePaths.has(first?.targetPath ?? ""), `${host}${probe}`).toBe(true);
+        checked += 1;
+      }
+    }
+
+    expect(checked, "walked no entries at all").toBeGreaterThan(4);
+  });
+
+  it("rejects a target naming another mapped host rather than a route", () => {
+    expect(() =>
+      parseRedirectMap(
+        { hosts: { "a.example.org": [{ path: "*", target: "b.example.org" }] } },
+        "chain-probe",
+      ),
+    ).toThrow(/RouteId/);
+  });
+
+});

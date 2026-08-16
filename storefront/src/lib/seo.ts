@@ -6,10 +6,39 @@
  * `Page` in one locale into a `Metadata` object: a self-referencing canonical,
  * the `hreflang` alternates, and Open Graph / Twitter card fields.
  *
- * No product photography is attached here. The plan forbids fabricated
- * imagery, and no real photography has landed in this unit — `openGraph` and
- * `twitter` simply carry no `images` until the design/pages unit supplies a
- * real asset. A card with no image is a smaller card, not a broken one.
+ * ## The share card image
+ *
+ * Two real assets, both 1200x630, both committed by the accepted redesign and
+ * — until this unit — referenced by nothing at all: `public/og/publisher-og.png`
+ * is the Plepic wordmark on the publisher ground, and `public/og/lunar-base-og.png`
+ * is the photographed retail box, cards and tokens on the Lunar Base ground.
+ * Neither is fabricated imagery; both are the same assets the pages already
+ * paint from, so attaching them breaks no rule this module was written under.
+ * The earlier revision's note that "no real photography has landed in this
+ * unit" was true when it was written and stopped being true when the redesign
+ * merged, which is exactly how a page ends up shipping with no share card and
+ * nothing failing.
+ *
+ * {@link OG_IMAGE_PATHS} maps each route to whichever of the two it belongs
+ * to: the three Lunar Base routes get the product card, everything else gets
+ * the publisher card. The URL is absolute — required, since a crawler resolves
+ * `og:image` against nothing — without any host being baked into the artifact.
+ *
+ * **`baseUrl` is not request-supplied, and the distinction is the whole
+ * security property.** Both callers — `lib/page-shell.tsx` and
+ * `app/[locale]/[[...segments]]/page.tsx` — pass
+ * `loadSiteHostConfig().baseUrl`, which `config/hosts.ts` validates out of the
+ * `SITE_BASE_URL` environment variable at request time. The inbound `Host`
+ * header is never reflected into it. That matters because reflecting a header
+ * into `og:image` is how a site ends up advertising an attacker-chosen origin
+ * as its own share card, and describing this value as "the request's base URL"
+ * — as an earlier revision of this comment did — invites exactly the change
+ * that would introduce it. The only thing this module takes from the request
+ * is `isTestHost`, and that is a membership test against the validated
+ * `SITE_TEST_HOSTNAMES` set rather than anything read out of the string.
+ *
+ * The card is `summary_large_image` accordingly. Declaring `summary` while
+ * supplying a 1.91:1 asset would crop it to a square thumbnail.
  *
  * `isTestHost` is part of the input rather than a property of the route,
  * because indexability is a property of *this request*: `proxy.ts` sends
@@ -18,13 +47,15 @@
  * be arguing with its own header. A test host is never indexable, whatever
  * the page registry says.
  *
- * ## `hreflang` with exactly one locale, and why it is emitted anyway
+ * ## `hreflang` on a route only one edition publishes, and why it is emitted
  *
- * There is one locale. The temptation is to emit no `rel="alternate"` links
- * at all, on the grounds that a set of one has nothing to point at, and the
- * annotations would be a no-op for a crawler. They are emitted regardless,
- * and the reasoning is worth stating because the opposite decision is
- * indistinguishable from having forgotten:
+ * There are two locales, `en` and `et`, but they do not publish the same
+ * routes: `content/index.ts` gives the Estonian edition the legal set and
+ * nothing else. So most routes still form an alternate set of **one**, and the
+ * temptation on those is to emit no `rel="alternate"` links at all, on the
+ * grounds that a set of one has nothing to point at. They are emitted
+ * regardless, and the reasoning is worth stating because the opposite decision
+ * is indistinguishable from having forgotten:
  *
  * - **A one-page set is a valid set, and it is self-referential.** The
  *   `hreflang` protocol requires every page in a set to name every page in
@@ -34,14 +65,14 @@
  *   thing, at n=1.
  * - **`x-default` is not a no-op even at n=1.** It says which URL serves a
  *   reader whose language matches no edition — a statement about this site
- *   that is true and useful today, and that a second locale does not change.
+ *   that is true and useful today, and that a further edition does not change.
  * - **Absence is the failure mode this unit exists to avoid.** "No alternates
- *   because there is one locale" and "no alternates because nothing computes
- *   them" produce identical HTML. Emitting them means the mechanism is
- *   exercised on every page, on every build, by the tests that already run —
- *   so the unit that adds a second locale adds a key to a registry and reads
- *   the result, rather than discovering on the day that the emitter was never
- *   written.
+ *   because this route has one edition" and "no alternates because nothing
+ *   computes them" produce identical HTML. Emitting them means the mechanism
+ *   is exercised on every page, on every build, by the tests that already run
+ *   — so the unit that publishes an existing route in a further edition adds a
+ *   key to a registry and reads the result, rather than discovering on the day
+ *   that the emitter was never written.
  *
  * The annotations are computed from which locales actually **publish** the
  * route, never from `LOCALES` wholesale: an edition that does not carry a page
@@ -60,7 +91,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../../content/routes.js";
-import { canonicalUrl, localizedPath } from "./urls.js";
+import { absoluteUrl, canonicalUrl, localizedPath } from "./urls.js";
 
 /** The pages `locale` publishes. Total over `Locale` by construction. */
 export function pagesIn(locale: Locale): readonly Page[] {
@@ -175,6 +206,35 @@ export function alternateLinksFor(
   return links;
 }
 
+/** The intrinsic size of both share cards, and the ratio Open Graph expects. */
+export const OG_IMAGE_WIDTH = 1200;
+export const OG_IMAGE_HEIGHT = 630;
+
+const PUBLISHER_OG_IMAGE = "/og/publisher-og.png";
+const LUNAR_BASE_OG_IMAGE = "/og/lunar-base-og.png";
+
+/**
+ * The share card each route carries. Total over `RouteId` by construction, so
+ * a route added to `content/routes.ts` cannot reach production without someone
+ * choosing which of the two cards it shares — the alternative, a lookup with a
+ * default, is how a Lunar Base route quietly ends up wearing the publisher
+ * wordmark.
+ */
+export const OG_IMAGE_PATHS: Readonly<Record<RouteId, string>> = {
+  home: PUBLISHER_OG_IMAGE,
+  about: PUBLISHER_OG_IMAGE,
+  cart: PUBLISHER_OG_IMAGE,
+  checkout: PUBLISHER_OG_IMAGE,
+  legalImprint: PUBLISHER_OG_IMAGE,
+  legalTerms: PUBLISHER_OG_IMAGE,
+  legalPrivacy: PUBLISHER_OG_IMAGE,
+  legalShipping: PUBLISHER_OG_IMAGE,
+  legalReturns: PUBLISHER_OG_IMAGE,
+  lunarBase: LUNAR_BASE_OG_IMAGE,
+  support: LUNAR_BASE_OG_IMAGE,
+  rulebook: LUNAR_BASE_OG_IMAGE,
+};
+
 export interface PageMetadataContext {
   readonly baseUrl: string;
   /** From validated host configuration, for *this* request — never a string sniff. */
@@ -187,6 +247,12 @@ export function buildPageMetadata(routeId: RouteId, context: PageMetadataContext
   const page = findPage(routeId, context.locale);
   const url = canonicalUrl(context.baseUrl, context.locale, routeId);
   const indexable = page.indexable && !context.isTestHost;
+  const image = {
+    url: absoluteUrl(context.baseUrl, OG_IMAGE_PATHS[routeId]),
+    width: OG_IMAGE_WIDTH,
+    height: OG_IMAGE_HEIGHT,
+    alt: page.title,
+  };
 
   return {
     title: page.title,
@@ -205,11 +271,13 @@ export function buildPageMetadata(routeId: RouteId, context: PageMetadataContext
       siteName: "Plepic Games",
       type: "website",
       locale: LOCALE_DEFINITIONS[context.locale].languageTag,
+      images: [image],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: page.title,
       description: page.description,
+      images: [image],
     },
   };
 }

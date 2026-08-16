@@ -72,6 +72,7 @@ import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import {
+  DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
   ROUTE_PATHS,
@@ -2322,6 +2323,610 @@ describe("the served document declares its language and its alternates", () => {
     for (const path of ["/zz", "/zz/legal/imprint", "/zz/legal", "/nonsense/deep/path"]) {
       const response = await requestWithHost(server.port, path, HOST);
       expect(response.status, path).toBe(404);
+    }
+  });
+});
+
+/**
+ * The Admin surface, approached from a public site hostname.
+ *
+ * `tests/store-api-transport.test.ts` holds the allowlist as a function. This
+ * holds the same property where it actually matters — on the origin a visitor
+ * reaches — and it covers the two paths that function never sees at all,
+ * because they carry no `/store-api` prefix: bare `/app` and bare `/admin/*`.
+ * Medusa serves its Admin UI at `/app` and its Admin API at `/admin/*` on the
+ * very port the Store API is on, so "the storefront simply has no such route"
+ * is the whole defence for those two, and a future catch-all route or rewrite
+ * would remove it silently.
+ */
+describe("no Admin path is served on a site hostname, in any encoding", () => {
+  const adminProbes = [
+    "/app",
+    "/app/",
+    "/app/orders",
+    "/admin",
+    "/admin/users",
+    "/admin/auth/session",
+    "/APP",
+    "/%61pp",
+    "/store-api/admin/users",
+    "/store-api/app",
+    "/store-api/%2e%2e/app",
+    "/store-api/store/../admin/users",
+    "/store-api/store/%2e%2e/admin/users",
+    "/store-api/store/%2E%2E/admin/users",
+    "/store-api/store/.%2e/admin/users",
+    "/store-api/store/%2e./admin/users",
+    "/store-api/store/%2e/%2e%2e/admin/users",
+    "/store-api/hooks/%2e%2e/app",
+    "/store-api/static/%2e%2e/admin/users",
+    "/store-api/store/%2e%2e/%2e%2e/app",
+    "/store-api/store/..%2fadmin/users",
+  ];
+
+  for (const host of ["runtime.example.com", "test.runtime.example.com"]) {
+    it(`answers no Admin path on ${host}, and sends none of them to the backend`, async () => {
+      for (const path of adminProbes) {
+        backendRequests.length = 0;
+        const response = await requestWithHost(server.port, path, host);
+
+        // A 308 is a forwarding address, not an answer, and accepting one
+        // unexamined is how a probe stops probing. Today the only one is
+        // `/app/` — Next.js normalising the trailing slash onto `/app`, which
+        // is itself in this list and required to 404 — but a 308 that ever
+        // pointed at a *served* Admin path would pass an
+        // `expect([404, 308]).toContain(...)` without anyone noticing. So
+        // follow it, and hold wherever it lands to the same standard.
+        let final = response;
+        let landed = path;
+        for (let hop = 0; final.status === 308 && hop < 3; hop += 1) {
+          const location = final.headers.location;
+          expect(location, `${host}${landed} answered 308 with no Location`).toBeTypeOf("string");
+          landed = new URL(String(location), `http://${host}`).pathname;
+          final = await requestWithHost(server.port, landed, host);
+        }
+
+        expect(
+          final.status,
+          `${host}${path} answered ${String(response.status)}, and ${host}${landed} answered ${String(final.status)}`,
+        ).toBe(404);
+        expect(
+          backendRequests.map((request) => request.path),
+          `${host}${path} reached the backend`,
+        ).toEqual([]);
+      }
+    });
+  }
+
+  /**
+   * The other direction: the hardened allowlist must not **over**-refuse. A
+   * dot segment that resolves back inside the allowlisted namespace is a
+   * legitimate Store call written awkwardly, and it still has to reach the
+   * backend, stripped, as `/store/products`.
+   *
+   * That is a narrower claim than the one an earlier revision made here, and
+   * the correction matters. This test was named "pins the framework
+   * normalization the allowlist deliberately no longer relies on" and was
+   * credited in the audit as the tripwire for a Next.js upgrade that stopped
+   * resolving `%2e%2e`. **It cannot be that**, and neither can any served
+   * test, because the framework's behaviour is not observable from outside
+   * this application:
+   *
+   * - Next.js resolves percent-encoded dot segments before a route handler
+   *   runs. Measured, not assumed — replacing the handler's own
+   *   `new URL(request.url).pathname` with the unparsed path string out of
+   *   `request.url` leaves this request answering 202 and the backend still
+   *   receiving `/store/products`. Had `%2e%2e` still been in that string,
+   *   `isRefusedSegment` would have refused it and the answer would have been
+   *   a 404.
+   * - And the handler normalizes again anyway, through the same WHATWG rule.
+   *
+   * So there are two independent defences, either sufficient, and no external
+   * probe can tell which one acted. A Next.js upgrade that changed this would
+   * leave every assertion in this file green. Nothing here pins it; that is a
+   * limit of what a served test can see rather than a gap someone forgot to
+   * close, and the allowlist's own dot-segment refusals — the defence that
+   * would then become live — are unit-tested in
+   * `tests/store-api-transport.test.ts` where they can be called directly.
+   *
+   * What this test does catch is a future "hardening" of
+   * `src/app/store-api/[...path]/route.ts` that ran the allowlist against the
+   * raw pathname before normalizing it, which would 404 this request and
+   * quietly break clients.
+   *
+   * One more correction while here. On the plan's "write the tests first, and
+   * if they pass against a plain rewrite that is the answer": they did **not**
+   * all pass, and an earlier revision of this comment said they did, which
+   * told a reader the hardening had been unnecessary. The probe against the
+   * built server before the source change recorded
+   * `/store-api/store/..%2fadmin/users` answering 202 with the backend
+   * receiving `/store/..%2fadmin/users` — a path outside the allowlist,
+   * forwarded. `..%2f` is not a dot segment to the URL parser, because the
+   * escaped separator keeps it one opaque segment, so neither normalisation
+   * layer touches it and only `isRefusedSegment`'s "hides a separator" clause
+   * catches it. That is what authorised the hardening.
+   */
+  it("still forwards a dot segment that resolves back inside the allowlist, rather than over-refusing", async () => {
+    backendRequests.length = 0;
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/store/%2e%2e/store/products",
+      "runtime.example.com",
+    );
+
+    expect(response.status).toBe(202);
+    expect(backendRequests.map((request) => request.path)).toEqual(["/store/products"]);
+  });
+});
+
+/**
+ * Stripe webhook signature verification, **through the storefront**.
+ *
+ * The plan is specific about why it has to be through the proxy: signature
+ * verification is an HMAC over the exact request body, so any layer that
+ * re-serializes, re-encodes, transcodes or re-frames it breaks verification on
+ * the live delivery route only — the test environment's Stripe CLI forward
+ * goes straight to the backend and would keep working. A byte-comparison of
+ * the forwarded body is close, and the suite already has one, but it is not
+ * the same statement: it says the bytes match what the *test* sent, not that
+ * what arrived still satisfies Stripe's own verifier.
+ *
+ * So this uses the real `stripe` package to generate the header and, on the
+ * far side of the proxy, to verify it. A hand-rolled HMAC here would only
+ * confirm that this test and this test's own idea of Stripe's scheme agree
+ * with each other.
+ *
+ * **Be exact about which copy that is.** `import("stripe")` resolves from the
+ * workspace root hoist to **19.1.0**, the copy `@medusajs/payment` depends on.
+ * The module instance that verifies live webhooks is a *different* one:
+ * `@medusajs/payment-stripe` pins **15.12.0** and npm installs it nested at
+ * `node_modules/@medusajs/payment-stripe/node_modules/stripe`. This test does
+ * not reach that copy and does not claim to. An earlier revision of this
+ * comment said it did.
+ *
+ * It is still the right instrument for the property being proved, for a
+ * reason stronger than "close enough": the two majors implement the same
+ * scheme byte for byte. Given the same payload, secret and timestamp both
+ * emit the identical `t=…,v1=…` header, and each verifies a header the other
+ * generated. That is not a coincidence of versions — `v1` is the wire format
+ * Stripe sends to every deployed integration and cannot change without
+ * breaking all of them. What this test establishes is that the bytes arriving
+ * after the proxy still satisfy an independent implementation of that format,
+ * which is exactly the statement a byte-comparison against what the test sent
+ * cannot make.
+ *
+ * `stripe` is reached here as an undeclared transitive dependency; whether it
+ * should become a declared devDependency is an open question for the
+ * operator, not something this test settles by importing it.
+ *
+ * The payload is deliberately multibyte. A proxy that decoded the body as
+ * latin-1 and re-encoded it as UTF-8, or that "helpfully" reparsed and
+ * re-stringified the JSON, produces bytes that look fine in a log and fail the
+ * HMAC.
+ */
+describe("a Stripe signature still verifies after the storefront has proxied it", () => {
+  const WEBHOOK_SECRET = "whsec_synthetic_build_and_serve_secret";
+
+  it("verifies with Stripe's own verifier against the bytes the backend received", async () => {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe("sk_test_synthetic_never_used", { apiVersion: "2025-09-30.clover" });
+
+    const payload = JSON.stringify({
+      id: "evt_synthetic",
+      type: "payment_intent.succeeded",
+      data: { object: { id: "pi_synthetic", description: "Lunar Base — pÿthon 中文 🌙" } },
+    });
+    const header = stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
+
+    backendRequests.length = 0;
+    const response = await requestWithHost(
+      server.port,
+      "/store-api/hooks/payment/stripe_stripe",
+      "runtime.example.com",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": header },
+        body: Buffer.from(payload, "utf8"),
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(backendRequests).toHaveLength(1);
+
+    const received = backendRequests[0];
+    expect(received?.path).toBe("/hooks/payment/stripe_stripe");
+
+    const receivedBody = Buffer.from(received?.bodyBase64 ?? "", "base64");
+    const receivedSignature = received?.headers["stripe-signature"];
+    expect(receivedSignature, "the signature header did not survive the proxy").toBeTypeOf("string");
+
+    const event = stripe.webhooks.constructEvent(
+      receivedBody,
+      String(receivedSignature),
+      WEBHOOK_SECRET,
+    );
+    expect(event.id).toBe("evt_synthetic");
+    expect(event.type).toBe("payment_intent.succeeded");
+  });
+
+  /**
+   * The negative, so the assertion above is known to be load-bearing rather
+   * than a verifier that accepts anything: one byte different in the body and
+   * the same call throws.
+   */
+  it("fails verification when the proxied body differs by a single byte", async () => {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe("sk_test_synthetic_never_used", { apiVersion: "2025-09-30.clover" });
+
+    const payload = JSON.stringify({ id: "evt_synthetic_two", type: "charge.succeeded" });
+    const header = stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
+
+    backendRequests.length = 0;
+    await requestWithHost(server.port, "/store-api/hooks/payment/stripe_stripe", "runtime.example.com", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Stripe-Signature": header },
+      body: Buffer.from(payload, "utf8"),
+    });
+
+    const received = Buffer.from(backendRequests[0]?.bodyBase64 ?? "", "base64");
+    const tampered = Buffer.from(received);
+    tampered[tampered.length - 2] = (tampered[tampered.length - 2] ?? 0) ^ 0x01;
+
+    expect(() =>
+      stripe.webhooks.constructEvent(
+        tampered,
+        String(backendRequests[0]?.headers["stripe-signature"]),
+        WEBHOOK_SECRET,
+      ),
+    ).toThrow();
+  });
+});
+
+/**
+ * The SEO surface, read off a locally rendered build.
+ *
+ * No external validator can reach this site until the apex is published, so
+ * this is the whole of the pre-launch opportunity: the structured data and the
+ * share card as a crawler is actually served them, not as a pure function
+ * returns them.
+ */
+describe("the served SEO surface", () => {
+  function metaContent(html: string, property: string): string | null {
+    const byProperty = new RegExp(
+      `<meta[^>]+property="${property}"[^>]*content="([^"]*)"`,
+    ).exec(html);
+    const byName = new RegExp(`<meta[^>]+name="${property}"[^>]*content="([^"]*)"`).exec(html);
+    return byProperty?.[1] ?? byName?.[1] ?? null;
+  }
+
+  it("serves exactly one Product JSON-LD block on the canonical product page, and it parses", async () => {
+    const response = await requestWithHost(server.port, ROUTE_PATHS.lunarBase, "runtime.example.com");
+    expect(response.status).toBe(200);
+
+    const blocks = [
+      ...response.body.matchAll(
+        /<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g,
+      ),
+    ].map((match) => JSON.parse(match[1] ?? "null") as Record<string, unknown>);
+
+    const products = blocks.filter((block) => block["@type"] === "Product");
+    expect(products).toHaveLength(1);
+
+    const product = products[0] ?? {};
+    expect(product["@context"]).toBe("https://schema.org");
+    expect(product.name).toBe(mockCatalogue.name);
+    expect(product.url).toBe(`${RUNTIME_ENV.SITE_BASE_URL}${ROUTE_PATHS.lunarBase}`);
+    expect(typeof product.description === "string" && product.description.length > 0).toBe(true);
+  });
+
+  it("carries an Offer with a price, a currency and an availability a crawler can read", async () => {
+    const response = await requestWithHost(server.port, ROUTE_PATHS.lunarBase, "runtime.example.com");
+    const block = /<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/.exec(
+      response.body,
+    );
+    const product = JSON.parse(block?.[1] ?? "null") as { offers?: Record<string, unknown> };
+    const offer = product.offers ?? {};
+
+    expect(offer["@type"]).toBe("Offer");
+    expect(offer.url).toBe(`${RUNTIME_ENV.SITE_BASE_URL}${ROUTE_PATHS.lunarBase}`);
+    expect(offer.priceCurrency).toBe(mockCatalogue.price.currency);
+    // A decimal string, never minor units: "25.00", not "2500".
+    expect(offer.price).toMatch(/^\d+\.\d{2}$/);
+    expect(offer.availability).toMatch(/^https:\/\/schema\.org\/\w+$/);
+
+    // The same amount the page paints, from the same request.
+    const painted = paintedText(response.body);
+    expect(painted).toContain(
+      formatAmount(mockCatalogue.price.amount, mockCatalogue.price.currency),
+    );
+    expect(Number(offer.price) * 100).toBeCloseTo(mockCatalogue.price.amount, 6);
+  });
+
+  /**
+   * Every URL any edition serves, not just the default edition's route table.
+   *
+   * The previous revision walked bare `ROUTE_PATHS`, so it asserted the share
+   * card on the `en` URLs alone and no `/et/…` page was ever asked. The wiring
+   * is locale-independent by construction — the card is chosen by `RouteId`
+   * and the URL is built from configuration — but "by construction" is an
+   * argument standing in for a check, which is the failure mode this unit
+   * exists to find.
+   *
+   * The walk is not the sitemap's entry list, deliberately: that omits `cart`
+   * and `checkout` as never-indexed, and both are pages a visitor can paste
+   * into a chat window. So it is the whole default route table plus every URL
+   * a further edition publishes.
+   */
+  it("gives every URL any edition serves an absolute share card, built from the runtime base URL", async () => {
+    const localized = LOCALES.filter((locale) => locale !== DEFAULT_LOCALE).flatMap((locale) =>
+      pagesIn(locale).map((page) => localizedPath(locale, ROUTE_PATHS[page.route])),
+    );
+    expect(
+      localized.length,
+      "no localized URL in the walk — this is the default-edition-only loop again",
+    ).toBeGreaterThan(0);
+
+    for (const path of [...Object.values(ROUTE_PATHS), ...localized]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(200);
+
+      const image = metaContent(response.body, "og:image");
+      expect(image, `${path} has no og:image`).toBeTypeOf("string");
+      expect(image?.startsWith(`${RUNTIME_ENV.SITE_BASE_URL}/og/`), image ?? "").toBe(true);
+      expect(metaContent(response.body, "og:image:width"), path).toBe("1200");
+      expect(metaContent(response.body, "og:image:height"), path).toBe("630");
+      expect(metaContent(response.body, "twitter:card"), path).toBe("summary_large_image");
+    }
+  });
+
+  it("serves each share card it advertises, as a PNG, at the advertised size", async () => {
+    for (const path of ["/og/publisher-og.png", "/og/lunar-base-og.png"]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(200);
+      expect(String(response.headers["content-type"]), path).toContain("image/png");
+    }
+
+    // Advertised on the two pages that matter, and disjoint: the product page
+    // must not share the publisher wordmark.
+    const home = await requestWithHost(server.port, ROUTE_PATHS.home, "runtime.example.com");
+    const product = await requestWithHost(server.port, ROUTE_PATHS.lunarBase, "runtime.example.com");
+    expect(metaContent(home.body, "og:image")).toBe(
+      `${RUNTIME_ENV.SITE_BASE_URL}/og/publisher-og.png`,
+    );
+    expect(metaContent(product.body, "og:image")).toBe(
+      `${RUNTIME_ENV.SITE_BASE_URL}/og/lunar-base-og.png`,
+    );
+  });
+
+  it("bakes no share-card host into the build, exactly as for every other runtime value", () => {
+    expect(buildArtifactText).not.toContain(`${RUNTIME_ENV.SITE_BASE_URL}/og/`);
+  });
+});
+
+/**
+ * The checkbox says "page performance". What is delivered here is **payload
+ * ceilings and two structural properties of the document** — not a performance
+ * measurement. Naming that plainly is the point of this paragraph, because an
+ * audit row reading "page performance: covered" invites the next reader to
+ * believe something was timed, and nothing was.
+ *
+ * Nothing in this block times anything. There is no render, no navigation, no
+ * Largest Contentful Paint, no Interaction to Next Paint, no CPU or network
+ * shaping, no cold-cache modelling. What is measured is how many bytes of
+ * document and of first-party JavaScript a browser would have to fetch to
+ * paint a route, that the first paint opens no third-party connection beyond
+ * the one named origin, and that every raster image declares its intrinsic
+ * size. A route that became twice as slow without becoming larger would pass
+ * every assertion below.
+ *
+ * The substitution is deliberate rather than an omission. No external
+ * validator can reach this site until Task 10 publishes the apex, this unit's
+ * effect gate forbids submitting a URL to one, and a Lighthouse score produced
+ * on the machine running CI would mostly measure that machine. Bytes and
+ * document structure are the part of the question that is deterministic,
+ * reproducible, and read off the artifact that actually deploys — so they are
+ * what is asserted, under their own name.
+ *
+ * The budgets are ceilings with headroom, not targets. Their job is to fail
+ * when a route's weight changes by an order of magnitude — a stray import of a
+ * charting library into a legal page, a component pulled into the shared chunk
+ * — not to litigate a kilobyte.
+ */
+describe("page weight stays inside a budget on the routes that matter", () => {
+  const DOCUMENT_BUDGET_BYTES = 400_000;
+  const SCRIPT_BUDGET_BYTES = 1_200_000;
+
+  const routes = [ROUTE_PATHS.home, ROUTE_PATHS.lunarBase, ROUTE_PATHS.cart, ROUTE_PATHS.checkout];
+
+  function scriptBytesFor(html: string): number {
+    const sources = [...html.matchAll(/<script[^>]+src="(\/_next\/static\/[^"]+)"/g)].map(
+      (match) => match[1] ?? "",
+    );
+    expect(sources.length, "the document loads no first-party script at all").toBeGreaterThan(0);
+
+    let total = 0;
+    for (const source of new Set(sources)) {
+      const file = join(nextDistDir, source.replace("/_next/", ""));
+      expect(existsSync(file), `${source} is not in the build output`).toBe(true);
+      total += readFileSync(file).byteLength;
+    }
+    return total;
+  }
+
+  for (const route of routes) {
+    it(`${route} stays inside the document and script budgets`, async () => {
+      const response = await requestWithHost(server.port, route, "runtime.example.com");
+      expect(response.status).toBe(200);
+
+      const documentBytes = Buffer.byteLength(response.body, "utf8");
+      const scriptBytes = scriptBytesFor(response.body);
+
+      expect(
+        documentBytes,
+        `${route} document is ${String(documentBytes)} bytes`,
+      ).toBeLessThan(DOCUMENT_BUDGET_BYTES);
+      expect(
+        scriptBytes,
+        `${route} loads ${String(scriptBytes)} bytes of first-party script`,
+      ).toBeLessThan(SCRIPT_BUDGET_BYTES);
+    });
+  }
+
+  /**
+   * The third-party origins the first paint may reach, as an allowlist rather
+   * than a prohibition — because there is exactly one, and naming it is the
+   * assertion worth having.
+   *
+   * `challenges.cloudflare.com` is Turnstile, and it is permitted before
+   * consent for the reason the plan chose Turnstile over reCAPTCHA in the
+   * first place: Cloudflare already terminates TLS and serves DNS for this
+   * site, so it is not a new processor, and an anti-spam control that only
+   * loads after a consent interaction cannot protect the consent interaction.
+   * Analytics is the opposite case and is held to the opposite rule elsewhere
+   * (`tests/consent.test.ts`, `tests/analytics.test.ts`, and the Playwright
+   * `preserves the default consent state without loading analytics`). What
+   * this catches is a *second* origin appearing — a font CDN, a tag manager, a
+   * pixel — which would silently make the privacy page's list of processors
+   * wrong.
+   */
+  const ALLOWED_THIRD_PARTY_HOSTS = new Set(["challenges.cloudflare.com"]);
+
+  it("reaches exactly one third-party origin in the document, and it is the named one", async () => {
+    const seen = new Set<string>();
+
+    for (const route of routes) {
+      const response = await requestWithHost(server.port, route, "runtime.example.com");
+      const head = response.body.slice(0, response.body.indexOf("</head>"));
+
+      for (const [, url] of head.matchAll(
+        /<(?:script|link)[^>]+(?:src|href)="(https?:\/\/[^"]+)"/g,
+      )) {
+        const host = new URL(url ?? "").host;
+        if (host === new URL(RUNTIME_ENV.SITE_BASE_URL).host) continue;
+        seen.add(host);
+        expect(
+          ALLOWED_THIRD_PARTY_HOSTS.has(host),
+          `${route} reaches ${host} in the first paint`,
+        ).toBe(true);
+      }
+
+      for (const [tag, url] of head.matchAll(
+        /<link[^>]+rel="(?:preconnect|dns-prefetch)"[^>]+href="([^"]+)"/g,
+      )) {
+        const host = url?.startsWith("http") === true ? new URL(url).host : "";
+        expect(
+          host === "" || ALLOWED_THIRD_PARTY_HOSTS.has(host),
+          `${route} preconnects to an unnamed origin: ${tag}`,
+        ).toBe(true);
+      }
+    }
+
+    // Not vacuous: the widget really is in the first paint, so the allowlist
+    // is being exercised rather than merely being permissive about nothing.
+    expect([...seen]).toEqual(["challenges.cloudflare.com"]);
+  });
+
+  /**
+   * Cumulative layout shift, at the only point a static check can see it:
+   * every raster image the document paints declares its intrinsic size, so the
+   * browser reserves the box before the bytes arrive. An `<img>` with no
+   * dimensions is the single most common source of a shifting page.
+   */
+  it("declares intrinsic dimensions on every image the document paints", async () => {
+    for (const route of routes) {
+      const response = await requestWithHost(server.port, route, "runtime.example.com");
+
+      for (const [tag] of response.body.matchAll(/<img\b[^>]*>/g)) {
+        const sized =
+          (/\bwidth="/.test(tag) && /\bheight="/.test(tag)) ||
+          /\bstyle="[^"]*aspect-ratio/.test(tag);
+        expect(sized, `${route} paints an unsized image: ${tag.slice(0, 200)}`).toBe(true);
+      }
+    }
+  });
+});
+
+/**
+ * "No route other than the allowlisted `/store-api` prefixes needs the
+ * backend."
+ *
+ * The suite already proves the other half — that those prefixes reach the
+ * backend with `/store-api` stripped, and that nothing else reaches it at all.
+ * This is the converse, and it is the one that decides whether the tunnel
+ * needs a path rule: if a marketing or legal route could not render without a
+ * Store credential, then the site as a whole would depend on the backend being
+ * up, and an outage there would take the publisher site down with it.
+ *
+ * Measured on the *unconfigured* server, whose `MEDUSA_BACKEND_URL` is empty,
+ * so "did not need the backend" is not a claim about a request that happened
+ * to be fast — there is no backend to reach.
+ */
+describe("the publisher site renders without a backend at all", () => {
+  const commercial = new Set<string>([
+    ROUTE_PATHS.home,
+    ROUTE_PATHS.lunarBase,
+    ROUTE_PATHS.cart,
+    ROUTE_PATHS.checkout,
+  ]);
+
+  const editorial = Object.values(ROUTE_PATHS).filter((path) => !commercial.has(path));
+
+  it("serves every non-commercial route with no Store configuration and no backend traffic", async () => {
+    expect(editorial.length).toBeGreaterThan(3);
+
+    for (const path of editorial) {
+      backendRequests.length = 0;
+      const response = await requestWithHost(unconfiguredServer.port, path, "runtime.example.com");
+
+      expect(response.status, `${path} did not render without a backend`).toBe(200);
+      expect(
+        backendRequests.map((request) => request.path),
+        `${path} reached the backend`,
+      ).toEqual([]);
+    }
+  });
+
+  it("serves robots.txt and the sitemap without one either", async () => {
+    for (const path of ["/robots.txt", "/sitemap.xml"]) {
+      backendRequests.length = 0;
+      const response = await requestWithHost(unconfiguredServer.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(200);
+      expect(backendRequests, path).toHaveLength(0);
+    }
+  });
+});
+
+/**
+ * Every hostname this server answers on serves a page rather than a 301.
+ *
+ * That is the whole claim, and the boundary is worth stating because an
+ * earlier revision claimed more. It opened with a second test that read the
+ * operator redirect map back off disk and asserted its host keys were disjoint
+ * from the served hostnames — but this suite's own `beforeAll` writes that
+ * file. It asserted that a fixture the test authored does not contain hosts
+ * the test also configured, which cannot fail, so it has been deleted rather
+ * than reworded.
+ *
+ * The question it was gesturing at — what happens when an operator map *does*
+ * name a hostname the deployment serves — cannot be answered here: this suite
+ * builds one server against one map, and changing that map to find out would
+ * redirect the test hostnames out from under every other test in the file. It
+ * is answered where a map and a host configuration can be constructed freely,
+ * in `tests/proxy.test.ts` › "the redirect guard covers the canonical host and
+ * nothing else". The answer is that such an entry **does** 301, so disjointness
+ * here is a property of this deployment's configuration and not something
+ * `proxy.ts` enforces. Read those tests before assuming this one covers more
+ * than it says.
+ */
+describe("every hostname this deployment serves answers 200, not a 301", () => {
+  it("answers 200 rather than a 301 on the canonical host and every declared test hostname", async () => {
+    for (const host of [
+      RUNTIME_ENV.SITE_CANONICAL_HOST,
+      ...RUNTIME_ENV.SITE_TEST_HOSTNAMES.split(",").map((value) => value.trim()),
+    ]) {
+      const response = await requestWithHost(server.port, ROUTE_PATHS.about, host);
+      expect(response.status, `${host} redirected its own visitors`).toBe(200);
+      expect(response.headers.location, host).toBeUndefined();
     }
   });
 });
