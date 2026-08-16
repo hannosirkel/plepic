@@ -60,8 +60,10 @@ describe("the declared commerce configuration", () => {
 
   it("declares its records in dependency order", () => {
     expect(commerceRecords().map((record) => record.kind)).toEqual([
+      "store-currency",
       "region",
       "stock-location",
+      "stock-location-fulfillment-provider",
       "fulfillment-set",
       "shipping-profile",
       "sales-channel-stock-location",
@@ -91,14 +93,51 @@ describe("the declared commerce configuration", () => {
   /**
    * `content/legal/shipping.ts`: "Included means contained within that figure
    * rather than added to it." That sentence is true of what Medusa computes only
-   * while this flag is set — without it Medusa treats EUR 25.00 as a net price
-   * and adds the destination's VAT on top, and the checkout would present a
-   * total the product page never advertised.
+   * while the **currency's** preference is set — without it Medusa treats EUR
+   * 25.00 as a net price and adds the destination's VAT on top, and the checkout
+   * would present a total the product page never advertised.
+   *
+   * The region's own flag is not enough and never was: `@medusajs/pricing`
+   * consults the `region_id` preference only for a price that carries a
+   * `region_id` price rule, and neither the product price nor the shipping price
+   * carries one. `commerce-medusa-semantics.test.ts` proves that with Medusa's
+   * own arithmetic; this holds the declaration that feeds it.
    */
-  it("prices tax inclusively and applies the destination's tax region automatically", () => {
+  it("declares the currency's prices tax inclusive, which is what Medusa reads", () => {
+    const currencies = only("store-currency");
+    expect(currencies).toHaveLength(1);
+    expect(currencies[0]!.currencyCode).toBe("EUR");
+    expect(currencies[0]!.taxInclusivePrices).toBe(true);
+  });
+
+  it("states the same intent on the region, and applies destination taxes automatically", () => {
     const [region] = only("region");
     expect(region!.taxInclusivePrices).toBe(true);
     expect(region!.automaticTaxes).toBe(true);
+  });
+
+  /**
+   * Both shipping option workflows run `validateFulfillmentProvidersStep`
+   * first, and it refuses an option whose provider is not linked to a stock
+   * location behind the zone. Without this record the predeploy Job — an Argo
+   * CD sync hook — dies on the first shipping option on every environment.
+   */
+  it("enables the fulfillment provider at the stock location the zones hang off", () => {
+    const links = only("stock-location-fulfillment-provider");
+    expect(links).toHaveLength(1);
+    expect(links[0]!.providerId).toBe(FULFILLMENT_PROVIDER_ID);
+
+    const locations = only("stock-location").map((location) => location.name);
+    expect(locations).toContain(links[0]!.stockLocationName);
+
+    // And it is declared before anything that needs it.
+    const kinds = commerceRecords().map((record) => record.kind);
+    expect(kinds.indexOf("stock-location-fulfillment-provider")).toBeGreaterThan(
+      kinds.indexOf("stock-location"),
+    );
+    expect(kinds.indexOf("stock-location-fulfillment-provider")).toBeLessThan(
+      kinds.indexOf("shipping-option"),
+    );
   });
 
   /** Stripe only. No PayPal provider, at launch or by accident. */
@@ -176,7 +215,13 @@ describe("the declared commerce configuration", () => {
     };
 
     await expect(configureCommerce(target)).rejects.toThrow("no stock location");
-    expect(applied).toEqual(["region", "stock-location", "fulfillment-set"]);
+    expect(applied).toEqual([
+      "store-currency",
+      "region",
+      "stock-location",
+      "stock-location-fulfillment-provider",
+      "fulfillment-set",
+    ]);
   });
 });
 
@@ -208,6 +253,9 @@ describe("the pages that describe this configuration", () => {
 
   it('backs "contained within that figure rather than added to it" with tax-inclusive prices', () => {
     expect(shipping).toContain("contained within that figure rather than added to it");
+
+    const [currency] = commerceRecords().filter((record) => record.kind === "store-currency");
+    expect(currency).toMatchObject({ kind: "store-currency", taxInclusivePrices: true });
 
     const [region] = commerceRecords().filter((record) => record.kind === "region");
     expect(region).toMatchObject({ kind: "region", taxInclusivePrices: true });

@@ -978,8 +978,10 @@ environments, so nothing it configures can differ between test and live.
 
 | Record | What, and why it has to exist before anything serves |
 |---|---|
-| Region `Worldwide` | EUR, tax-inclusive prices, automatic taxes, every country Medusa knows, and the one Stripe payment provider. Without it `POST /store/carts` has nothing to create a cart against, and the storefront refuses with "Medusa Store catalogue is not ready" |
+| EUR is tax inclusive | The store's supported currency, carrying the price preference that makes every EUR price in this deployment contain its tax rather than have it added |
+| Region `Worldwide` | EUR, automatic taxes, every country Medusa knows, and the one Stripe payment provider. Without it `POST /store/carts` has nothing to create a cart against, and the storefront refuses with "Medusa Store catalogue is not ready" |
 | Stock location, fulfillment set, shipping profile | The chain a service zone hangs off, and the profile the product and both shipping options share. The catalogue import refuses without the first and third |
+| Stock location → `manual_manual` | The `location_fulfillment_provider` link. Both shipping-option workflows run `validateFulfillmentProvidersStep` first, and it refuses an option whose provider is not enabled at a location behind the zone |
 | Default sales channel → stock location | `GET /store/shipping-options` walks sales channel → stock location → fulfillment set → service zone; an unlinked location breaks the chain at the first step and a completed address returns no delivery method |
 | Service zones `European Union` and `Rest of world` | The 27 member states, and every other country. A country in neither is an address the checkout offers and Medusa cannot ship |
 | Shipping options | One flat `Standard delivery` per zone: **EUR 7.00** inside the EU, **EUR 12.00** everywhere else |
@@ -993,12 +995,29 @@ model; one region is its faithful expression.
 **Prices are tax inclusive, and that is what makes the legal page true.**
 `content/legal/shipping.ts` says *"Included means contained within that figure
 rather than added to it"* and *"It is the same figure for every visitor, in every
-country"*. Both hold only while the region carries `is_tax_inclusive`: without
-it Medusa treats the advertised price as a net figure and adds the destination's
+country"*. Both hold only while the price is resolved tax inclusive: otherwise
+Medusa treats the advertised price as a net figure and adds the destination's
 VAT on top, and the checkout would present a total the product page never
-advertised. The destination's tax region still applies — it moves the *tax
-portion* of the figure and never the figure. `backend/tests/commerce-configuration.test.ts`
-holds each of those sentences against the switch that makes it true.
+advertised — EUR 39.04 against a page advertising EUR 25.00, for a 22%
+destination. The destination's tax region still applies — it moves the *tax
+portion* of the figure and never the figure.
+
+**It is the currency's preference that decides this, not the region's.**
+`@medusajs/pricing` resolves inclusivity per price: it consults the `region_id`
+preference only when the price itself carries a `region_id` price rule, and
+neither price in this deployment does — the product price is written by the
+catalogue import as `[{ amount, currency_code }]` and the shipping price by the
+commerce configuration as `[{ currency_code, amount }]`. Resolution therefore
+falls through to the `currency_code` preference, whose model default is `false`.
+Setting it is a store record rather than a region one, which is also why it
+covers both writers: the product price and the shipping price are written by two
+different commands, and neither has to know about the region.
+
+`backend/tests/commerce-configuration.test.ts` holds each of those sentences
+against the switch that makes it true, and
+`backend/tests/commerce-medusa-semantics.test.ts` computes the resulting totals
+with Medusa's own `decorateCartTotals` — at every VAT rate, so *"the same figure
+in every country"* is checked rather than asserted.
 
 **Two flat rates, and no free method.** The plan's checkbox said "flat and free
 shipping"; the operator's later decision is worldwide delivery at two flat rates

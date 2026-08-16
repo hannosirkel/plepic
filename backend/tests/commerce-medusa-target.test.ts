@@ -32,6 +32,8 @@ function recorder(workflow: string) {
 }
 
 vi.mock("@medusajs/medusa/core-flows", () => ({
+  batchLinksWorkflow: recorder("batchLinks"),
+  updateStoresWorkflow: recorder("updateStores"),
   createLocationFulfillmentSetWorkflow: recorder("createLocationFulfillmentSet"),
   createRegionsWorkflow: recorder("createRegions"),
   createServiceZonesWorkflow: recorder("createServiceZones"),
@@ -78,9 +80,108 @@ function record(kind: string, index = 0) {
 
 const STORE = [{ id: "store_01", default_sales_channel_id: "sc_01" }];
 const LOCATION = [{ id: "sloc_01", name: "Plepic Games" }];
+const PROVIDER = [{ id: "manual_manual" }];
 
 beforeEach(() => {
   calls.length = 0;
+});
+
+/**
+ * The currency's tax treatment does not live on the store.
+ *
+ * `StoreCurrency` carries `currency_code` and `is_default` and nothing else;
+ * `updateStoresWorkflow` strips `is_tax_inclusive` out of the store row and
+ * forwards it to the pricing module's `price_preference`. So the preference is
+ * what is read to decide whether anything needs writing, and the store's own
+ * currency list is handed back unchanged apart from the flag.
+ */
+describe("applying the currency's tax treatment", () => {
+  const CURRENCY_STORE = [
+    {
+      id: "store_01",
+      default_sales_channel_id: "sc_01",
+      supported_currencies: [{ currency_code: "eur", is_default: true }],
+    },
+  ];
+
+  it("sets the EUR price preference tax inclusive", async () => {
+    await targetOver({ store: CURRENCY_STORE }).apply(record("store-currency"));
+
+    expect(calls).toEqual([
+      {
+        workflow: "updateStores",
+        input: {
+          selector: { id: "store_01" },
+          update: {
+            supported_currencies: [
+              { currency_code: "eur", is_default: true, is_tax_inclusive: true },
+            ],
+          },
+        },
+      },
+    ]);
+  });
+
+  it("writes nothing once the preference already says so", async () => {
+    await targetOver({
+      store: CURRENCY_STORE,
+      price_preference: [
+        { id: "prpref_01", attribute: "currency_code", value: "eur", is_tax_inclusive: true },
+      ],
+    }).apply(record("store-currency"));
+
+    expect(calls).toEqual([]);
+  });
+
+  it("rewrites a preference an operator has turned off", async () => {
+    await targetOver({
+      store: CURRENCY_STORE,
+      price_preference: [
+        { id: "prpref_01", attribute: "currency_code", value: "eur", is_tax_inclusive: false },
+      ],
+    }).apply(record("store-currency"));
+
+    expect(calls.map((call) => call.workflow)).toEqual(["updateStores"]);
+  });
+
+  /**
+   * `updateStoresWorkflow` treats `supported_currencies` as a replacement, so a
+   * currency an operator added is carried through untouched — and without an
+   * `is_tax_inclusive` key, which is how `updatePricePreferencesAsArrayStep`
+   * leaves its preference exactly as it found it.
+   */
+  it("keeps a currency this configuration does not declare, and its preference", async () => {
+    await targetOver({
+      store: [
+        {
+          id: "store_01",
+          supported_currencies: [
+            { currency_code: "eur", is_default: true },
+            { currency_code: "usd", is_default: false },
+          ],
+        },
+      ],
+    }).apply(record("store-currency"));
+
+    expect(calls[0]?.input).toEqual({
+      selector: { id: "store_01" },
+      update: {
+        supported_currencies: [
+          { currency_code: "eur", is_default: true, is_tax_inclusive: true },
+          { currency_code: "usd", is_default: false },
+        ],
+      },
+    });
+  });
+
+  it("refuses a store that does not support the currency it must price in", async () => {
+    await expect(
+      targetOver({
+        store: [{ id: "store_01", supported_currencies: [{ currency_code: "usd" }] }],
+      }).apply(record("store-currency")),
+    ).rejects.toThrow(/does not support EUR/);
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("applying the region", () => {
@@ -119,6 +220,57 @@ describe("applying the physical origin", () => {
     calls.length = 0;
     await targetOver({ stock_location: LOCATION }).apply(record("stock-location"));
     expect(calls).toEqual([]);
+  });
+
+  /**
+   * `validateFulfillmentProvidersStep` runs before **either** shipping option
+   * workflow does anything, walking
+   * `service_zone.fulfillment_set.locations.fulfillment_providers.id` and
+   * throwing `Providers (manual_manual) are not enabled for the service
+   * location` when the provider is not there. `batchLinksWorkflow` is the
+   * mechanism Medusa's own admin route uses to put it there.
+   */
+  it("enables the fulfillment provider at that location, once", async () => {
+    await targetOver({ stock_location: LOCATION, fulfillment_provider: PROVIDER }).apply(
+      record("stock-location-fulfillment-provider"),
+    );
+    expect(calls).toEqual([
+      {
+        workflow: "batchLinks",
+        input: {
+          create: [
+            {
+              stock_location: { stock_location_id: "sloc_01" },
+              fulfillment: { fulfillment_provider_id: "manual_manual" },
+            },
+          ],
+        },
+      },
+    ]);
+
+    calls.length = 0;
+    await targetOver({
+      stock_location: [{ ...LOCATION[0], fulfillment_providers: [{ id: "manual_manual" }] }],
+      fulfillment_provider: PROVIDER,
+    }).apply(record("stock-location-fulfillment-provider"));
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to link a provider the deployment never registered", async () => {
+    await expect(
+      targetOver({ stock_location: LOCATION }).apply(
+        record("stock-location-fulfillment-provider"),
+      ),
+    ).rejects.toThrow(/No fulfillment provider manual_manual is registered/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to link a provider to a stock location that is not there yet", async () => {
+    await expect(
+      targetOver({ fulfillment_provider: PROVIDER }).apply(
+        record("stock-location-fulfillment-provider"),
+      ),
+    ).rejects.toThrow(/No stock location named/);
   });
 
   it("hangs the fulfillment set off that location, and refuses without it", async () => {
