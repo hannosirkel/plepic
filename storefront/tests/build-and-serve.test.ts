@@ -2412,22 +2412,30 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
    * test, because the framework's behaviour is not observable from outside
    * this application:
    *
-   * - Next.js resolves percent-encoded dot segments before a route handler
-   *   runs. Measured, not assumed — replacing the handler's own
-   *   `new URL(request.url).pathname` with the unparsed path string out of
-   *   `request.url` leaves this request answering 202 and the backend still
-   *   receiving `/store/products`. Had `%2e%2e` still been in that string,
-   *   `isRefusedSegment` would have refused it and the answer would have been
-   *   a 404.
-   * - And the handler normalizes again anyway, through the same WHATWG rule.
+   * - The `Request` the handler is given has already been through the URL
+   *   parser. The WHATWG `Request` constructor serializes its input, so
+   *   `new Request("http://h/store-api/store/%2e%2e/store/products").url` is
+   *   `http://h/store-api/store/products` — verified by running exactly that,
+   *   and a Fetch-spec guarantee rather than a framework behaviour. It also
+   *   means there is no unparsed path string in `request.url` for a test to
+   *   reach: an earlier revision of this comment described swapping the
+   *   handler's `new URL(request.url).pathname` for the raw path out of
+   *   `request.url` and read the resulting 202 as a measurement of Next.js.
+   *   Both are the same normalized string, so that swap could not have told a
+   *   framework that resolves `%2e%2e` apart from one that does not.
+   * - And the handler normalizes again anyway, reading
+   *   `new URL(request.url).pathname` through the same WHATWG rule.
+   * - Next.js's router may resolve such segments earlier still. Plausible,
+   *   unverified here, and deliberately not relied on.
    *
-   * So there are two independent defences, either sufficient, and no external
-   * probe can tell which one acted. A Next.js upgrade that changed this would
-   * leave every assertion in this file green. Nothing here pins it; that is a
-   * limit of what a served test can see rather than a gap someone forgot to
-   * close, and the allowlist's own dot-segment refusals — the defence that
-   * would then become live — are unit-tested in
-   * `tests/store-api-transport.test.ts` where they can be called directly.
+   * So at least two independent defences stand in front of this request,
+   * either sufficient, and no external probe can tell which one acted. A
+   * Next.js upgrade that changed its half would leave every assertion in this
+   * file green. Nothing here pins it; that is a limit of what a served test
+   * can see rather than a gap someone forgot to close, and the allowlist's own
+   * dot-segment refusals — the defence that would then become live — are
+   * unit-tested in `tests/store-api-transport.test.ts` where they can be
+   * called directly.
    *
    * What this test does catch is a future "hardening" of
    * `src/app/store-api/[...path]/route.ts` that ran the allowlist against the
@@ -2442,9 +2450,10 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
    * `/store-api/store/..%2fadmin/users` answering 202 with the backend
    * receiving `/store/..%2fadmin/users` — a path outside the allowlist,
    * forwarded. `..%2f` is not a dot segment to the URL parser, because the
-   * escaped separator keeps it one opaque segment, so neither normalisation
-   * layer touches it and only `isRefusedSegment`'s "hides a separator" clause
-   * catches it. That is what authorised the hardening.
+   * escaped separator keeps it one opaque segment, so — as that recorded
+   * backend path shows — no normalisation layer touched it, and only
+   * `isRefusedSegment`'s "hides a separator" clause catches it. That is what
+   * authorised the hardening.
    */
   it("still forwards a dot segment that resolves back inside the allowlist, rather than over-refusing", async () => {
     backendRequests.length = 0;

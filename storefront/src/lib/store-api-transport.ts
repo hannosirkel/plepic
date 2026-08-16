@@ -97,17 +97,23 @@ function decodeSegment(segment: string): string {
  * from the public site origin.
  *
  * Nothing here has ever shipped that reachable, and the reason is **two**
- * defences rather than one. Next.js resolves percent-encoded dot segments
- * before a route handler is called; and the route handler itself
- * (`src/app/store-api/[...path]/route.ts`) reads
- * `new URL(request.url).pathname`, which applies the identical WHATWG rule
+ * defences rather than one. The first is the WHATWG `Request` constructor: it
+ * runs the URL parser and stores the serialized result, so the dot segment is
+ * already resolved before any code in this repository reads `request.url` —
+ * `new Request("http://h/store-api/store/%2e%2e/store/products").url` is
+ * `http://h/store-api/store/products`, which is a Fetch-spec guarantee rather
+ * than a framework implementation detail. The second is the route handler
+ * itself (`src/app/store-api/[...path]/route.ts`), which reads
+ * `new URL(request.url).pathname` and so applies the identical WHATWG rule
  * again. Either alone is sufficient, so the pre-existing literal-`".."`
  * comparison was not one framework upgrade away from publishing `/admin` —
- * the earlier revision of this comment named only the framework and was wrong
- * about that. Both are still properties of a *caller*, not of this allowlist,
- * and this function is entitled to assume neither: it is called with whatever
- * pathname it is handed, and the refusals below are what make it safe on its
- * own terms.
+ * the earlier revision of this comment named Next.js's router as one of the
+ * two and was wrong about that. Next.js may normalize in its router as well;
+ * nothing in this repository observes it, so it is not claimed here and not
+ * counted. Both of the defences that are claimed remain properties of a
+ * *caller*, not of this allowlist, and this function is entitled to assume
+ * neither: it is called with whatever pathname it is handed, and the refusals
+ * below are what make it safe on its own terms.
  */
 function isRefusedSegment(segment: string): boolean {
   if (segment.length === 0) return true;
