@@ -1,11 +1,87 @@
 import { defineConfig, loadEnv } from "@medusajs/framework/utils";
-import { readBackendRuntimeConfig } from "./src/config/runtime";
+import {
+  readBackendRuntimeConfig,
+  redisConnectionOptions,
+  redisConnectionUrl,
+} from "./src/config/runtime";
 import { stripePaymentModule } from "./src/config/payment";
 import { notificationModule } from "./src/config/notification";
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
 const runtime = readBackendRuntimeConfig(process.env);
+
+const redisUrl = redisConnectionUrl(runtime.redis);
+const redisOptions = redisConnectionOptions(runtime.redis);
+
+/**
+ * **Four Redis wirings, because they are four separate things.**
+ *
+ * The backend and `plepic-worker` run the same image against the same Redis and
+ * are supposed to be two halves of one system. They were not: with no Redis
+ * anywhere in this file, `defineConfig` installs `event-bus-local`,
+ * `workflow-engine-inmemory` and the in-memory locking provider in **both**
+ * processes, so the worker consumed a queue nothing published to. Nothing
+ * failed visibly — the backend runs in Medusa's default `shared` worker mode
+ * and therefore fires its own subscribers, so orders confirmed, and
+ * `worker.yaml` declares no probe, so "healthy" meant "running".
+ *
+ * Each line below fixes exactly one thing and none of them substitutes for
+ * another:
+ *
+ * 1. `projectConfig.redisUrl` + `redisOptions` — **sessions, and nothing else.**
+ *    `@medusajs/framework`'s express loader reads exactly this pair to build the
+ *    `connect-redis` session store, and `ConfigManager.normalizeProjectConfig`
+ *    reads `redisUrl` alone to decide whether to log *"redisUrl not found. A
+ *    fake redis instance will be used."* Setting it silences that line and
+ *    changes no module: outside Medusa Cloud, `resolveModules` installs the
+ *    in-memory four regardless of what `projectConfig` says.
+ * 2. **Event bus.** Without it, an event emitted in one process is delivered
+ *    only to that process's subscribers.
+ * 3. **Workflow engine.** Its option shape is nested and differs from the event
+ *    bus's — the loader destructures `options.redis` — and it is required
+ *    *separately*: a Redis event bus with an in-memory workflow engine still
+ *    leaves async steps, retries and timeouts in whichever process began them,
+ *    to die with that pod.
+ * 4. **Locking.** Once two processes run workflows, per-process mutual
+ *    exclusion excludes nothing. This one is the `locking` module with a
+ *    provider, not a `locking-redis` module — Medusa registers the in-memory
+ *    provider first and only a provider marked `is_default` displaces it.
+ *
+ * The keys these declarations land on are Medusa's, not ours:
+ * `REVERSED_MODULE_PACKAGE_NAMES` maps each package name back onto
+ * `Modules.EVENT_BUS`, `Modules.WORKFLOW_ENGINE` and `Modules.LOCKING`, which is
+ * why they *replace* the defaults instead of being added beside them.
+ * `tests/redis-modules.test.ts` runs each loader against these exact objects
+ * and reads the connection it built, so a Medusa upgrade that moves an option
+ * turns that suite red rather than leaving a worker that shares no queue.
+ *
+ * The password is in `redisOptions`, never in the URL — see
+ * `redisConnectionUrl`.
+ */
+const redisEventBusModule = {
+  resolve: "@medusajs/medusa/event-bus-redis",
+  options: { redisUrl, redisOptions },
+} as const;
+
+const redisWorkflowEngineModule = {
+  resolve: "@medusajs/medusa/workflow-engine-redis",
+  options: { redis: { redisUrl, redisOptions } },
+} as const;
+
+const redisLockingModule = {
+  resolve: "@medusajs/medusa/locking",
+  options: {
+    providers: [
+      {
+        resolve: "@medusajs/medusa/locking-redis",
+        id: "locking-redis",
+        is_default: true,
+        options: { redisUrl, redisOptions },
+      },
+    ],
+  },
+} as const;
 
 /**
  * The File module is deliberately **not** overridden.
@@ -30,6 +106,14 @@ module.exports = defineConfig({
   projectConfig: {
     databaseUrl: runtime.databaseUrl,
     http: runtime.http,
+    redisUrl,
+    redisOptions,
   },
-  modules: [stripePaymentModule(runtime.stripe), notificationModule(runtime.smtp)],
+  modules: [
+    stripePaymentModule(runtime.stripe),
+    notificationModule(runtime.smtp),
+    redisEventBusModule,
+    redisWorkflowEngineModule,
+    redisLockingModule,
+  ],
 });

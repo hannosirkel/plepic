@@ -652,8 +652,16 @@ The Plepic Games storefront and Medusa backend monorepo.
   committed derivatives were produced outside the repository. If `next/image`
   is still unused when the storefront ships, returning it to Next's own
   optional resolution is a one-line change.
-- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams,
-  one maintained Stripe provider, and a custom email notification provider.
+- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams.
+  Redis is required, not optional: `medusa-config.ts` registers the Redis event
+  bus, the Redis workflow engine and the Redis locking provider, and
+  `REDIS_HOST`, `REDIS_PORT` and `REDIS_PASSWORD` are read fail-closed at start.
+  Without them Medusa installs its in-process defaults in every workload and
+  `plepic-worker` shares no queue with the API that enqueues to it — with no
+  failing probe and no failing checkout, because the API runs its own
+  subscribers in the default `shared` worker mode.
+  It carries one maintained Stripe provider and a custom email notification
+  provider.
   Order confirmations use Medusa's idempotent persisted notification lifecycle;
   each confirmation reproduces the approved withdrawal conditions and complete
   model withdrawal form in the durable email, with legal name, registered
