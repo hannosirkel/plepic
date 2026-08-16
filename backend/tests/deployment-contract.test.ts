@@ -90,12 +90,28 @@ describe("the scripts the deploys manifests invoke", () => {
   });
 
   /**
-   * Both `medusa exec` scripts prefer the compiled `.js` beside them and fall
+   * The commerce configuration is the predeploy Job's third step, and it has to
+   * be in **this** Job rather than a new one: `deploys` names the workloads it
+   * runs and the manifests are in a repository this workspace may not change, so
+   * a fourth `args: [npm, run, …]` would be a script no manifest invokes. It
+   * also has to complete before anything else runs — a migrated database has no
+   * region, so `POST /store/carts` has nothing to create a cart against, and the
+   * catalogue-import Job refuses without a shipping profile and a stock
+   * location.
+   */
+  it("applies the declared commerce configuration in predeploy, after migrating", () => {
+    const predeploy = expand("predeploy");
+    expect(predeploy).toContain("configure-commerce");
+    expect(predeploy.indexOf("db:migrate")).toBeLessThan(predeploy.indexOf("configure-commerce"));
+  });
+
+  /**
+   * Every `medusa exec` script prefers the compiled `.js` beside it and falls
    * back to the `.ts`. That is not a nicety: the built image has only the
    * compiled file and a local checkout has only the source, and a script that
    * named one of them would work in exactly one of the two places.
    */
-  it.each(["catalogue:import", "seed:administrator"])(
+  it.each(["catalogue:import", "seed:administrator", "configure:commerce"])(
     "lets %s resolve either the built or the source file",
     (name) => {
       expect(scripts[name]).toContain(".js");

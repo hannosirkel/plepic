@@ -91,7 +91,7 @@ export function assertNoPersonalData(members: readonly ArchiveMember[]): void {
  * Walks the whole manifest tree, not just its top level.
  *
  * Top-level detection alone accepted `product.customers`,
- * `product.variant.sessions`, `shippingZones[0].users` and their like: the plan
+ * `product.variant.sessions`, `taxRegions[0].users` and their like: the plan
  * reader ignores keys it does not read, so none of it reached PostgreSQL, but
  * the run reported success and deleted the archive, and the operator was left
  * believing the export was clean. That is exactly the harm the refusal exists

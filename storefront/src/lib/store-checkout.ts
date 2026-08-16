@@ -84,25 +84,67 @@ export async function prepareGuestShipping(
   return shippingOptions(await client.store.fulfillment.listCartOptions({ cart_id: cartId }));
 }
 
+/**
+ * Medusa's authoritative figures, read as the three the Article 8(2) disclosure
+ * block actually states.
+ *
+ * **`item_total`, not `subtotal`.** Medusa's `cart.subtotal` is
+ * `item_subtotal + shipping_subtotal`, both **excluding** tax — so it is neither
+ * "the price of the goods" nor a figure that adds up with the shipping charge
+ * beside it. Under the commerce configuration that landed, prices are tax
+ * inclusive and the destination's tax region is applied automatically, which
+ * makes the difference visible rather than theoretical: for the advertised goods
+ * price plus the European Union shipping rate into Estonia, `subtotal` comes
+ * back at the two net amounts summed, so the checkout stated a price of the
+ * goods that was neither the advertised figure on the product page nor
+ * consistent with its own total. `content/legal/shipping.ts` says the advertised
+ * figure "is the price a consumer pays for the goods", and `cart.item_total` —
+ * line items after discounts, **including** tax — is the field that is that.
+ * `backend/tests/commerce-medusa-semantics.test.ts` carries the arithmetic, run
+ * through Medusa's own `decorateCartTotals` rather than restated.
+ *
+ * `storefront/src/lib/store-payment.ts`'s `returnOrderDisclosure` already read
+ * `item_total` for the same three figures on the order-confirmation path. This
+ * is the checkout path agreeing with it.
+ */
 function cartTotals(value: unknown): CartTotals {
   const response = value as {
-    cart?: { currency_code?: unknown; subtotal?: unknown; shipping_total?: unknown; total?: unknown };
+    cart?: {
+      currency_code?: unknown;
+      item_total?: unknown;
+      shipping_total?: unknown;
+      total?: unknown;
+    };
   };
   const cart = response.cart;
   if (
     cart === undefined ||
     typeof cart.currency_code !== "string" ||
-    typeof cart.subtotal !== "number" ||
+    typeof cart.item_total !== "number" ||
     typeof cart.shipping_total !== "number" ||
     typeof cart.total !== "number"
   ) {
     throw new ConfigError("Medusa returned malformed checkout totals");
   }
+  const goodsAmount = medusaMajorToMinor(cart.item_total, cart.currency_code);
+  const shippingAmount = medusaMajorToMinor(cart.shipping_total, cart.currency_code);
+  const orderAmount = medusaMajorToMinor(cart.total, cart.currency_code);
+  /*
+   * The disclosure block puts the three figures on one screen, one above the
+   * other, immediately above the order button. A buyer reading a goods figure
+   * and a shipping figure that do not sum to the total they are asked to accept
+   * has been shown something untrue, and Article 8(2) CRD is a disclosure
+   * obligation rather than a pricing one — so a set that does not add up is
+   * refused here instead of being rendered.
+   */
+  if (goodsAmount + shippingAmount !== orderAmount) {
+    throw new ConfigError("Medusa returned checkout totals that do not add up");
+  }
   return {
     currency: cart.currency_code.toUpperCase(),
-    goodsAmount: medusaMajorToMinor(cart.subtotal, cart.currency_code),
-    shippingAmount: medusaMajorToMinor(cart.shipping_total, cart.currency_code),
-    orderAmount: medusaMajorToMinor(cart.total, cart.currency_code),
+    goodsAmount,
+    shippingAmount,
+    orderAmount,
   };
 }
 

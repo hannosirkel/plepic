@@ -5,8 +5,7 @@ import { CatalogueImportRefusal } from "./refusal.js";
 /**
  * Everything the import is permitted to seed, and nothing else: the active
  * physical product with its current price and stock and packaged dimensions,
- * the coupons that are still valid, the tax zones and rates, the shipping zones
- * and methods, and the media.
+ * the coupons that are still valid, the tax zones and rates, and the media.
  *
  * The manifest's accepted key set is an allowlist rather than a denylist. A
  * denylist admits whatever the next WooCommerce export happens to call its
@@ -17,7 +16,28 @@ const ACCEPTED_SECTIONS = new Set([
   "product",
   "coupons",
   "taxRegions",
-  "shippingZones",
+]);
+
+/**
+ * Sections this import used to read, and what now owns them.
+ *
+ * `shippingZones` is the only one. The zones, the methods and their two flat
+ * rates are the commercial model Task 1 froze, declared in
+ * `src/commerce/shipping-model.ts` and applied by `npm run configure:commerce`
+ * from the predeploy Job. Seeding them from the archive as well would give one
+ * price two writers — and the archive is the *old* shop's shipping
+ * configuration, so the writer that ran last would decide what a buyer is
+ * charged.
+ *
+ * It is a refusal rather than a silent skip because an operator who exported a
+ * `shippingZones` section believes it is being applied, and a shop that quietly
+ * ignores half of what it was handed is worse than one that says so.
+ */
+const SUPERSEDED_SECTIONS: ReadonlyMap<string, string> = new Map([
+  [
+    "shippingZones",
+    "shipping zones and methods are declared in src/commerce/shipping-model.ts and applied by npm run configure:commerce; remove the section from the manifest",
+  ],
 ]);
 
 export type MediaRole = "thumbnail" | "gallery";
@@ -68,24 +88,11 @@ export interface PlannedTaxRegion {
   readonly code: string;
 }
 
-export interface PlannedShippingOption {
-  readonly name: string;
-  readonly currency: string;
-  readonly amountMinor: number;
-}
-
-export interface PlannedShippingZone {
-  readonly name: string;
-  readonly countryCodes: readonly string[];
-  readonly options: readonly PlannedShippingOption[];
-}
-
 export interface CatalogueImportPlan {
   readonly environment: string;
   readonly product: PlannedProduct;
   readonly coupons: readonly PlannedCoupon[];
   readonly taxRegions: readonly PlannedTaxRegion[];
-  readonly shippingZones: readonly PlannedShippingZone[];
 }
 
 function malformed(detail: string): never {
@@ -141,6 +148,13 @@ function readManifest(members: readonly ArchiveMember[]): Record<string, unknown
 
   const manifest = object(document, MANIFEST_MEMBER);
   for (const key of Object.keys(manifest)) {
+    const superseded = SUPERSEDED_SECTIONS.get(key);
+    if (superseded !== undefined) {
+      throw new CatalogueImportRefusal(
+        "superseded-manifest-section",
+        `the manifest declares a "${key}" section this import no longer reads: ${superseded}`,
+      );
+    }
     if (!ACCEPTED_SECTIONS.has(key)) {
       throw new CatalogueImportRefusal(
         "unrecognised-manifest-section",
@@ -279,35 +293,6 @@ function readTaxRegions(value: unknown): readonly PlannedTaxRegion[] {
   });
 }
 
-function readShippingZones(value: unknown): readonly PlannedShippingZone[] {
-  return array(value, "shippingZones").map((entry, index) => {
-    const zone = object(entry, `shippingZones[${String(index)}]`);
-    const countryCodes = array(zone.countryCodes, `shippingZones[${String(index)}].countryCodes`).map(
-      (code, position) => text(code, `shippingZones[${String(index)}].countryCodes[${String(position)}]`, /^[A-Z]{2}$/),
-    );
-    if (countryCodes.length === 0) {
-      malformed(`shippingZones[${String(index)}].countryCodes is empty`);
-    }
-
-    const options = array(zone.options, `shippingZones[${String(index)}].options`).map(
-      (option, position) => {
-        const label = `shippingZones[${String(index)}].options[${String(position)}]`;
-        const record = object(option, label);
-        return {
-          name: text(record.name, `${label}.name`),
-          currency: text(record.currency, `${label}.currency`, /^[A-Z]{3}$/),
-          // Zero is the free-shipping method. Flat and free are the only two
-          // declared methods; no carrier interface, quote cache or fallback.
-          amountMinor: integer(record.amountMinor, `${label}.amountMinor`),
-        };
-      },
-    );
-    if (options.length === 0) malformed(`shippingZones[${String(index)}].options is empty`);
-
-    return { name: text(zone.name, `shippingZones[${String(index)}].name`), countryCodes, options };
-  });
-}
-
 export function readCatalogueImportPlan(
   members: readonly ArchiveMember[],
   now: Date,
@@ -319,6 +304,5 @@ export function readCatalogueImportPlan(
     product: readProduct(manifest.product, members),
     coupons: readCoupons(manifest.coupons ?? [], now),
     taxRegions: readTaxRegions(manifest.taxRegions ?? []),
-    shippingZones: readShippingZones(manifest.shippingZones ?? []),
   };
 }

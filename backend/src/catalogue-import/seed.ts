@@ -1,3 +1,11 @@
+/**
+ * Shipping is deliberately absent from this file. The zones, the methods and
+ * their two flat rates are declared in `src/commerce/shipping-model.ts` and
+ * applied by `npm run configure:commerce`; a manifest that still carries a
+ * `shippingZones` section is refused by `plan.ts` rather than seeded here. See
+ * `src/commerce/configuration.ts` for why one price may have only one writer.
+ */
+
 import type {
   CatalogueImportPlan,
   PlannedMedia,
@@ -62,16 +70,6 @@ export type SeedRecord =
       readonly name: string;
       readonly ratePercent: number;
       readonly code: string;
-    }
-  | {
-      readonly kind: "shipping-option";
-      /** `<zone name>/<option name>`. */
-      readonly key: string;
-      readonly zoneName: string;
-      readonly countryCodes: readonly string[];
-      readonly optionName: string;
-      readonly currency: string;
-      readonly amountMinor: number;
     };
 
 /** Applies one record by its natural key. Applying it twice is applying it once. */
@@ -130,16 +128,5 @@ export function seedRecords(plan: CatalogueImportPlan): readonly SeedRecord[] {
       ratePercent: region.ratePercent,
       code: region.code,
     })),
-    ...plan.shippingZones.flatMap<SeedRecord>((zone) =>
-      zone.options.map<SeedRecord>((option) => ({
-        kind: "shipping-option",
-        key: `${zone.name}/${option.name}`,
-        zoneName: zone.name,
-        countryCodes: zone.countryCodes,
-        optionName: option.name,
-        currency: option.currency,
-        amountMinor: option.amountMinor,
-      })),
-    ),
   ];
 }

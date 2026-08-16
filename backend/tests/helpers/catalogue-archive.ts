@@ -37,19 +37,22 @@ export const manifest = {
   taxRegions: [
     { countryCode: "EE", name: "Estonia", ratePercent: 22, code: "EE-VAT" },
   ],
+} as const;
+
+/**
+ * A manifest carrying the section the import no longer reads.
+ *
+ * Shipping zones and methods are declared in `src/commerce/shipping-model.ts`
+ * now, so an export that still carries them is refused rather than applied —
+ * see `plan.ts`'s `SUPERSEDED_SECTIONS`.
+ */
+export const manifestWithSupersededShippingZones = {
+  ...manifest,
   shippingZones: [
     {
       name: "European Union",
       countryCodes: ["EE", "DE"],
-      options: [
-        { name: "Standard delivery", currency: "EUR", amountMinor: 700 },
-        { name: "Free delivery", currency: "EUR", amountMinor: 0 },
-      ],
-    },
-    {
-      name: "Rest of world",
-      countryCodes: ["US"],
-      options: [{ name: "Standard delivery", currency: "EUR", amountMinor: 1200 }],
+      options: [{ name: "Standard delivery", currency: "EUR", amountMinor: 700 }],
     },
   ],
 } as const;

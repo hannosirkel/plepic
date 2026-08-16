@@ -67,8 +67,13 @@ The Plepic Games storefront and Medusa backend monorepo.
   one method and **two flat rates on a zone axis** — EUR 7.00 to a delivery
   address in an **EU member state**, EUR 12.00 to one anywhere else, both
   operator-supplied on 2026-08-10. Flat rates only: the plan forbids calculated
-  carrier rates, and Task 5 must seed the live Medusa shipping options to match
-  both figures. "Member state" rather than "in the EU" is the rule the code
+  carrier rates. The live Medusa shipping options are seeded to those same two
+  figures by
+  [`backend/src/commerce/shipping-model.ts`](./backend/src/commerce/shipping-model.ts),
+  and `backend/tests/commerce-shipping-model.test.ts` holds this file's two
+  rates and this file's 27 `euMember` flags to that model in both directions —
+  so the figure the checkout prices with and the figure Medusa charges cannot
+  drift apart. "Member state" rather than "in the EU" is the rule the code
   implements: Åland, French Guiana, Guadeloupe, Martinique, Réunion and Mayotte
   are delivery addresses in the EU and are charged the higher rate, because the
   flag they are selected by is membership of the 27 and nothing wider.
@@ -915,7 +920,7 @@ it.
 |---|---|---|
 | `start` | `plepic-backend` Deployment | The API and the Admin, on the framework's default worker mode |
 | `start:worker` | `plepic-worker` Deployment | The same image with `MEDUSA_WORKER_MODE=worker` |
-| `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator |
+| `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator, then applies the declared commerce configuration |
 | `catalogue:import` | `plepic-catalogue-import` Job, suspended | The one-shot WooCommerce catalogue import |
 
 **The script name is the whole of the contract, and it has nothing behind it.**
@@ -933,9 +938,11 @@ mode is selected inside `start:worker` and nowhere else. Putting it in
 `medusa-config.ts` would have moved the API off the default too; the two
 Deployments differ by exactly the script they name.
 
-`predeploy` is two commands rather than two Jobs because everything else is
-gated on one sync hook: migrate, seed, and only then let an API, worker, or
-storefront pod start.
+`predeploy` is three commands rather than three Jobs because everything else is
+gated on one sync hook: migrate, seed, configure, and only then let an API,
+worker, or storefront pod start. It is also the only place a fourth step could
+go — `deploys` names the workloads it runs, and a fourth `args: [npm, run, …]`
+would be a script this repository declares and no manifest ever invokes.
 
 The seeding step is idempotent, and the condition it tests is **whether the
 administrator can sign in** — not whether a user row exists. A usable
@@ -961,6 +968,131 @@ only where no identity exists and there is therefore no password to keep.
 `medusa user` is used for neither half: it creates unconditionally, and it exits
 non-zero *after* having already created the user — which is how the half-built
 state gets made in the first place.
+
+### The commerce configuration
+
+`predeploy`'s third command, `npm run configure:commerce`, applies the
+commercial model Task 1 froze. It reads **no environment variable at all**:
+everything it applies is declared in this repository and identical in both
+environments, so nothing it configures can differ between test and live.
+
+| Record | What, and why it has to exist before anything serves |
+|---|---|
+| EUR is tax inclusive | The store's supported currency, carrying the price preference that makes every EUR price in this deployment contain its tax rather than have it added |
+| Region `Worldwide` | EUR, automatic taxes, every country Medusa knows, and the one Stripe payment provider. Without it `POST /store/carts` has nothing to create a cart against, and the storefront refuses with "Medusa Store catalogue is not ready" |
+| Stock location, fulfillment set, shipping profile | The chain a service zone hangs off, and the profile the product and both shipping options share. The catalogue import refuses without the first and third |
+| Stock location → `manual_manual` | The `location_fulfillment_provider` link. Both shipping-option workflows run `validateFulfillmentProvidersStep` first, and it refuses an option whose provider is not enabled at a location behind the zone |
+| Default sales channel → stock location | `GET /store/shipping-options` walks sales channel → stock location → fulfillment set → service zone; an unlinked location breaks the chain at the first step and a completed address returns no delivery method |
+| Service zones `European Union` and `Rest of world` | The 27 member states, and every other country. A country in neither is an address the checkout offers and Medusa cannot ship |
+| Shipping options | One flat `Standard delivery` per zone: **EUR 7.00** inside the EU, **EUR 12.00** everywhere else |
+
+**Exactly one region, deliberately.** `storefront/src/lib/cart-store.tsx` lists
+regions with `limit: 2` and refuses unless it finds one, because a second region
+is a second answer to "what does this cost?" and the storefront has no region
+selector to resolve it with. One advertised price worldwide is the commercial
+model; one region is its faithful expression.
+
+**Prices are tax inclusive, and that is what makes the legal page true.**
+`content/legal/shipping.ts` says *"Included means contained within that figure
+rather than added to it"* and *"It is the same figure for every visitor, in every
+country"*. Both hold only while the price is resolved tax inclusive: otherwise
+Medusa treats the advertised price as a net figure and adds the destination's
+VAT on top, and the checkout would present a total the product page never
+advertised — EUR 39.04 against a page advertising EUR 25.00, for a 22%
+destination. The destination's tax region still applies — it moves the *tax
+portion* of the figure and never the figure.
+
+**It is the currency's preference that decides this, not the region's.**
+`@medusajs/pricing` resolves inclusivity per price: it consults the `region_id`
+preference only when the price itself carries a `region_id` price rule, and
+neither price in this deployment does — the product price is written by the
+catalogue import as `[{ amount, currency_code }]` and the shipping price by the
+commerce configuration as `[{ currency_code, amount }]`. Resolution therefore
+falls through to the `currency_code` preference, whose model default is `false`.
+Setting it is a store record rather than a region one, which is also why it
+covers both writers: the product price and the shipping price are written by two
+different commands, and neither has to know about the region.
+
+`backend/tests/commerce-configuration.test.ts` holds each of those sentences
+against the switch that makes it true, and
+`backend/tests/commerce-medusa-semantics.test.ts` computes the resulting totals
+with Medusa's own `decorateCartTotals` — at every VAT rate, so *"the same figure
+in every country"* is checked rather than asserted.
+
+**Two flat rates, and no free method.** The plan's checkbox said "flat and free
+shipping"; the operator's later decision is worldwide delivery at two flat rates
+with no free option and no excluded country, and the absence of a zero-priced
+method is asserted rather than merely left out. There is no carrier interface,
+quote cache or fallback contract — ADR `020` records why — so the options are
+served by `manual_manual`, which quotes nothing and calls nothing.
+
+**Shipping is configured here and nowhere else.** The catalogue import used to
+seed the zones and methods from the archive's `shippingZones` section; it no
+longer does, and an archive that still carries one is **refused** with a message
+naming this command. Two writers of one price is a way for what a buyer is
+charged to stop being what the operator froze, and the export is the *old*
+shop's shipping configuration rather than Task 1's model.
+
+Every record is a lookup by natural key followed by a create **or** an update, so
+the Job — an Argo CD sync hook that runs again on every promoted digest —
+converges after a run interrupted halfway and reaches the same end state however
+often it runs. A service zone whose country set has drifted is rewritten; one
+that already matches is left untouched.
+
+It is not, however, silent the second time. Seven of the nine record kinds
+compare before they write and so write nothing at all on a re-run; the **region**
+and the **shipping options** re-issue their update unconditionally whenever the
+row exists, so every promoted digest rewrites the region's country list and
+both flat prices and emits `region.updated` and `shipping_option.updated`. The
+end state is unchanged either way. `backend/tests/commerce-medusa-semantics.test.ts`
+asserts that exact set of second-run writes, so the claim cannot quietly drift.
+
+**The natural keys are display names.** `Worldwide`, `Plepic Games`, `Plepic
+Games delivery` and the two zone names are both what the Admin shows and the key
+every upsert here addresses. Renaming one in the Admin does not rename the
+record: the next predeploy finds no row under the old name and creates a
+**second** one — and a second region is a storefront that answers every
+add-to-cart with "Medusa Store catalogue is not ready", because
+`storefront/src/lib/cart-store.tsx` lists regions with `limit: 2` and refuses
+unless it finds exactly one. Renaming any of the five is a change to
+`backend/src/commerce/configuration.ts`, not a cosmetic edit.
+
+### The Stripe webhook is one endpoint reached two ways
+
+The backend serves `POST /hooks/payment/stripe_stripe` — Medusa's own
+`/hooks/payment/:provider` route, with the raw body preserved. The segment is
+derived in `backend/src/config/payment.ts` from the provider this deployment
+registers rather than written out, because `@medusajs/payment` keys a provider as
+`pp_${identifier}_${id}` and resolves the URL segment back by prefixing `pp_`.
+
+| Environment | How Stripe reaches it |
+|---|---|
+| live | Stripe posts to `https://<apex>/store-api/hooks/payment/stripe_stripe`. The tunnel carries the whole hostname to the storefront, whose `/store-api` prefix allowlist strips the prefix and forwards the request with its **raw body byte for byte** |
+| test | The public hostname requires Cloudflare Access and Stripe cannot complete Google SSO, so an operator forwards events from Stripe CLI over WireGuard straight to the test backend's private `externalIP` port, at the same path |
+
+```bash
+# From an operator machine on WireGuard. Test only; live needs no forwarding.
+stripe listen --forward-to http://<test-backend-wg-address>:<port>/hooks/payment/stripe_stripe
+```
+
+**The application never learns which of the two it is answering**, and nothing
+is configured per environment except the secret. Signature verification against
+`STRIPE_WEBHOOK_SECRET` is the only gate, and it is the same gate on both routes:
+no middleware in `backend/src/api/middlewares.ts` matches the webhook path, which
+matters because a Turnstile or origin check would pass behind Cloudflare and
+refuse a Stripe CLI forward. `backend/tests/stripe-webhook-endpoint.test.ts`
+holds all of that, and
+`storefront/tests/build-and-serve.test.ts` drives a signed hook through the real
+storefront and asserts the bytes that reach the backend.
+
+The route only enqueues. Medusa emits the received event onto the event bus with
+a delay and retries, so the signature is verified and the payment advanced by
+whichever pod's subscriber picks the event up — **and that can be either of
+them**. `backend.yaml` runs `npm run start`, which leaves `workerMode` at the
+framework's default of `shared`, so the API pod runs subscribers too;
+`worker.yaml` runs `npm run start:worker`, which sets `MEDUSA_WORKER_MODE=worker`.
+Launch alerting on webhook failures therefore has to cover both workloads, not
+the worker alone.
 
 ### The CORS origins are declared empty, on purpose
 
@@ -1194,7 +1326,15 @@ are the assets PVC and `/tmp`.
 
 It seeds the active physical product, its current price and stock, its packaged
 dimensions, the coupons that are still valid at the moment of the run, the tax
-zones and rates, the shipping zones and methods, and the media.
+zones and rates, and the media.
+
+It does **not** seed the shipping zones and methods. Those are the commercial
+model Task 1 froze, declared in `backend/src/commerce/shipping-model.ts` and
+applied by `npm run configure:commerce` — see [the commerce
+configuration](#the-commerce-configuration). A manifest that still carries a
+`shippingZones` section is refused with a message saying where it moved to,
+rather than silently skipped: an operator who exported the section believes it
+is being applied, and one price may have only one writer.
 
 It **refuses** WordPress users, WooCommerce customer accounts, sessions and
 order history — it does not filter them silently. Customer accounts and order
@@ -1260,9 +1400,8 @@ would only be a way for the three to disagree.
 
 The import is rerunnable, and that is a property of its shape rather than of a
 lock. It emits key-addressed upserts — the product by handle, the price by SKU
-and currency, the stock by SKU, a coupon by code, a tax region by country, a
-shipping option by zone and name — so applying the same record twice is applying
-it once. Media is written to a `.plepic-import-partial` sibling and moved into
+and currency, the stock by SKU, a coupon by code, a tax region by country — so
+applying the same record twice is applying it once. Media is written to a `.plepic-import-partial` sibling and moved into
 place with one rename, and a file already present with identical bytes is left
 untouched. Running it twice leaves one product, one price, one stock figure and
 one copy of each media file, and a run interrupted halfway converges when it is

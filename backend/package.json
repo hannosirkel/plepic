@@ -10,8 +10,9 @@
     "dev": "medusa develop",
     "start": "medusa start",
     "start:worker": "MEDUSA_WORKER_MODE=worker medusa start",
-    "predeploy": "medusa db:migrate && npm run seed:administrator",
+    "predeploy": "medusa db:migrate && npm run seed:administrator && npm run configure:commerce",
     "seed:administrator": "medusa exec \"$(test -f ./src/scripts/seed-administrator.js && echo ./src/scripts/seed-administrator.js || echo ./src/scripts/seed-administrator.ts)\"",
+    "configure:commerce": "medusa exec \"$(test -f ./src/scripts/configure-commerce.js && echo ./src/scripts/configure-commerce.js || echo ./src/scripts/configure-commerce.ts)\"",
     "catalogue:import": "medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test:unit": "vitest run"

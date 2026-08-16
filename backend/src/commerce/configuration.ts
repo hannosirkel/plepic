@@ -1,0 +1,306 @@
+/**
+ * The commerce configuration this deployment declares, as ordered, key-addressed
+ * records — and the port that applies them.
+ *
+ * ## Why this exists at all
+ *
+ * A migrated Medusa database has a store and a default sales channel and nothing
+ * else. It has **no region**, so `POST /store/carts` has nothing to create a
+ * cart against and `storefront/src/lib/cart-store.tsx` refuses with "Medusa
+ * Store catalogue is not ready"; **no stock location** and **no shipping
+ * profile**, which the catalogue import refuses without; **no fulfillment set**,
+ * so there is nowhere to hang a service zone; and **no shipping option**, so a
+ * completed delivery address returns an empty option list and the checkout can
+ * never reach payment. None of that is catalogue data and none of it comes from
+ * a WooCommerce export. It is configuration, it is frozen in this repository,
+ * and it is applied by `npm run configure:commerce` from the predeploy Job —
+ * before any pod serves traffic and before the import Job is ever staged.
+ *
+ * ## Shipping is configured here and nowhere else
+ *
+ * The catalogue import used to seed the shipping zones and methods from the
+ * archive's `shippingZones` section. It no longer does, and the section is
+ * refused: two writers of one price is a way for the rates a buyer is charged to
+ * stop being the rates the operator froze, and the export is the *old* shop's
+ * shipping configuration rather than Task 1's model. `src/catalogue-import/`
+ * keeps the product, its price and stock, the still-valid coupons, the tax
+ * regions and the media; the zones, the methods and their two flat rates are
+ * {@link ./shipping-model.js}'s.
+ *
+ * ## Every record is an assertion addressed by a natural key
+ *
+ * The same shape the catalogue import uses, for the same reason: a create-shaped
+ * configuration is idempotent only if something remembers what it created, and
+ * the predeploy Job is an Argo CD sync hook that runs again on **every promoted
+ * digest**. A key-addressed upsert is idempotent because the second application
+ * of a record is the same assertion as the first, and a run interrupted halfway
+ * converges when it is run again.
+ *
+ * **Idempotent is not the same as silent.** Seven of the nine record kinds write
+ * nothing at all on a second run, because they compare before they write. The
+ * region and the shipping options do not: they re-issue their update whenever
+ * the row exists, so every promoted digest rewrites the region's country list
+ * and both flat prices and emits `region.updated` and `shipping_option.updated`.
+ * The end state is the same either way, which is what idempotence means here —
+ * but a reader watching the event bus will see those two.
+ *
+ * ## The natural keys are display names, and renaming one in the Admin hurts
+ *
+ * {@link REGION_NAME}, {@link STOCK_LOCATION_NAME}, {@link FULFILLMENT_SET_NAME}
+ * and the two zone names in {@link ./shipping-model.js} are both what the Admin
+ * shows an operator *and* the key every upsert here addresses. An operator who
+ * renames the region in the Admin does not rename this record: the next
+ * predeploy finds no row called `Worldwide`, creates a **second** region, and
+ * `storefront/src/lib/cart-store.tsx` — which lists regions with `limit: 2` and
+ * refuses unless it finds exactly one — then answers every add-to-cart with
+ * "Medusa Store catalogue is not ready". Renaming any of these five in the
+ * Admin is therefore a change to this file, not a cosmetic edit.
+ */
+
+import { STRIPE_PAYMENT_PROVIDER_ID } from "../config/payment.js";
+import {
+  DELIVERABLE_COUNTRY_CODES,
+  SHIPPING_CURRENCY,
+  SHIPPING_ZONES,
+} from "./shipping-model.js";
+
+/**
+ * The one region.
+ *
+ * `storefront/src/lib/cart-store.tsx` lists regions with `limit: 2` and refuses
+ * unless it finds **exactly one** — deliberately, because a second region is a
+ * second answer to "what does this cost?" and the storefront has no region
+ * selector to resolve it with. One advertised price worldwide is the commercial
+ * model, so one region is its faithful expression.
+ */
+export const REGION_NAME = "Worldwide";
+
+/** The single physical origin every parcel is sent from. */
+export const STOCK_LOCATION_NAME = "Plepic Games";
+
+/** The fulfillment set the two service zones hang off. */
+export const FULFILLMENT_SET_NAME = "Plepic Games delivery";
+export const FULFILLMENT_SET_TYPE = "shipping";
+
+/** The shipping profile the single product and both shipping options share. */
+export const SHIPPING_PROFILE_NAME = "Default";
+export const SHIPPING_PROFILE_TYPE = "default";
+
+/**
+ * The fulfillment provider both options are served by.
+ *
+ * `manual_manual` is `@medusajs/medusa/fulfillment-manual`, which `defineConfig`
+ * registers by default. It is the correct provider for a flat rate: it quotes
+ * nothing and calls nothing, which is precisely what ADR `020` chose over a
+ * carrier interface.
+ */
+export const FULFILLMENT_PROVIDER_ID = "manual_manual";
+
+export type CommerceRecord =
+  | {
+      /**
+       * The store's supported currency, and — the only reason this record
+       * exists — whether prices denominated in it contain their tax.
+       */
+      readonly kind: "store-currency";
+      /** The currency code. */
+      readonly key: string;
+      readonly currencyCode: string;
+      /**
+       * Whether an advertised price contains the tax rather than having it
+       * added. `content/legal/shipping.ts` says "Included means contained
+       * within that figure rather than added to it", and **this** is the switch
+       * that makes that sentence true of what Medusa actually computes.
+       *
+       * It has to be the *currency* preference rather than the region's.
+       * `@medusajs/pricing`'s `isTaxInclusive` consults the `region_id`
+       * preference only when the price itself carries a `region_id` price rule,
+       * and neither price here does: the product price is written by
+       * `src/catalogue-import/medusa-target.ts` as `[{ amount, currency_code }]`
+       * and the shipping price by `./medusa-target.ts` as
+       * `[{ currency_code, amount }]`. Resolution falls through to the
+       * `currency_code` preference, whose model default is `false`.
+       */
+      readonly taxInclusivePrices: boolean;
+    }
+  | {
+      readonly kind: "region";
+      readonly key: string;
+      readonly name: string;
+      readonly currencyCode: string;
+      readonly countryCodes: readonly string[];
+      readonly paymentProviderIds: readonly string[];
+      /**
+       * The region's own tax-inclusivity preference.
+       *
+       * **This flag alone does not make a price tax inclusive**, which is why
+       * the `store-currency` record above exists; see its documentation for the
+       * resolution rule. It is declared anyway because it is the correct
+       * statement of intent for this region, and because it is what Medusa
+       * consults the moment any price here gains a `region_id` price rule.
+       */
+      readonly taxInclusivePrices: boolean;
+      /**
+       * Whether Medusa applies the destination's tax region automatically. With
+       * tax-inclusive prices this changes the *tax portion* of a total and never
+       * the total, which is the other half of the same promise.
+       */
+      readonly automaticTaxes: boolean;
+    }
+  | { readonly kind: "stock-location"; readonly key: string; readonly name: string }
+  | {
+      /**
+       * The `location_fulfillment_provider` link between the stock location and
+       * the provider both shipping options are served by.
+       *
+       * Nothing else creates it. `createStockLocationsWorkflow` creates the
+       * location, `createLocationFulfillmentSetWorkflow` creates the set and its
+       * association to the location, and neither touches this link — but
+       * `createShippingOptionsWorkflow` and `updateShippingOptionsWorkflow` both
+       * run `validateFulfillmentProvidersStep` first, which walks
+       * `service_zone.fulfillment_set.locations.fulfillment_providers.id` and
+       * throws `Providers (manual_manual) are not enabled for the service
+       * location` when the provider is not among them. Without this record the
+       * predeploy Job dies on the first shipping option on every environment,
+       * and because it is an Argo CD sync hook the Application never syncs.
+       */
+      readonly kind: "stock-location-fulfillment-provider";
+      /** `<stock location name>/<provider id>`. */
+      readonly key: string;
+      readonly stockLocationName: string;
+      readonly providerId: string;
+    }
+  | {
+      readonly kind: "fulfillment-set";
+      readonly key: string;
+      readonly name: string;
+      readonly type: string;
+      readonly stockLocationName: string;
+    }
+  | {
+      readonly kind: "shipping-profile";
+      readonly key: string;
+      readonly name: string;
+      readonly type: string;
+    }
+  | {
+      /** The default sales channel has to reach the stock location, or no
+       * shipping option is listed for a cart placed through it. */
+      readonly kind: "sales-channel-stock-location";
+      readonly key: string;
+      readonly stockLocationName: string;
+    }
+  | {
+      readonly kind: "service-zone";
+      /** The zone name. */
+      readonly key: string;
+      readonly name: string;
+      readonly countryCodes: readonly string[];
+    }
+  | {
+      readonly kind: "shipping-option";
+      /** `<zone name>/<option name>`. */
+      readonly key: string;
+      readonly zoneName: string;
+      readonly optionName: string;
+      readonly currency: string;
+      readonly amountMinor: number;
+      readonly providerId: string;
+    };
+
+/** Applies one record by its natural key. Applying it twice is applying it once. */
+export interface CommerceConfigurationTarget {
+  apply(record: CommerceRecord): Promise<void>;
+}
+
+/**
+ * The configuration as records, in dependency order.
+ *
+ * A pure function of the frozen model: the same source produces the same
+ * records, in the same order, on every run, which is what
+ * `tests/commerce-configuration.test.ts` compares across two runs.
+ *
+ * The order is not cosmetic. A service zone needs its fulfillment set, which
+ * needs its stock location; a shipping option needs its zone, the shipping
+ * profile **and** the fulfillment-provider link, without which Medusa refuses
+ * to create it at all; and the sales-channel link is placed before the zones so
+ * that a run which fails partway has already made the location reachable. The
+ * currency's tax treatment goes first because it governs how every price this
+ * deployment holds is read — including the product price, which a different
+ * command writes.
+ */
+export function commerceRecords(): readonly CommerceRecord[] {
+  return [
+    {
+      kind: "store-currency",
+      key: SHIPPING_CURRENCY,
+      currencyCode: SHIPPING_CURRENCY,
+      taxInclusivePrices: true,
+    },
+    {
+      kind: "region",
+      key: REGION_NAME,
+      name: REGION_NAME,
+      currencyCode: SHIPPING_CURRENCY,
+      countryCodes: DELIVERABLE_COUNTRY_CODES,
+      paymentProviderIds: [STRIPE_PAYMENT_PROVIDER_ID],
+      taxInclusivePrices: true,
+      automaticTaxes: true,
+    },
+    { kind: "stock-location", key: STOCK_LOCATION_NAME, name: STOCK_LOCATION_NAME },
+    {
+      kind: "stock-location-fulfillment-provider",
+      key: `${STOCK_LOCATION_NAME}/${FULFILLMENT_PROVIDER_ID}`,
+      stockLocationName: STOCK_LOCATION_NAME,
+      providerId: FULFILLMENT_PROVIDER_ID,
+    },
+    {
+      kind: "fulfillment-set",
+      key: FULFILLMENT_SET_NAME,
+      name: FULFILLMENT_SET_NAME,
+      type: FULFILLMENT_SET_TYPE,
+      stockLocationName: STOCK_LOCATION_NAME,
+    },
+    {
+      kind: "shipping-profile",
+      key: SHIPPING_PROFILE_NAME,
+      name: SHIPPING_PROFILE_NAME,
+      type: SHIPPING_PROFILE_TYPE,
+    },
+    {
+      kind: "sales-channel-stock-location",
+      key: STOCK_LOCATION_NAME,
+      stockLocationName: STOCK_LOCATION_NAME,
+    },
+    ...SHIPPING_ZONES.map<CommerceRecord>((zone) => ({
+      kind: "service-zone",
+      key: zone.name,
+      name: zone.name,
+      countryCodes: zone.countryCodes,
+    })),
+    ...SHIPPING_ZONES.map<CommerceRecord>((zone) => ({
+      kind: "shipping-option",
+      key: `${zone.name}/${zone.optionName}`,
+      zoneName: zone.name,
+      optionName: zone.optionName,
+      currency: zone.currency,
+      amountMinor: zone.amountMinor,
+      providerId: FULFILLMENT_PROVIDER_ID,
+    })),
+  ];
+}
+
+export interface CommerceConfigurationSummary {
+  readonly records: number;
+}
+
+/** Applies every record once, in order, and stops at the first refusal. */
+export async function configureCommerce(
+  target: CommerceConfigurationTarget,
+): Promise<CommerceConfigurationSummary> {
+  const records = commerceRecords();
+  for (const record of records) {
+    await target.apply(record);
+  }
+  return { records: records.length };
+}
