@@ -87,6 +87,79 @@ COPY storefront/package.json storefront/package.json
 
 RUN npm ci --omit=dev --workspace backend --include-workspace-root
 
+# esbuild is deleted from the runtime tree, because it is a build tool that
+# ships a compiled Go standard library and nothing in the runtime path calls
+# it.
+#
+# It is here at all as a *production* transitive dependency, so `--omit=dev`
+# does not remove it:
+#
+#     @medusajs/medusa -> @medusajs/admin-bundler -> vite ^5.4.21
+#       -> esbuild ^0.21.3 -> @esbuild/linux-x64 (bin/esbuild, a Go binary)
+#
+# The whole package goes, not just the `@esbuild/*` platform package, because
+# there are **two** copies of that one binary: esbuild's `install.js` copies
+# the platform binary over its own `bin/esbuild` shim on install, so the tree
+# carries it at both `@esbuild/linux-x64/bin/esbuild` and
+# `@medusajs/admin-bundler/node_modules/esbuild/bin/esbuild`. Trivy reports
+# one finding for the two identical files, so removing only the first moves
+# the finding rather than clearing it.
+#
+# `@medusajs/admin-bundler` exports four entry points. Three of them —
+# `build`, `develop` and `plugin` — `await import("vite")`, and all three are
+# build-time commands that run in the `build` stage above, never here. The
+# fourth, `serve`, is the only one `medusa start` reaches: the framework's
+# admin loader calls it for every non-development `NODE_ENV`, and it is
+# `compression`, `express`, `fs` and `path` serving the pre-built bundle out
+# of `.medusa/server/public`. Because the vite imports are dynamic and inside
+# those three functions, loading `@medusajs/admin-bundler` does not load vite,
+# and nothing loads esbuild.
+#
+# Deleting it rather than overriding the version is deliberate. vite 5.4.21
+# accepts `esbuild@^0.21.3`, and the newest release in that range, 0.21.5, is
+# the one already here — built against Go 1.20.12, which is what the scanner
+# reports. Only much later esbuild minors carry a patched Go, and forcing one
+# past vite's range would change the compiler that `medusa build` runs with in
+# the stage above, to fix a binary that never executes in the stage below.
+#
+# The two halves below are a removal and an assertion, and they are separate on
+# purpose, because a removal by name can only ever delete what it was told to
+# look for.
+#
+# The `find … -exec rm -rf` is the removal. It matches on names, and it is
+# allowed to match nothing: a future dependency tree that has dropped esbuild
+# is a clean tree, not a build failure, so this must not insist the package was
+# there.
+#
+# The `test -z` is the assertion, and it is what the removal is actually held
+# to. It looks for what the *scanner* looks for rather than for a name:
+# `Go buildinf:` is the ASCII part of the build-information magic that Go
+# stamps into every binary it links, and it is what Trivy's `gobinary` analyzer
+# reads to decide a file is one. Keying on the same marker is what makes this
+# as strong as the gate rather than a second guess at it — whatever this misses
+# the scanner misses too — and it fails the build on any Go binary left in the
+# tree that ships, under whatever package or file name it arrived.
+#
+# `-a` is load-bearing rather than tidiness. Without it, whether a binary file
+# can match at all is left to the grep implementation's own heuristics: GNU grep
+# reports a match here, but an implementation that treats binary files as
+# non-matching reports nothing, and this check would then pass while the binary
+# ships. That is failing **open**, the one direction a guard must not fail. `-a`
+# says to treat every file as text and takes the decision away from the
+# implementation.
+#
+# Cost is bounded by the filter rather than by the tree: of roughly 92,000 files
+# here, `-perm -u+x -o -size +1M` selects under 200 and the scan takes about
+# 0.4 s. Measured in this stage and after the removal above, which is the tree
+# this `find` actually walks.
+#
+# So a dependency tree that *moves* the binary fails here, loudly, at build
+# time; a dependency tree that *drops* it passes. `scripts/images.test.ts`
+# holds this file to carrying both halves.
+RUN find . -depth \( -name esbuild -o -name '@esbuild' \) -exec rm -rf {} + \
+  && test -z "$(find . -type f \( -perm -u+x -o -size +1M \) \
+       -exec grep -la 'Go buildinf:' {} + 2>/dev/null)"
+
 # node:24.18.1-trixie-slim
 FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
 
@@ -128,6 +201,70 @@ ENV MEDUSA_DISABLE_TELEMETRY=true
 # path. Without this line `medusa db:migrate` fails with `Cannot find module`,
 # which means the predeploy Job never migrates and no pod ever serves.
 ENV NODE_PATH=/app/node_modules
+
+# npm is upgraded, in the image that ships, because it is this image's
+# entrypoint and it carries its own vendored dependency tree.
+#
+# `hannosirkel/deploys` runs all four of this image's roles with
+# `args: [npm, run, <script>]`, so npm cannot be removed here the way it is
+# from the storefront image. That leaves its vendored copy of `tar` in the
+# scan: the base image's npm 11.16.0 vendors `tar` 7.5.15 at
+# `/usr/local/lib/node_modules/npm/node_modules/tar`, which the Trivy gate in
+# `release.yml` fails on. It reaches the image through the base image and not
+# through `package-lock.json` — `npm ls tar` in this repository is empty — so
+# no `overrides` entry in any `package.json` here can touch it.
+#
+# 11.19.0 is the newest npm 11. 11.18.0 is where the vendored `tar` was first
+# fixed to 7.5.19 and would clear the finding too; the newest of the major is
+# taken because it also carries everything fixed between the two, and the major
+# is deliberately unchanged from the 11.16.0 the base image ships, so `npm run`
+# behaves exactly as it did.
+#
+# Upgrading npm in place is the smallest lever available: no Node release on
+# the 24 LTS line ships a fixed npm — 24.19.0, the newest, is still on 11.17.0,
+# whose vendored `tar` is 7.5.16 — so the alternative is moving both images off
+# LTS onto the Node 26 current line to change a package manager's vendored
+# library.
+#
+# Pinned exactly, never a range: a floating package manager would make two
+# builds of one source revision differ, which is the property the whole
+# rebuild-live-from-source argument rests on.
+# `scripts/images.test.ts` refuses any `npm install` in either Dockerfile that
+# is not exactly this shape, so the one instruction in this repository that is
+# not `npm ci` cannot quietly become a dependency install.
+#
+# The cache goes in the same layer that creates it. `npm_config_cache` above
+# points npm at `/tmp/.npm`, which is right at run time and wrong here: a
+# global install leaves 30 MB of cache and a Node compile cache in the layer
+# that ships, and the `deploys` manifests then mount an `emptyDir` over `/tmp`
+# and hide it. Dead weight that nothing can even read.
+RUN npm install --global npm@11.19.0 \
+  && rm -rf /tmp/.npm /tmp/node-compile-cache
+
+# corepack and yarn go, and only npm stays.
+#
+# npm stays because it is this image's entrypoint. corepack and yarn are not:
+# nothing in either workspace, in `compose.yaml`, in the `deploys` manifests or
+# in the Medusa runtime path invokes them, and the four things this image can be
+# asked to do are all `npm run <script>`.
+#
+# They go for the reason the storefront image gives at greater length. Each
+# carries a vendored dependency tree that `package-lock.json` does not describe
+# and no `overrides` entry here governs, which is exactly the shape of the
+# finding that stopped the last promotion — npm's own vendored `tar`. Neither
+# produces a finding today. The point is that the next one either does not
+# arrive or arrives in the one package manager this image cannot remove,
+# instead of in one it never had a use for. yarn 1.22.22 is unmaintained.
+#
+# `command -v npm` at the end is not decoration either: it is the difference
+# between this instruction and the storefront's, asserted rather than described,
+# so a removal that took npm with it fails here rather than in a crash-looping
+# Deployment whose `args: [npm, run, start]` no longer resolve.
+RUN test -x /usr/local/bin/corepack \
+  && rm -rf /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+  && ! command -v corepack && ! command -v yarn && ! command -v yarnpkg \
+  && command -v npm && command -v node
 
 # UID and GID 10001, matching `runAsUser`/`runAsGroup`/`fsGroup` on every
 # workload in `hannosirkel/deploys` that runs this image. The manifests already

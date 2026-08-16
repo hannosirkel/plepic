@@ -1087,6 +1087,96 @@ exclude dependency trees, build output, tests and the committed screenshot
 baselines, and name the design-master file formats so that a master committed
 by mistake cannot also reach a published image.
 
+### What the runtime images deliberately do not contain
+
+The Trivy gate in `release.yml` fails a promotion on any CRITICAL with a fix
+available, and two of the things it found were not in `package-lock.json` at
+all. Both fixes are in the Dockerfiles, and neither is a suppression: there is
+no `.trivyignore`, no allowlist, and `--ignore-unfixed` is the only thing
+narrowing the gate — it excludes the handful of `perl-base` CVEs Debian has
+published no fix for.
+
+**The storefront image has no package manager at all.** Its command is
+`node server.js` and its `deploys` Deployment declares neither `command:` nor
+`args:`, so npm, npx, corepack and yarn were in the image only because the
+`node` base image ships them. npm is the one the scanner named: it vendors its
+own dependency tree, which `package-lock.json` does not describe and no
+`overrides` entry here can reach — the base image's npm 11.16.0 vendors `tar`
+7.5.15, which the gate fails on. Deleting the package manager from a runtime
+that never runs one retires that whole class of finding instead of chasing each
+instance of it, which is why corepack and yarn go with npm rather than being
+left behind with vendored trees this repository equally does not govern. `node`
+stays, because `node` is what runs.
+
+**The backend image keeps npm and nothing else**, because npm *is* its
+entrypoint: all four `deploys` workloads run it as
+`args: [npm, run, <script>]`, so it is the one package manager that could not
+be removed and is upgraded instead. corepack and yarn are not the entrypoint
+and nothing invokes them, so they go from this image too. The two images keep
+different sets only where their commands differ; everything neither one runs is
+gone from both. npm is pinned to exactly 11.19.0, the newest npm
+11. 11.18.0 is where the vendored `tar` was first fixed to 7.5.19 and would
+clear the finding too; the newest of the major is taken because it also carries
+everything fixed between the two, and because the major stays what the base
+image ships, so `npm run` behaves as it did. The pin is exact rather than a
+range because a floating package manager would make two builds of one source
+revision differ. No Node release on the 24 LTS line ships a fixed npm — 24.19.0,
+the newest, is still on 11.17.0, whose vendored `tar` is 7.5.16 — so the
+alternative was moving both images onto the Node current line to change a
+package manager's vendored library.
+
+**The backend image has no esbuild.** It arrives as a *production* transitive
+dependency, so `--omit=dev` leaves it: `@medusajs/medusa` →
+`@medusajs/admin-bundler` → `vite ^5.4.21` → `esbuild ^0.21.3`, whose platform
+package ships a Go binary, and the Go standard library compiled into that
+binary is what the scanner reports. Nothing in the runtime path calls it.
+`@medusajs/admin-bundler` exports four entry points; `build`, `develop` and
+`plugin` `await import("vite")` and are all build-time commands that run in the
+build stage, while `serve` — the only one `medusa start` reaches, through the
+framework's admin loader — is `compression`, `express`, `fs` and `path` serving
+the pre-built bundle out of `public/admin`. Because those vite imports are
+dynamic and inside those three functions, loading `@medusajs/admin-bundler`
+loads neither vite nor esbuild.
+
+Deleting it beats overriding its version. vite 5.4.21 accepts `esbuild@^0.21.3`
+and the newest release in that range is the one already installed, so an
+override that fixed anything would have to be forced past vite's range, and
+that would change the compiler `medusa build` runs with in order to fix a binary
+that never executes. The removal takes the whole package because the same binary
+is present twice — esbuild's `install.js` copies the platform binary over its
+own `bin/esbuild` shim — and Trivy reports one finding for the two identical
+files, so removing one copy moves the finding rather than clearing it.
+
+**Each removal comes with an assertion, and the assertion is the part that is
+worth anything.** A removal by name can only delete what it was told to look
+for, so neither Dockerfile is trusted to have been right about the name. Each
+package-manager removal proves `! command -v <name>` and each image proves
+`command -v` for what it does run, so a removal that reached too far fails the
+build rather than a crash-looping Deployment. And the backend refuses to build
+if any file in the tree it ships still carries `Go buildinf:` — the
+build-information magic Go stamps into everything it links, and what Trivy's own
+`gobinary` analyzer reads to decide a file is a Go binary. Keying on the same
+marker as the scanner is deliberate: whatever the check misses, the gate misses
+too, so it is as strong as the thing it stands in for rather than a second guess
+at it. It greps with `-a`, because without it whether a binary file can match at
+all is left to the grep implementation's heuristics, and an implementation that
+declines to match binaries would let the check pass while the binary ships —
+failing open, the one direction a guard must not fail.
+
+So a dependency tree that *moves* a Go binary fails the build under whatever
+name it arrives; a dependency tree that *drops* esbuild passes, because a clean
+tree is not a failure.
+
+`scripts/images.test.ts` holds both files to carrying both halves, and holds
+every `npm` call in either of them to one of three things: `npm ci`, `npm run`,
+or an exact package-manager pin. That is an allowlist rather than a search for
+`npm install`, for the same reason the Go check does not search for a filename
+— npm accepts 57 aliases, eleven of which mean `install`, so `npm i left-pad`
+is a dependency install that no search for the string `npm install` would ever
+see. Without these assertions, deleting any of the removals would leave the
+whole suite green and the only thing left to notice would be the gate, which
+runs *after* `Release` has already published both images.
+
 ## Catalogue import
 
 `npm run catalogue:import`, in the `backend` workspace, seeds a Medusa

@@ -242,14 +242,44 @@ describe("both images are built from a pinned base and run as a non-root user", 
           (line) => !line.startsWith("--from="),
         );
         expect(copied.some((line) => line.startsWith("package.json package-lock.json"))).toBe(true);
-        for (const install of directives(image.dockerfile, "RUN").filter((line) =>
-          line.includes("npm ci"),
-        )) {
-          // `npm install` would resolve afresh and could publish a dependency
-          // tree no lockfile describes; the plan's whole argument for
-          // rebuilding live from source rather than re-tagging the tested
-          // digest rests on this being `npm ci`.
-          expect(install).not.toMatch(/npm install/);
+        // Every `npm` call in every `RUN`, allowlisted by what it does rather
+        // than blocklisted by what it is spelled.
+        //
+        // The rule: a dependency install is `npm ci`. `npm install` would
+        // resolve afresh and could publish a dependency tree no lockfile
+        // describes, and the plan's whole argument for rebuilding live from
+        // source rather than re-tagging the tested digest rests on that not
+        // happening.
+        //
+        // Enforcing it by searching for the string `npm install` cannot work,
+        // and this file argues elsewhere why: a check by name only catches
+        // what it was told to look for. npm accepts 57 aliases, of which
+        // eleven mean `install` — `add`, `i`, `in`, `ins`, `inst`, `insta`,
+        // `instal`, and the `isnt…` typo chain — so `npm i left-pad` is a
+        // dependency install that no search for `npm install` will ever see.
+        //
+        // So the subcommand is read and checked against what these two files
+        // are allowed to do, which is three things: install the locked tree,
+        // run a script, and pin the package manager itself to an exact
+        // version. The last is not a dependency install at all; the backend
+        // image needs it because npm is its entrypoint and the base image's
+        // npm vendors a `tar` the Trivy gate fails on. Exact rather than a
+        // range, because a floating package manager would make two builds of
+        // one source revision differ — the same property this protects.
+        //
+        // Anything else fails, including a spelling nobody has thought of yet.
+        // Widening this list is a deliberate edit, which is the point.
+        for (const run of directives(image.dockerfile, "RUN")) {
+          // `npm` as a command, not as the tail of a path: the removal
+          // instructions name `/usr/local/lib/node_modules/npm`, and that is
+          // not a call.
+          for (const [call, subcommand] of run.matchAll(/(?<![\w@./-])npm\s+([^\s&|;]+)[^&|;]*/g)) {
+            if (subcommand === "ci" || subcommand === "run") continue;
+            expect(
+              call.trim(),
+              `${image.dockerfile} runs \`npm ${subcommand}\`, which is neither a locked install nor a script nor an exact package-manager pin`,
+            ).toMatch(/^npm install --global npm@\d+\.\d+\.\d+$/);
+          }
         }
         expect(directives(image.dockerfile, "RUN").some((line) => line.includes("npm ci"))).toBe(
           true,
@@ -286,6 +316,130 @@ describe("both images are built from a pinned base and run as a non-root user", 
     // that directory exist. Neither is any use without the other.
     expect(read("storefront/next.config.ts")).toMatch(/output:\s*"standalone"/);
     expect(read("storefront/Dockerfile")).toContain(".next/standalone");
+  });
+});
+
+/**
+ * What the shipping images are held to **not** contain.
+ *
+ * These three instructions each clear a CRITICAL that the Trivy gate in
+ * `release.yml` fails a promotion on, and none of the three is reachable from
+ * `package.json`: two are npm's own vendored `tar`, arriving through the base
+ * image, and one is the Go standard library compiled into esbuild's platform
+ * binary, arriving as a *production* transitive dependency that `--omit=dev`
+ * does not remove.
+ *
+ * They are asserted here because deleting any one of them leaves every other
+ * check in this repository green. The only other thing that would notice is
+ * the gate itself — and the gate runs **after** `Release` has already built
+ * and published both images, so a regression caught there is a promotion that
+ * has already put the vulnerable image on the registry. That is exactly how
+ * these findings arrived. A silent regression to a passing suite is worth less
+ * than a red one here.
+ */
+describe("the shipping images carry no tooling their runtime does not use", () => {
+  /**
+   * What each image is allowed to still have of the four package managers the
+   * `node` base image ships, and what it must have proved it removed.
+   *
+   * The lists differ by exactly one entry, and that entry is the whole design.
+   * The storefront runs `node server.js` and so keeps none of them; the backend
+   * is run as `args: [npm, run, <script>]` by all four of its `deploys`
+   * workloads, so npm there is the entrypoint and could not be removed — which
+   * is why it is pinned and upgraded instead. Everything neither image runs is
+   * gone from both, because a package manager nothing invokes is a vendored
+   * dependency tree that `package-lock.json` does not describe, no `overrides`
+   * entry governs, and the gate will eventually fail a promotion on. That is
+   * precisely what npm's own vendored `tar` did.
+   */
+  const PACKAGE_MANAGERS: Readonly<
+    Record<string, { readonly removed: readonly string[]; readonly kept: readonly string[] }>
+  > = {
+    "storefront/Dockerfile": {
+      removed: ["npm", "npx", "corepack", "yarn", "yarnpkg"],
+      kept: ["node"],
+    },
+    "backend/Dockerfile": {
+      removed: ["corepack", "yarn", "yarnpkg"],
+      kept: ["npm", "node"],
+    },
+  };
+
+  for (const [dockerfile, { removed, kept }] of Object.entries(PACKAGE_MANAGERS)) {
+    it(`removes ${removed.join(", ")} from the ${dockerfile.split("/")[0]} image`, () => {
+      const runs = finalDirectives(dockerfile, "RUN");
+      for (const manager of removed) {
+        // Each removal proves itself at build time. Asserting on the proof
+        // rather than on the `rm` is deliberate: an `rm -rf` of a path that
+        // moved in a new base image succeeds and removes nothing, while
+        // `! command -v npm` is a statement about the filesystem that results.
+        expect(
+          runs.some((line) => line.includes(`! command -v ${manager}`)),
+          `${dockerfile} does not prove ${manager} is gone from the image it ships`,
+        ).toBe(true);
+      }
+      for (const survivor of kept) {
+        // And what the image actually runs is proved to have survived, so a
+        // removal that reached too far fails here rather than in a
+        // crash-looping Deployment.
+        expect(
+          runs.some((line) => line.includes(`&& command -v ${survivor}`)),
+          `${dockerfile} does not prove ${survivor} survived the removal`,
+        ).toBe(true);
+        expect(runs.some((line) => line.includes(`! command -v ${survivor}`))).toBe(false);
+      }
+    });
+  }
+
+  it("keeps npm in the backend, which runs it, and pins it to an exact version", () => {
+    // The reason the two lists above differ, stated as the thing that makes it
+    // true: this image's command *is* npm.
+    expect(finalDirectives("backend/Dockerfile", "CMD")).toEqual(['["npm", "run", "start"]']);
+    expect(finalDirectives("storefront/Dockerfile", "CMD")).toEqual(['["node", "server.js"]']);
+    const runs = finalDirectives("backend/Dockerfile", "RUN");
+    expect(
+      runs.some((line) => /npm install --global npm@\d+\.\d+\.\d+(\s|$)/.test(line)),
+      "backend/Dockerfile does not pin npm to an exact version",
+    ).toBe(true);
+    // The cache that pin creates does not ship. `npm_config_cache` points npm
+    // at `/tmp/.npm`, which is right at run time and wrong at build time: the
+    // `deploys` manifests mount an `emptyDir` over `/tmp`, so a cache left in
+    // the layer is tens of megabytes nothing can even read.
+    expect(
+      runs.some((line) => /npm install --global/.test(line) && /rm -rf [^&|;]*\/tmp\//.test(line)),
+      "backend/Dockerfile leaves npm's cache in the layer that ships",
+    ).toBe(true);
+  });
+
+  it("deletes esbuild from the backend's runtime dependency tree", () => {
+    const runs = directives("backend/Dockerfile", "RUN");
+    expect(
+      runs.some((line) => /find .*-name .?@esbuild.? .*rm -rf/.test(line)),
+      "backend/Dockerfile does not remove esbuild from the tree it ships",
+    ).toBe(true);
+    // The half that matters more. A removal by name can only delete what it
+    // was told to look for, so the build also refuses any Go binary left in
+    // the tree — `Go buildinf:` is the ASCII part of the build-information
+    // magic Go stamps into everything it links, and it is what Trivy's
+    // `gobinary` analyzer keys on. That makes the check a statement about what
+    // the image *contains* rather than about what a package is *called*, so a
+    // dependency tree that moves the binary fails the build instead of moving
+    // the finding.
+    expect(
+      runs.some((line) => line.includes("Go buildinf:")),
+      "backend/Dockerfile does not refuse a Go binary in the tree it ships",
+    ).toBe(true);
+    // And it greps with `-a`. Without it, whether a binary file can match at
+    // all is decided by the grep implementation's own heuristics: GNU grep
+    // reports the match, an implementation that treats binary files as
+    // non-matching reports nothing, and the check then passes while the binary
+    // ships. A guard may fail closed on a tree it should have accepted; it may
+    // not fail open on one it should have refused, and one letter is the whole
+    // difference.
+    expect(
+      runs.some((line) => /grep\s+-[a-zA-Z]*a[a-zA-Z]*\s+'Go buildinf:'/.test(line)),
+      "backend/Dockerfile greps for a Go binary without -a, so a grep that skips binary files fails it open",
+    ).toBe(true);
   });
 });
 
