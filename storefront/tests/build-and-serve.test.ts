@@ -2504,8 +2504,10 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
  * confirm that this test and this test's own idea of Stripe's scheme agree
  * with each other.
  *
- * **Be exact about which copy that is.** `import("stripe")` resolves from the
- * workspace root hoist to **19.1.0**, the copy `@medusajs/payment` depends on.
+ * **Be exact about which copy that is.** `import("stripe")` resolves to
+ * **19.1.0** — declared as an exact-pinned `devDependency` of this workspace
+ * and satisfied by the copy already hoisted to the workspace root for
+ * `@medusajs/payment`, so the declaration adds a dependency *edge* and no code.
  * The module instance that verifies live webhooks is a *different* one:
  * `@medusajs/payment-stripe` pins **15.12.0** and npm installs it nested at
  * `node_modules/@medusajs/payment-stripe/node_modules/stripe`. This test does
@@ -2522,10 +2524,6 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
  * after the proxy still satisfy an independent implementation of that format,
  * which is exactly the statement a byte-comparison against what the test sent
  * cannot make.
- *
- * `stripe` is reached here as an undeclared transitive dependency; whether it
- * should become a declared devDependency is an open question for the
- * operator, not something this test settles by importing it.
  *
  * The payload is deliberately multibyte. A proxy that decoded the body as
  * latin-1 and re-encoded it as UTF-8, or that "helpfully" reparsed and
