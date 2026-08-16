@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import { MedusaCatalogueSeedTarget } from "../src/catalogue-import/medusa-target.js";
 
 /**
- * The three lookups that have no natural key.
+ * The two lookups that have no natural key.
  *
  * The seed records are addressed by natural keys — product by handle, price by
  * SKU and currency, coupon by code — and those were checked and are sound. The
- * default shipping profile, the default stock location and the fulfillment set
+ * default shipping profile and the default stock location
  * have none: the import asks for "a" row, and an unfiltered, unordered
  * `query.graph` returns whichever row the database hands back first, which
  * PostgreSQL promises nothing about. With one row each that is invisible; with
@@ -37,7 +37,6 @@ function targetOver(rows: Rows): MedusaCatalogueSeedTarget {
 interface Lookups {
   defaultShippingProfileId(): Promise<string>;
   defaultStockLocationId(): Promise<string>;
-  serviceZoneId(name: string, countryCodes: readonly string[]): Promise<string>;
 }
 
 function lookups(target: MedusaCatalogueSeedTarget): Lookups {
@@ -76,19 +75,5 @@ describe("the seed target's keyless lookups", () => {
     await expect(lookups(targetOver({})).defaultStockLocationId()).rejects.toThrow(
       /No stock location exists/,
     );
-    await expect(lookups(targetOver({ service_zone: [] })).serviceZoneId("EU", ["EE"])).rejects.toThrow(
-      /No fulfillment set exists/,
-    );
-  });
-
-  it("returns an existing service zone by its name rather than creating a second", async () => {
-    const target = lookups(
-      targetOver({
-        service_zone: [{ id: "serzo_01" }],
-        fulfillment_set: [{ id: "fuset_02" }, { id: "fuset_01" }],
-      }),
-    );
-
-    expect(await target.serviceZoneId("European Union", ["EE"])).toBe("serzo_01");
   });
 });

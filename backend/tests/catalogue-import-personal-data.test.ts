@@ -4,7 +4,11 @@ import { readArchiveMembers } from "../src/catalogue-import/archive.js";
 import { REFUSED_SECTIONS, assertNoPersonalData } from "../src/catalogue-import/personal-data.js";
 import { CatalogueImportRefusal } from "../src/catalogue-import/refusal.js";
 import { readCatalogueImportPlan } from "../src/catalogue-import/plan.js";
-import { manifest, validArchive } from "./helpers/catalogue-archive.js";
+import {
+  manifest,
+  manifestWithSupersededShippingZones,
+  validArchive,
+} from "./helpers/catalogue-archive.js";
 
 function refusal(run: () => unknown): CatalogueImportRefusal {
   try {
@@ -93,10 +97,10 @@ describe("personal data refusal", () => {
         },
       },
       {
-        name: "shippingZones[0].users",
+        name: "taxRegions[0].users",
         document: {
           ...manifest,
-          shippingZones: [{ ...manifest.shippingZones[0], users: [] }, manifest.shippingZones[1]],
+          taxRegions: [{ ...manifest.taxRegions[0], users: [] }],
         },
       },
       {
@@ -146,6 +150,27 @@ describe("personal data refusal", () => {
 
     expect(error.reason).toBe("unrecognised-manifest-section");
     expect(error.message).toContain("analyticsExport");
+  });
+
+  /**
+   * Shipping zones and methods are the commercial model Task 1 froze, declared
+   * in `src/commerce/shipping-model.ts` and applied by
+   * `npm run configure:commerce`. An export that still carries them is refused
+   * rather than silently skipped: an operator who exported the section believes
+   * it is being applied, and one price may have only one writer.
+   */
+  it("refuses a manifest section this import no longer reads, and says who owns it now", () => {
+    const error = refusal(() => {
+      readCatalogueImportPlan(
+        readArchiveMembers(validArchive([], manifestWithSupersededShippingZones)),
+        new Date("2026-08-14T00:00:00.000Z"),
+      );
+    });
+
+    expect(error.reason).toBe("superseded-manifest-section");
+    expect(error.message).toContain("shippingZones");
+    expect(error.message).toContain("src/commerce/shipping-model.ts");
+    expect(error.message).toContain("configure:commerce");
   });
 
   it("admits the archive that carries only commerce data and media", () => {

@@ -81,11 +81,11 @@ describe("runCatalogueImport", () => {
     const summary = await runCatalogueImport({ ...place, target, now });
 
     expect(summary).toMatchObject({ environment: "test", mediaWritten: 2, mediaUnchanged: 0 });
+    // No shipping record: the zones, the methods and their two flat rates are
+    // declared in src/commerce/shipping-model.ts and applied by
+    // `npm run configure:commerce`, never by the import.
     expect([...target.rows.keys()].sort()).toEqual([
       "product:lunar-base",
-      "shipping-option:European Union/Free delivery",
-      "shipping-option:European Union/Standard delivery",
-      "shipping-option:Rest of world/Standard delivery",
       "tax-region:EE",
       "variant-price:LUNAR-BASE-01/EUR",
       "variant-stock:LUNAR-BASE-01",

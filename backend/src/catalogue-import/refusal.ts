@@ -19,6 +19,14 @@ export type CatalogueImportRefusalReason =
   | "environment-identity-mismatch"
   | "personal-data-present"
   | "unrecognised-manifest-section"
+  /**
+   * The manifest declares a section this import once read and no longer does,
+   * because the repository now declares it. Distinct from
+   * `unrecognised-manifest-section` because the two need different answers: an
+   * unrecognised section is one nobody has read, while this one names a section
+   * whose contents have a new owner, and the message says which.
+   */
+  | "superseded-manifest-section"
   | "unsafe-archive-member"
   | "unsupported-archive-member"
   | "malformed-archive";

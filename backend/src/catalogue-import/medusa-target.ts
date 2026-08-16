@@ -4,15 +4,12 @@ import {
   createInventoryLevelsWorkflow,
   createProductsWorkflow,
   createPromotionsWorkflow,
-  createServiceZonesWorkflow,
-  createShippingOptionsWorkflow,
   createTaxRatesWorkflow,
   createTaxRegionsWorkflow,
   updateInventoryLevelsWorkflow,
   updateProductsWorkflow,
   updateProductVariantsWorkflow,
   updatePromotionsWorkflow,
-  updateShippingOptionsWorkflow,
   updateTaxRatesWorkflow,
 } from "@medusajs/medusa/core-flows";
 
@@ -43,13 +40,19 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
   /**
    * The lowest-identified row of an entity that has no natural key here.
    *
-   * Three lookups — the default shipping profile, the default stock location
-   * and the fulfillment set — ask for "a" row rather than a named one, and an
-   * unordered query returns whichever row the database hands back first.
-   * PostgreSQL promises nothing about that order, so with a second row present
-   * a rerun could bind the product to a different shipping profile than the run
-   * before it, and the import would stop converging. Sorting by identifier is
-   * arbitrary but stable, which is the whole requirement.
+   * Two lookups — the default shipping profile and the default stock
+   * location — ask for "a" row rather than a named one, and an unordered query
+   * returns whichever row the database hands back first. PostgreSQL promises
+   * nothing about that order, so with a second row present a rerun could bind
+   * the product to a different shipping profile than the run before it, and the
+   * import would stop converging. Sorting by identifier is arbitrary but
+   * stable, which is the whole requirement.
+   *
+   * `src/commerce/medusa-target.ts` repeats the same rule, deliberately: it
+   * binds the **shipping options** to a profile and this binds the **product**,
+   * and an option whose profile is not the product's is a cart with no delivery
+   * method. The tie-break is arbitrary, so what matters is that both sides make
+   * the same arbitrary choice.
    */
   private async lowestIdentified(entity: string): Promise<{ id: string } | undefined> {
     const { data } = await this.query.graph({ entity, fields: ["id"], filters: {} });
@@ -73,7 +76,7 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
   private async defaultShippingProfileId(): Promise<string> {
     const profile = await this.lowestIdentified("shipping_profile");
     if (profile === undefined) {
-      throw new Error("No shipping profile exists; create one before importing the catalogue");
+      throw new Error("No shipping profile exists; run npm run configure:commerce before importing the catalogue");
     }
     return profile.id;
   }
@@ -81,7 +84,7 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
   private async defaultStockLocationId(): Promise<string> {
     const location = await this.lowestIdentified("stock_location");
     if (location === undefined) {
-      throw new Error("No stock location exists; create one before importing the catalogue");
+      throw new Error("No stock location exists; run npm run configure:commerce before importing the catalogue");
     }
     return location.id;
   }
@@ -98,8 +101,6 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
         return this.upsertPromotion(record);
       case "tax-region":
         return this.upsertTaxRegion(record);
-      case "shipping-option":
-        return this.upsertShippingOption(record);
     }
   }
 
@@ -328,64 +329,4 @@ export class MedusaCatalogueSeedTarget implements CatalogueSeedTarget {
     });
   }
 
-  private async upsertShippingOption(
-    record: Extract<SeedRecord, { kind: "shipping-option" }>,
-  ): Promise<void> {
-    const zone = await this.serviceZoneId(record.zoneName, record.countryCodes);
-    const existing = await this.one<{ id: string }>("shipping_option", ["id"], {
-      name: record.optionName,
-      service_zone_id: zone,
-    });
-
-    const prices = [{ currency_code: record.currency.toLowerCase(), amount: record.amountMinor / 100 }];
-
-    if (existing === undefined) {
-      await createShippingOptionsWorkflow(this.container).run({
-        input: [
-          {
-            name: record.optionName,
-            service_zone_id: zone,
-            shipping_profile_id: await this.defaultShippingProfileId(),
-            provider_id: "manual_manual",
-            // Flat and free only. No carrier interface, quote cache, or
-            // fallback contract — ADR 020 records why.
-            price_type: "flat",
-            type: { label: record.optionName, description: record.optionName, code: "standard" },
-            prices,
-          },
-        ],
-      });
-      return;
-    }
-
-    await updateShippingOptionsWorkflow(this.container).run({
-      input: [{ id: existing.id, name: record.optionName, prices }],
-    });
-  }
-
-  private async serviceZoneId(name: string, countryCodes: readonly string[]): Promise<string> {
-    const existing = await this.one<{ id: string }>("service_zone", ["id"], { name });
-    if (existing !== undefined) return existing.id;
-
-    const fulfillmentSet = await this.lowestIdentified("fulfillment_set");
-    if (fulfillmentSet === undefined) {
-      throw new Error("No fulfillment set exists; create one before importing shipping zones");
-    }
-
-    const { result } = await createServiceZonesWorkflow(this.container).run({
-      input: {
-        data: [
-          {
-            name,
-            fulfillment_set_id: fulfillmentSet.id,
-            geo_zones: countryCodes.map((code) => ({
-              type: "country" as const,
-              country_code: code.toLowerCase(),
-            })),
-          },
-        ],
-      },
-    });
-    return result[0]!.id;
-  }
 }
