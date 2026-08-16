@@ -94,11 +94,20 @@ function decodeSegment(segment: string): string {
  * literal string `".."` alone lets `/store-api/store/%2e%2e/admin/users`
  * through this function and the URL parser then resolves the forwarded target
  * to `/admin/users` on the backend: the entire Medusa Admin API, reachable
- * from the public site origin. Nothing here has ever shipped that reachable —
- * Next.js normalizes percent-encoded dot segments before a route handler is
- * called, which is why `/store-api/store/%2e%2e/store/products` arrives as
- * `/store/products` — but that is a property of the framework's router, not of
- * this allowlist, and it is not this module's to assume.
+ * from the public site origin.
+ *
+ * Nothing here has ever shipped that reachable, and the reason is **two**
+ * defences rather than one. Next.js resolves percent-encoded dot segments
+ * before a route handler is called; and the route handler itself
+ * (`src/app/store-api/[...path]/route.ts`) reads
+ * `new URL(request.url).pathname`, which applies the identical WHATWG rule
+ * again. Either alone is sufficient, so the pre-existing literal-`".."`
+ * comparison was not one framework upgrade away from publishing `/admin` —
+ * the earlier revision of this comment named only the framework and was wrong
+ * about that. Both are still properties of a *caller*, not of this allowlist,
+ * and this function is entitled to assume neither: it is called with whatever
+ * pathname it is handed, and the refusals below are what make it safe on its
+ * own terms.
  */
 function isRefusedSegment(segment: string): boolean {
   if (segment.length === 0) return true;

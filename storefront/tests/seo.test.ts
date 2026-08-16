@@ -224,26 +224,44 @@ describe("exactly one canonical per page per locale", () => {
  * exists to find — the surface is not wrong, it is absent.
  */
 describe("the Open Graph share card", () => {
-  it("gives every route in the table an image, sized as Open Graph expects", () => {
-    for (const page of defaultPages) {
-      const metadata = buildPageMetadata(page.route, {
-        baseUrl: BASE_URL,
-        isTestHost: false,
-        locale: DEFAULT_LOCALE,
-      });
+  /**
+   * Every edition, not only the default one. The card is chosen by route and
+   * its URL is built from the configured base URL, so nothing in the mapping
+   * is locale-dependent — but "locale-independent by construction" is an
+   * argument rather than an assertion, and the previous revision of this test
+   * walked `en` alone, which left every `/et/…` legal page unchecked.
+   */
+  it("gives every route each edition publishes an image, sized as Open Graph expects", () => {
+    let checked = 0;
 
-      const images = metadata.openGraph?.images;
-      expect(Array.isArray(images) ? images : [], page.route).toHaveLength(1);
-      expect(Array.isArray(images) ? images[0] : undefined, page.route).toEqual({
-        url: `${BASE_URL}${OG_IMAGE_PATHS[page.route]}`,
-        width: OG_IMAGE_WIDTH,
-        height: OG_IMAGE_HEIGHT,
-        alt: page.title,
-      });
+    for (const locale of LOCALES) {
+      for (const page of pagesIn(locale)) {
+        const metadata = buildPageMetadata(page.route, {
+          baseUrl: BASE_URL,
+          isTestHost: false,
+          locale,
+        });
+
+        const images = metadata.openGraph?.images;
+        const where = `${locale} ${page.route}`;
+        expect(Array.isArray(images) ? images : [], where).toHaveLength(1);
+        expect(Array.isArray(images) ? images[0] : undefined, where).toEqual({
+          url: `${BASE_URL}${OG_IMAGE_PATHS[page.route]}`,
+          width: OG_IMAGE_WIDTH,
+          height: OG_IMAGE_HEIGHT,
+          alt: page.title,
+        });
+        checked += 1;
+      }
     }
+
+    // Not vacuous, and specifically: more than the default edition alone, so
+    // a registry change that stopped publishing the second edition is visible
+    // here rather than silently shrinking the loop to what it used to be.
+    expect(checked, "walked no pages at all").toBeGreaterThan(defaultPages.length);
   });
 
-  it("builds the image URL absolutely, from this request's base URL", () => {
+  it("builds the image URL absolutely, from the deployment's configured base URL", () => {
     const other = buildPageMetadata("home", {
       baseUrl: "https://other.example.org",
       isTestHost: false,

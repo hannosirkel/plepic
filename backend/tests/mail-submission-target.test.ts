@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import nodemailer from "nodemailer";
 import { describe, expect, it, vi } from "vitest";
 
 import { SmtpSender, type SmtpOptions } from "../src/notifications/smtp.js";
@@ -10,19 +11,33 @@ import { notificationModule } from "../src/config/notification.js";
 /**
  * "Mail is only submitted to the configured host, and never to port 25."
  *
- * Both halves were weaker than they read. The port half rested on one string
- * comparison in `readBackendRuntimeConfig`, exercised with the single value
- * `"25"`. The host half rested on nothing at all: the only assertion about
- * transport settings read `sender.transportOptions`, a public field, while the
- * factory that actually receives them (`smtp.ts`'s `transportFactory(...)`
- * call) was handed a `() => transport` that discards its argument. A sender
- * that built its transport from a different host, or with `direct: true` — the
- * nodemailer setting that turns submission into MX-lookup delivery straight to
- * the Internet on port 25, which is exactly the thing the deploys manifests
- * deny at the network level — would have passed.
+ * Both halves were narrower than the row reads — but not as narrow as an
+ * earlier revision of this comment claimed, and the correction matters more
+ * than the tests it justifies.
  *
- * So the assertions here capture what the factory is called with, and check
- * the shape of that object rather than a copy of it.
+ * The port half genuinely rested on one string comparison in
+ * `readBackendRuntimeConfig`, exercised with the single value `"25"`.
+ *
+ * The host half was **already covered**. The earlier claim here — that it
+ * "rested on nothing at all", because the only assertion read
+ * `sender.transportOptions` while the factory was handed a `() => transport`
+ * that discards its argument — is false. `smtp.ts` assigns that field and then
+ * passes **the same object reference** to `transportFactory(...)`, so an
+ * assertion on the field is an assertion on the factory's argument; and
+ * `order-confirmation.test.ts` › "uses strict STARTTLS transport settings and
+ * converts email DTO content into SMTP mail" asserts its full shape, `host`
+ * included. A sender built with `direct: true` — the nodemailer setting that
+ * turns submission into MX-lookup delivery straight to the Internet on port
+ * 25, which is exactly what the deploys manifests deny at the network level —
+ * would have failed that assertion, not passed it.
+ *
+ * What is left for this file is real but marginal, and is worth having on
+ * those terms: field and argument are one object today by a single line of
+ * `smtp.ts`, so the first test below asserts that identity explicitly and the
+ * rest read the captured argument, which keeps them pointed at what the
+ * transport is actually built from if that line ever changes. Alongside that
+ * it names the nodemailer settings that would route mail elsewhere, and
+ * broadens the port coverage from one spelling to eleven.
  */
 
 const smtpOptions: SmtpOptions = {
@@ -81,14 +96,56 @@ describe("the transport is built for the configured submission host", () => {
   });
 
   /**
-   * The default factory is never invoked by a test — invoking it would open a
-   * connection — so the wiring is asserted at the source instead: the default
-   * parameter is nodemailer's own `createTransport`, and nothing in this module
-   * reads an environment variable to decide where mail goes.
+   * The field and the factory's argument are one object, which is why
+   * `order-confirmation.test.ts` asserting on `sender.transportOptions` was
+   * always an assertion about the transport rather than about a copy kept
+   * beside it. Stated here so that a refactor separating the two fails a test
+   * instead of silently invalidating that one.
    */
-  it("defaults to nodemailer's createTransport and reads no environment of its own", () => {
+  it("hands the factory the very object it exposes, not a snapshot of it", () => {
+    const factory = vi.fn().mockReturnValue({ sendMail: vi.fn() });
+    const sender = new SmtpSender(smtpOptions, factory as never);
+
+    expect(factory.mock.calls[0]?.[0]).toBe(sender.transportOptions);
+  });
+
+  /**
+   * The default factory, driven rather than grepped. A previous revision
+   * asserted the source text `transportFactory: TransportFactory =
+   * nodemailer.createTransport`, which any reformatting breaks and which
+   * states nothing about behaviour — the pattern this repository's test
+   * guidance warns about.
+   *
+   * Driving it is possible because the default is a *default parameter*, read
+   * off the module object on each construction, so a spy installed there
+   * observes the real wiring. `createTransport` is also inert: nodemailer
+   * builds a `Transporter` and opens no socket until `sendMail`, so nothing
+   * here can reach the network. It is stubbed anyway, since a real transporter
+   * would keep a pool alive past the test.
+   */
+  it("defaults to nodemailer's own createTransport, called with the configured options", () => {
+    const spy = vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+      sendMail: vi.fn(),
+    } as never);
+
+    try {
+      const sender = new SmtpSender(smtpOptions);
+
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0]?.[0]).toBe(sender.transportOptions);
+      expect(spy.mock.calls[0]?.[0]).toMatchObject({ host: "smtp.example.test", port: 587 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  /**
+   * A negative source scan rather than a restatement of one: no spelling of
+   * `process.env` in this module, so nothing can redirect mail at runtime
+   * behind the validated configuration's back.
+   */
+  it("reads no environment of its own", () => {
     const source = readFileSync(join(__dirname, "..", "src", "notifications", "smtp.ts"), "utf8");
-    expect(source).toContain("transportFactory: TransportFactory = nodemailer.createTransport");
     expect(source).not.toContain("process.env");
   });
 });

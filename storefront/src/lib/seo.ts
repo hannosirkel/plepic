@@ -21,9 +21,21 @@
  *
  * {@link OG_IMAGE_PATHS} maps each route to whichever of the two it belongs
  * to: the three Lunar Base routes get the product card, everything else gets
- * the publisher card. The URL is built from the request's `baseUrl`, so it is
- * absolute — required, since a crawler resolves `og:image` against nothing —
- * without any host being baked into the artifact.
+ * the publisher card. The URL is absolute — required, since a crawler resolves
+ * `og:image` against nothing — without any host being baked into the artifact.
+ *
+ * **`baseUrl` is not request-supplied, and the distinction is the whole
+ * security property.** Both callers — `lib/page-shell.tsx` and
+ * `app/[locale]/[[...segments]]/page.tsx` — pass
+ * `loadSiteHostConfig().baseUrl`, which `config/hosts.ts` validates out of the
+ * `SITE_BASE_URL` environment variable at request time. The inbound `Host`
+ * header is never reflected into it. That matters because reflecting a header
+ * into `og:image` is how a site ends up advertising an attacker-chosen origin
+ * as its own share card, and describing this value as "the request's base URL"
+ * — as an earlier revision of this comment did — invites exactly the change
+ * that would introduce it. The only thing this module takes from the request
+ * is `isTestHost`, and that is a membership test against the validated
+ * `SITE_TEST_HOSTNAMES` set rather than anything read out of the string.
  *
  * The card is `summary_large_image` accordingly. Declaring `summary` while
  * supplying a 1.91:1 asset would crop it to a square thumbnail.
@@ -35,13 +47,15 @@
  * be arguing with its own header. A test host is never indexable, whatever
  * the page registry says.
  *
- * ## `hreflang` with exactly one locale, and why it is emitted anyway
+ * ## `hreflang` on a route only one edition publishes, and why it is emitted
  *
- * There is one locale. The temptation is to emit no `rel="alternate"` links
- * at all, on the grounds that a set of one has nothing to point at, and the
- * annotations would be a no-op for a crawler. They are emitted regardless,
- * and the reasoning is worth stating because the opposite decision is
- * indistinguishable from having forgotten:
+ * There are two locales, `en` and `et`, but they do not publish the same
+ * routes: `content/index.ts` gives the Estonian edition the legal set and
+ * nothing else. So most routes still form an alternate set of **one**, and the
+ * temptation on those is to emit no `rel="alternate"` links at all, on the
+ * grounds that a set of one has nothing to point at. They are emitted
+ * regardless, and the reasoning is worth stating because the opposite decision
+ * is indistinguishable from having forgotten:
  *
  * - **A one-page set is a valid set, and it is self-referential.** The
  *   `hreflang` protocol requires every page in a set to name every page in
@@ -51,14 +65,14 @@
  *   thing, at n=1.
  * - **`x-default` is not a no-op even at n=1.** It says which URL serves a
  *   reader whose language matches no edition — a statement about this site
- *   that is true and useful today, and that a second locale does not change.
+ *   that is true and useful today, and that a further edition does not change.
  * - **Absence is the failure mode this unit exists to avoid.** "No alternates
- *   because there is one locale" and "no alternates because nothing computes
- *   them" produce identical HTML. Emitting them means the mechanism is
- *   exercised on every page, on every build, by the tests that already run —
- *   so the unit that adds a second locale adds a key to a registry and reads
- *   the result, rather than discovering on the day that the emitter was never
- *   written.
+ *   because this route has one edition" and "no alternates because nothing
+ *   computes them" produce identical HTML. Emitting them means the mechanism
+ *   is exercised on every page, on every build, by the tests that already run
+ *   — so the unit that publishes an existing route in a further edition adds a
+ *   key to a registry and reads the result, rather than discovering on the day
+ *   that the emitter was never written.
  *
  * The annotations are computed from which locales actually **publish** the
  * route, never from `LOCALES` wholesale: an edition that does not carry a page

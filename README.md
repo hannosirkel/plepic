@@ -523,8 +523,17 @@ The Plepic Games storefront and Medusa backend monorepo.
   `pngquant --quality 70-95` and stripped of an alpha channel it never used
   (322,200 → 73,203 bytes, RMSE 0.4%).
 
+  Both cards are now attached to real page metadata: `OG_IMAGE_PATHS` in
+  `storefront/src/lib/seo.ts` maps every route to one of them — the three
+  Lunar Base routes to the product card, everything else to the publisher card
+  — and `buildPageMetadata` emits it as an absolute `openGraph.images` entry
+  built from the request's configured base URL. Until the unit that wrote
+  those tests, they were referenced by nothing at all and every page shipped
+  with no share card, which is why the served suite now reads `og:image` off
+  each rendered route rather than trusting the metadata builder alone.
+
   **Some of what is in `public/` is referenced by no source file, on
-  purpose.** Three groups, and the distinction matters because "nothing
+  purpose.** Two groups, and the distinction matters because "nothing
   imports it" is otherwise a good argument for deleting a file:
 
   - **Referenced by the platform, not by code** — `favicon.ico`,
@@ -533,8 +542,6 @@ The Plepic Games storefront and Medusa backend monorepo.
     `icons/web-app-icon-512.png`. Browsers and installers fetch these by
     convention and by web-app manifest; the manifest and the `<head>` links
     belong to `t2-pages`, which builds the real routes.
-  - **Referenced by page metadata a later unit writes** — `og/publisher-og.png`
-    and `og/lunar-base-og.png`, which become `openGraph.images` entries.
   - **Brand-pack deliverables, committed as deliverables.** The plan's
     fourth checkbox asks for publisher-level supporting assets in their own
     right, so `brand/plepic-icon-primary.svg`,

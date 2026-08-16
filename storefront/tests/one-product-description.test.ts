@@ -16,14 +16,23 @@ import { listSourceFiles } from "./helpers/source-files.js";
  * copy. A test must fail if the same product description exists in two
  * places."
  *
- * That sentence had a module doc comment asserting it (`content/lunar-base.ts`
- * opens with "the single canonical set") and no test. A doc comment is not a
- * guard: the duplication this forbids is not introduced by someone who
- * disagrees with the rule, it is introduced by someone who never read the
- * file — a second product page, a hard-coded pitch in a component, a Medusa
- * product description pasted into the backend seed. All three keep every
- * existing test green, and all three cost the canonical page its ranking to a
- * duplicate of itself.
+ * Part of that sentence was already held, and being exact about which part is
+ * the point of this paragraph. `content/content.test.ts` › "has exactly one
+ * canonical product page" pins that the page registry carries exactly one
+ * `lunarBase` entry, and › "gives every page a unique description" pins that
+ * no two registry entries share a description. Duplication *inside the page
+ * registry* was covered before this file existed; an earlier revision of this
+ * comment said the sentence had "no test", which was wrong.
+ *
+ * What rested on a module doc comment and nothing else — `content/lunar-base.ts`
+ * opens with "the single canonical set" — is the narrower and more dangerous
+ * half: the same product copy existing somewhere the registry cannot see. A
+ * doc comment is not a guard, and that duplication is not introduced by
+ * someone who disagrees with the rule, it is introduced by someone who never
+ * read the file — a hard-coded pitch in a component, a Medusa product
+ * description pasted into the backend seed, a second product page. All three
+ * keep every existing test green, registry uniqueness included, and all three
+ * cost the canonical page its ranking to a duplicate of itself.
  *
  * So this scans the authored source tree for the copy itself, rather than
  * trusting the import graph. A string that appears twice is the defect,
@@ -108,12 +117,34 @@ describe("exactly one set of product copy exists", () => {
   const copy = authoredProductCopy();
   const sources = authoredSources();
 
+  /**
+   * The pattern matches the **module specifier**, in any quoting, rather than
+   * the `from "…"` clause. A previous revision tested `/from "[^"]*evidence\.js"/`,
+   * which sees a static `import`/`export … from` and nothing else: an
+   * `await import("../evidence.js")` or a `require("./evidence.js")` would have
+   * slipped past it, and a lazily imported registry is exactly the shape in
+   * which one starts reaching rendered code. The guard's whole job is to
+   * notice that, so it looks for the specifier itself.
+   */
   it("skips the provenance registry only because nothing renders it", () => {
+    const referencesRegistry = /["'][^"']*evidence\.js["']/;
     const importers = shippingSources()
       .filter((path) => path !== NOT_SITE_COPY)
-      .filter((path) => /from "[^"]*evidence\.js"/.test(readFileSync(join(repoRoot, path), "utf8")));
+      .filter((path) => referencesRegistry.test(readFileSync(join(repoRoot, path), "utf8")));
 
     expect(importers, "content/evidence.ts now reaches rendered code; it can no longer be skipped").toEqual([]);
+
+    // The pattern really does match the forms it claims to, so an empty result
+    // above is a fact about the tree and not about a regex that matches
+    // nothing.
+    for (const form of [
+      'import { sources } from "../evidence.js";',
+      'export * from "./evidence.js";',
+      'const registry = await import("../../content/evidence.js");',
+      "const registry = require('./evidence.js');",
+    ]) {
+      expect(referencesRegistry.test(form), form).toBe(true);
+    }
   });
 
   it("finds product copy to check at all, so the scan below is not vacuous", () => {

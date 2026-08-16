@@ -72,6 +72,7 @@ import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import {
+  DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
   ROUTE_PATHS,
@@ -2369,9 +2370,26 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
         backendRequests.length = 0;
         const response = await requestWithHost(server.port, path, host);
 
-        expect([404, 308], `${host}${path} answered ${String(response.status)}`).toContain(
-          response.status,
-        );
+        // A 308 is a forwarding address, not an answer, and accepting one
+        // unexamined is how a probe stops probing. Today the only one is
+        // `/app/` — Next.js normalising the trailing slash onto `/app`, which
+        // is itself in this list and required to 404 — but a 308 that ever
+        // pointed at a *served* Admin path would pass an
+        // `expect([404, 308]).toContain(...)` without anyone noticing. So
+        // follow it, and hold wherever it lands to the same standard.
+        let final = response;
+        let landed = path;
+        for (let hop = 0; final.status === 308 && hop < 3; hop += 1) {
+          const location = final.headers.location;
+          expect(location, `${host}${landed} answered 308 with no Location`).toBeTypeOf("string");
+          landed = new URL(String(location), `http://${host}`).pathname;
+          final = await requestWithHost(server.port, landed, host);
+        }
+
+        expect(
+          final.status,
+          `${host}${path} answered ${String(response.status)}, and ${host}${landed} answered ${String(final.status)}`,
+        ).toBe(404);
         expect(
           backendRequests.map((request) => request.path),
           `${host}${path} reached the backend`,
@@ -2381,22 +2399,54 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
   }
 
   /**
-   * Why the allowlist's own dot-segment refusals are not observable above, and
-   * why they exist regardless.
+   * The other direction: the hardened allowlist must not **over**-refuse. A
+   * dot segment that resolves back inside the allowlisted namespace is a
+   * legitimate Store call written awkwardly, and it still has to reach the
+   * backend, stripped, as `/store/products`.
    *
-   * Next.js resolves percent-encoded dot segments *before* a route handler is
-   * called — this request proves it, by arriving at the backend as
-   * `/store/products` — so every escape in the list above is already a
-   * different, non-existent route by the time `resolveStoreApiPath` could see
-   * it. That makes the framework, not the allowlist, the thing standing
-   * between the public origin and `/admin/users` today. The plan's instruction
-   * was "write the tests first, and if they pass against a plain rewrite that
-   * is the answer": they do, and it is. This assertion is what turns red if a
-   * Next.js upgrade ever changes that behaviour, at which point the allowlist's
-   * own refusals — unit-tested in `tests/store-api-transport.test.ts` — become
-   * the live defence instead of the spare one.
+   * That is a narrower claim than the one an earlier revision made here, and
+   * the correction matters. This test was named "pins the framework
+   * normalization the allowlist deliberately no longer relies on" and was
+   * credited in the audit as the tripwire for a Next.js upgrade that stopped
+   * resolving `%2e%2e`. **It cannot be that**, and neither can any served
+   * test, because the framework's behaviour is not observable from outside
+   * this application:
+   *
+   * - Next.js resolves percent-encoded dot segments before a route handler
+   *   runs. Measured, not assumed — replacing the handler's own
+   *   `new URL(request.url).pathname` with the unparsed path string out of
+   *   `request.url` leaves this request answering 202 and the backend still
+   *   receiving `/store/products`. Had `%2e%2e` still been in that string,
+   *   `isRefusedSegment` would have refused it and the answer would have been
+   *   a 404.
+   * - And the handler normalizes again anyway, through the same WHATWG rule.
+   *
+   * So there are two independent defences, either sufficient, and no external
+   * probe can tell which one acted. A Next.js upgrade that changed this would
+   * leave every assertion in this file green. Nothing here pins it; that is a
+   * limit of what a served test can see rather than a gap someone forgot to
+   * close, and the allowlist's own dot-segment refusals — the defence that
+   * would then become live — are unit-tested in
+   * `tests/store-api-transport.test.ts` where they can be called directly.
+   *
+   * What this test does catch is a future "hardening" of
+   * `src/app/store-api/[...path]/route.ts` that ran the allowlist against the
+   * raw pathname before normalizing it, which would 404 this request and
+   * quietly break clients.
+   *
+   * One more correction while here. On the plan's "write the tests first, and
+   * if they pass against a plain rewrite that is the answer": they did **not**
+   * all pass, and an earlier revision of this comment said they did, which
+   * told a reader the hardening had been unnecessary. The probe against the
+   * built server before the source change recorded
+   * `/store-api/store/..%2fadmin/users` answering 202 with the backend
+   * receiving `/store/..%2fadmin/users` — a path outside the allowlist,
+   * forwarded. `..%2f` is not a dot segment to the URL parser, because the
+   * escaped separator keeps it one opaque segment, so neither normalisation
+   * layer touches it and only `isRefusedSegment`'s "hides a separator" clause
+   * catches it. That is what authorised the hardening.
    */
-  it("pins the framework normalization the allowlist deliberately no longer relies on", async () => {
+  it("still forwards a dot segment that resolves back inside the allowlist, rather than over-refusing", async () => {
     backendRequests.length = 0;
     const response = await requestWithHost(
       server.port,
@@ -2421,12 +2471,33 @@ describe("no Admin path is served on a site hostname, in any encoding", () => {
  * the same statement: it says the bytes match what the *test* sent, not that
  * what arrived still satisfies Stripe's own verifier.
  *
- * So this uses the real `stripe` package — the one
- * `@medusajs/medusa/payment-stripe` verifies live webhooks with, resolved from
- * the same dependency tree the backend image ships — to generate the header
- * and, on the far side of the proxy, to verify it. A hand-rolled HMAC here
- * would only confirm that this test and this test's own idea of Stripe's
- * scheme agree with each other.
+ * So this uses the real `stripe` package to generate the header and, on the
+ * far side of the proxy, to verify it. A hand-rolled HMAC here would only
+ * confirm that this test and this test's own idea of Stripe's scheme agree
+ * with each other.
+ *
+ * **Be exact about which copy that is.** `import("stripe")` resolves from the
+ * workspace root hoist to **19.1.0**, the copy `@medusajs/payment` depends on.
+ * The module instance that verifies live webhooks is a *different* one:
+ * `@medusajs/payment-stripe` pins **15.12.0** and npm installs it nested at
+ * `node_modules/@medusajs/payment-stripe/node_modules/stripe`. This test does
+ * not reach that copy and does not claim to. An earlier revision of this
+ * comment said it did.
+ *
+ * It is still the right instrument for the property being proved, for a
+ * reason stronger than "close enough": the two majors implement the same
+ * scheme byte for byte. Given the same payload, secret and timestamp both
+ * emit the identical `t=…,v1=…` header, and each verifies a header the other
+ * generated. That is not a coincidence of versions — `v1` is the wire format
+ * Stripe sends to every deployed integration and cannot change without
+ * breaking all of them. What this test establishes is that the bytes arriving
+ * after the proxy still satisfy an independent implementation of that format,
+ * which is exactly the statement a byte-comparison against what the test sent
+ * cannot make.
+ *
+ * `stripe` is reached here as an undeclared transitive dependency; whether it
+ * should become a declared devDependency is an open question for the
+ * operator, not something this test settles by importing it.
  *
  * The payload is deliberately multibyte. A proxy that decoded the body as
  * latin-1 and re-encoded it as UTF-8, or that "helpfully" reparsed and
@@ -2571,21 +2642,40 @@ describe("the served SEO surface", () => {
     expect(Number(offer.price) * 100).toBeCloseTo(mockCatalogue.price.amount, 6);
   });
 
-  it("gives every route an absolute share card built from the runtime base URL", async () => {
-    for (const routeId of Object.keys(ROUTE_PATHS) as (keyof typeof ROUTE_PATHS)[]) {
-      const response = await requestWithHost(
-        server.port,
-        ROUTE_PATHS[routeId],
-        "runtime.example.com",
-      );
-      expect(response.status, ROUTE_PATHS[routeId]).toBe(200);
+  /**
+   * Every URL any edition serves, not just the default edition's route table.
+   *
+   * The previous revision walked bare `ROUTE_PATHS`, so it asserted the share
+   * card on the `en` URLs alone and no `/et/…` page was ever asked. The wiring
+   * is locale-independent by construction — the card is chosen by `RouteId`
+   * and the URL is built from configuration — but "by construction" is an
+   * argument standing in for a check, which is the failure mode this unit
+   * exists to find.
+   *
+   * The walk is not the sitemap's entry list, deliberately: that omits `cart`
+   * and `checkout` as never-indexed, and both are pages a visitor can paste
+   * into a chat window. So it is the whole default route table plus every URL
+   * a further edition publishes.
+   */
+  it("gives every URL any edition serves an absolute share card, built from the runtime base URL", async () => {
+    const localized = LOCALES.filter((locale) => locale !== DEFAULT_LOCALE).flatMap((locale) =>
+      pagesIn(locale).map((page) => localizedPath(locale, ROUTE_PATHS[page.route])),
+    );
+    expect(
+      localized.length,
+      "no localized URL in the walk — this is the default-edition-only loop again",
+    ).toBeGreaterThan(0);
+
+    for (const path of [...Object.values(ROUTE_PATHS), ...localized]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com");
+      expect(response.status, path).toBe(200);
 
       const image = metaContent(response.body, "og:image");
-      expect(image, `${ROUTE_PATHS[routeId]} has no og:image`).toBeTypeOf("string");
+      expect(image, `${path} has no og:image`).toBeTypeOf("string");
       expect(image?.startsWith(`${RUNTIME_ENV.SITE_BASE_URL}/og/`), image ?? "").toBe(true);
-      expect(metaContent(response.body, "og:image:width")).toBe("1200");
-      expect(metaContent(response.body, "og:image:height")).toBe("630");
-      expect(metaContent(response.body, "twitter:card")).toBe("summary_large_image");
+      expect(metaContent(response.body, "og:image:width"), path).toBe("1200");
+      expect(metaContent(response.body, "og:image:height"), path).toBe("630");
+      expect(metaContent(response.body, "twitter:card"), path).toBe("summary_large_image");
     }
   });
 
@@ -2614,15 +2704,28 @@ describe("the served SEO surface", () => {
 });
 
 /**
- * Page performance, measured against the same locally rendered build.
+ * The checkbox says "page performance". What is delivered here is **payload
+ * ceilings and two structural properties of the document** — not a performance
+ * measurement. Naming that plainly is the point of this paragraph, because an
+ * audit row reading "page performance: covered" invites the next reader to
+ * believe something was timed, and nothing was.
  *
- * No Lighthouse and no external service: nothing can reach this site until
- * Task 10 publishes the apex, and a score fetched from a lab elsewhere would
- * not be reproducible in CI anyway. What is measurable here, deterministically
- * and from the deployable artifact, is **payload**: how many bytes of document
- * and of first-party JavaScript a browser must fetch to paint a route, and
- * whether the document forces a layout shift or a third-party connection
- * before the visitor has consented to one.
+ * Nothing in this block times anything. There is no render, no navigation, no
+ * Largest Contentful Paint, no Interaction to Next Paint, no CPU or network
+ * shaping, no cold-cache modelling. What is measured is how many bytes of
+ * document and of first-party JavaScript a browser would have to fetch to
+ * paint a route, that the first paint opens no third-party connection beyond
+ * the one named origin, and that every raster image declares its intrinsic
+ * size. A route that became twice as slow without becoming larger would pass
+ * every assertion below.
+ *
+ * The substitution is deliberate rather than an omission. No external
+ * validator can reach this site until Task 10 publishes the apex, this unit's
+ * effect gate forbids submitting a URL to one, and a Lighthouse score produced
+ * on the machine running CI would mostly measure that machine. Bytes and
+ * document structure are the part of the question that is deterministic,
+ * reproducible, and read off the artifact that actually deploys — so they are
+ * what is asserted, under their own name.
  *
  * The budgets are ceilings with headroom, not targets. Their job is to fail
  * when a route's weight changes by an order of magnitude — a stray import of a
@@ -2794,37 +2897,29 @@ describe("the publisher site renders without a backend at all", () => {
 });
 
 /**
- * The precondition a redirect loop needs, checked against configuration rather
- * than argued from the shape of the map: no host that redirects is also a host
- * this deployment serves.
+ * Every hostname this server answers on serves a page rather than a 301.
  *
- * `proxy.ts` guards the canonical host with an early return, and
- * `tests/proxy.test.ts` drives that guard with a map that deliberately names
- * it. What neither covers is the *test* hostnames, which are served by the
- * same process and are not the canonical host — a redirect entry for one of
- * them would be admitted by the guard and would 301 the test environment's own
- * hostname away to the live apex.
+ * That is the whole claim, and the boundary is worth stating because an
+ * earlier revision claimed more. It opened with a second test that read the
+ * operator redirect map back off disk and asserted its host keys were disjoint
+ * from the served hostnames — but this suite's own `beforeAll` writes that
+ * file. It asserted that a fixture the test authored does not contain hosts
+ * the test also configured, which cannot fail, so it has been deleted rather
+ * than reworded.
+ *
+ * The question it was gesturing at — what happens when an operator map *does*
+ * name a hostname the deployment serves — cannot be answered here: this suite
+ * builds one server against one map, and changing that map to find out would
+ * redirect the test hostnames out from under every other test in the file. It
+ * is answered where a map and a host configuration can be constructed freely,
+ * in `tests/proxy.test.ts` › "the redirect guard covers the canonical host and
+ * nothing else". The answer is that such an entry **does** 301, so disjointness
+ * here is a property of this deployment's configuration and not something
+ * `proxy.ts` enforces. Read those tests before assuming this one covers more
+ * than it says.
  */
-describe("no host this deployment serves is also a host it redirects", () => {
-  it("keeps the redirecting hosts disjoint from the canonical and test hostnames", async () => {
-    const served = [
-      new URL(RUNTIME_ENV.SITE_BASE_URL).host,
-      RUNTIME_ENV.SITE_CANONICAL_HOST,
-      ...RUNTIME_ENV.SITE_TEST_HOSTNAMES.split(","),
-    ].map((host) => host.trim().toLowerCase());
-
-    const configured = JSON.parse(readFileSync(runtimeRedirectMapPath, "utf8")) as {
-      hosts: Record<string, unknown>;
-    };
-    const redirecting = Object.keys(configured.hosts);
-    expect(redirecting.length).toBeGreaterThan(2);
-
-    for (const host of redirecting) {
-      expect(served, `${host} is both served and redirected`).not.toContain(host.toLowerCase());
-    }
-  });
-
-  it("answers 200 rather than a 301 on every hostname it serves", async () => {
+describe("every hostname this deployment serves answers 200, not a 301", () => {
+  it("answers 200 rather than a 301 on the canonical host and every declared test hostname", async () => {
     for (const host of [
       RUNTIME_ENV.SITE_CANONICAL_HOST,
       ...RUNTIME_ENV.SITE_TEST_HOSTNAMES.split(",").map((value) => value.trim()),
