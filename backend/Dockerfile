@@ -44,9 +44,21 @@ COPY backend/ backend/
 #
 # Every value below is a placeholder and none of them can reach a request:
 # `postgres://build:build@127.0.0.1:5432/build` points at the build container's
-# own loopback, the CORS origins are RFC 2606 reserved names, and the secrets
-# are the literal word `build`. `XDG_CONFIG_HOME` and `MEDUSA_DISABLE_TELEMETRY`
-# keep the compiler from writing to or phoning home from a build.
+# own loopback, the CORS origins and `redis.example.test` are RFC 2606 reserved
+# names that resolve to nothing, and the secrets are the literal word `build`.
+# `XDG_CONFIG_HOME` and `MEDUSA_DISABLE_TELEMETRY` keep the compiler from
+# writing to or phoning home from a build.
+#
+# **This list is checked rather than trusted, and it has to be.** It must be
+# exactly what `readBackendRuntimeConfig` requires, and the last variables added
+# to that function — the three `REDIS_*` — were added to `scripts/validate` and
+# not here, in the same commit, one file over. No gate in this repository
+# noticed, because none of them builds an image: local validation passed, three
+# review passes passed, and `Release` then failed at `build` *after* the merge
+# that was supposed to deploy it, leaving `main` unable to produce an image at
+# all. `backend/tests/deployment-contract.test.ts` now parses the assignments
+# out of this instruction and runs that same reader against them, so a variable
+# missing here fails `npm run test:unit` with the message the build fails with.
 RUN NODE_ENV=production \
   DATABASE_URL=postgres://build:build@127.0.0.1:5432/build \
   JWT_SECRET=build \
@@ -54,6 +66,9 @@ RUN NODE_ENV=production \
   STORE_CORS=https://storefront.example.test \
   ADMIN_CORS=https://admin.example.test \
   AUTH_CORS=https://storefront.example.test \
+  REDIS_HOST=redis.example.test \
+  REDIS_PORT=6379 \
+  REDIS_PASSWORD=build \
   STRIPE_SECRET_KEY=build \
   STRIPE_WEBHOOK_SECRET=whsec_build \
   STRIPE_PAYMENT_METHOD_CONFIGURATION_ID=pmc_build \

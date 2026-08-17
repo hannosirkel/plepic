@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { readBackendRuntimeConfig } from "../src/config/runtime.js";
+
 /**
  * The seam between `hannosirkel/deploys` and this workspace.
  *
@@ -156,4 +158,210 @@ describe("the scripts the deploys manifests invoke", () => {
       expect(scripts[name]).toContain(".ts");
     },
   );
+});
+
+/**
+ * `backend/Dockerfile`'s instructions, comments dropped and line continuations
+ * folded, so the twenty-seven-line `RUN` that compiles the backend is one
+ * string. Deliberately the same fold `scripts/images.test.ts` performs on the
+ * same file.
+ */
+function dockerfileInstructions(): string[] {
+  const source = readFileSync(join(__dirname, "..", "Dockerfile"), "utf8");
+  const folded: string[] = [];
+
+  for (const raw of source.split("\n")) {
+    const line = raw.trim();
+    const previous = folded[folded.length - 1];
+    if (previous !== undefined && previous.endsWith("\\")) {
+      folded[folded.length - 1] = `${previous.slice(0, -1).trimEnd()} ${line}`;
+      continue;
+    }
+    if (line === "" || line.startsWith("#")) continue;
+    folded.push(line);
+  }
+
+  return folded.map((line) => line.replace(/\s+/g, " ").trim());
+}
+
+/**
+ * A shell command's words, with single and double quoting resolved.
+ *
+ * Splitting on whitespace would not do, and the difference is not cosmetic:
+ * three of the values on the compile instruction are quoted because they
+ * contain spaces, and a naive split reads `MERCHANT_LEGAL_NAME='Example` as an
+ * assignment and `Games` as the command — stopping the scan early and passing
+ * the assertion below against a *shorter* environment than the build has.
+ */
+function words(command: string): string[] {
+  const found: string[] = [];
+  let current = "";
+  let started = false;
+  let quote: "'" | '"' | undefined;
+
+  for (const character of command) {
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      started = true;
+      continue;
+    }
+    if (character === " ") {
+      if (started) found.push(current);
+      current = "";
+      started = false;
+      continue;
+    }
+    current += character;
+    started = true;
+  }
+  if (started) found.push(current);
+
+  expect(quote, `unbalanced quote in: ${command}`).toBeUndefined();
+  return found;
+}
+
+const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
+
+/**
+ * The environment `medusa build` compiles under.
+ *
+ * Located by the *command* rather than by a stage name, so moving the compile
+ * into a differently named stage moves this with it, and asserted to be
+ * singular so a second compile cannot go unchecked.
+ *
+ * Reading only the inline assignments on that instruction is exhaustive rather
+ * than approximate. A variable could otherwise reach the compiler as `ARG` or
+ * `ENV`, and `scripts/images.test.ts` refuses every `ARG` in the file outright
+ * and permits `ENV` to name only eight structural variables, none of which is a
+ * configuration value. The `node` base image sets none of them either.
+ */
+function compileEnvironment(): Record<string, string> {
+  const compiles = dockerfileInstructions().filter(
+    (line) => /^RUN\s/i.test(line) && /(?<![\w@./-])npm run build(?![\w:-])/.test(line),
+  );
+  expect(compiles, "backend/Dockerfile does not compile the backend exactly once").toHaveLength(1);
+
+  const environment: Record<string, string> = {};
+  for (const word of words(compiles[0]!.replace(/^RUN\s+/i, ""))) {
+    const assignment = ASSIGNMENT.exec(word);
+    // The first word that is not an assignment is the command; everything after
+    // it belongs to that command rather than to its environment.
+    if (assignment === null) break;
+    environment[assignment[1]!] = assignment[2]!;
+  }
+
+  return environment;
+}
+
+/**
+ * **What the image build compiles under, held to the reader it runs.**
+ *
+ * `medusa-config.ts` calls `readBackendRuntimeConfig` at module scope, and
+ * `medusa build` evaluates that module in order to compile it. So every
+ * variable the runtime configuration requires is a *build*-time requirement
+ * too, and the inline environment on `backend/Dockerfile`'s compile instruction
+ * is the only thing that supplies them.
+ *
+ * Nothing held those two together, and the gap is worth stating because of what
+ * it cost. The configuration grew a required Redis section; `REDIS_HOST`,
+ * `REDIS_PORT` and `REDIS_PASSWORD` were added to `scripts/validate` and not to
+ * the Dockerfile, in the same commit, one file over. Local validation passed,
+ * three review passes passed, and validation was re-run at each — because
+ * **none of that builds an image.** The first thing to notice was `Release`, at
+ * `build`, *after* the merge, on the branch where the merge is the deployment;
+ * `main` could then produce no image at all.
+ *
+ * **The required set is obtained by calling the reader, never by restating it.**
+ * A declared list here would be the same defect one level up: it would have to
+ * be edited by whoever forgot to edit the Dockerfile, and it could only catch
+ * the requirements somebody remembered to write down. Calling the real function
+ * with the real build environment cannot drift for *any* reason — a new
+ * variable, a new format rule such as `SMTP_PORT` having to be exactly 587, a
+ * new cross-field rule — and it fails with the message the build fails with.
+ *
+ * This is in the backend suite rather than in `scripts/images.test.ts`, which
+ * owns every other assertion about these two Dockerfiles, and that was a choice
+ * rather than a constraint — the root project can import and execute backend
+ * source, which was checked rather than assumed. Three reasons it is here
+ * anyway. The subject is the *requirement*, `readBackendRuntimeConfig`, which
+ * lives in this workspace; the Dockerfile is merely a file that has to satisfy
+ * it, which is the shape of every other test in this file. It executes
+ * application code, where every assertion in `images.test.ts` reads a file as
+ * text, so putting it there would let a change to
+ * `backend/src/config/runtime.ts` turn the root `repo` project red. And the
+ * parse it needs — quote-aware `NAME=value` assignments inlined on one `RUN` —
+ * is not one `images.test.ts` has, so nothing would be reused by going there.
+ * The compile instruction names this file, the way the rest of the Dockerfile
+ * names `images.test.ts`.
+ */
+describe("the environment the image build compiles under", () => {
+  it("is read from the one instruction that compiles the backend", () => {
+    const environment = compileEnvironment();
+    // The parse is asserted before it is relied on. A parse that found nothing
+    // would make the next test vacuous in exactly the case that matters.
+    expect(Object.keys(environment).length).toBeGreaterThan(1);
+    expect(environment.NODE_ENV).toBe("production");
+    // And it resolved at least one quoted value containing a space, which is
+    // the whole reason `words` is a tokenizer rather than a `split`.
+    expect(Object.values(environment).some((value) => value.includes(" "))).toBe(true);
+  });
+
+  it("supplies every variable the runtime configuration requires", () => {
+    const environment = compileEnvironment();
+    // Called rather than wrapped in `expect(…).not.toThrow()`: a missing
+    // variable then fails this test with the reader's own words — "Missing
+    // required backend environment variable: REDIS_HOST", the line `Release`
+    // died on — instead of with "expected function not to throw".
+    expect(readBackendRuntimeConfig(environment).databaseUrl).toBe(environment.DATABASE_URL);
+  });
+
+  /**
+   * The build stage's values are placeholders, and that is asserted because
+   * getting it wrong is worse than the defect above. A real submission host or
+   * a real key inlined in a tracked Dockerfile is published with the repository
+   * and cannot be unpublished.
+   *
+   * The rule is about the values rather than about the hostnames somebody
+   * thought to forbid: anything dotted with an alphabetic final label has to
+   * end in a name RFC 2606 and RFC 6761 reserve for exactly this, and any IPv4
+   * literal has to be loopback — the build container's own, which is what
+   * `postgres://build:build@127.0.0.1:5432/build` is.
+   */
+  it("supplies placeholders, never a real host, address or credential", () => {
+    const values = Object.values(compileEnvironment());
+    const joined = values.join("\n");
+
+    expect(joined).not.toMatch(/[sprw]k_(?:live|test)_/);
+    expect(joined).not.toMatch(/whsec_[A-Za-z0-9]{16}/);
+
+    const reserved = [
+      ".test",
+      ".invalid",
+      ".example",
+      ".localhost",
+      "example.com",
+      "example.net",
+      "example.org",
+    ];
+
+    for (const value of values) {
+      for (const [name] of value.matchAll(/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}/gi)) {
+        expect(
+          reserved.some((suffix) => name.toLowerCase().endsWith(suffix)),
+          `backend/Dockerfile's build stage names ${name}, which is not a reserved example name`,
+        ).toBe(true);
+      }
+      for (const [address] of value.matchAll(/\d{1,3}(?:\.\d{1,3}){3}/g)) {
+        expect(
+          address,
+          `backend/Dockerfile's build stage names ${address}, which is not loopback`,
+        ).toMatch(/^127\./);
+      }
+    }
+  });
 });
