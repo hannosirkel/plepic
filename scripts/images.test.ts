@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readBackendRuntimeConfig } from "../backend/src/config/runtime.js";
 import { asMapping, asScalar, asSequence, parseYamlSubset, type YamlValue } from "./yaml-subset.js";
 
 /**
@@ -9,7 +10,7 @@ import { asMapping, asScalar, asSequence, parseYamlSubset, type YamlValue } from
  * reaches them, and the data services the local stack and CI share.
  *
  * These are properties a Dockerfile cannot state for itself and a comment
- * cannot enforce. Three of them are load-bearing well beyond this repository:
+ * cannot enforce. Four of them are load-bearing well beyond this repository:
  *
  * 1. **`WORKDIR /app` in the backend image.** The catalogue import derives its
  *    media root from Medusa's own base directory — `<base>/static` — rather
@@ -32,6 +33,17 @@ import { asMapping, asScalar, asSequence, parseYamlSubset, type YamlValue } from
  *    Kubernetes `args` replaces `CMD` and leaves `ENTRYPOINT` prefixed, so an
  *    entrypoint would turn every one of those into an argument list for
  *    something else, and the `node` base image ships one by default.
+ * 4. **`ENV` names only structural variables — every name of every `ENV`, in
+ *    every stage.** This is the file's half of *"Nothing that differs between
+ *    environments may be baked into an image"*, and for a value inlined in a
+ *    Dockerfile it is the only check there is:
+ *    `storefront/tests/no-live-hostname.test.ts` scans `storefront/`, and
+ *    `backend/Dockerfile` is not under it. It is also depended on from another
+ *    suite — `backend/tests/deployment-contract.test.ts` reads the compile
+ *    instruction's inline assignments and is exhaustive *because* no
+ *    configuration variable can reach the compiler as `ENV` or `ARG` instead.
+ *    Weakening this weakens that, silently, which is why `environmentNames`
+ *    below carries the argument it does.
  */
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -65,20 +77,111 @@ function read(path: string): string {
   return readFileSync(join(repoRoot, path), "utf8");
 }
 
-/** A Dockerfile's instructions, with comments and continuations resolved. */
-function instructions(dockerfile: string): string[] {
+/**
+ * A Dockerfile's instructions, with comments and continuations resolved.
+ *
+ * Source text rather than a path, so the fold can be asserted against inputs
+ * neither of this repository's Dockerfiles contains. See "the parse every
+ * assertion here rests on" below.
+ *
+ * **A comment or blank line inside a continued instruction is dropped, not
+ * appended**, and the order of those two steps is the whole of it. The skip has
+ * to come *before* the continuation join, because the interior line does not
+ * itself end in `\`: appending it both corrupts the instruction and terminates
+ * the continuation, splitting the tail of a `RUN` into instructions of its own.
+ * The builder strips both — measured with `podman build`, which prints
+ * `RUN echo START MIDDLE END` for a comment line and for a blank line alike
+ * between `RUN echo START \` and `MIDDLE \` and `END`.
+ */
+function fold(source: string): string[] {
   const folded: string[] = [];
-  for (const raw of read(dockerfile).split("\n")) {
+  for (const raw of source.split("\n")) {
     const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
     const previous = folded[folded.length - 1];
     if (previous !== undefined && previous.endsWith("\\")) {
       folded[folded.length - 1] = `${previous.slice(0, -1).trimEnd()} ${line}`;
       continue;
     }
-    if (line === "" || line.startsWith("#")) continue;
     folded.push(line);
   }
   return folded.map((line) => line.replace(/\s+/g, " ").trim());
+}
+
+function instructions(dockerfile: string): string[] {
+  return fold(read(dockerfile));
+}
+
+const ENV_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=/;
+
+/**
+ * Every variable name **one** `ENV` instruction sets.
+ *
+ * `ENV a=1 b=2` is legal and sets both, so reading a name as
+ * `entry.split("=")[0]` saw `a` and nothing else — and that one line was the
+ * hole through which the rule below could be defeated entirely. Appending to
+ * the single permitted `ENV` of the stage that ships,
+ *
+ *     ENV NODE_ENV=production STRIPE_SECRET_KEY=sk_live_… \
+ *         MEDUSA_BACKEND_URL=https://<the live host>
+ *
+ * registered as `NODE_ENV`, and a live key and a live hostname baked into the
+ * published backend image left every gate in this repository green: 37/37 here,
+ * 18/18 in `backend/tests/deployment-contract.test.ts`, 2664/2664 across all 81
+ * files. That is the plan's *"Nothing that differs between environments may be
+ * baked into an image"*, and nothing else was going to catch it — the Dockerfile
+ * is the last place a value can be inlined without appearing in
+ * `storefront/tests/no-live-hostname.test.ts`'s scan, which covers
+ * `storefront/` only.
+ *
+ * Two forms have to be told apart, because `ENV` has two. `ENV a=1 b=2` is any
+ * number of assignments; the legacy `ENV a b c` is exactly one variable whose
+ * value is the whole rest of the line. Quoting and backslash-escaping are
+ * resolved rather than ignored, so a legitimate `ENV GREETING="hello world"`
+ * reads as one assignment instead of being red-flagged as two — the failure the
+ * over-strict half of this same hole produced next door.
+ *
+ * A token this cannot account for is returned as it stands, so an `ENV` shape
+ * nobody has thought of yet fails the allowlist rather than parsing to nothing.
+ */
+function environmentNames(entry: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let started = false;
+  let quote: "'" | '"' | undefined;
+
+  for (let index = 0; index < entry.length; index += 1) {
+    const character = entry[index]!;
+    if (character === "\\" && index + 1 < entry.length) {
+      current += entry[index + 1]!;
+      started = true;
+      index += 1;
+      continue;
+    }
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      started = true;
+      continue;
+    }
+    if (character === " ") {
+      if (started) tokens.push(current);
+      current = "";
+      started = false;
+      continue;
+    }
+    current += character;
+    started = true;
+  }
+  if (started) tokens.push(current);
+
+  if (tokens.length === 0) return [];
+  if (!ENV_ASSIGNMENT.test(tokens[0]!)) return [tokens[0]!];
+  return tokens.map((token) => ENV_ASSIGNMENT.exec(token)?.[1] ?? token);
 }
 
 /**
@@ -143,6 +246,58 @@ function backendMediaRoot(): string {
   ).toBeDefined();
   return `${workdir}/static`;
 }
+
+/**
+ * The parse every assertion in this file rests on, held to inputs the two
+ * Dockerfiles here do not contain.
+ *
+ * These are tests of a test, which needs justifying, and the justification is
+ * that both halves below were silently wrong and the file stayed green either
+ * way. Every assertion in this suite is a statement about `fold`'s output, and
+ * a statement about a corrupted fold is worth nothing; the `ENV` rule in
+ * particular was defeated outright by a one-line reading of a name. Neither
+ * defect could be shown on `backend/Dockerfile` or `storefront/Dockerfile`,
+ * because neither file has a multi-variable `ENV` or an interior comment — so
+ * the only place to hold the parse is against the input, and adding either
+ * shape to a shipped Dockerfile to make a test fail would be changing the image
+ * to test the test.
+ */
+describe("the parse every assertion here rests on", () => {
+  it("drops a comment inside a continued instruction rather than truncating it", () => {
+    // Docker permits this and strips the comment; the fold used to append it,
+    // which also ended the continuation, so `MIDDLE \` and `END` became
+    // instructions of their own and the `RUN` this file reasons about was a
+    // fragment. Reproduced on the real file: one comment line above
+    // `REDIS_HOST=` in `backend/Dockerfile`'s compile instruction made all
+    // three assertions in `backend/tests/deployment-contract.test.ts` fail
+    // against a Dockerfile that builds.
+    expect(
+      fold(["RUN echo START \\", "# an interior comment", "  MIDDLE \\", "  END"].join("\n")),
+    ).toEqual(["RUN echo START MIDDLE END"]);
+    // A blank line in the same position is stripped the same way. Measured, not
+    // assumed: `podman build` prints `RUN echo START MIDDLE END` for both.
+    expect(fold(["RUN echo START \\", "", "  MIDDLE \\", "  END"].join("\n"))).toEqual([
+      "RUN echo START MIDDLE END",
+    ]);
+    // And a comment between two instructions is still a comment.
+    expect(fold(["RUN a", "# between", "RUN b"].join("\n"))).toEqual(["RUN a", "RUN b"]);
+  });
+
+  it("reads every name a multi-variable ENV sets", () => {
+    expect(
+      environmentNames("NODE_ENV=production MEDUSA_BACKEND_URL=https://storefront.example.test"),
+    ).toEqual(["NODE_ENV", "MEDUSA_BACKEND_URL"]);
+    // A quoted value containing a space is one assignment, not two — the
+    // over-strict direction, which red-flags a Dockerfile that is fine.
+    expect(environmentNames('GREETING="hello world" PORT=9000')).toEqual(["GREETING", "PORT"]);
+    expect(environmentNames("GREETING=hello\\ world PORT=9000")).toEqual(["GREETING", "PORT"]);
+    // The legacy form names one variable and swallows the rest of the line.
+    expect(environmentNames("NODE_ENV production value")).toEqual(["NODE_ENV"]);
+    // A shape this cannot account for surfaces rather than vanishing, so it
+    // fails the allowlist instead of parsing to nothing.
+    expect(environmentNames("A=1 not-an-assignment")).toEqual(["A", "not-an-assignment"]);
+  });
+});
 
 describe("both images are built from a pinned base and run as a non-root user", () => {
   for (const image of IMAGES) {
@@ -221,7 +376,10 @@ describe("both images are built from a pinned base and run as a non-root user", 
       });
 
       it("sets no environment variable that differs between environments", () => {
-        const names = directives(image.dockerfile, "ENV").map((entry) => entry.split("=")[0]!);
+        // Every name of every `ENV`, not the first name of each. See
+        // `environmentNames`: reading one name per instruction is how a live key
+        // and a live hostname passed all 2664 tests in this repository.
+        const names = directives(image.dockerfile, "ENV").flatMap(environmentNames);
         const permitted = [
           "NODE_ENV",
           "HOME",
@@ -587,6 +745,58 @@ describe("the local stack and the CI services run the same images", () => {
         expect(port, `${name} publishes ${String(port)} beyond loopback`).toMatch(/^127\.0\.0\.1:/);
       }
     }
+  });
+
+  /**
+   * **`compose.yaml`'s backend environment, held to the reader the image runs.**
+   *
+   * This was the last full transcription of that list with no gate of any kind
+   * on it. `backend/tests/deployment-contract.test.ts` holds the Dockerfile's
+   * compile environment, `scripts/validate` holds the environment it builds
+   * under, and `deploys/plepic/tests/manifests.sh` holds the four cluster
+   * workloads. Nothing held this: the compose suite above asserts services,
+   * digests, ports and volume mounts and never env completeness, so a new
+   * required variable broke `docker compose up` for every developer with the
+   * whole repository green — which is the reason `compose.yaml` exists, since
+   * the commerce path cannot be run without a cluster any other way.
+   *
+   * **The coverage is partial and the reason is worth stating.** Compose
+   * interpolates `${VAR:-default}`, and this reads the file rather than a
+   * developer's shell, so `${STRIPE_SECRET_KEY:-local-development-placeholder}`
+   * satisfies a non-empty requirement as literal text. What that means in
+   * practice is that this catches an *absent* key and cannot catch a key whose
+   * substituted value is wrong — and absent is the failure mode a new required
+   * variable produces, so the check is aimed at the case it exists for.
+   *
+   * It is here rather than beside its sibling in the backend suite, and that was
+   * measured both ways rather than argued. This file already reads
+   * `compose.yaml` with `parseYamlSubset`, and the backend project cannot: its
+   * `tsconfig.test.json` sets `rootDir` to `backend/`, so importing
+   * `scripts/yaml-subset.ts` from there is `error TS6059`. The reverse direction
+   * is merely a preference — the root project imports backend source cleanly,
+   * which is what this line does. The cost of that is real and accepted: a new
+   * required variable in `backend/src/config/runtime.ts` now turns this project
+   * red as well. That is the point of the whole unit rather than a side effect.
+   */
+  it("supplies every variable the backend image's configuration requires", () => {
+    const environment: Record<string, string> = {};
+    const backend = asMapping(services("compose.yaml", ["services"])["backend"]!, "backend");
+    for (const [name, value] of Object.entries(
+      asMapping(backend["environment"]!, "backend.environment"),
+    )) {
+      environment[name] = asScalar(value!, `backend.environment.${name}`);
+    }
+    // The parse is asserted before it is relied on: an empty mapping would make
+    // the reader below throw for the wrong reason and a partial one would make
+    // it pass for the wrong reason.
+    expect(
+      Object.keys(environment).length,
+      "compose.yaml declares no backend environment — the service changed shape",
+    ).toBeGreaterThan(20);
+    // Called rather than wrapped in `not.toThrow()`, so a missing variable fails
+    // with the reader's own words — "Missing required backend environment
+    // variable: REDIS_HOST" — rather than with "expected function not to throw".
+    expect(readBackendRuntimeConfig(environment).databaseUrl).toMatch(/^postgres(?:ql)?:\/\//);
   });
 
   it("carries no per-environment value and no credential a deployment would use", () => {
