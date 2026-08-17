@@ -43,6 +43,13 @@ env \
 test -s backend/.medusa/server/medusa-config.js
 test -s backend/.medusa/server/src/config/runtime.js
 test ! -e backend/.medusa/server/tests/runtime-config.test.js
+# All four of the image's roles begin with `npm run redis:preflight`, and the
+# `.js` branch of that script is the only one the image can take -- `ts-node` is
+# a development dependency and `npm ci --omit=dev` leaves it out. So a build that
+# failed to compile this one file would not fall back, it would crash-loop every
+# workload on `Cannot find module 'ts-node'`, which is a confusing way to say
+# that the Redis check is missing.
+test -s backend/.medusa/server/src/config/redis-preflight.js
 # Every workload in `hannosirkel/deploys` runs this one image and chooses what
 # it does with `args: [npm, run, <script>]`. Kubernetes `args` replaces the
 # image's `CMD`, so a manifest naming a script the built image does not declare

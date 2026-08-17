@@ -53,14 +53,18 @@ const redisOptions = redisConnectionOptions(runtime.redis);
  *    is written anyway, because it is the half that survives a second provider
  *    being added.
  *
- * **Do not read these four as a reachability check.** What is fail-closed is
- * naming a Redis, in `readBackendRuntimeConfig`; nothing here dials one, and
- * the loaders below report success when they have not connected — against a
- * closed port `event-bus-redis` logs *"Connection to Redis … established"*,
- * `workflow-engine-redis` logs it twice, `locking-redis` logs an error, and
- * none of them throws. What actually stops a misconfigured workload is the
- * first Redis command after boot: `medusa start` and `medusa exec` both fail
- * on it, `medusa db:migrate` does not. `README.md` has the measured table.
+ * **Do not read these four as a reachability check.** What is fail-closed here
+ * is naming a Redis, in `readBackendRuntimeConfig`; nothing in this file dials
+ * one, and the loaders below report success when they have not connected —
+ * against a closed port `event-bus-redis` logs *"Connection to Redis …
+ * established"*, `workflow-engine-redis` logs it twice, `locking-redis` logs an
+ * error, and none of them throws. Reachability is checked one step earlier
+ * instead: `src/config/redis-preflight.ts` authenticates and sends a `PING`
+ * before any of this is loaded, in all four of the image's roles, so a Redis
+ * that cannot be reached refuses the workload rather than letting these loaders
+ * announce a connection they do not have. It is also what keeps a wrong
+ * password out of the pod log — `ioredis` puts it there, and `README.md` has
+ * both measurements.
  *
  * The keys these declarations land on are Medusa's, not ours:
  * `REVERSED_MODULE_PACKAGE_NAMES` maps each package name back onto

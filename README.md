@@ -660,10 +660,11 @@ The Plepic Games storefront and Medusa backend monorepo.
   with the API that enqueues to it — with no failing probe and no failing
   checkout, because the API runs its own subscribers in the default `shared`
   worker mode.
-  **What is checked here is that Redis is named, not that it answers** — see
-  "What the cluster runs" for what each workload actually does when it is
-  named and unreachable, which is not what the module loaders' own log lines
-  suggest.
+  **The configuration checks that Redis is named; a preflight `PING` in front of
+  every role checks that it answers** — the module loaders check neither, and
+  two of the three log a connection they did not make. See "What the cluster
+  runs" for the measured behaviour, and for why a wrong password is a
+  credential-rotation event rather than a restart.
   It carries one maintained Stripe provider and a custom email notification
   provider.
   Order confirmations use Medusa's idempotent persisted notification lifecycle;
@@ -942,6 +943,10 @@ it.
 | `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator, then applies the declared commerce configuration |
 | `catalogue:import` | `plepic-catalogue-import` Job, suspended | The one-shot WooCommerce catalogue import |
 
+All four begin with `npm run redis:preflight &&`, which is the fifth script and
+the only one no manifest names: it is a step inside the other four rather than a
+workload of its own. See "Naming a Redis is fail-closed, and so is reaching one".
+
 **The script name is the whole of the contract, and it has nothing behind it.**
 A manifest naming a script this `package.json` does not declare is
 `npm ERR! Missing script` and an immediate exit — a first-start failure that no
@@ -957,18 +962,20 @@ mode is selected inside `start:worker` and nowhere else. Putting it in
 `medusa-config.ts` would have moved the API off the default too; the two
 Deployments differ by exactly the script they name.
 
-`predeploy` is three commands rather than three Jobs because everything else is
-gated on one sync hook: migrate, seed, configure, and only then let an API,
-worker, or storefront pod start. It is also the only place a fourth step could
-go — `deploys` names the workloads it runs, and a fourth `args: [npm, run, …]`
-would be a script this repository declares and no manifest ever invokes.
+`predeploy` is one command list rather than several Jobs because everything else
+is gated on one sync hook: ping Redis, migrate, seed, configure, and only then
+let an API, worker, or storefront pod start. It is also the only place a further
+step can go — `deploys` names the workloads it runs, and an additional
+`args: [npm, run, …]` would be a script this repository declares and no manifest
+ever invokes. That is exactly how the Redis preflight got there.
 
-### Naming a Redis is fail-closed; reaching one is not checked anywhere
+### Naming a Redis is fail-closed, and so is reaching one
 
 `src/config/runtime.ts` refuses to build a configuration whose `REDIS_HOST`,
-`REDIS_PORT` or `REDIS_PASSWORD` is missing, and that is the whole of what this
-repository verifies. Nothing dials the server, and **the three module loaders
-report success when they have not connected.** Against a closed port:
+`REDIS_PORT` or `REDIS_PASSWORD` is missing. That is a check on the *manifest*
+and not on the server: nothing in the configuration dials anything, and **the
+three module loaders report success when they have not connected.** Against a
+closed port:
 
 | Loader | What it does |
 |---|---|
@@ -980,8 +987,20 @@ None of the three throws, and two of them state the opposite of what happened.
 Only `locking-redis` complains, so a log read for *"established"* lines confirms
 nothing at all — which is the trap this note exists to close.
 
-What does stop a misconfigured workload is the first Redis *command* after boot.
-Measured against a closed port, and against a Redis that answers `WRONGPASS`:
+So all four of this image's roles ping Redis before they start Medusa.
+`npm run redis:preflight` runs `src/config/redis-preflight.js`, which
+authenticates, sends one `PING`, and then either prints `Redis preflight: PING
+answered.` or refuses in a single line with a non-zero exit status. `start`,
+`start:worker`, `predeploy` and `catalogue:import` each chain from it with `&&`,
+so a workload that cannot reach its Redis never loads a Medusa module at all.
+The refusal names `REDIS_HOST` and `REDIS_PORT`, or `REDIS_PASSWORD`, according
+to which of the two went wrong, and quotes neither — which is the next section's
+subject.
+
+Without it, what stops a misconfigured workload is the first Redis *command*
+after boot, and one of the three does not stop at all. Measured from the built
+server against a closed port, and against a real Redis started with
+`--requirepass` and given the wrong password:
 
 | Command | Workload | Unreachable | Wrong password |
 |---|---|---|---|
@@ -995,19 +1014,20 @@ that is why the column is split rather than merged: the behaviour is identical
 but the text is not, and an operator grepping a log for *"max retries"* during a
 rotation incident finds nothing at all.
 
-So both Deployments crash-loop rather than serve, and the predeploy Job still
-fails — but it fails on its *second* command, not its first. A `db:migrate` that
-reports success is not evidence that Redis is reachable. Reachability itself
+`db:migrate` is as much the reason the preflight exists as the log is. It exits 0
+with no Redis whatsoever, so `predeploy` used to report a green migration as its
+first act and fail one command later — a `db:migrate` that reports success was
+never evidence that Redis is reachable. Reachability beyond that one `PING` still
 belongs to `hannosirkel/deploys`: the NetworkPolicy, the Redis StatefulSet, and
 the recovery ordering that brings Redis up before the worker.
 
 ### A wrong `REDIS_PASSWORD` is a credential-rotation event, not a restart
 
-**On a Redis authentication failure the password is written into the pod log in
-plaintext.** `ioredis` — the client every Medusa Redis module uses — attaches the
-failing command to its `ReplyError`, and `@medusajs/cli` installs
-`process.on("uncaughtException", (error) => console.log(error))`, which is
-`util.inspect` and prints every enumerable property the error carries:
+**If a Redis authentication failure reaches Medusa, the password is written into
+the pod log in plaintext.** `ioredis` — the client every Medusa Redis module
+uses — attaches the failing command to its `ReplyError`, and `@medusajs/cli`
+installs `process.on("uncaughtException", (error) => console.log(error))`, which
+is `util.inspect` and prints every enumerable property the error carries:
 
 ```text
 ReplyError: WRONGPASS invalid username-password pair or user is disabled.
@@ -1024,12 +1044,20 @@ reconnection attempts the client makes before giving up; the path does not. The
 *unreachable* case produces **none**, because `ECONNREFUSED` carries no command
 to attach.
 
-So the crash-loop in the table above is not merely a restart when the cause is
-the password. If a `WRONGPASS` crash-loop is observed, or `command: { name:
-'auth'` appears in any pod log, treat it as a **credential-rotation event**:
-rotate `REDIS_PASSWORD` in OpenBao, let the projection reach the Redis
-StatefulSet and its consumers together, and dispose of the log. Restarting the
-pod does not undo a credential that has already been written down.
+The preflight above is what keeps this from happening at start-up: the same wrong
+password now costs one line and no copies, measured the same way. It is **not** a
+guarantee, because it is a check at one instant:
+
+- A password rotated in Redis while a pod is already running reaches `ioredis` on
+  the next reconnect, and that pod logs it.
+- Anything that runs Medusa without going through `npm run <role>` — a debugging
+  container, an operator `kubectl exec` — has no preflight in front of it.
+
+So if a `WRONGPASS` crash-loop is observed, or `command: { name: 'auth'` appears
+in any pod log, treat it as a **credential-rotation event**: rotate
+`REDIS_PASSWORD` in OpenBao, let the projection reach the Redis StatefulSet and
+its consumers together, and dispose of the log. Restarting the pod does not
+undo a credential that has already been written down.
 
 This is upstream `ioredis` behaviour attending *any* authenticated Redis under
 Medusa, and it would be identical with the password in the URL rather than in

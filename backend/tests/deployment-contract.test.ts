@@ -64,6 +64,44 @@ describe("the scripts the deploys manifests invoke", () => {
   });
 
   /**
+   * **Medusa never gets to dial Redis first.**
+   *
+   * Every Medusa Redis client is `ioredis`, and `ioredis` attaches the failing
+   * command to its `ReplyError` — so a wrong `REDIS_PASSWORD` reaches the pod
+   * log as `command: { name: 'auth', args: [ … ] }`, 29 times in one measured
+   * `medusa start`. `src/config/redis-preflight.ts` answers the same question
+   * with the workspace's declared node-redis client, which carries no command
+   * and no arguments on its errors, and refuses before `medusa` is reached at
+   * all.
+   *
+   * It has to be in front of **all four** roles rather than the two long-running
+   * ones. `medusa db:migrate` is the image's one fail-open path: it exits 0 with
+   * no Redis whatsoever, so `predeploy` would otherwise report a green migration
+   * as its first act against a Redis that was never there — and leak the
+   * password 6 times doing it.
+   */
+  it.each(scriptsTheClusterInvokes)("pings Redis before %s reaches medusa", (name) => {
+    const script = expand(name);
+
+    expect(script).toContain("redis-preflight");
+    expect(script.indexOf("redis-preflight")).toBeLessThan(script.indexOf("medusa "));
+  });
+
+  /**
+   * The preflight resolves either tree for the reason the `medusa exec` scripts
+   * below do, and needs one thing more: plain `node` cannot load the source
+   * `.ts`, because `runtime.ts` is imported extensionlessly and neither Node's
+   * type stripping nor its CJS resolver maps that onto a `.ts` file. So the
+   * source branch names the runner as well as the file, and the built branch —
+   * the only one the image ever takes — stays a bare `node`.
+   */
+  it("lets the Redis preflight resolve either the built or the source file", () => {
+    expect(scripts["redis:preflight"]).toContain("./src/config/redis-preflight.js");
+    expect(scripts["redis:preflight"]).toContain("./src/config/redis-preflight.ts");
+    expect(scripts["redis:preflight"]).toContain("ts-node/register");
+  });
+
+  /**
    * `worker.yaml` sets no `MEDUSA_WORKER_MODE`, so the script has to select
    * worker mode itself. `backend.yaml` sets none either and must keep the
    * framework default, so the selection belongs in `start:worker` and nowhere

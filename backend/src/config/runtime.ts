@@ -434,18 +434,29 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   // established"*, `workflow-engine-redis` logs it twice, `locking-redis` logs
   // an error, and none of the three throws.
   //
-  // The workloads fail anyway, a step later, and they fail with **two different
-  // strings**: against a closed port `medusa start` ends in *"Error starting
-  // server: Reached the max retries per request limit"*, and against a
-  // `WRONGPASS` it ends in *"Error starting server: WRONGPASS invalid
-  // username-password pair or user is disabled."* — which is why an operator
-  // grepping for *"max retries"* during a rotation incident finds nothing.
+  // Reachability is `redis-preflight.ts`'s job, one `PING` in front of all four
+  // of this image's roles, and it is in front of them for two reasons rather
+  // than one. Left to Medusa the failures are these, measured from the built
+  // server, and they are **not** one behaviour under two names:
+  //
+  // - against a closed port, `medusa start` ends in *"Error starting server:
+  //   Reached the max retries per request limit"*;
+  // - against a `WRONGPASS`, it ends in *"Error starting server: WRONGPASS
+  //   invalid username-password pair or user is disabled."* — a different
+  //   string, which is why an operator grepping for *"max retries"* during a
+  //   rotation incident finds nothing.
+  //
   // Either way it never serves `/health`, in every worker mode, and `medusa
-  // exec` exits 1 against both. The single exception is
-  // `medusa db:migrate`, which exits 0 with no Redis at all; `predeploy` runs it
-  // first and `medusa exec` second, so the Job still fails, but a green
-  // migration on its own is not evidence that Redis is reachable. `README.md`
-  // ("What the cluster runs") is where that belongs for an operator.
+  // exec` exits 1. The single exception is `medusa db:migrate`, which exits 0
+  // with no Redis at all — the one fail-open path, and the reason the preflight
+  // is in front of `predeploy` rather than only in front of the Deployments.
+  //
+  // The second reason is that a wrong password does not merely fail: `ioredis`
+  // attaches `command: { name: 'auth', args: [ … ] }` to its `ReplyError` and
+  // the Medusa CLI's uncaught-exception handler prints the whole object, 29
+  // times in one measured boot. `README.md` ("What the cluster runs") says what
+  // an operator does about that, because it makes a crash-loop a
+  // credential-rotation event.
   const redis = readRedisRuntimeConfig(environment);
 
   return {
