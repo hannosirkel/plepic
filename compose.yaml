@@ -57,9 +57,26 @@ services:
     # redis:7.4.6-bookworm
     image: redis:7.4.6-bookworm@sha256:a9cc41d6d01da2aa26c219e4f99ecbeead955a7b656c1c499cce8922311b2514
     # Authenticated, and AOF-persistent, because that is how the cluster runs
-    # it: Redis is a cache and a rate-limit counter here, never a restorable
-    # source of business data. `REDIS_PASSWORD` is required by the backend's
-    # configuration reader, so it cannot simply be left off.
+    # it. Redis carries the newsletter rate-limit counter, the session store,
+    # and — since the backend and `plepic-worker` have to be one system rather
+    # than two — Medusa's event bus, workflow engine and locking provider. It is
+    # still never a restorable source of business data: PostgreSQL is the
+    # durable record and the workflow engine persists its executions there.
+    #
+    # `REDIS_PASSWORD` is required by the backend's configuration reader and a
+    # backend that cannot name its Redis refuses to start, so this cannot be
+    # left off — which is the point. Without it Medusa installs an in-process
+    # event bus and workflow engine, and a worker would share no queue with the
+    # API that enqueues to it while both looked healthy.
+    #
+    # Setting `PLEPIC_LOCAL_REDIS_PASSWORD` to something this container is not
+    # already running with is the local shape of the same mistake, and it is
+    # caught the same way: `npm run start` pings Redis before it starts Medusa
+    # and refuses in one line naming `REDIS_PASSWORD`. Left to Medusa it would
+    # instead print the password back at you 29 times, because `ioredis`
+    # attaches the failed `auth` command to the error it throws. `README.md`
+    # ("A wrong `REDIS_PASSWORD` is a credential-rotation event") has the
+    # measurement.
     command:
       - redis-server
       - --appendonly

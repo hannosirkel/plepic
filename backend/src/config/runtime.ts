@@ -15,6 +15,7 @@ import { resolveDatabaseUrl } from "./database-url";
 
 export interface BackendRuntimeConfig {
   readonly databaseUrl: string;
+  readonly redis: RedisRuntimeConfig;
   readonly http: {
     readonly storeCors: string;
     readonly adminCors: string;
@@ -37,6 +38,21 @@ export interface BackendRuntimeConfig {
   readonly contactMailRecipient: string;
   readonly turnstileSecretKey: string;
   readonly orderConfirmationLegal: OrderConfirmationLegalConfig;
+}
+
+/**
+ * The one Redis this deployment has, as three parts rather than a URL.
+ *
+ * The `deploys` manifests project `REDIS_HOST`, `REDIS_PORT` and
+ * `REDIS_PASSWORD` into every workload that needs Redis, and no manifest on
+ * either side of that seam declares a `REDIS_URL`. Composing the URL here is
+ * what keeps that true: there is one place that decides what a Redis address
+ * looks like, and it is this file.
+ */
+export interface RedisRuntimeConfig {
+  readonly host: string;
+  readonly port: number;
+  readonly password: string;
 }
 
 export interface NewsletterRuntimeConfig {
@@ -196,6 +212,62 @@ function requirePositiveInteger(environment: RuntimeEnvironment, name: string): 
   return parsed;
 }
 
+/**
+ * A host the composed URL cannot be talked out of.
+ *
+ * `REDIS_HOST` becomes the authority of a `redis://` URL, so a value carrying
+ * `/`, `@`, `:` or whitespace would not be a host at all — it would be a second
+ * chance to name a different server, a different port, or a set of credentials,
+ * from a variable whose only job is to say which Service to dial. Restricting
+ * it to a DNS label set is what makes {@link redisConnectionUrl} a composition
+ * rather than a concatenation.
+ *
+ * IPv6 literals are refused with everything else. In-cluster Redis is reached
+ * by Service name and CI and `compose.yaml` reach it at `127.0.0.1` or `redis`;
+ * nothing this image runs against needs bracket notation, and accepting it
+ * would mean accepting the `:` that makes the rest of the rule pointless.
+ */
+const REDIS_HOST_PATTERN = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+
+export function readRedisRuntimeConfig(environment: RuntimeEnvironment): RedisRuntimeConfig {
+  const host = requireEnvironmentValue(environment, "REDIS_HOST");
+
+  if (!REDIS_HOST_PATTERN.test(host)) {
+    throw new Error(
+      "REDIS_HOST must be a hostname or IPv4 address, with no scheme, port or credentials",
+    );
+  }
+
+  const port = requirePositiveInteger(environment, "REDIS_PORT");
+
+  if (port > 65535) {
+    throw new Error("REDIS_PORT must be a TCP port, between 1 and 65535");
+  }
+
+  return { host, port, password: requireEnvironmentValue(environment, "REDIS_PASSWORD") };
+}
+
+/**
+ * `redis://host:port`, and deliberately **no credentials in it**.
+ *
+ * Every Redis consumer in this image — the session store, the event bus, the
+ * workflow engine and the locking provider — is handed this URL alongside
+ * {@link redisConnectionOptions}, and ioredis authenticates from the options.
+ * Putting the password in the userinfo would mean percent-encoding a secret
+ * correctly in one place and hoping every log line, error message and
+ * connection-string dump downstream redacts it; a password that was never in
+ * the URL cannot leak out of one. The ACL user is `default`, so there is
+ * nothing else the userinfo would have carried.
+ */
+export function redisConnectionUrl(redis: RedisRuntimeConfig): string {
+  return `redis://${redis.host}:${String(redis.port)}`;
+}
+
+/** The ioredis options every Redis consumer in this image is given. */
+export function redisConnectionOptions(redis: RedisRuntimeConfig): { readonly password: string } {
+  return { password: redis.password };
+}
+
 export function readOrderConfirmationLegalConfig(
   environment: RuntimeEnvironment,
 ): OrderConfirmationLegalConfig {
@@ -304,10 +376,16 @@ export function readCatalogueImportRuntimeConfig(
 export function readNewsletterRateLimitRuntimeConfig(
   environment: RuntimeEnvironment,
 ): NewsletterRateLimitRuntimeConfig {
+  // The same three names the modules read, read the same way. The limiter
+  // predates them and kept its own copy; two readers of one Redis that could
+  // disagree about what a valid address is are two chances to reach a different
+  // server than the event bus reached.
+  const redis = readRedisRuntimeConfig(environment);
+
   return {
-    redisHost: requireEnvironmentValue(environment, "REDIS_HOST"),
-    redisPort: requirePositiveInteger(environment, "REDIS_PORT"),
-    redisPassword: requireEnvironmentValue(environment, "REDIS_PASSWORD"),
+    redisHost: redis.host,
+    redisPort: redis.port,
+    redisPassword: redis.password,
     maximum: requirePositiveInteger(environment, "NEWSLETTER_RATE_LIMIT_MAX"),
     windowSeconds: requirePositiveInteger(
       environment,
@@ -339,8 +417,51 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
     throw new Error("SMTP_PORT must be exactly 587 for STARTTLS submission");
   }
 
+  // **Required, not optional**, and that is the point of this section. Without a
+  // Redis, `defineConfig` installs an in-process event bus and workflow engine
+  // in *every* workload, so `plepic-worker` shares no queue with the API that
+  // enqueues to it — and nothing observable fails, which is why this went
+  // unnoticed. The backend runs in Medusa's default `shared` worker mode and so
+  // fires its own subscribers, the worker's manifest declares no probe, and
+  // both report healthy while the worker has never processed anything. A
+  // workload that cannot name its Redis must refuse at start, in front of an
+  // operator who is watching, rather than run as two processes that ignore each
+  // other until a Stripe capture retry is lost.
+  //
+  // **What this refuses is an unnamed Redis, not an unreachable one.** Nothing
+  // here dials the server, and the module loaders cannot be relied on to notice
+  // either: against a closed port `event-bus-redis` logs *"Connection to Redis …
+  // established"*, `workflow-engine-redis` logs it twice, `locking-redis` logs
+  // an error, and none of the three throws.
+  //
+  // Reachability is `redis-preflight.ts`'s job, one `PING` in front of all four
+  // of this image's roles, and it is in front of them for two reasons rather
+  // than one. Left to Medusa the failures are these, measured from the built
+  // server, and they are **not** one behaviour under two names:
+  //
+  // - against a closed port, `medusa start` ends in *"Error starting server:
+  //   Reached the max retries per request limit"*;
+  // - against a `WRONGPASS`, it ends in *"Error starting server: WRONGPASS
+  //   invalid username-password pair or user is disabled."* — a different
+  //   string, which is why an operator grepping for *"max retries"* during a
+  //   rotation incident finds nothing.
+  //
+  // Either way it never serves `/health`, in every worker mode, and `medusa
+  // exec` exits 1. The single exception is `medusa db:migrate`, which exits 0
+  // with no Redis at all — the one fail-open path, and the reason the preflight
+  // is in front of `predeploy` rather than only in front of the Deployments.
+  //
+  // The second reason is that a wrong password does not merely fail: `ioredis`
+  // attaches `command: { name: 'auth', args: [ … ] }` to its `ReplyError` and
+  // the Medusa CLI's uncaught-exception handler prints the whole object, 29
+  // times in one measured boot. `README.md` ("What the cluster runs") says what
+  // an operator does about that, because it makes a crash-loop a
+  // credential-rotation event.
+  const redis = readRedisRuntimeConfig(environment);
+
   return {
     databaseUrl,
+    redis,
     http: {
       storeCors: requireDeclaredEnvironmentValue(environment, "STORE_CORS"),
       adminCors: requireDeclaredEnvironmentValue(environment, "ADMIN_CORS"),

@@ -6,6 +6,8 @@ import {
   readBackendRuntimeConfig,
   readNewsletterRateLimitRuntimeConfig,
   readNewsletterRuntimeConfig,
+  redisConnectionOptions,
+  redisConnectionUrl,
 } from "../src/config/runtime.js";
 
 describe("readBackendRuntimeConfig", () => {
@@ -65,6 +67,9 @@ describe("readBackendRuntimeConfig", () => {
       STRIPE_SECRET_KEY: "sk_test_example",
       STRIPE_WEBHOOK_SECRET: "whsec_example",
       STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
+      REDIS_HOST: "plepic-redis",
+      REDIS_PORT: "6379",
+      REDIS_PASSWORD: "redis-password",
       SMTP_HOST: "smtp.example.test",
       SMTP_PORT: "587",
       SMTP_USERNAME: "smtp-user",
@@ -117,6 +122,9 @@ describe("readBackendRuntimeConfig", () => {
         STRIPE_SECRET_KEY: "sk_test_example",
         STRIPE_WEBHOOK_SECRET: "whsec_example",
         STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
+        REDIS_HOST: "plepic-redis",
+        REDIS_PORT: "6379",
+        REDIS_PASSWORD: "redis-password",
         SMTP_HOST: "smtp.example.test",
         SMTP_PORT: "587",
         SMTP_USERNAME: "smtp-user",
@@ -133,6 +141,7 @@ describe("readBackendRuntimeConfig", () => {
       }),
     ).toEqual({
       databaseUrl: "postgres://app:password@database:5432/medusa",
+      redis: { host: "plepic-redis", port: 6379, password: "redis-password" },
       http: {
         storeCors: "https://store.example.test",
         adminCors: "https://admin.example.test",
@@ -187,6 +196,9 @@ describe("readBackendRuntimeConfig", () => {
       STRIPE_SECRET_KEY: "sk_test_example",
       STRIPE_WEBHOOK_SECRET: "whsec_example",
       STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
+      REDIS_HOST: "plepic-redis",
+      REDIS_PORT: "6379",
+      REDIS_PASSWORD: "redis-password",
       SMTP_HOST: "smtp.example.test",
       SMTP_PORT: "587",
       SMTP_USERNAME: "smtp-user",
@@ -228,6 +240,9 @@ describe("readBackendRuntimeConfig", () => {
     STRIPE_SECRET_KEY: "sk_test_example",
     STRIPE_WEBHOOK_SECRET: "whsec_example",
     STRIPE_PAYMENT_METHOD_CONFIGURATION_ID: "pmc_example",
+    REDIS_HOST: "plepic-redis",
+    REDIS_PORT: "6379",
+    REDIS_PASSWORD: "redis-password",
     SMTP_HOST: "smtp.example.test",
     SMTP_PORT: "587",
     SMTP_USERNAME: "smtp-user",
@@ -292,6 +307,78 @@ describe("readBackendRuntimeConfig", () => {
       );
     },
   );
+
+  /**
+   * Redis is required of every workload that runs this image, and refusing it
+   * is the point. An unset `REDIS_PASSWORD` used to be *fine*: the backend
+   * started, `defineConfig` installed an in-process event bus and workflow
+   * engine, and the worker consumed a queue nothing published to while both
+   * pods reported healthy. There is no later gate that notices.
+   */
+  it.each(["REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD"])(
+    "refuses a backend whose %s is absent",
+    (name) => {
+      const withoutIt: Record<string, string | undefined> = { ...manifestEnvironment };
+      delete withoutIt[name];
+
+      expect(() => readBackendRuntimeConfig(withoutIt)).toThrow(new RegExp(name));
+    },
+  );
+
+  it("refuses a REDIS_HOST that is anything but a host", () => {
+    for (const host of [
+      "redis://plepic-redis",
+      "plepic-redis:6380",
+      "user:password@plepic-redis",
+      "plepic-redis/0",
+      "[::1]",
+      "plepic-redis?db=1",
+    ]) {
+      expect(
+        () => readBackendRuntimeConfig({ ...manifestEnvironment, REDIS_HOST: host }),
+        host,
+      ).toThrow(/REDIS_HOST/);
+    }
+  });
+
+  /**
+   * `"6379 "` is deliberately absent: every reader in this file trims, so
+   * padding is not a different port. `mail-submission-target.test.ts` makes the
+   * same point about `SMTP_PORT` and spells out which way it cuts.
+   */
+  it.each(["0", "65536", "6379.5", "-1", "0x1", "", "six"])(
+    "refuses the REDIS_PORT %j",
+    (port) => {
+      expect(() =>
+        readBackendRuntimeConfig({ ...manifestEnvironment, REDIS_PORT: port }),
+      ).toThrow(/REDIS_PORT/);
+    },
+  );
+
+  /**
+   * The password is carried beside the URL, never inside it. A URL that never
+   * held the secret cannot leak it through a log line, an ioredis error, or a
+   * connection string printed by something downstream — and there is no
+   * percent-encoding to get right, which is the other way this goes wrong.
+   */
+  it("composes a credential-free URL and carries the password beside it", () => {
+    const { redis } = readBackendRuntimeConfig({
+      ...manifestEnvironment,
+      REDIS_PASSWORD: "p@ss/w:rd?#",
+    });
+
+    expect(redisConnectionUrl(redis)).toBe("redis://plepic-redis:6379");
+    expect(redisConnectionUrl(redis)).not.toContain("p@ss");
+    expect(redisConnectionOptions(redis)).toEqual({ password: "p@ss/w:rd?#" });
+
+    // And it is a URL, parsed by a parser rather than eyeballed.
+    const parsed = new URL(redisConnectionUrl(redis));
+    expect(parsed.protocol).toBe("redis:");
+    expect(parsed.hostname).toBe("plepic-redis");
+    expect(parsed.port).toBe("6379");
+    expect(parsed.username).toBe("");
+    expect(parsed.password).toBe("");
+  });
 
   it("parses newsletter credentials only for the subscribing Store route", () => {
     expect(readNewsletterRuntimeConfig({

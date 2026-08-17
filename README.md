@@ -652,8 +652,21 @@ The Plepic Games storefront and Medusa backend monorepo.
   committed derivatives were produced outside the repository. If `next/image`
   is still unused when the storefront ships, returning it to Next's own
   optional resolution is a one-line change.
-- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams,
-  one maintained Stripe provider, and a custom email notification provider.
+- `backend/` — pinned Medusa v2 backend with PostgreSQL/Redis runtime seams.
+  `medusa-config.ts` registers the Redis event bus, the Redis workflow engine
+  and the Redis locking provider, and `REDIS_HOST`, `REDIS_PORT` and
+  `REDIS_PASSWORD` are read fail-closed at start. Without them Medusa installs
+  its in-process defaults in every workload and `plepic-worker` shares no queue
+  with the API that enqueues to it — with no failing probe and no failing
+  checkout, because the API runs its own subscribers in the default `shared`
+  worker mode.
+  **The configuration checks that Redis is named; a preflight `PING` in front of
+  every role checks that it answers** — the module loaders check neither, and
+  two of the three log a connection they did not make. See "What the cluster
+  runs" for the measured behaviour, and for why a wrong password is a
+  credential-rotation event rather than a restart.
+  It carries one maintained Stripe provider and a custom email notification
+  provider.
   Order confirmations use Medusa's idempotent persisted notification lifecycle;
   each confirmation reproduces the approved withdrawal conditions and complete
   model withdrawal form in the durable email, with legal name, registered
@@ -930,6 +943,10 @@ it.
 | `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator, then applies the declared commerce configuration |
 | `catalogue:import` | `plepic-catalogue-import` Job, suspended | The one-shot WooCommerce catalogue import |
 
+All four begin with `npm run redis:preflight &&`, which is the fifth script and
+the only one no manifest names: it is a step inside the other four rather than a
+workload of its own. See "Naming a Redis is fail-closed, and so is reaching one".
+
 **The script name is the whole of the contract, and it has nothing behind it.**
 A manifest naming a script this `package.json` does not declare is
 `npm ERR! Missing script` and an immediate exit — a first-start failure that no
@@ -945,11 +962,160 @@ mode is selected inside `start:worker` and nowhere else. Putting it in
 `medusa-config.ts` would have moved the API off the default too; the two
 Deployments differ by exactly the script they name.
 
-`predeploy` is three commands rather than three Jobs because everything else is
-gated on one sync hook: migrate, seed, configure, and only then let an API,
-worker, or storefront pod start. It is also the only place a fourth step could
-go — `deploys` names the workloads it runs, and a fourth `args: [npm, run, …]`
-would be a script this repository declares and no manifest ever invokes.
+`predeploy` is one command list rather than several Jobs because everything else
+is gated on one sync hook: ping Redis, migrate, seed, configure, and only then
+let an API, worker, or storefront pod start. It is also the only place a further
+step can go — `deploys` names the workloads it runs, and an additional
+`args: [npm, run, …]` would be a script this repository declares and no manifest
+ever invokes. That is exactly how the Redis preflight got there.
+
+### Naming a Redis is fail-closed, and so is reaching one
+
+`src/config/runtime.ts` refuses to build a configuration whose `REDIS_HOST`,
+`REDIS_PORT` or `REDIS_PASSWORD` is missing. That is a check on the *manifest*
+and not on the server: nothing in the configuration dials anything, and **the
+three module loaders report success when they have not connected.** Against a
+closed port:
+
+| Loader | What it does |
+|---|---|
+| `event-bus-redis` | logs `Connection to Redis in module 'event-bus-redis' established` |
+| `workflow-engine-redis` | logs the equivalent **twice**, for the module and its PubSub pair |
+| `locking-redis` | logs an error |
+
+None of the three throws, and two of them state the opposite of what happened.
+Only `locking-redis` complains, so a log read for *"established"* lines confirms
+nothing at all — which is the trap this note exists to close.
+
+So all four of this image's roles ping Redis before they start Medusa.
+`npm run redis:preflight` runs `src/config/redis-preflight.js`, which
+authenticates, sends one `PING`, and then either prints `Redis preflight: PING
+answered.` or refuses in a single line with a non-zero exit status. `start`,
+`start:worker`, `predeploy` and `catalogue:import` each chain from it with `&&`,
+so a workload that cannot reach its Redis never loads a Medusa module at all.
+The refusal names `REDIS_HOST` and `REDIS_PORT`, or `REDIS_PASSWORD`, according
+to which of the two went wrong, and quotes neither — which is the next section's
+subject.
+
+Without it, what stops a misconfigured workload is the first Redis *command*
+after boot, and one of the three does not stop at all. Measured from the built
+server against a closed port, and against a real Redis started with
+`--requirepass` and given the wrong password:
+
+| Command | Workload | Unreachable | Wrong password |
+|---|---|---|---|
+| `medusa start` | `plepic-backend`, `plepic-worker` | **Refuses.** `Error starting server: Reached the max retries per request limit` | **Refuses.** `Error starting server: WRONGPASS invalid username-password pair or user is disabled.` |
+| `medusa exec` | seeding, commerce configuration, catalogue import | **Exits 1** | **Exits 1** |
+| `medusa db:migrate` | the first third of `predeploy` | **Exits 0**, logging `Migrations completed` | **Exits 0**, logging `Migrations completed` |
+
+`medusa start` never answers `/health` in either column, in `shared`, `worker`
+and `server` worker mode alike. **The two messages are different strings**, and
+that is why the column is split rather than merged: the behaviour is identical
+but the text is not, and an operator grepping a log for *"max retries"* during a
+rotation incident finds nothing at all.
+
+`db:migrate` is as much the reason the preflight exists as the log is. It exits 0
+with no Redis whatsoever, so `predeploy` used to report a green migration as its
+first act and fail one command later — a `db:migrate` that reports success was
+never evidence that Redis is reachable. Reachability beyond that one `PING` still
+belongs to `hannosirkel/deploys`: the NetworkPolicy, the Redis StatefulSet, and
+the recovery ordering that brings Redis up before the worker.
+
+### A wrong `REDIS_PASSWORD` is a credential-rotation event, not a restart
+
+**If a Redis authentication failure reaches Medusa, the password is written into
+the pod log in plaintext.** `ioredis` — the client every Medusa Redis module
+uses — attaches the failing command to its `ReplyError`, and `@medusajs/cli`
+installs `process.on("uncaughtException", (error) => console.log(error))`, which
+is `util.inspect` and prints every enumerable property the error carries:
+
+```text
+ReplyError: WRONGPASS invalid username-password pair or user is disabled.
+    at parseError (…/redis-parser/lib/parser.js:179:12) {
+  command: { name: 'auth', args: [ '<the password, in plaintext>' ] }
+}
+```
+
+Measured from the built server against a real Redis started with `--requirepass`
+and given the wrong password: **29 plaintext copies in one failed `medusa
+start`**, and 6 more in one `medusa db:migrate` — which exits **0**, so nothing
+marks that log as a failure at all. The exact count moves with how many
+reconnection attempts the client makes before giving up; the path does not. The
+*unreachable* case produces **none**, because `ECONNREFUSED` carries no command
+to attach.
+
+The preflight above is what keeps this from happening at start-up: the same wrong
+password now costs one line and no copies, measured the same way. It is **not** a
+guarantee, because it is a check at one instant:
+
+- A password rotated in Redis while a pod is already running reaches `ioredis` on
+  the next reconnect, and that pod logs it.
+- Anything that runs Medusa without going through `npm run <role>` — a debugging
+  container, an operator `kubectl exec` — has no preflight in front of it.
+
+So if a `WRONGPASS` crash-loop is observed, or `command: { name: 'auth'` appears
+in any pod log, treat it as a **credential-rotation event**: rotate
+`REDIS_PASSWORD` in OpenBao, let the projection reach the Redis StatefulSet and
+its consumers together, and dispose of the log. Restarting the pod does not
+undo a credential that has already been written down.
+
+This is upstream `ioredis` behaviour attending *any* authenticated Redis under
+Medusa, and it would be identical with the password in the URL rather than in
+`redisOptions` — keeping it out of the URL prevents a connection *string* from
+carrying it, which is a different leak and one that stays prevented. No Redis
+password is in this repository, in an image, or on any public surface, and this
+needs a misconfiguration to fire.
+
+### One query to run before the first migration onto the Redis workflow engine
+
+This applies **once**, to any database that has already been migrated by a build
+of this backend from before `medusa-config.ts` registered
+`@medusajs/medusa/workflow-engine-redis`. A database that has never run this
+backend is unaffected, and so is every migration after the first.
+
+`medusa db:migrate` records migrations by **name**, for every module, in one
+shared `mikro_orm_migrations` table. Swapping `workflow-engine-inmemory` for
+`workflow-engine-redis` therefore does not replay the lineage from the
+beginning: the two packages ship eight and seven migrations, two of which are
+named identically and have already run, which leaves **six pending**:
+
+```text
+Migration20241206123341  Migration20250120111059  Migration20250128174354
+Migration20250505101505  Migration20250819110923  Migration20250908080326
+```
+
+Five are name-shifted duplicates of work the in-memory lineage already did and
+re-apply harmlessly. **The sixth is not.** `Migration20250120111059` runs
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS "IDX_workflow_execution_workflow_id_transaction_id_unique"
+  ON "workflow_execution" (workflow_id, transaction_id) WHERE deleted_at IS NULL;
+```
+
+and the in-memory lineage's own `Migration20250505092459` **drops** that index
+and moves the primary key to `(workflow_id, transaction_id, run_id)`, which makes
+two live rows sharing `(workflow_id, transaction_id)` legal — a second run of one
+transaction id writes a second row with a new `run_id`. `IF NOT EXISTS` does not
+save it: the index genuinely is absent, so it is created rather than skipped, and
+the creation fails on those rows. `Migration20250505101505`, later in the same
+pending set, drops it again — so the index is created only to be dropped, and a
+step that leaves no trace in the final schema is what blocks the rollout.
+
+So run this against the environment's database **before** promoting an image
+that carries this configuration:
+
+```sql
+select workflow_id, transaction_id, count(*) from workflow_execution
+where deleted_at is null group by 1, 2 having count(*) > 1;
+```
+
+No rows means the transition is safe. Any rows means `medusa db:migrate` exits
+non-zero, the predeploy Job fails, and no API, worker, or storefront pod starts.
+Nothing is corrupted and nothing is half-applied — MikroORM runs the pending set
+in one transaction and rolls the whole batch back — but a retry starts over and
+fails in the same place until the duplicate rows are resolved, so the sync stays
+red until someone runs this query anyway. It is written here so that happens
+before the rollout rather than during a failed one.
 
 The seeding step is idempotent, and the condition it tests is **whether the
 administrator can sign in** — not whether a user row exists. A usable

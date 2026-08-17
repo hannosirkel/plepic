@@ -8,12 +8,13 @@
   "scripts": {
     "build": "NODE_PATH=./node_modules medusa build",
     "dev": "medusa develop",
-    "start": "medusa start",
-    "start:worker": "MEDUSA_WORKER_MODE=worker medusa start",
-    "predeploy": "medusa db:migrate && npm run seed:administrator && npm run configure:commerce",
+    "redis:preflight": "if [ -f ./src/config/redis-preflight.js ]; then node ./src/config/redis-preflight.js; else node -r ts-node/register ./src/config/redis-preflight.ts; fi",
+    "start": "npm run redis:preflight && medusa start",
+    "start:worker": "npm run redis:preflight && MEDUSA_WORKER_MODE=worker medusa start",
+    "predeploy": "npm run redis:preflight && medusa db:migrate && npm run seed:administrator && npm run configure:commerce",
     "seed:administrator": "medusa exec \"$(test -f ./src/scripts/seed-administrator.js && echo ./src/scripts/seed-administrator.js || echo ./src/scripts/seed-administrator.ts)\"",
     "configure:commerce": "medusa exec \"$(test -f ./src/scripts/configure-commerce.js && echo ./src/scripts/configure-commerce.js || echo ./src/scripts/configure-commerce.ts)\"",
-    "catalogue:import": "medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
+    "catalogue:import": "npm run redis:preflight && medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test:unit": "vitest run"
   },
