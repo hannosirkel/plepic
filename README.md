@@ -1001,6 +1001,43 @@ reports success is not evidence that Redis is reachable. Reachability itself
 belongs to `hannosirkel/deploys`: the NetworkPolicy, the Redis StatefulSet, and
 the recovery ordering that brings Redis up before the worker.
 
+### A wrong `REDIS_PASSWORD` is a credential-rotation event, not a restart
+
+**On a Redis authentication failure the password is written into the pod log in
+plaintext.** `ioredis` — the client every Medusa Redis module uses — attaches the
+failing command to its `ReplyError`, and `@medusajs/cli` installs
+`process.on("uncaughtException", (error) => console.log(error))`, which is
+`util.inspect` and prints every enumerable property the error carries:
+
+```text
+ReplyError: WRONGPASS invalid username-password pair or user is disabled.
+    at parseError (…/redis-parser/lib/parser.js:179:12) {
+  command: { name: 'auth', args: [ '<the password, in plaintext>' ] }
+}
+```
+
+Measured from the built server against a real Redis started with `--requirepass`
+and given the wrong password: **29 plaintext copies in one failed `medusa
+start`**, and 6 more in one `medusa db:migrate` — which exits **0**, so nothing
+marks that log as a failure at all. The exact count moves with how many
+reconnection attempts the client makes before giving up; the path does not. The
+*unreachable* case produces **none**, because `ECONNREFUSED` carries no command
+to attach.
+
+So the crash-loop in the table above is not merely a restart when the cause is
+the password. If a `WRONGPASS` crash-loop is observed, or `command: { name:
+'auth'` appears in any pod log, treat it as a **credential-rotation event**:
+rotate `REDIS_PASSWORD` in OpenBao, let the projection reach the Redis
+StatefulSet and its consumers together, and dispose of the log. Restarting the
+pod does not undo a credential that has already been written down.
+
+This is upstream `ioredis` behaviour attending *any* authenticated Redis under
+Medusa, and it would be identical with the password in the URL rather than in
+`redisOptions` — keeping it out of the URL prevents a connection *string* from
+carrying it, which is a different leak and one that stays prevented. No Redis
+password is in this repository, in an image, or on any public surface, and this
+needs a misconfiguration to fire.
+
 ### One query to run before the first migration onto the Redis workflow engine
 
 This applies **once**, to any database that has already been migrated by a build
