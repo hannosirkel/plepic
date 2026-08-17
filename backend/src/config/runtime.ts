@@ -434,10 +434,14 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   // established"*, `workflow-engine-redis` logs it twice, `locking-redis` logs
   // an error, and none of the three throws.
   //
-  // The workloads fail anyway, a step later. `medusa start` ends in *"Error
-  // starting server: Reached the max retries per request limit"* and never
-  // serves `/health`, in every worker mode, and `medusa exec` exits 1 — against
-  // a closed port and against a `WRONGPASS` alike. The single exception is
+  // The workloads fail anyway, a step later, and they fail with **two different
+  // strings**: against a closed port `medusa start` ends in *"Error starting
+  // server: Reached the max retries per request limit"*, and against a
+  // `WRONGPASS` it ends in *"Error starting server: WRONGPASS invalid
+  // username-password pair or user is disabled."* — which is why an operator
+  // grepping for *"max retries"* during a rotation incident finds nothing.
+  // Either way it never serves `/health`, in every worker mode, and `medusa
+  // exec` exits 1 against both. The single exception is
   // `medusa db:migrate`, which exits 0 with no Redis at all; `predeploy` runs it
   // first and `medusa exec` second, so the Job still fails, but a green
   // migration on its own is not evidence that Redis is reachable. `README.md`

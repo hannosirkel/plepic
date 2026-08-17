@@ -983,11 +983,17 @@ nothing at all — which is the trap this note exists to close.
 What does stop a misconfigured workload is the first Redis *command* after boot.
 Measured against a closed port, and against a Redis that answers `WRONGPASS`:
 
-| Command | Workload | Unreachable or wrong password |
-|---|---|---|
-| `medusa start` | `plepic-backend`, `plepic-worker` | **Refuses.** `Error starting server: Reached the max retries per request limit`, and `/health` never answers — in `shared`, `worker` and `server` worker mode alike |
-| `medusa exec` | seeding, commerce configuration, catalogue import | **Exits 1** |
-| `medusa db:migrate` | the first third of `predeploy` | **Exits 0**, logging `Migrations completed` |
+| Command | Workload | Unreachable | Wrong password |
+|---|---|---|---|
+| `medusa start` | `plepic-backend`, `plepic-worker` | **Refuses.** `Error starting server: Reached the max retries per request limit` | **Refuses.** `Error starting server: WRONGPASS invalid username-password pair or user is disabled.` |
+| `medusa exec` | seeding, commerce configuration, catalogue import | **Exits 1** | **Exits 1** |
+| `medusa db:migrate` | the first third of `predeploy` | **Exits 0**, logging `Migrations completed` | **Exits 0**, logging `Migrations completed` |
+
+`medusa start` never answers `/health` in either column, in `shared`, `worker`
+and `server` worker mode alike. **The two messages are different strings**, and
+that is why the column is split rather than merged: the behaviour is identical
+but the text is not, and an operator grepping a log for *"max retries"* during a
+rotation incident finds nothing at all.
 
 So both Deployments crash-loop rather than serve, and the predeploy Job still
 fails — but it fails on its *second* command, not its first. A `db:migrate` that
