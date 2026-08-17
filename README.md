@@ -19,6 +19,33 @@ The Plepic Games storefront and Medusa backend monorepo.
   same-origin `/store-api` allowlist. Named `?mock=` states remain isolated to
   development and declared test hosts.
 
+  **Redirect-map operation.** Convert a Task 1 operator map into the runtime
+  map with explicit paths:
+
+  ```bash
+  npm run --workspace storefront redirect-map:transform -- \
+    --input /path/to/operator-map.json \
+    --output /path/to/runtime-map.json
+  ```
+
+  The command reads no Orange path itself. It ignores `metadata.counts`,
+  selects only entries marked `drives_storefront_redirect_table`, normalizes
+  their hosts to lowercase, and maps each target path back through the real
+  `ROUTE_PATHS` vocabulary. Before writing, it validates through
+  `parseRedirectMap` and replays every entry through `resolveRedirect`.
+  Malformed, duplicate, ambiguous, or unresolvable input fails without
+  replacing the destination. Successful output is deterministic single-line
+  JSON with one trailing newline, written by atomic replacement with mode
+  `0600`.
+
+  Mount that output as a file and set `REDIRECT_MAP_PATH` to it at runtime.
+  Each successfully parsed operator override source logs one
+  `redirect_map_loaded` event per process; the bundled fallback fixture does
+  not. Repeat requests use the memoised map without another log. A broken
+  source remains fail-open to no host redirects and logs once. Restart the
+  storefront after changing the mounted map so the process parses the new
+  source contents.
+
   **The basket and the checkout, and the legal page that specifies them.**
   `src/app/cart/page.tsx` and `src/app/checkout/page.tsx` render
   `src/components/shop/`; the production path stores only an opaque Medusa cart

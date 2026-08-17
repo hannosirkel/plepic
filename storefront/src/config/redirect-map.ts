@@ -48,13 +48,12 @@
  *
  * ## Where the real map comes from
  *
- * The real map is Task 5's `.operator/redirect-map.json` in the **Orange**
- * checkout, a repository this unit does not touch and should not read from.
- * `loadRedirectMap` reads an optional override at `REDIRECT_MAP_PATH` (a
- * plain JSON file on disk, of exactly this shape) before falling back to the
- * fixture bundled at {@link ./redirect-map.fixture.json}. Task 5 only needs to
- * write a validly-shaped file and set that one environment variable; nothing
- * in this module changes.
+ * The operator transforms the Task 1 map with `npm run redirect-map:transform`
+ * in this workspace, supplying explicit input and output paths. The command
+ * knows this module's RouteId vocabulary and validation rules; it never knows
+ * or reads an Orange checkout path. `loadRedirectMap` reads the transformed
+ * file from `REDIRECT_MAP_PATH` before falling back to the fixture bundled at
+ * {@link ./redirect-map.fixture.json}.
  *
  * ## Availability
  *
@@ -186,6 +185,15 @@ export function loadRedirectMap(env: EnvRecord = process.env): RedirectMap {
       overridePath === undefined
         ? parseRedirectMap(fixture, FIXTURE_SOURCE)
         : parseRedirectMap(JSON.parse(readFileSync(overridePath, "utf8")), overridePath);
+    if (overridePath !== undefined) {
+      console["info"](
+        JSON.stringify({
+          event: "redirect_map_loaded",
+          source,
+          hostCount: Object.keys(map.hosts).length,
+        }),
+      );
+    }
   } catch (error) {
     console.error(
       `redirect map ${JSON.stringify(source)} could not be loaded; serving no host ` +

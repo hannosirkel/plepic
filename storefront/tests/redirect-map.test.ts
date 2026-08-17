@@ -110,11 +110,10 @@ describe("parseRedirectMap: validation", () => {
 });
 
 /**
- * The operator-supplied map, which is how Task 5 delivers the real one: it
- * writes a validly-shaped JSON file and sets `REDIRECT_MAP_PATH`. Nothing in
- * `src/config/redirect-map.ts` changes for it — which is a claim worth a test
- * rather than a comment, because until now nothing ever loaded a map from a
- * path at all.
+ * The operator-supplied runtime map is generated from Task 1's broader record
+ * by `scripts/transform-redirect-map.ts`, then mounted with
+ * `REDIRECT_MAP_PATH`. This suite starts at that runtime boundary; the
+ * transformer's own suite covers the upstream schema conversion.
  *
  * The failure modes matter as much as the happy path. `proxy.ts` calls
  * `loadRedirectMap()` on **every** request on **every** host, so a missing or
@@ -143,6 +142,7 @@ describe("loadRedirectMap: the REDIRECT_MAP_PATH override", () => {
   }
 
   it("loads an operator file in place of the committed fixture", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const path = writeMap(
       "map.json",
       JSON.stringify({
@@ -159,9 +159,13 @@ describe("loadRedirectMap: the REDIRECT_MAP_PATH override", () => {
     });
     // The fixture's hosts are gone: the override replaces, never merges.
     expect(resolveRedirect("www.example.com", "/", map)).toBeNull();
+    expect(info).toHaveBeenCalledOnce();
+    expect(info.mock.calls[0]?.[0]).toMatch(/redirect_map_loaded/);
+    expect(info.mock.calls[0]?.[0]).toContain(path);
   });
 
   it("reads the file once per process, not once per request", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const path = writeMap(
       "cached.json",
       JSON.stringify({ hosts: { "operator.example.org": [{ path: "*", target: "home" }] } }),
@@ -172,6 +176,7 @@ describe("loadRedirectMap: the REDIRECT_MAP_PATH override", () => {
     const second = loadRedirectMap({ REDIRECT_MAP_PATH: path });
 
     expect(second).toBe(first);
+    expect(info).toHaveBeenCalledOnce();
   });
 
   it("degrades to no redirects when the file is missing, rather than 500ing every host", () => {

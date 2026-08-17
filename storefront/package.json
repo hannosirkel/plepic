@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
+    "redirect-map:transform": "node --no-warnings --experimental-transform-types scripts/transform-redirect-map.ts",
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:unit": "vitest run",
