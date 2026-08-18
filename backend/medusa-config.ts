@@ -123,6 +123,33 @@ const redisLockingModule = {
 module.exports = defineConfig({
   projectConfig: {
     databaseUrl: runtime.databaseUrl,
+    /**
+     * **The line that makes `medusa db:migrate` and the API agree.**
+     *
+     * Without it the two paths chose `ssl` independently: the runtime's
+     * `pgConnectionLoader` spread an `undefined` and fell through to `false`,
+     * while the migration path's `loadDatabaseConfig` substituted
+     * `getDefaultDriverOptions(clientUrl)` — which treats a URL matching
+     * neither `localhost`, `127.0.0.1`, `ssl_mode=disable|false` nor
+     * `sslmode=disable` as remote and returns
+     * `{ connection: { ssl: { rejectUnauthorized: false } } }`. A Kubernetes
+     * Service name is always remote by that rule, so the migrator sent an
+     * SSLRequest to a server running `ssl = off` and was answered `'N'`. The
+     * ten-second timer then reported a timeout that names an incorrect URL or
+     * an SSL problem as its two candidate causes, without saying which, and
+     * without the server's actual refusal.
+     *
+     * A URL parameter is not the alternative it looks like — though not because
+     * nothing reaches the migrator. `?sslmode=disable` survives and does work;
+     * the underscored `?ssl_mode=` spellings are stripped before either path
+     * reads them. What no URL can express is `verify-full`: the heuristic
+     * returns one of two objects, and verification is not one of them. This
+     * setting is read directly by both paths and can say all three.
+     * `resolveDatabaseDriverOptions` carries the measured table, and
+     * `tests/database-ssl.test.ts` runs Medusa's own resolver against exactly
+     * this object — and against those URL spellings — to keep it true.
+     */
+    databaseDriverOptions: runtime.databaseDriverOptions,
     http: runtime.http,
     redisUrl,
     redisOptions,

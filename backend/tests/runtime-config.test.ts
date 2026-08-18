@@ -141,6 +141,11 @@ describe("readBackendRuntimeConfig", () => {
       }),
     ).toEqual({
       databaseUrl: "postgres://app:password@database:5432/medusa",
+      // `DATABASE_SSL_MODE` is unset above, so this is the default — and it is
+      // the value the whole deployment runs on. See
+      // `tests/database-ssl.test.ts` for why it must be stated rather than left
+      // undefined.
+      databaseDriverOptions: { connection: { ssl: false } },
       redis: { host: "plepic-redis", port: 6379, password: "redis-password" },
       http: {
         storeCors: "https://store.example.test",
