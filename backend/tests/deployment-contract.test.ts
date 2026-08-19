@@ -130,6 +130,42 @@ describe("the scripts the deploys manifests invoke", () => {
   });
 
   /**
+   * **`db:migrate` prompts, and the predeploy Job has no one to answer.**
+   *
+   * `syncLinks` is an internal stage of `db:migrate`, not a separate step in the
+   * chain: `@medusajs/medusa/dist/commands/db/migrate.js:85-90` calls it unless
+   * `--skip-links`, forwarding `--execute-all-links` and `--execute-safe-links`
+   * as its `executeAll` and `executeSafe`. With neither flag,
+   * `commands/db/sync-links.js:96` and `:110` hand any **delete** or **notify**
+   * action to `@inquirer/checkbox`. The predeploy Job requests no `stdin`, so
+   * nothing can answer that prompt, and it is a `Sync` hook at wave `-10`, ahead
+   * of every wave-`0` workload. See README, "The predeploy Job cannot answer a
+   * prompt".
+   *
+   * A later schema change is what arms this, which is why it is asserted rather
+   * than observed.
+   *
+   * `--execute-safe-links` is the flag and not `--execute-all-links`: per
+   * `sync-links.js:92-94` and `:106-108`, safe **discards** the delete and
+   * notify actions, while all *executes* them unattended — and a `notify` action
+   * is one whose generated SQL contains `alter column` or `drop column`
+   * (`@medusajs/link-modules/dist/migration/index.js:40,254-258`). Unattended
+   * column drops on a hook that nothing is watching is the worse failure.
+   *
+   * The cost is documented in `README.md`: discarded deletions accumulate
+   * orphaned link tables until someone reviews them on a terminal with a bare
+   * `medusa db:sync-links`, which lists the affected tables first.
+   */
+  it("keeps the predeploy migration non-interactive without executing unsafe link actions", () => {
+    const predeploy = expand("predeploy");
+    const migrate = /medusa db:migrate\b[^&|;]*/.exec(predeploy)?.[0] ?? "";
+
+    expect(migrate).not.toBe("");
+    expect(migrate).toContain("--execute-safe-links");
+    expect(predeploy).not.toContain("--execute-all-links");
+  });
+
+  /**
    * The commerce configuration is the predeploy Job's third step, and it has to
    * be in **this** Job rather than a new one: `deploys` names the workloads it
    * runs and the manifests are in a repository this workspace may not change, so

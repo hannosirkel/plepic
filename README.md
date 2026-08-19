@@ -967,7 +967,7 @@ it.
 |---|---|---|
 | `start` | `plepic-backend` Deployment | The API and the Admin, on the framework's default worker mode |
 | `start:worker` | `plepic-worker` Deployment | The same image with `MEDUSA_WORKER_MODE=worker` |
-| `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate`, then seeds the initial administrator, then applies the declared commerce configuration |
+| `predeploy` | `plepic-predeploy` Job, an Argo CD sync hook | `medusa db:migrate --execute-safe-links`, then seeds the initial administrator, then applies the declared commerce configuration |
 | `catalogue:import` | `plepic-catalogue-import` Job, suspended | The one-shot WooCommerce catalogue import |
 
 All four begin with `npm run redis:preflight &&`, which is the fifth script and
@@ -995,6 +995,91 @@ let an API, worker, or storefront pod start. It is also the only place a further
 step can go — `deploys` names the workloads it runs, and an additional
 `args: [npm, run, …]` would be a script this repository declares and no manifest
 ever invokes. That is exactly how the Redis preflight got there.
+
+### The predeploy Job cannot answer a prompt
+
+`medusa db:migrate` syncs the link tables as an **internal stage**, not as a
+separate entry in `predeploy`'s command list — `commands/db/migrate.js` calls
+`syncLinks` itself unless `--skip-links`. So the flags that govern that stage
+belong on `db:migrate` and nowhere else in the chain.
+
+Given neither `--execute-all-links` nor `--execute-safe-links`, `sync-links.js`
+hands every planned **delete** and **notify** action to an `@inquirer/checkbox`
+and asks which tables to act on. The predeploy Job has nobody to ask: it
+requests no `stdin`. It is also a `Sync` hook at `sync-wave: "-10"`, behind the
+data services at `-20` and ahead of every Deployment and the import Job at `0`.
+
+`predeploy` therefore passes `--execute-safe-links`.
+
+**That flag does more than suppress the prompt, and the difference is a real
+cost.** Per `sync-links.js`, "safe" means the unsafe actions are *discarded* —
+not deferred, and not converted into anything milder:
+
+| Planned action | Interactive `db:migrate` | With `--execute-safe-links` |
+|---|---|---|
+| `create` | executed | executed |
+| `update` — generated SQL contains neither `alter column` nor `drop column` | executed | executed |
+| `notify` — generated SQL contains one of those two fragments | offered in the prompt; whatever is ticked is applied as an update | **discarded, unexecuted** |
+| `delete` — the link no longer exists in the code | offered in the prompt; whatever is ticked has its table dropped | **discarded; the table stays** |
+
+Note what the `update` row does and does not promise. The classification is a
+case-insensitive substring match on the generated SQL against exactly those two
+fragments, so it is narrower than "changes nothing that already exists": a
+column rename is emitted as
+`alter table … rename column … to …` (`@mikro-orm/knex/schema/SchemaHelper.js`),
+which contains neither fragment, classifies as `update`, and **does** execute
+under `--execute-safe-links`.
+
+Two consequences follow, and both are accepted deliberately:
+
+- Removing a link stops removing its table. Orphaned link tables accumulate
+  until somebody clears them by hand.
+- A link change whose SQL alters or drops a column is never applied by
+  `predeploy`, so the link table's schema silently lags the code that reads it.
+
+And the Job does not say so. `syncLinks` logs only what it executed, so a
+discarded action produces no line at all — a run whose plan was nothing but
+deletes and notifies logs `Database already up-to-date`, which is exactly wrong.
+The plan is recomputed from the live schema on every run, so nothing is lost
+permanently; it is just never applied unattended. Applying it means going and
+looking, on a terminal, against the environment concerned:
+
+```bash
+medusa db:sync-links
+```
+
+Bare, with no flag, is the reviewable form and the one to reach for: it puts the
+deletes and the unsafe updates in front of you before either happens, one
+checkbox per link table, nothing ticked by default.
+
+Know what that prompt shows, because it is less than it sounds. Each row is
+`buildLinkDescription` — the two modules and models the link joins, and the
+table name — and nothing else. The `sql` the planner attached to the action is
+never printed, not in the prompt and not in the completion log. So the prompt
+tells you **which** link tables are subject to a delete or an unsafe update, and
+you infer the DDL from the schema change you already know you made. That is
+still the review; it is just a review of a table list, not of statements.
+
+`--execute-all` on that same command is *not* a safer synonym — it skips the
+same prompt `--execute-safe-links` skips and then executes every discarded
+action unseen, which is the review you came to do, declined. It has a use only
+once you have already read the plan and want it applied without re-reading it.
+
+Note the spelling while you are here. The standalone `db:sync-links` command
+takes `--execute-safe` / `--execute-all`; `db:migrate` and `db:setup` take
+`--execute-safe-links` / `--execute-all-links`. They are not interchangeable,
+and the wrong one is an unrecognised-option failure rather than a silent no-op —
+`medusa db:migrate --execute-safe` exits 1 with
+`Unknown arguments: execute-safe, executeSafe`.
+
+`--execute-all-links` is the flag *not* to reach for here, however tempting it
+looks as the one that leaves no work behind: on this Job it would execute
+column drops and table deletions unattended, in a hook nobody is watching, with
+the output going to a Job log read only after something has already gone wrong.
+A skipped cleanup is recoverable at leisure. An unreviewed `drop column` against
+the live database is not. `backend/tests/deployment-contract.test.ts` asserts
+both halves — the safe flag present on the `db:migrate` invocation, and the
+all-links flag absent from the whole `predeploy` chain.
 
 ### Naming a Redis is fail-closed, and so is reaching one
 
