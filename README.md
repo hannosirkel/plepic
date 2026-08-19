@@ -1354,6 +1354,138 @@ unencoded `@` in it would move the host. And no refusal ever contains a value �
 these messages are read from a crash-looping pod's log, which is the cluster's
 log pipeline and thirty days of Loki.
 
+#### `DATABASE_SSL_MODE`, which is deliberately not in the URL
+
+**Optional. Unset means `disable`, which is the deployment that exists.** It
+takes libpq's vocabulary, restricted to three modes:
+
+| `DATABASE_SSL_MODE` | Connection | When |
+|---|---|---|
+| unset or `disable` | no TLS | today — the deployed PostgreSQL runs `ssl = off`, measured below |
+| `require` | TLS, certificate not verified | a managed database that requires TLS |
+| `verify-full` | TLS, chain and hostname verified | the in-cluster target, but see below — it is not a manifest-only change |
+
+Anything else refuses by name and lists the three. An empty value is treated as
+absent, exactly as `DATABASE_URL` is, because that is what an ESO-projected key
+whose OpenBao field is absent looks like.
+
+**`verify-full` verifies against Node's default trust store**, so it is the one
+mode that may need more than a manifest edit. A certificate issued by a private
+or cluster-internal CA fails verification unless that CA is trusted by the
+process, through `NODE_EXTRA_CA_CERTS` — so if TLS is terminated with a
+self-signed or cluster-issued certificate, budget for that alongside the mode
+change. Installing the CA into the image's trust store is **not** sufficient on
+its own: Node defaults to `--use-bundled-ca` and reads the system store only
+under `--use-system-ca`, and nothing here sets `NODE_OPTIONS`. A certificate
+chaining to a public CA needs none of this. `require` verifies nothing and so
+needs nothing either way, which is what makes it the safe first step rather
+than the desirable end state.
+
+It exists because `medusa db:migrate` and the running backend used to choose
+`ssl` by **two different routes**, and only one of them matched this
+deployment:
+
+| Path | How `ssl` was chosen | Result |
+|---|---|---|
+| the API and the worker | `pgConnectionLoader` spreads `databaseDriverOptions` — `undefined` — and `createPgConnection` falls through `?? false` | no TLS |
+| `db:migrate` | `medusaAppLoader` forwards `driverOptions: undefined`, so `loadDatabaseConfig` substitutes `getDefaultDriverOptions(clientUrl)` | `{ rejectUnauthorized: false }` |
+
+`getDefaultDriverOptions` calls a URL *remote* unless it matches `localhost`,
+`127.0.0.1`, `ssl_mode=disable`, `ssl_mode=false`, or `sslmode=disable`. A
+Kubernetes Service name matches none of those, so the predeploy Job opened with
+an SSLRequest, PostgreSQL answered `'N'`, and `pg` ended the socket without
+sending a startup packet — after which `propagateCreateError: false` left the
+query pending until Medusa's ten-second migration timer fired.
+
+**What that timer reports is the reason this took a while to find.** It says
+*"Could not connect to the database while running migrations. The connection
+timed out after 10 seconds, which usually indicates an incorrect database URL or
+an SSL configuration issue."* So it does name SSL — but as one of two guesses,
+with nothing to say which, and the server's actual answer never appears: `pg`
+raised `The server does not support SSL connections` on the pool's connection,
+where the operator never saw it. Measured from a pod holding the real
+environment:
+
+```text
+PG_OK   plain      (ssl:false)                    1011ms rows=1
+PG_FAIL ssl-object ({rejectUnauthorized:false})      2ms  server does not support SSL connections
+```
+
+##### Why a variable and not a URL parameter
+
+**One URL spelling would in fact have worked**, and it is worth being exact
+about which, because the tempting summary — "no URL parameter survives" — is
+false. `pgConnectionLoader` and `loadDatabaseConfig` both strip only the
+**underscored** `ssl_mode`, with `/(\?|&)ssl_mode=[^&]*(&|$)/gi`, and
+`medusaAppLoader` then takes the migration `clientUrl` from that stripped
+string in preference to `projectConfig.databaseUrl`. But `getDefaultDriverOptions`
+matches *both* `ssl_mode=(disable|false)` and the unhyphenated
+`sslmode=(disable)` — and nothing strips the second. Measured:
+
+| URL suffix | Survives the strip | Migration `ssl` |
+|---|---|---|
+| none | — | `{ rejectUnauthorized: false }` |
+| `?ssl_mode=disable` | no | `{ rejectUnauthorized: false }` |
+| `?ssl_mode=false` | no | `{ rejectUnauthorized: false }` |
+| `?sslmode=disable` | **yes** | `false` |
+
+So `?sslmode=disable` would have stopped the outage. `databaseDriverOptions` is
+still the right mechanism, for three narrower reasons that survive the
+correction:
+
+1. **`verify-full` is the one mode no URL can express — and the only one.**
+   Being exact matters here, because the overstatement runs both ways.
+   `getDefaultDriverOptions` returns one of exactly two objects, and its
+   *non-matching* branch is the `require` mapping below, byte for byte. A URL
+   can therefore produce no TLS, and can produce unverified TLS — the latter
+   just by not matching, which is precisely what the outage was. What it can
+   never produce is `ssl: true`. Verification is reachable through
+   `driverOptions` and nowhere else.
+2. **Leaving it to the URL is what made the two paths disagree in the first
+   place.** The heuristic steers a *default* that applies only when
+   `driverOptions` is absent — and when it is absent the runtime does not
+   consult the heuristic at all; it falls through `?? false`. One connection
+   string, two `ssl` values, chosen by which entry point read it. Stating the
+   options is what removes the disagreement, whatever value is chosen.
+3. **It steers that default by regex-matching a substring of the connection
+   string**, one underscore away from the spelling that is silently deleted.
+   `databaseDriverOptions` is read directly, by both paths, and is the only
+   setting both honour deterministically.
+
+##### A `DATABASE_URL` carrying `sslmode=` overrides this variable
+
+`pg`'s `connection-parameters.js:60` does
+`Object.assign({}, config, parse(config.connectionString))`, so a parsed URL is
+applied **over** the explicit `ssl` — in both directions. Measured:
+`?sslmode=require` with `DATABASE_SSL_MODE` unset leaves knex holding
+`ssl = false` while pg resolves `ssl = {}` and attempts TLS; `?sslmode=disable`
+against `verify-full` resolves to `ssl = false` and drops TLS entirely.
+
+This is harmless today — every `deploys` workload supplies the five parts and no
+`DATABASE_URL`, so the two never meet — but it means `DATABASE_SSL_MODE` is not
+the last word when a URL is supplied. Do not put `sslmode` in a `DATABASE_URL`.
+Note also that `pg` currently treats a URL's `sslmode=require` as `verify-full`
+and warns that this will change in `pg` v9, which is a second reason to express
+the intent here rather than there.
+
+##### Why a variable rather than a hardcoded `false`
+
+So that turning TLS on is a configuration change with no code to unpick — and
+`require` is deliberately byte-identical to Medusa's own remote default, so
+taking that step lands on exactly the options Medusa would have chosen
+unprompted. It stays optional because no `deploys` manifest, `compose.yaml`
+service, Dockerfile or workflow sets it, and requiring it would turn a
+one-repository fix into a cross-repository contract change.
+
+`backend/tests/database-ssl.test.ts` holds every claim above that can rot: that
+the configuration states the options, that Medusa's own `loadDatabaseConfig` and
+`createPgConnection` still resolve them this way, that the four URL spellings in
+the table still behave as tabulated, and that `pg` still lets a URL's `sslmode`
+override an explicit `ssl` in both directions. An upgrade that changes either
+precedence, the strip regex, or that override turns it red — which is the
+intended outcome, and the signal to re-verify this section rather than to
+silence the test.
+
 ## Images
 
 Two images, both built from the **repository root** because this is an npm

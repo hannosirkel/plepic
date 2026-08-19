@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDatabaseUrl } from "../src/config/database-url.js";
+import {
+  resolveDatabaseDriverOptions,
+  resolveDatabaseUrl,
+} from "../src/config/database-url.js";
 
 /**
  * The five parts every `deploys/plepic/base` workload projects, and nothing
@@ -154,5 +157,90 @@ describe("resolveDatabaseUrl", () => {
         /DATABASE_HOST/,
       );
     }
+  });
+});
+
+describe("resolveDatabaseDriverOptions", () => {
+  /**
+   * The default is the deployment that exists. Both PostgreSQL StatefulSets run
+   * `ssl = off`, so an unset variable has to produce the connection that
+   * actually works — and it has to produce it as an *explicit* `false`, because
+   * leaving the options undefined is precisely what let `db:migrate` substitute
+   * Medusa's remote default and open an SSLRequest the server answered `'N'` to.
+   */
+  it("defaults to disable when DATABASE_SSL_MODE is unset", () => {
+    expect(resolveDatabaseDriverOptions({})).toEqual({ connection: { ssl: false } });
+  });
+
+  /**
+   * Empty is absent, for the same reason `DATABASE_URL` treats it that way: an
+   * ESO-projected key whose OpenBao field is absent arrives as `""`, and an
+   * optional variable that refused on `""` would be a required one.
+   */
+  it("treats an empty or whitespace-only DATABASE_SSL_MODE as unset", () => {
+    for (const empty of ["", "   ", "\t"]) {
+      expect(resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: empty })).toEqual({
+        connection: { ssl: false },
+      });
+    }
+  });
+
+  it("resolves disable to no TLS at all", () => {
+    expect(resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: "disable" })).toEqual({
+      connection: { ssl: false },
+    });
+  });
+
+  /**
+   * `require` is byte-identical to Medusa's own remote default: encrypt, but do
+   * not verify. That equivalence is the point — turning TLS on for a managed
+   * database is then a manifest change that lands the deployment on exactly the
+   * options Medusa would have chosen for it.
+   */
+  it("resolves require to encryption without verification", () => {
+    expect(resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: "require" })).toEqual({
+      connection: { ssl: { rejectUnauthorized: false } },
+    });
+  });
+
+  /** `ssl: true` is node-postgres asking for a verified chain and hostname. */
+  it("resolves verify-full to a verified chain", () => {
+    expect(resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: "verify-full" })).toEqual({
+      connection: { ssl: true },
+    });
+  });
+
+  it("accepts a surrounding-whitespace value, like every other part", () => {
+    expect(resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: "  require  " })).toEqual({
+      connection: { ssl: { rejectUnauthorized: false } },
+    });
+  });
+
+  /**
+   * Fail closed and name the variable. libpq has six `sslmode` values and only
+   * three are implemented here; silently treating `prefer`, `allow` or
+   * `verify-ca` as one of the others would be a downgrade nobody asked for, on
+   * the one setting whose whole purpose is to say how much verification is
+   * wanted. `no` and `true` are in the list because they are what a YAML author
+   * writes when they think this field is a boolean.
+   */
+  it("refuses any other mode, naming DATABASE_SSL_MODE and the accepted values", () => {
+    for (const invalid of ["prefer", "allow", "verify-ca", "true", "false", "no", "off", "1"]) {
+      expect(() => resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: invalid })).toThrow(
+        /DATABASE_SSL_MODE/,
+      );
+      expect(() => resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: invalid })).toThrow(
+        /disable.*require.*verify-full/,
+      );
+    }
+  });
+
+  /** Each call gets its own object; nothing downstream can mutate a shared one. */
+  it("returns a fresh object on every call", () => {
+    const first = resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: "require" });
+    const second = resolveDatabaseDriverOptions({ DATABASE_SSL_MODE: "require" });
+
+    expect(first).not.toBe(second);
+    expect(first.connection).not.toBe(second.connection);
   });
 });

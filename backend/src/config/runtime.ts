@@ -11,10 +11,22 @@ import {
   assertExpectedEnvironmentIdentity,
   type ImportEnvironmentIdentity,
 } from "../catalogue-import/refusal";
-import { resolveDatabaseUrl } from "./database-url";
+import {
+  type DatabaseDriverOptions,
+  resolveDatabaseDriverOptions,
+  resolveDatabaseUrl,
+} from "./database-url";
 
 export interface BackendRuntimeConfig {
   readonly databaseUrl: string;
+  /**
+   * The one place the SSL mode is decided, because it is the one value both
+   * `medusa db:migrate` and the running backend read. Leaving it undefined is
+   * what let the migrator open an SSLRequest against a server running
+   * `ssl = off` while the API connected in plaintext — see
+   * {@link resolveDatabaseDriverOptions}.
+   */
+  readonly databaseDriverOptions: DatabaseDriverOptions;
   readonly redis: RedisRuntimeConfig;
   readonly http: {
     readonly storeCors: string;
@@ -403,6 +415,13 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   // the one whose refusal has to be the first thing in the log.
   const databaseUrl = resolveDatabaseUrl(environment);
 
+  // Beside the URL, and read the same way: it is the other half of one
+  // decision. `DATABASE_SSL_MODE` is deliberately **not** in either required
+  // list — it is optional, defaults to `disable`, and no manifest, compose
+  // file, Dockerfile or workflow sets it. Requiring it would make this a
+  // cross-repository contract change instead of a fix.
+  const databaseDriverOptions = resolveDatabaseDriverOptions(environment);
+
   for (const name of requiredEnvironmentVariables) {
     requireEnvironmentValue(environment, name);
   }
@@ -461,6 +480,7 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
 
   return {
     databaseUrl,
+    databaseDriverOptions,
     redis,
     http: {
       storeCors: requireDeclaredEnvironmentValue(environment, "STORE_CORS"),
