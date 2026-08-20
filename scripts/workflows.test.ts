@@ -867,6 +867,54 @@ describe("Deploy Test never reaches another application", () => {
   });
 });
 
+/**
+ * `Validate` asks a running Medusa the storefront's catalogue question.
+ *
+ * The pure suites in the `validate` job cannot see the class of defect the
+ * `store-smoke` job exists for -- twenty-seven tax regions written with a null
+ * provider, which answered every catalogue request with HTTP 500 while 2,967
+ * unit tests stayed green. `scripts/store-smoke` and
+ * `backend/tests/smoke/store-api.test.ts` are that check; these are the facts
+ * about it that a workflow edit could quietly undo.
+ */
+describe("Validate's store smoke job", () => {
+  const VALIDATE = "validate.yml";
+
+  it("stands beside the two pure suites rather than replacing either", () => {
+    expect(Object.keys(jobs(VALIDATE))).toEqual(["validate", "playwright", "store-smoke"]);
+  });
+
+  it("runs the same one script a developer runs, from a locked install", () => {
+    const text = jobText(VALIDATE, "store-smoke");
+    expect(text).toMatch(/npm ci/);
+    expect(text).toMatch(/bash scripts\/store-smoke/);
+  });
+
+  /**
+   * A workflow naming a script that is not there is the failure this repository
+   * has already been bitten by, in `deploys` manifests naming `npm run` scripts
+   * the built image did not declare. It is invisible until the job runs.
+   */
+  it("names a script that exists and is a bash script", () => {
+    const script = readFileSync(join(repoRoot, "scripts", "store-smoke"), "utf8");
+    expect(script.startsWith("#!/usr/bin/env bash")).toBe(true);
+    expect(script).toMatch(/set -euo pipefail/);
+  });
+
+  /**
+   * The data services are `compose.yaml`'s, brought up by the script. Declaring
+   * `services:` here instead would be a *fourth* place PostgreSQL and Redis are
+   * pinned, and `scripts/images.test.ts` holds three of them to each other --
+   * so the fourth would be the one free to drift.
+   */
+  it("declares no service containers of its own, and takes them from compose", () => {
+    expect(job(VALIDATE, "store-smoke")["services"]).toBeUndefined();
+    expect(readFileSync(join(repoRoot, "scripts", "store-smoke"), "utf8")).toMatch(
+      /docker compose up[^\n]*postgresql redis/,
+    );
+  });
+});
+
 describe("the code-import ban itself", () => {
   // The ban is only as good as what it refuses and what it lets through, and
   // neither is observable from a workflow that happens to be written correctly.

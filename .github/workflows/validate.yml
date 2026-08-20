@@ -122,3 +122,52 @@ jobs:
 
       - name: Run browser and screenshot suites
         run: npm -w storefront exec -- playwright test
+
+  store-smoke:
+    runs-on: ubuntu-24.04
+    # One request against a **running** Medusa, before merge.
+    #
+    # The `validate` job above runs 2,967 unit tests and cannot see the class of
+    # defect this job exists for. The shop's move from tax-inclusive to
+    # net-plus-VAT passed three review passes and every one of those tests, and
+    # merged with twenty-seven tax regions carrying `provider_id = NULL` --
+    # which made every catalogue request answer HTTP 500 in production with
+    # *"Unable to retrieve the tax provider with id: null"*. The unit tests
+    # assert that the right workflow received the right input; the input was
+    # wrong in a way only Medusa's own runtime knows.
+    #
+    # So this job runs the predeploy chain against a real PostgreSQL and a real
+    # Redis and then asks the Store API the question the storefront asks it.
+    # `scripts/store-smoke` is the whole of it, and it is the same command a
+    # developer runs locally -- the gate a developer can run and the gate CI
+    # runs are the same file, which is the property a red `main` went unnoticed
+    # three times for want of.
+    #
+    # There are no `services:` here on purpose. The data services come from
+    # `compose.yaml`, which already pins the digests the cluster runs and which
+    # `scripts/images.test.ts` holds the two `services:` blocks in this
+    # repository to. A third declaration of PostgreSQL and Redis would be a
+    # third place to edit. compose can also give Redis a `--requirepass`, which
+    # a service container cannot -- and `npm run predeploy` opens with
+    # `redis:preflight`, whose only job is to refuse a Redis it cannot name.
+    #
+    # Three to five minutes, most of it `npm ci`. `scripts/store-smoke` itself
+    # measures a little over a minute on a four-core machine with the images
+    # already pulled: seven seconds to bring up PostgreSQL and Redis, twenty-five
+    # to build the backend, fifteen for each of the two predeploy chains, four to
+    # boot Medusa, and about a second for each pass of the suite. It runs beside
+    # `validate` and `playwright` rather than after them, so it adds nothing to
+    # the workflow's wall clock.
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run the store smoke check
+        run: |
+          set -euo pipefail
+          bash scripts/store-smoke

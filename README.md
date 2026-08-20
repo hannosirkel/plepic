@@ -915,6 +915,13 @@ npm run typecheck
 npm run test:unit
 ```
 
+`scripts/validate` is pure: it runs on a bare checkout with Node and needs no
+Docker daemon, no database and no network. Two checks therefore sit outside it
+and are run on their own — the browser suite (`npm -w storefront exec --
+playwright test`) and the store smoke check (`bash scripts/store-smoke`), which
+asks a running Medusa what the storefront asks it. Both run in CI on every pull
+request; see "Continuous integration".
+
 ## Running the stack locally
 
 `compose.yaml` brings up PostgreSQL, Redis, an SMTP sink, the backend and the
@@ -1953,11 +1960,64 @@ addresses are the contract such a suite is written against, and because a
 service introduced alongside the suite that first uses it cannot be told apart
 from that suite when it fails.
 
+The `store-smoke` job below does need a database and a Redis, and deliberately
+does **not** use these: it brings up `compose.yaml`'s, for the reasons given
+under "The store smoke check".
+
 PostgreSQL uses `trust` authentication, so there is no password in the
 workflow. Redis runs unauthenticated in CI and authenticated in `compose.yaml`:
 GitHub Actions service containers cannot override a container's command, so
 `--requirepass` is not expressible there. What the two are held to being
 identical about is the image.
+
+### The store smoke check
+
+The `store-smoke` job runs `bash scripts/store-smoke`, which stands up a real
+Medusa and asks the Store API the one question the storefront asks it. It
+exists because the pure suites cannot answer it. The move from tax-inclusive
+to net-plus-VAT pricing passed three review passes and every unit test in this
+repository and merged with twenty-seven tax regions written with a null tax
+provider — which made every catalogue request answer `HTTP 500` with *"Unable
+to retrieve the tax provider with id: null"*. The unit tests assert that the
+right workflow received the right input; the input was wrong in a way only
+Medusa's runtime knows. `backend/src/commerce/tax-model.ts` has the mechanism
+in full, including why Medusa's own backfill migration cannot repair it.
+
+The script brings up PostgreSQL and Redis **from `compose.yaml`** rather than
+declaring service containers, so the job adds no fourth place those two images
+are pinned — and it gets an authenticated Redis, which a service container
+cannot express and which `npm run predeploy` opens by checking. It then builds
+the backend, runs the four predeploy commands against a database of its own
+(`plepic_store_smoke`, dropped and recreated each run), starts the built server
+on port 9010, and runs `backend/tests/smoke/store-api.test.ts`. Every expected
+figure in that suite is read from `backend/src/commerce/product-model.ts`,
+`backend/src/commerce/tax-model.ts` and `storefront/mock/catalogue.json`; none
+is typed into the check, so a rate change moves them all or fails naming the
+disagreement.
+
+It runs the predeploy chain **twice**, with the tax regions put back to a null
+provider in between. That second run is the only place this repository
+exercises the convergence branch of `applyTaxRegion` — the half of the fix that
+repairs rows which already exist, which is the half production needed — and the
+only place `predeploy` is asserted to be idempotent at all, which it has to be:
+it is an Argo CD sync hook that runs again on every promoted digest.
+
+**It is deliberately not part of `bash scripts/validate`.** That command is the
+one thing every developer runs before every commit and it must work on a bare
+checkout with Node and nothing else; requiring a Docker daemon would make it
+fail for anyone without one, and the reliable outcome of a pre-commit gate that
+sometimes cannot run is that people stop running it. What is shared instead is
+the *script*: CI runs `bash scripts/store-smoke` and so does a developer, so
+the two can never be different checks. Run it before pushing anything that
+touches `backend/src/commerce/`, `backend/src/scripts/` or a Medusa version:
+
+```bash
+bash scripts/store-smoke
+```
+
+It uses its own database and its own port, so a `docker compose up` stack
+already running is left alone — but it does clear Redis, which is never a
+restorable source of business data here.
 
 ### Promotion to the test environment
 

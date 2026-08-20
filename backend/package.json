@@ -18,7 +18,9 @@
     "seed:product": "medusa exec \"$(test -f ./src/scripts/seed-product.js && echo ./src/scripts/seed-product.js || echo ./src/scripts/seed-product.ts)\"",
     "catalogue:import": "npm run redis:preflight && medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "//test:smoke": "Needs a Medusa answering on a socket, with a migrated PostgreSQL and a Redis behind it. `bash scripts/store-smoke` stands all three up and then runs this; on its own it refuses, naming STORE_SMOKE_BACKEND_URL.",
+    "test:smoke": "vitest run --config vitest.smoke.config.mts"
   },
   "dependencies": {
     "@medusajs/admin-sdk": "2.18.0",
