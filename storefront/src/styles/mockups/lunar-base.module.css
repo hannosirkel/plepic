@@ -505,3 +505,32 @@
     height: 23rem;
   }
 }
+
+/*
+ * The four teasers, one row on a wide viewport.
+ *
+ * `repeat(4, …)` rather than `auto-fit`: four is the operator's instruction
+ * and a fixed count is what keeps the teasers visibly smaller than the trailer
+ * and the tutorial above them. `minmax(0, 1fr)` so a 16:9 frame can shrink
+ * inside its column instead of forcing the row wider than the section.
+ */
+.teaserRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 860px) {
+  .teaserRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .teaserRow {
+    grid-template-columns: 1fr;
+  }
+}

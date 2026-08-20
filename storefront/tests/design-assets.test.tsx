@@ -88,8 +88,24 @@ describe("FeatureSpecStrip", () => {
     expect(specifications.length).toBe(5);
     for (const spec of specifications) {
       expect(html).toContain(spec.term);
-      expect(html).toContain(spec.detail);
+      // `detail` is prose, not a string: Player info carries the two lines the
+      // box prints, and both have to reach the page.
+      for (const line of spec.detail) {
+        expect(html, `${spec.term} lost the line "${line}"`).toContain(line);
+      }
     }
+  });
+
+  /*
+   * The age marking used to be a sentence beneath the strip, read from the
+   * mock catalogue because `content/` had no age entry. It is now a line of
+   * the Player info column, from content. The failure this guards is the
+   * marking silently vanishing from the product page altogether, which is
+   * what happens if a future edit drops the second detail line as redundant.
+   */
+  it("states the age marking, from content rather than from the catalogue", () => {
+    expect(html).toContain("Age 10 +");
+    expect(html).not.toContain("safety marking");
   });
 
   it("renders exactly one column per specification (no duplicated or dropped column)", () => {
@@ -127,20 +143,36 @@ describe("FeatureSpecStrip", () => {
     "astronaut-helmet": "M36.55,59.33",
   };
 
-  /** The box back's own pairing, for the three facts the box states. */
+  /**
+   * The box back's own pairing — now for all five columns, not three.
+   *
+   * The old strip's terms were Players, Playing time and Setup, and only those
+   * three had a printed counterpart; Weight and Cards were skipped here as a
+   * judgement call made in the component. The columns are now the box's own
+   * five captions, so every one of them is box-stated and none is skipped —
+   * and the `skipped` accumulator below exists so that renaming a term can
+   * never quietly turn this test back into a loop that asserts nothing, which
+   * is what a bare `continue` would have done.
+   */
   const BOX_PAIRING: Readonly<Record<string, string>> = {
-    Players: "astronaut-helmet",
-    "Playing time": "space-shuttle-launch",
-    Setup: "mission-control",
+    "Fast-paced": "space-shuttle-launch",
+    Replayable: "galaxy",
+    "Quick Start": "mission-control",
+    Portable: "alien-obduction",
+    "Player info": "astronaut-helmet",
   };
 
   it("pairs each icon with the fact the printed box back pairs it with", () => {
     const columns = html.split("<li").slice(1);
     expect(columns.length).toBe(specifications.length);
 
+    const skipped: string[] = [];
     for (const [index, spec] of specifications.entries()) {
       const expectedSourceId = BOX_PAIRING[spec.term];
-      if (expectedSourceId === undefined) continue;
+      if (expectedSourceId === undefined) {
+        skipped.push(spec.term);
+        continue;
+      }
       const prefix = PATH_PREFIX_BY_SOURCE_ID[expectedSourceId];
       expect(prefix, `no path fingerprint recorded for ${expectedSourceId}`).toBeTruthy();
       expect(
@@ -148,6 +180,8 @@ describe("FeatureSpecStrip", () => {
         `the box back prints "${spec.term}" beside the ${expectedSourceId} icon; this column renders a different one`,
       ).toContain(prefix!);
     }
+
+    expect(skipped, "a column has no recorded box pairing, so its icon is unchecked").toEqual([]);
   });
 
   it("uses each of the five icons exactly once", () => {

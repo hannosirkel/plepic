@@ -66,6 +66,7 @@ import {
   pitch,
   productFaq,
   purchase,
+  teaserVideos,
   travelsWell,
   victoryPaths,
   victoryPathsIntro,
@@ -319,22 +320,37 @@ export function LunarBaseMockup({
 
         <section id="video_trailer" className={styles.section}>
           <h2 className={styles.heading}>Watch</h2>
-          {/* Both verified videos remain on YouTube. This section keeps the
-              existing id="video_trailer" fragment that backlinks carry. */}
+          {/* Every video remains on YouTube. This section keeps the existing
+              id="video_trailer" fragment that backlinks carry. */}
           <VideoEmbed
             heading="Trailer"
             title="Lunar Base Kickstarter Launch Video"
             youTubeId="2D_y7t7DDYM"
             aspectRatio="16:9"
-            captionStatus="not-yet-available"
           />
           <VideoEmbed
             heading="Tutorial"
             title="Lunar Base - Tutorial and Playthrough"
             youTubeId="SOW3l7kdu7k"
             aspectRatio="16:9"
-            captionStatus="not-yet-available"
           />
+          {/* The four teasers, added on the operator's instruction of
+              2026-08-20: one row on a wide viewport, smaller than the two
+              above, because they are a supplement to the trailer rather than
+              a second thing to watch first. */}
+          <ul className={styles.teaserRow}>
+            {teaserVideos.map((teaser) => (
+              <li key={teaser.youTubeId}>
+                <VideoEmbed
+                  heading={teaser.heading}
+                  title={teaser.title}
+                  youTubeId={teaser.youTubeId}
+                  aspectRatio="16:9"
+                  size="compact"
+                />
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section id="reviews" className={styles.section}>

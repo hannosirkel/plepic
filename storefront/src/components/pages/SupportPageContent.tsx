@@ -110,7 +110,6 @@ export function SupportPageContent({
             title="Lunar Base - Tutorial and Playthrough"
             youTubeId="SOW3l7kdu7k"
             aspectRatio="16:9"
-            captionStatus="not-yet-available"
           />
         </section>
 

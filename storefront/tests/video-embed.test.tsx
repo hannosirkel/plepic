@@ -23,7 +23,6 @@ describe("VideoEmbed: pending state", () => {
       title="Lunar Base trailer"
       youTubeId={null}
       aspectRatio="16:9"
-      captionStatus="not-yet-available"
     />,
   );
 
@@ -53,7 +52,6 @@ describe("VideoEmbed: embedded state", () => {
       title="Lunar Base tutorial"
       youTubeId="dQw4w9WgXcQ"
       aspectRatio="74:45"
-      captionStatus="not-yet-available"
     />,
   );
 
@@ -83,36 +81,33 @@ describe("VideoEmbed: embedded state", () => {
     expect(html).toMatch(/<iframe[^>]*title="Lunar Base tutorial"[^>]*loading="lazy"/);
   });
 
-  it("says plainly that no caption or transcript exists yet", () => {
-    expect(html).toContain("Captions and a transcript are not available for this video yet.");
+  /*
+   * The three caption-state cases that used to sit here are deleted rather
+   * than reworded: the operator removed the caption note on 2026-08-20 and
+   * the states no longer exist, so a test for them would be asserting a
+   * contract this component does not offer.
+   *
+   * What replaces them is the inverse. The note is easy to reintroduce one
+   * caller at a time — it reads like an accessibility improvement — and six
+   * copies of it down one page is what the operator asked to be rid of.
+   */
+  it("renders no caption or transcript note", () => {
+    expect(html).not.toContain("Captions");
+    expect(html).not.toContain("transcript");
   });
 });
 
-describe("VideoEmbed: caption states", () => {
-  it("reports a captioned video", () => {
-    const html = renderToStaticMarkup(
-      <VideoEmbed
-        heading="Watch"
-        title="A captioned video"
-        youTubeId="abc123"
-        aspectRatio="16:9"
-        captionStatus="captioned"
-      />,
-    );
-    expect(html).toContain("Captions are available on this video.");
+describe("VideoEmbed: sizes", () => {
+  const props = { heading: "Teaser", title: "A teaser", youTubeId: "abc123" } as const;
+
+  it("defaults to the feature size, so a caller cannot shrink a video by forgetting", () => {
+    const html = renderToStaticMarkup(<VideoEmbed {...props} aspectRatio="16:9" />);
+    expect(html).toContain("feature");
+    expect(html).not.toContain("compact");
   });
 
-  it("links a transcript when only a transcript exists", () => {
-    const html = renderToStaticMarkup(
-      <VideoEmbed
-        heading="Watch"
-        title="A transcribed video"
-        youTubeId="abc123"
-        aspectRatio="16:9"
-        captionStatus="transcript-only"
-        transcriptHref="/support/lunar-base#transcript"
-      />,
-    );
-    expect(html).toMatch(/<a href="\/support\/lunar-base#transcript">transcript<\/a>/);
+  it("takes the compact size for the teaser row", () => {
+    const html = renderToStaticMarkup(<VideoEmbed {...props} aspectRatio="16:9" size="compact" />);
+    expect(html).toContain("compact");
   });
 });

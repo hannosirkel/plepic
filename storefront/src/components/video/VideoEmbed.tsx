@@ -13,13 +13,29 @@
  * video's measured ratio; this component sizes its frame from it rather than
  * hard-coding one.
  *
- * **Captions or a transcript.** Neither exists for any of the three masters
- * today — no caption track and no transcript text were supplied, and
- * inventing either would be fabricating the video's own content, which the
- * plan forbids outright. `captionStatus` says so plainly rather than
- * omitting the question. Approved public videos use lazy, privacy-enhanced
- * embeds; a pending video has no caption obligation yet because it delivers
- * no video content to caption.
+ * ## The caption note is gone, and what that does and does not mean
+ *
+ * Every embed used to carry a line stating whether a caption track or a
+ * transcript existed — in practice always "Captions and a transcript are not
+ * available for this video yet." The operator removed it on 2026-08-20, when
+ * the Watch section grew from two videos to six and the line would have been
+ * repeated six times down one page.
+ *
+ * **Nothing in WCAG asked for that line.** SC 1.2.2 requires captions on
+ * prerecorded synchronised media; it does not require a page to announce their
+ * absence, and no arrangement of alt text, `aria-label` or `title` is a
+ * substitute for the captions themselves — putting the disclosure in the
+ * iframe's `title` would have renamed the video to "captions unavailable" and
+ * had it read out on every focus. So removing the line costs no conformance
+ * and gains none.
+ *
+ * **The underlying gap is real and is recorded elsewhere**, in the plan's
+ * residuals, rather than repeated down the page: these videos are not known to
+ * be captioned, and six uncaptioned embeds is a wider miss than two. Closing
+ * it is a YouTube Studio action, not a change to this component. What this
+ * file must not do is grow the line back one caller at a time; if caption
+ * state becomes worth showing again, it belongs once per section, not once per
+ * video.
  */
 
 import styles from "./video-embed.module.css";
@@ -32,10 +48,16 @@ export interface VideoEmbedProps {
   readonly youTubeId: string | null;
   /** Measured source ratio, represented by one of the CSP-safe CSS classes. */
   readonly aspectRatio: "16:9" | "74:45";
-  /** What exists for this specific video: a caption track, a transcript, or neither yet. */
-  readonly captionStatus: "captioned" | "transcript-only" | "not-yet-available";
-  /** Required when `captionStatus` is `"transcript-only"`. */
-  readonly transcriptHref?: string;
+  /**
+   * `"feature"` — the trailer and the tutorial, one per row at full width.
+   * `"compact"` — the teasers, four across on a wide viewport.
+   *
+   * A size rather than a width: the caller says what the video *is* in the
+   * page's hierarchy and the stylesheet decides how big that is, so the four
+   * teasers cannot end up larger than the tutorial by a caller passing a
+   * number.
+   */
+  readonly size?: "feature" | "compact";
 }
 
 export function VideoEmbed({
@@ -43,11 +65,10 @@ export function VideoEmbed({
   title,
   youTubeId,
   aspectRatio,
-  captionStatus,
-  transcriptHref,
+  size = "feature",
 }: VideoEmbedProps) {
   return (
-    <div className={styles.wrapper}>
+    <div className={`${styles.wrapper} ${size === "compact" ? styles.compact : styles.feature}`}>
       <p className={styles.heading}>{heading}</p>
 
       {youTubeId === null ? (
@@ -68,16 +89,6 @@ export function VideoEmbed({
             allowFullScreen
           />
         </div>
-      )}
-
-      {youTubeId === null ? null : captionStatus === "captioned" ? (
-        <p className={styles.captionNote}>Captions are available on this video.</p>
-      ) : captionStatus === "transcript-only" && transcriptHref !== undefined ? (
-        <p className={styles.captionNote}>
-          No captions yet — read the <a href={transcriptHref}>transcript</a> instead.
-        </p>
-      ) : (
-        <p className={styles.captionNote}>Captions and a transcript are not available for this video yet.</p>
       )}
     </div>
   );
