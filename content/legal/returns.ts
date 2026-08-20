@@ -45,7 +45,7 @@ export const returns: LegalPage = {
     "return-address",
     "legal-guarantee-of-conformity",
   ],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "withdrawal",

@@ -100,7 +100,7 @@ export const shipping: LegalPage = {
   indexable: true,
   sections: ["delivery", "vat"],
   covers: ["delivery-terms", "dispatch-estimate", "vat-presentation"],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "delivery",

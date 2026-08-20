@@ -105,7 +105,7 @@ export const privacy: LegalPage = {
     "third-country-transfers",
     "processing-lawful-bases",
   ],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "consent",

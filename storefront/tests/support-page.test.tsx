@@ -69,8 +69,11 @@ describe("SupportPageContent", () => {
   /**
    * `content/support.ts`'s contact copy ends with "You can also reach us at
    * {merchantContactAddress}." — a configuration-sourced placeholder
-   * `content/schema.ts` marks `unresolved`. This page shipped it verbatim, in
-   * plain body type, to every visitor at every width.
+   * `content/schema.ts` marked `unresolved` at the time. This page shipped it
+   * verbatim, in plain body type, to every visitor at every width. The flag
+   * has since been cleared — a deployment supplies the address — and this
+   * unit's two states are unaffected, because they are about the value being
+   * absent, not about the flag.
    */
   describe("the merchant contact placeholder", () => {
     it("is resolved from configuration when an address is configured", () => {

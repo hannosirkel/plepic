@@ -45,7 +45,7 @@ export const terms: LegalPage = {
   indexable: true,
   sections: ["checkout-acknowledgement", "delivery", "dispute-resolution"],
   covers: ["checkout-acknowledgement", "dispute-resolution"],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "checkout-acknowledgement",

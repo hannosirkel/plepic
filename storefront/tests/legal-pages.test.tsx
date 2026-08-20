@@ -412,12 +412,39 @@ describe("each edition fails loudly in its own language", () => {
       ).toContain(language.returnsMarker);
     });
 
-    it(`${locale}: announces incompleteness and draft status in its own words`, () => {
+    /*
+     * The draft note is asserted **absent**, and that is the whole inversion:
+     * all ten pages are `operator-approved`, so no visitor is served a legal
+     * page labelled a draft. It is asserted here — on the page rendered with
+     * *nothing* configured — deliberately. The incompleteness notice and the
+     * draft note are independent: one is about this deployment's environment,
+     * the other about the operator's approval, and the pairing that used to be
+     * asserted made the second look like a consequence of the first. A page
+     * that is missing its registry code still says so; it does not additionally
+     * claim to be unapproved.
+     *
+     * The per-edition string is still pinned, because the assertion has to be
+     * able to fail: `draftNote` is compared character for character against the
+     * literal table above, so a `CHROME_STRINGS.et` that reverted to English
+     * would be caught by the sibling marker tests, and this one cannot pass
+     * merely by looking for a string no edition produces.
+     */
+    it(`${locale}: announces incompleteness in its own words, and calls no page a draft`, () => {
       const imprint = edition.find((page) => page.route === "legalImprint");
       const text = visibleText(render(imprint!, NO_CONFIGURATION_VALUES, {}, locale));
       expect(text).toContain(language.noticeHeading);
       expect(text).toContain(language.noticeBodyFragment);
-      expect(text).toContain(language.draftNote);
+      expect(text, `the ${locale} imprint is served labelled a draft`).not.toContain(
+        language.draftNote,
+      );
+    });
+
+    it(`${locale}: serves no legal page labelled a draft`, () => {
+      for (const page of edition) {
+        expect(page.reviewStatus, `${page.route} is still a draft`).toBe("operator-approved");
+        const text = visibleText(render(page, NO_CONFIGURATION_VALUES, {}, locale));
+        expect(text, `${page.route} is served labelled a draft`).not.toContain(language.draftNote);
+      }
     });
   }
 });

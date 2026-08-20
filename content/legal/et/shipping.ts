@@ -15,9 +15,13 @@
  * - The figure itself is never written here; it resolves from the catalogue.
  *
  * Anchors, `covers`, sources and every placeholder token are
- * byte-identical to the English page. `reviewStatus` stays
- * `draft-pending-operator-input`; the qualified reader's acceptance of the
- * Estonian text is an operator act.
+ * byte-identical to the English page. `reviewStatus` is
+ * `operator-approved`: the operator supplied the merchant identity, the
+ * deployment manifests now serve it, and the page as served is what was
+ * approved. That field records **that** approval and nothing else — the
+ * qualified reader's acceptance of the Estonian text remains an operator act
+ * recorded outside this repository, with no field here, and this status does
+ * not represent it.
  */
 
 import type { LegalPage } from "../../schema.js";
@@ -30,7 +34,7 @@ export const shipping: LegalPage = {
   indexable: true,
   sections: ["delivery", "vat"],
   covers: ["delivery-terms", "dispatch-estimate", "vat-presentation"],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "delivery",

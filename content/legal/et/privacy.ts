@@ -17,9 +17,13 @@
  *   deviation and is not "fixed" here.
  *
  * Company names, cookie names, anchors, `covers` and every placeholder
- * token are byte-identical to the English page. `reviewStatus` stays
- * `draft-pending-operator-input`; the qualified reader's acceptance of the
- * Estonian text is an operator act.
+ * token are byte-identical to the English page. `reviewStatus` is
+ * `operator-approved`: the operator supplied the merchant identity, the
+ * deployment manifests now serve it, and the page as served is what was
+ * approved. That field records **that** approval and nothing else — the
+ * qualified reader's acceptance of the Estonian text remains an operator act
+ * recorded outside this repository, with no field here, and this status does
+ * not represent it.
  */
 
 import type { LegalPage } from "../../schema.js";
@@ -37,7 +41,7 @@ export const privacy: LegalPage = {
     "third-country-transfers",
     "processing-lawful-bases",
   ],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "consent",

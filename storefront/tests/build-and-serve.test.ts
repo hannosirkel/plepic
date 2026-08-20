@@ -979,6 +979,33 @@ describe("the legal pages serve their content, resolved from the runtime environ
 
     expect(response.body).not.toContain(BUILD_TIME_ENV.MERCHANT_LEGAL_NAME);
     expect(response.body).toContain("Estonian Commercial Register");
+
+    /*
+     * The register code and the VAT number, named individually and against the
+     * gap they would otherwise render as. The loop above proves the configured
+     * value reaches the page; this proves the *failure* shape is absent, which
+     * is a different assertion and the one that matters here: for three
+     * releases these two were supplied by no deployment at all, and the page
+     * served "[not configured: company registration number]" beneath a
+     * page-level incompleteness notice while answering 200 with a correct
+     * canonical. Nothing crashed and no test was red.
+     *
+     * `legal-incomplete-notice` is asserted absent on the imprint specifically,
+     * not only in the all-editions sweep further down, because the imprint is
+     * the page whose entire content is the identity set and the only page where
+     * an incompleteness notice means the trader is unidentified.
+     */
+    for (const gap of [
+      "[not configured: company registration number]",
+      "[not configured: VAT identification number]",
+    ]) {
+      expect(response.body, `the imprint rendered ${gap}`).not.toContain(gap);
+    }
+    expect(response.body, "the imprint says it is incomplete").not.toContain(
+      "legal-incomplete-notice",
+    );
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_REGISTRATION_NUMBER);
+    expect(response.body).toContain(RUNTIME_ENV.MERCHANT_VAT_NUMBER);
   });
 
   it("renders the return address on the returns page", async () => {
@@ -1144,10 +1171,33 @@ describe("the legal pages serve their content, resolved from the runtime environ
     );
   });
 
-  it("says out loud that all five are drafts pending the operator", async () => {
-    for (const path of LEGAL_PATHS) {
+  /**
+   * The property this whole change exists for: **no legal page reaches a
+   * visitor labelled a draft.**
+   *
+   * The inverse of what this assertion used to hold. All ten pages are
+   * `operator-approved` now that the deployment manifests supply the merchant
+   * identity, so `legal-draft-note` must appear on none of them — and the
+   * marker is the `data-testid`, not the sentence, because the sentence is
+   * per-edition and the element is what the renderer either emits or does not.
+   *
+   * Every edition's legal paths, not the default one's. The Estonian pages have
+   * their own `reviewStatus` and their own draft note; a sweep of the five
+   * English paths would have left five approved pages unchecked, which is
+   * exactly the half of this change that is easiest to forget.
+   */
+  it("serves no legal page labelled a draft, in any edition", async () => {
+    const paths = LOCALES.flatMap((locale) =>
+      pagesIn(locale)
+        .filter((page) => page.route.startsWith("legal"))
+        .map((page) => localizedPath(locale, ROUTE_PATHS[page.route])),
+    );
+    expect(paths.length).toBeGreaterThanOrEqual(LEGAL_PATHS.length * 2);
+
+    for (const path of paths) {
       const response = await requestWithHost(server.port, path, "runtime.example.com");
-      expect(response.body, `${path} does not say it is a draft`).toContain("legal-draft-note");
+      expect(response.status, `${path} did not answer 200`).toBe(200);
+      expect(response.body, `${path} is served labelled a draft`).not.toContain("legal-draft-note");
     }
   });
 

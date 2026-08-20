@@ -7,9 +7,14 @@
  * first. Structure, anchors, `covers`, route ids and every placeholder
  * token are byte-identical to the English page — only prose is Estonian.
  *
- * `reviewStatus` is `draft-pending-operator-input` and is not this file's to
- * change: the qualified reader's acceptance of the Estonian text is an
- * operator act, recorded outside this repository.
+ * `reviewStatus` is `operator-approved`. It records one thing: the operator
+ * has approved this page **as served**, which became possible when the
+ * deployment manifests began supplying all seven `MERCHANT_*` values, so the
+ * tokens below resolve to the registered identity rather than to visible gaps.
+ * It does **not** record the qualified reader's acceptance of the Estonian
+ * text. That remains an operator act recorded outside this repository, it has
+ * no field here, and none should be added: a status that means two things is a
+ * status that can be true for only one of them and read as both.
  */
 
 import type { LegalPage } from "../../schema.js";
@@ -22,7 +27,7 @@ export const imprint: LegalPage = {
   indexable: true,
   sections: ["contact"],
   covers: ["merchant-identity", "registered-address"],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "contact",

@@ -14,9 +14,11 @@
  * **The contact copy is resolved against configuration, and suppressed when
  * it cannot be.** `content/support.ts`'s `contact.body` ends with "You can
  * also reach us at {merchantContactAddress}." — a configuration-sourced
- * placeholder `content/schema.ts` marks `unresolved`, which this page shipped
- * verbatim, so every visitor read the brace in plain body type at all three
- * widths. `src/lib/configuration-placeholders.ts` resolves it from
+ * placeholder `content/schema.ts` then marked `unresolved`, which this page
+ * shipped verbatim, so every visitor read the brace in plain body type at all
+ * three widths. (The flag is gone now that the deployment manifests supply the
+ * address; the suppression below is not, because an environment can always be
+ * misconfigured.) `src/lib/configuration-placeholders.ts` resolves it from
  * `MERCHANT_CONTACT_ADDRESS` and drops the paragraph when no address is
  * configured; see that module for why dropping is the only honest third
  * option.
