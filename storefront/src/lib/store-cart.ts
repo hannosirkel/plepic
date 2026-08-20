@@ -48,8 +48,21 @@ type StoreClient = ReturnType<typeof createMedusaStoreClient>;
  * The Store cart fields this module's parser needs, beyond the default set.
  *
  * `+` is Medusa's "in addition to the default selection" prefix, so this adds
- * to the standard cart response rather than replacing it — dropping the `+`
- * would return *only* these and break everything else that reads a cart.
+ * to the standard cart response rather than replacing it.
+ *
+ * **Dropping the `+` for an explicit list is not the safer option it looks
+ * like.** The sigil is the one character here that anything between the browser
+ * and Medusa might normalise, so replacing the list with a fully spelled-out
+ * selection is a tempting way to remove that hazard. Measured against a running
+ * Medusa, it returns `item_total: 0` and `line.total: 0` — the totals are
+ * *computed* for the default selection, and a selection that replaces it gets
+ * the columns without the computation. A basket priced at zero is a worse
+ * defect than the one being avoided.
+ *
+ * The hazard itself was measured too, and is not real: the same request answers
+ * identically with the `+` percent-encoded, sent literally, or decoded to a
+ * leading space, because Medusa trims the field name. So this list is robust to
+ * whatever a proxy does to it, and that is a fact rather than a hope.
  *
  * - `items.total` — the line figure the basket is priced from. The one the
  *   defect was about.

@@ -68,6 +68,7 @@ import type { ReactNode } from "react";
 import type { CartLine } from "./cart.js";
 import { DEFAULT_DESTINATION_CODE, destinationForCode } from "./destination.js";
 import { createMedusaStoreClient } from "./medusa-client.js";
+import { reportCartFailure, type CartOperation } from "./cart-diagnostics.js";
 import {
   addStoreLine,
   applyDestinationToCart,
@@ -267,7 +268,12 @@ export function CartProvider({
          */
         await applyDestinationToCart(sdk, stored, destinationCode);
         setLines(cartLinesFromStore(await retrieveStoreCart(sdk, stored)));
-      } catch { forgetMedusaCartId(); cartId.current = null; setFailure("action"); }
+      } catch (error) {
+        reportCartFailure("restore", error);
+        forgetMedusaCartId();
+        cartId.current = null;
+        setFailure("action");
+      }
     })();
   }, [scenario, initial.lines, destinationCode]);
 
@@ -276,13 +282,15 @@ export function CartProvider({
       id: string,
       state: LinePending,
       action: (current: readonly CartLine[]) => Promise<CartActionOutcome>,
+      operation: CartOperation,
     ) => {
       setFailure(null);
       setPending((current) => ({ ...current, [id]: state }));
       let outcome: CartActionOutcome;
       try {
         outcome = await action(linesRef.current);
-      } catch {
+      } catch (error) {
+        reportCartFailure(operation, error);
         if (scenario === null) { forgetMedusaCartId(); cartId.current = null; }
         outcome = { ok: false, reason: "action-failed" };
       }
@@ -304,7 +312,7 @@ export function CartProvider({
     // of an empty basket is created, and the status line says what is
     // happening rather than what is usually happening.
     if (scenario !== null) {
-      void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options));
+      void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options), "add");
       return;
     }
     void run("lunar-base", "adding", async () => {
@@ -315,23 +323,23 @@ export function CartProvider({
         rememberMedusaCartId(added.cartId);
       }
       return { ok: true, lines: added.lines };
-    });
+    }, "add");
   }, [run, options, scenario, destinationCode]);
 
   const updateQuantity = useCallback(
     (id: string, quantity: number) => {
-      if (scenario !== null) { void run(id, "updating", (current) => updateLineQuantityAction(current, id, quantity, options)); return; }
+      if (scenario !== null) { void run(id, "updating", (current) => updateLineQuantityAction(current, id, quantity, options), "update-quantity"); return; }
       if (cartId.current === null) { setFailure("action"); return; }
-      void run(id, "updating", async () => ({ ok: true, lines: await updateStoreLineQuantity(createMedusaStoreClient(runtimeConfig().medusa), cartId.current!, id, quantity) }));
+      void run(id, "updating", async () => ({ ok: true, lines: await updateStoreLineQuantity(createMedusaStoreClient(runtimeConfig().medusa), cartId.current!, id, quantity) }), "update-quantity");
     },
     [run, options, scenario],
   );
 
   const remove = useCallback(
     (id: string) => {
-      if (scenario !== null) { void run(id, "removing", (current) => removeLineAction(current, id, options)); return; }
+      if (scenario !== null) { void run(id, "removing", (current) => removeLineAction(current, id, options), "remove"); return; }
       if (cartId.current === null) { setFailure("action"); return; }
-      void run(id, "removing", async () => ({ ok: true, lines: await removeStoreLine(createMedusaStoreClient(runtimeConfig().medusa), cartId.current!, id) }));
+      void run(id, "removing", async () => ({ ok: true, lines: await removeStoreLine(createMedusaStoreClient(runtimeConfig().medusa), cartId.current!, id) }), "remove");
     },
     [run, options, scenario],
   );

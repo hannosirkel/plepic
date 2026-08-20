@@ -7,6 +7,7 @@ import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import { forgetMedusaCartId, rememberMedusaCartId, storedMedusaCartId } from "../../lib/cart-store.js";
 import { addStoreLine, createStoreCart } from "../../lib/store-cart.js";
+import { reportCartFailure } from "../../lib/cart-diagnostics.js";
 import styles from "../../styles/mockups/call-to-action.module.css";
 
 function runtimeConfig(): ClientRuntimeConfig {
@@ -79,7 +80,8 @@ export function AddToCartButton({
             }
             emitAddToCart({ variantId, name: productName, unitAmount, currency });
             window.location.assign("/cart");
-          } catch {
+          } catch (error) {
+            reportCartFailure("product-page-add", error);
             inFlight.current = false;
             setState("error");
           }
