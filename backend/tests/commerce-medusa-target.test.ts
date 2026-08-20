@@ -40,8 +40,11 @@ vi.mock("@medusajs/medusa/core-flows", () => ({
   createShippingOptionsWorkflow: recorder("createShippingOptions"),
   createShippingProfilesWorkflow: recorder("createShippingProfiles"),
   createStockLocationsWorkflow: recorder("createStockLocations"),
+  createTaxRatesWorkflow: recorder("createTaxRates"),
+  createTaxRegionsWorkflow: recorder("createTaxRegions"),
   linkSalesChannelsToStockLocationWorkflow: recorder("linkSalesChannelsToStockLocation"),
   updateRegionsWorkflow: recorder("updateRegions"),
+  updateTaxRatesWorkflow: recorder("updateTaxRates"),
   updateServiceZonesWorkflow: recorder("updateServiceZones"),
   updateShippingOptionsWorkflow: recorder("updateShippingOptions"),
 }));
@@ -104,7 +107,7 @@ describe("applying the currency's tax treatment", () => {
     },
   ];
 
-  it("sets the EUR price preference tax inclusive", async () => {
+  it("sets the EUR price preference tax exclusive", async () => {
     await targetOver({ store: CURRENCY_STORE }).apply(record("store-currency"));
 
     expect(calls).toEqual([
@@ -114,7 +117,7 @@ describe("applying the currency's tax treatment", () => {
           selector: { id: "store_01" },
           update: {
             supported_currencies: [
-              { currency_code: "eur", is_default: true, is_tax_inclusive: true },
+              { currency_code: "eur", is_default: true, is_tax_inclusive: false },
             ],
           },
         },
@@ -126,18 +129,24 @@ describe("applying the currency's tax treatment", () => {
     await targetOver({
       store: CURRENCY_STORE,
       price_preference: [
-        { id: "prpref_01", attribute: "currency_code", value: "eur", is_tax_inclusive: true },
+        { id: "prpref_01", attribute: "currency_code", value: "eur", is_tax_inclusive: false },
       ],
     }).apply(record("store-currency"));
 
     expect(calls).toEqual([]);
   });
 
-  it("rewrites a preference an operator has turned off", async () => {
+  /**
+   * The one that matters commercially. A preference left — or turned back — to
+   * `true` makes Medusa book VAT *out of* the advertised EUR 25.00 instead of
+   * adding it, which is a 19% cut to the net take that nothing on any page
+   * shows. Converging it is the whole reason this record is applied first.
+   */
+  it("rewrites a preference an operator has turned tax inclusive", async () => {
     await targetOver({
       store: CURRENCY_STORE,
       price_preference: [
-        { id: "prpref_01", attribute: "currency_code", value: "eur", is_tax_inclusive: false },
+        { id: "prpref_01", attribute: "currency_code", value: "eur", is_tax_inclusive: true },
       ],
     }).apply(record("store-currency"));
 
@@ -167,7 +176,7 @@ describe("applying the currency's tax treatment", () => {
       selector: { id: "store_01" },
       update: {
         supported_currencies: [
-          { currency_code: "eur", is_default: true, is_tax_inclusive: true },
+          { currency_code: "eur", is_default: true, is_tax_inclusive: false },
           { currency_code: "usd", is_default: false },
         ],
       },
@@ -185,7 +194,7 @@ describe("applying the currency's tax treatment", () => {
 });
 
 describe("applying the region", () => {
-  it("creates one tax-inclusive EUR region carrying the Stripe provider", async () => {
+  it("creates one tax-exclusive EUR region carrying the Stripe provider", async () => {
     await targetOver({}).apply(record("region"));
 
     expect(calls).toHaveLength(1);
@@ -195,7 +204,7 @@ describe("applying the region", () => {
       name: "Worldwide",
       currency_code: "eur",
       automatic_taxes: true,
-      is_tax_inclusive: true,
+      is_tax_inclusive: false,
       payment_providers: ["pp_stripe_stripe"],
     });
     expect(region!.countries).toEqual(expect.arrayContaining(["ee", "de", "us"]));
@@ -207,8 +216,73 @@ describe("applying the region", () => {
     expect(calls.map((call) => call.workflow)).toEqual(["updateRegions"]);
     expect(calls[0]?.input).toMatchObject({
       selector: { id: "reg_01" },
-      update: { is_tax_inclusive: true, payment_providers: ["pp_stripe_stripe"] },
+      update: { is_tax_inclusive: false, payment_providers: ["pp_stripe_stripe"] },
     });
+  });
+});
+
+/**
+ * The tax region and its one rate, which are two rows created by two workflows.
+ *
+ * Lifted from the catalogue import, so the cases are the import's own: absent
+ * region, present region with no rate, present region with a rate. The middle
+ * one is the state a run interrupted between the two workflows leaves behind,
+ * and the whole reason the two lookups are separate rather than one.
+ */
+describe("applying a tax region", () => {
+  const estonia = () => record("tax-region", EU_MEMBER_STATE_CODES.indexOf("EE"));
+
+  it("creates the region and its default rate when neither exists", async () => {
+    await targetOver({}).apply(estonia());
+
+    expect(calls.map((call) => call.workflow)).toEqual(["createTaxRegions", "createTaxRates"]);
+    expect(calls[0]?.input).toEqual([{ country_code: "ee" }]);
+    expect(calls[1]?.input).toEqual([
+      {
+        // The identifier the create handed back, not one this test invented.
+        tax_region_id: "createTaxRegions_created",
+        name: "Estonian VAT",
+        code: "EE-VAT",
+        rate: 24,
+        // `automatic_taxes` applies a region's *default* rate to a line with no
+        // matching rate rule, and every line this shop sells is such a line.
+        is_default: true,
+      },
+    ]);
+  });
+
+  it("adds the rate to a region something else already created", async () => {
+    await targetOver({ tax_region: [{ id: "txreg_ee", country_code: "ee" }] }).apply(estonia());
+
+    expect(calls.map((call) => call.workflow)).toEqual(["createTaxRates"]);
+    expect(calls[0]?.input).toMatchObject([{ tax_region_id: "txreg_ee", rate: 24 }]);
+  });
+
+  /**
+   * The rate rose from 22% to 24% on 1 July 2025. A deployment seeded before
+   * that date, or an operator who edited the figure in the Admin, is the case
+   * this converges — and it converges rather than creating a second rate,
+   * because two default rates in one region is a total nobody can predict.
+   */
+  it("converges a rate that no longer matches rather than adding a second", async () => {
+    await targetOver({
+      tax_region: [{ id: "txreg_ee", country_code: "ee" }],
+      tax_rate: [{ id: "txrate_ee", tax_region_id: "txreg_ee", code: "EE-VAT", rate: 22 }],
+    }).apply(estonia());
+
+    expect(calls.map((call) => call.workflow)).toEqual(["updateTaxRates"]);
+    expect(calls[0]?.input).toEqual({
+      selector: { id: "txrate_ee" },
+      update: { name: "Estonian VAT", rate: 24 },
+    });
+  });
+
+  it("addresses the country in lower case, the way Medusa stores it", async () => {
+    await targetOver({ tax_region: [{ id: "txreg_de", country_code: "de" }] }).apply(
+      record("tax-region", EU_MEMBER_STATE_CODES.indexOf("DE")),
+    );
+
+    expect(calls.map((call) => call.workflow)).toEqual(["createTaxRates"]);
   });
 });
 

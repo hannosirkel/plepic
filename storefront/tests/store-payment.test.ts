@@ -1,6 +1,8 @@
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { resolveCatalogue } from "../src/lib/catalogue.js";
+import { destinationForCode } from "../src/lib/destination.js";
 import { createMedusaStoreClient } from "../src/lib/medusa-client.js";
 import {
   completeStripeOrder,
@@ -56,23 +58,28 @@ describe("Stripe payment session Store operations", () => {
       cart: {
         id: "cart_example",
         currency_code: "eur",
-        item_total: 25,
+        item_total: 31,
+        item_tax_total: 6,
         subtotal: 32,
-        shipping_total: 7,
-        total: 32,
+        shipping_total: 8.68,
+        shipping_tax_total: 1.68,
+        tax_total: 7.68,
+        total: 39.68,
         items: [{ variant_id: "variant_example", title: "Lunar Base", unit_price: 25, quantity: 1 }],
         shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
         shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
       },
     }, "cart_example")).toEqual({
-      currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 2500, shippingAmount: 700,
-      orderAmount: 3200, address: "Ada, Moon Street 1, 10101, Tallinn, EE",
+      currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 3100, shippingAmount: 868,
+      orderAmount: 3968, taxAmount: 768, countryCode: "ee",
+      address: "Ada, Moon Street 1, 10101, Tallinn, EE",
       analyticsItems: [{ variantId: "variant_example", name: "Lunar Base", unitAmount: 2500, currency: "EUR", quantity: 1 }],
     });
     expect(() => returnOrderDisclosure({
       cart: {
         id: "cart_example", currency_code: "eur", subtotal: 32,
-        shipping_total: 7, total: 32, items: [{ title: "Lunar Base", quantity: 1 }],
+        shipping_total: 8.68, shipping_tax_total: 1.68, tax_total: 7.68, total: 39.68,
+        items: [{ title: "Lunar Base", quantity: 1 }],
         shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
         shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
       },
@@ -80,22 +87,111 @@ describe("Stripe payment session Store operations", () => {
     expect(() => returnOrderDisclosure({ cart: { id: "cart_example" } }, "cart_example")).toThrow(/complete checkout disclosure/);
   });
 
+  /**
+   * **The confirmation path gets the same three refusals the checkout gets.**
+   *
+   * This function renders goods, shipping, a VAT row and a total on the last
+   * screen before a buyer is charged, and it had none of the checks
+   * `assertedCartTotals` makes — it did not even read `item_tax_total` or
+   * `shipping_tax_total`. The argument that those refusals are what make the
+   * word "Includes" true rather than decorative does not weaken one screen
+   * later; if anything it strengthens, because by then the contract exists.
+   *
+   * The third refusal has no case here for the same reason it has none in
+   * `tests/store-checkout.test.ts`: it is algebraically implied by the other
+   * two, and that is demonstrated there rather than faked here.
+   */
+  it.each([
+    [
+      "figures that do not add up",
+      { item_total: 31, item_tax_total: 6, shipping_total: 8.68, shipping_tax_total: 1.68, tax_total: 7.68, total: 41 },
+      /do not add up/,
+    ],
+    [
+      "a tax total that is not the tax on the goods and the delivery",
+      { item_total: 31, item_tax_total: 6, shipping_total: 8.68, shipping_tax_total: 1.68, tax_total: 5, total: 39.68 },
+      /tax on the goods and the delivery/,
+    ],
+    [
+      "no breakdown of the tax at all",
+      { item_total: 31, shipping_total: 8.68, tax_total: 7.68, total: 39.68 },
+      /malformed checkout totals/,
+    ],
+  ] as const)("refuses %s on the confirmation page too", (_label, cart, message) => {
+    expect(() =>
+      returnOrderDisclosure(
+        {
+          cart: {
+            id: "cart_example",
+            currency_code: "eur",
+            ...cart,
+            items: [{ title: "Lunar Base", quantity: 1 }],
+            shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
+            shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
+          },
+        },
+        "cart_example",
+      ),
+    ).toThrow(message);
+  });
+
+  /**
+   * **The confirmation page's qualification comes from the order's own
+   * address.**
+   *
+   * The figures beside it were priced by Medusa against the confirmed shipping
+   * address, so the sentence qualifying them has to be about that address.
+   * Reading the destination cookie put the checkout's defect on the screen
+   * after the contract exists.
+   */
+  it("carries the delivery country the order was priced for, not a chosen destination", () => {
+    const disclosure = returnOrderDisclosure({
+      cart: {
+        id: "cart_example",
+        currency_code: "eur",
+        item_total: 31,
+        item_tax_total: 6,
+        shipping_total: 8.68,
+        shipping_tax_total: 1.68,
+        tax_total: 7.68,
+        total: 39.68,
+        items: [{ title: "Lunar Base", quantity: 1 }],
+        shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
+        shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
+      },
+    }, "cart_example");
+
+    expect(disclosure.countryCode).toBe("ee");
+    const qualifier = resolveCatalogue(
+      undefined,
+      destinationForCode(disclosure.countryCode),
+    ).priceTaxQualifier;
+    expect(qualifier).toContain("Estonia");
+    expect(qualifier, "the order is qualified for the default destination").not.toBe(
+      resolveCatalogue().priceTaxQualifier,
+    );
+  });
+
   it("keeps redirect completion available when only optional analytics item metadata is absent", () => {
     expect(returnOrderDisclosure({
       cart: {
         id: "cart_example",
         currency_code: "eur",
-        item_total: 25,
+        item_total: 31,
+        item_tax_total: 6,
         subtotal: 32,
-        shipping_total: 7,
-        total: 32,
+        shipping_total: 8.68,
+        shipping_tax_total: 1.68,
+        tax_total: 7.68,
+        total: 39.68,
         items: [{ title: "Lunar Base", quantity: 1 }],
         shipping_address: { first_name: "Ada", address_1: "Moon Street 1", postal_code: "10101", city: "Tallinn", country_code: "ee" },
         shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
       },
     }, "cart_example")).toMatchObject({
       goods: "Lunar Base × 1",
-      orderAmount: 3200,
+      orderAmount: 3968,
+      taxAmount: 768,
       analyticsItems: null,
     });
   });

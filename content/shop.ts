@@ -102,7 +102,7 @@ export const unavailableFigure = "Shown once your basket holds only items we can
 
 export const basket = {
   heading: "Your basket",
-  lede: "One game, one price, sent anywhere. Shipping is added at checkout once you have entered a delivery address.",
+  lede: "One game, one price before tax, sent anywhere. Tax and shipping are worked out at checkout, from the delivery address you enter there.",
 
   empty: {
     heading: "Your basket is empty",
@@ -359,12 +359,70 @@ export const checkout = {
    * button, in the order `content/legal/terms.ts` lists them: "the goods, the
    * price of the goods, the shipping charge, the total, the delivery address
    * and the delivery estimate".
+   *
+   * {@link order.vatLabel} is a **seventh** value and does not disturb that
+   * order: it is a breakdown of two of the six, placed between the shipping
+   * charge and the total because that is where the two figures it accounts for
+   * end, and it is absent entirely for an order that attracts no VAT.
    */
   order: {
     heading: "Your order",
     goodsLabel: "The goods",
     goodsPriceLabel: "Price of the goods",
     shippingLabel: "Shipping charge",
+    /**
+     * The VAT row's term, worded as a **breakdown** rather than as a charge,
+     * on purpose.
+     *
+     * The row sits between the shipping charge and the total, which is where a
+     * reader expects an addend — and it is not one. The tax is already inside
+     * the price of the goods and inside the shipping charge, so a row headed
+     * simply "VAT", sitting between the shipping charge and the total, invites
+     * a reader to add it to them and find that the column does not sum.
+     * "Includes" is the whole fix, and
+     * `storefront/src/lib/store-checkout.ts` refuses a set of totals in which
+     * that word would be false.
+     *
+     * `{vatRate}` resolves from the catalogue. The rate is a fact this
+     * workspace quotes and never applies; it is declared in
+     * `backend/src/commerce/tax-model.ts`.
+     */
+    vatLabel: "Includes VAT at {vatRate}",
+    /**
+     * The price qualification when the figures above are the ones **the
+     * delivery address produced**, and the qualification therefore follows
+     * that address. Rendered as `{priceTaxQualifier}` plus the shipping note,
+     * out of the catalogue — there is no string here, deliberately, because
+     * the words belong to the one resolver every surface reads.
+     *
+     * The two below are for the states where the address has not decided the
+     * figures yet, and they exist because the honest thing to say then is not
+     * a destination.
+     */
+    /**
+     * Appended while the figures still follow the destination set on the site
+     * rather than a delivery address.
+     *
+     * The goods figure on this screen before an address is complete is the
+     * basket's, and the basket was priced for the chosen destination — so
+     * naming that destination is correct, and saying nothing would leave a
+     * provisional figure looking settled. What this adds is the part a reader
+     * cannot see: that the address, once complete, is what decides it.
+     */
+    destinationProvisional:
+      "These figures follow the destination set on this site until the delivery address above is complete; the address is what decides them.",
+    /**
+     * The qualification when no destination can honestly be named at all —
+     * the figures are address-bound but the country is not one this site
+     * knows, so there is no tax treatment to state.
+     *
+     * Unreachable from the served form, whose country field is a selection
+     * over the same list. It exists because the alternative to an honest
+     * refusal here is naming a destination that is not the one being charged,
+     * which is exactly the defect this wording replaced.
+     */
+    qualifierPending:
+      "VAT and shipping are worked out from the delivery address above, and are shown here once it is complete. Non-EU taxes and duties, if any, are not included.",
     totalLabel: "Total",
     addressLabel: "Delivery address",
     estimateLabel: "Delivery estimate",

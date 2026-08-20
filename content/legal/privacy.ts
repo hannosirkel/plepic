@@ -84,6 +84,36 @@
  * stores from a walk of `storefront/src/` and fails when one of them has no
  * sentence here.
  *
+ * ## The fourth row is this site's own cookie, 2026-08-18
+ *
+ * `document.cookie` is no longer empty, and the table is no longer three
+ * third-party cookies. `plepic_destination` is set by
+ * `storefront/src/components/shop/DestinationSelector.tsx` when a visitor
+ * chooses which country the price should be quoted for — necessary because the
+ * advertised figure became destination-dependent when VAT started being added
+ * to a net price rather than contained in a gross one.
+ *
+ * **It is a row and not a sentence, which is the opposite of the two stores
+ * above it, and the distinction is the one this section has always drawn.** The
+ * consent answer and the basket identifier are prose because they are *not*
+ * cookies: they have no provider and no expiry, so three of the four columns
+ * would be empty. This one is a cookie, with a provider — us — and a duration,
+ * so it takes the shape the table exists for.
+ *
+ * The second note says what a row cannot: that it is set only in response to
+ * the visitor's own act, and that it holds a two-letter country code and
+ * nothing else. It needs no consent — a preference stored because the user
+ * asked for it is storage "strictly necessary for a service the user explicitly
+ * requested" under ePrivacy Article 5(3) — and saying so keeps every row's
+ * consent status stated, which is how the operator's table of 2026-08-10 was
+ * written.
+ *
+ * The guard is not decorative here either:
+ * `storefront/tests/browser-storage-disclosure.test.ts` refuses **any**
+ * `document.cookie` write in `storefront/src/` except from the one file it has
+ * been told about, precisely so a first-party cookie cannot appear without this
+ * table growing.
+ *
  * **Minor 6 — newsletter single opt-in — is deliberately not fixed.** It is
  * lawful (Estonian ECA § 103¹ requires prior consent, and EU law mandates
  * double opt-in nowhere); the residual exposure is evidential under Article
@@ -130,9 +160,16 @@ export const privacy: LegalPage = {
             "Security, traffic management and protection against malicious traffic",
             "Varies",
           ],
+          [
+            "plepic_destination",
+            "Plepic Games",
+            "Remembers the destination you asked us to show the price for, so the figure you see is the one for that country",
+            "Up to 1 year",
+          ],
         ],
         notes: [
           "Google Analytics and Meta cookies are used only with your consent. Cloudflare security cookies are strictly necessary for the operation and security of the site and do not require consent.",
+          "The destination cookie is set only when you change the destination yourself, and it holds nothing but the two-letter code of the country you chose. It records nothing about you and is not used for measurement or advertising.",
         ],
       },
     },

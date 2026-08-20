@@ -20,9 +20,11 @@
  * so nothing is fetched, nothing can time out, and there is no second figure a
  * fallback could produce.
  *
- * There is **no weight band and no rate table**. The single product is 200 g in
- * a 12 x 12 x 4 cm box and no rate here depends on that: the figure a buyer is
- * charged is a function of the destination zone alone.
+ * There is **no weight band and no rate table**. The single product is 300 g in
+ * a 12 x 12 x 4 cm box — {@link ./product-model.js} is where that is declared,
+ * and this sentence said 200 g until 2026-08-18 without anything going red,
+ * precisely because no rate here depends on it: the figure a buyer is charged is
+ * a function of the destination zone alone.
  *
  * ## "EU member state" is narrower than "in the EU", and the difference is paid for
  *

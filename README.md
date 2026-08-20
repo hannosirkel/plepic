@@ -333,13 +333,24 @@ The Plepic Games storefront and Medusa backend monorepo.
   **`/legal/shipping` states the VAT qualification once.** Its callout and the
   second qualified read's Minor 2 replacement sentence sat one line apart and
   qualified VAT in different words; the operator answered "unify to my wording"
-  on the same date. The operator's phrasing governs, and unify was not delete:
-  the body now glosses their word — *"Included means contained within that
-  figure rather than added to it"* — instead of restating their conditional,
-  and the sentence that follows carries the export case explicitly (*"…
-  including where no VAT is due at all"*). Both halves of what the qualified
-  reader put there survive, and `tests/legal-pages.test.tsx` fails if either
-  leaves the page or if the conditional comes back.
+  on the same date, and the operator's phrasing governs. The *structure* that
+  answer settled still holds — one conditional, stated once, in the callout,
+  with the body glossing rather than restating it.
+
+  **The words it settled were superseded on 2026-08-18, when the price became
+  net.** The two sentences that used to carry it — *"Included means contained
+  within that figure rather than added to it"* and *"It is the same figure for
+  every visitor, in every country"* — describe a gross price and are false of
+  this one, in opposite directions. Neither is on the rendered page any more:
+  `backend/tests/commerce-configuration.test.ts` **refuses** them anywhere a
+  reader would meet them, and `tests/legal-pages.test.tsx` names them
+  superseded. What survives is what they were protecting, restated for the
+  model that applies — VAT is **added** for a delivery address in the European
+  Union and added nowhere else, and both claims are pinned against the rendered
+  page. An earlier revision of this paragraph described the old sentences in
+  the present tense and claimed a test failed if either left the page; both
+  statements are now inverted, which is why the wording above says which date
+  it belongs to.
 
   **No `{token}` reaches a visitor.** Two did:
   `{priceLine}` in the product page's "How much is shipping?" answer, inside
@@ -1260,14 +1271,15 @@ state gets made in the first place.
 ### The commerce configuration
 
 `predeploy`'s third command, `npm run configure:commerce`, applies the
-commercial model Task 1 froze. It reads **no environment variable at all**:
+commercial model the operator froze. It reads **no environment variable at all**:
 everything it applies is declared in this repository and identical in both
 environments, so nothing it configures can differ between test and live.
 
 | Record | What, and why it has to exist before anything serves |
 |---|---|
-| EUR is tax inclusive | The store's supported currency, carrying the price preference that makes every EUR price in this deployment contain its tax rather than have it added |
-| Region `Worldwide` | EUR, automatic taxes, every country Medusa knows, and the one Stripe payment provider. Without it `POST /store/carts` has nothing to create a cart against, and the storefront refuses with "Medusa Store catalogue is not ready" |
+| EUR is tax **exclusive** | The store's supported currency, carrying the price preference that makes every EUR price in this deployment a **net** figure with VAT added on top rather than contained |
+| Region `Worldwide` | EUR, automatic taxes, tax-exclusive prices, every country Medusa knows, and the one Stripe payment provider. Without it `POST /store/carts` has nothing to create a cart against, and the storefront refuses with "Medusa Store catalogue is not ready" |
+| Tax regions, 27 of them | One per EU member state, each carrying Estonia's 24% standard rate as its default. A destination outside the EU has no tax region at all, so `automatic_taxes` finds nothing and no EU VAT is charged |
 | Stock location, fulfillment set, shipping profile | The chain a service zone hangs off, and the profile the product and both shipping options share. The catalogue import refuses without the first and third |
 | Stock location → `manual_manual` | The `location_fulfillment_provider` link. Both shipping-option workflows run `validateFulfillmentProvidersStep` first, and it refuses an option whose provider is not enabled at a location behind the zone |
 | Default sales channel → stock location | `GET /store/shipping-options` walks sales channel → stock location → fulfillment set → service zone; an unlinked location breaks the chain at the first step and a completed address returns no delivery method |
@@ -1280,32 +1292,62 @@ is a second answer to "what does this cost?" and the storefront has no region
 selector to resolve it with. One advertised price worldwide is the commercial
 model; one region is its faithful expression.
 
-**Prices are tax inclusive, and that is what makes the legal page true.**
-`content/legal/shipping.ts` says *"Included means contained within that figure
-rather than added to it"* and *"It is the same figure for every visitor, in every
-country"*. Both hold only while the price is resolved tax inclusive: otherwise
-Medusa treats the advertised price as a net figure and adds the destination's
-VAT on top, and the checkout would present a total the product page never
-advertised — EUR 39.04 against a page advertising EUR 25.00, for a 22%
-destination. The destination's tax region still applies — it moves the *tax
-portion* of the figure and never the figure.
+**EUR 25.00 is the net price, and VAT is added.** That is the operator's
+decision and it is what the legacy shop does: the old site advertises a figure
+and adds tax at checkout, so the migration keeps both the buyer's experience and
+the merchant's take rather than quietly converting one into the other. Shipping
+is net on the same rule and grosses with the goods, so the EUR 7.00 EU rate is
+what a buyer pays EUR 8.68 for.
 
-**It is the currency's preference that decides this, not the region's.**
+| Delivery address | Goods | Shipping | Total |
+|---|---|---|---|
+| An EU member state | 25.00 + 6.00 | 7.00 + 1.68 | **EUR 39.68** |
+| Anywhere else | 25.00 | 12.00 | **EUR 37.00** |
+
+Those figures are not restated in a test.
+`backend/tests/commerce-medusa-semantics.test.ts` computes them with Medusa's own
+`decorateCartTotals`, over a rate it reads out of the declared configuration
+rather than one written into the case — so a missing or mis-rated tax region
+moves the numbers and turns the table red.
+
+**Every EU destination pays Estonia's rate, not its own.** The shop is below the
+EUR 10,000 intra-Community distance-selling threshold, so it charges its domestic
+rate across the Union and would register for One Stop Shop only on crossing it.
+The rate is 24%, and has been since 1 July 2025 — it was 22% from 1 January 2024
+and 20% before that (Estonian Tax and Customs Board, *VAT rates and supply exempt
+from tax*). The figure and its date live together in
+`backend/src/commerce/tax-model.ts`, because a reader who remembers Estonian VAT
+as 22% is remembering something that was correct within the last two years.
+
+**Both inclusivity flags are `false`, and they move together.**
 `@medusajs/pricing` resolves inclusivity per price: it consults the `region_id`
-preference only when the price itself carries a `region_id` price rule, and
-neither price in this deployment does — the product price is written by the
-catalogue import as `[{ amount, currency_code }]` and the shipping price by the
-commerce configuration as `[{ currency_code, amount }]`. Resolution therefore
-falls through to the `currency_code` preference, whose model default is `false`.
-Setting it is a store record rather than a region one, which is also why it
-covers both writers: the product price and the shipping price are written by two
-different commands, and neither has to know about the region.
+preference **ahead of** the `currency_code` one whenever the price carries a
+`region_id` price rule (`services/pricing-module.js:1191`). No price this
+deployment writes carries such a rule today — the product price is
+`[{ amount, currency_code }]` and the shipping price is
+`[{ currency_code, amount }]` — but that is the *whole* of the protection, and
+one price list or one Admin edit removes it. A configuration that set the
+currency to `false` and left the region at `true` would then charge the
+advertised EUR 25.00 and book EUR 4.84 of VAT out of it: a 19% cut to the net
+take, with every figure on every page still reading EUR 25.00 and nothing to
+notice. `createRegionsWorkflow` and `updateRegionsWorkflow` are what write that
+preference row, so `backend/tests/commerce-medusa-semantics.test.ts` asserts that
+the configuration leaves **no** tax-inclusive price preference behind, for either
+attribute, over the graph those workflows produce.
 
-`backend/tests/commerce-configuration.test.ts` holds each of those sentences
-against the switch that makes it true, and
-`backend/tests/commerce-medusa-semantics.test.ts` computes the resulting totals
-with Medusa's own `decorateCartTotals` — at every VAT rate, so *"the same figure
-in every country"* is checked rather than asserted.
+**`content/legal/shipping.ts` has caught up.** An earlier revision of this
+paragraph said it had not — that it still claimed *"Included means contained
+within that figure rather than added to it"*, and that rewording it, rendering
+the VAT line and grossing the shipping-option display were blocked on the
+operator. All three have since landed, in the change that added the destination
+selector. The page now says the tax is **added** for a delivery address in the
+European Union and added nowhere else, the checkout renders a seventh value
+breaking the tax out of the two figures above it, and a delivery option is never
+shown as a bare pre-tax rate.
+`backend/tests/commerce-configuration.test.ts` no longer records a
+disagreement: it asserts the new wording against the two price preferences that
+make it true, and refuses the superseded claims anywhere a reader would meet
+them.
 
 **Two flat rates, and no free method.** The plan's checkbox said "flat and free
 shipping"; the operator's later decision is worldwide delivery at two flat rates
@@ -1319,7 +1361,15 @@ seed the zones and methods from the archive's `shippingZones` section; it no
 longer does, and an archive that still carries one is **refused** with a message
 naming this command. Two writers of one price is a way for what a buyer is
 charged to stop being what the operator froze, and the export is the *old*
-shop's shipping configuration rather than Task 1's model.
+shop's shipping configuration rather than the frozen model.
+
+**The tax regions have moved here for the same reason, and the import has not yet
+been told.** `src/catalogue-import/` still carries its own `taxRegions` section
+and its own tax-region upsert, so an archive staged through the import Job would
+write the *old* shop's rates over these. Retiring that half of the import is a
+deliberately separate change; until it lands, `configure:commerce` is the writer
+that runs on every promoted digest and the import is the one that runs only when
+somebody stages an archive by hand.
 
 Every record is a lookup by natural key followed by a create **or** an update, so
 the Job — an Argo CD sync hook that runs again on every promoted digest —
@@ -1327,11 +1377,12 @@ converges after a run interrupted halfway and reaches the same end state however
 often it runs. A service zone whose country set has drifted is rewritten; one
 that already matches is left untouched.
 
-It is not, however, silent the second time. Seven of the nine record kinds
-compare before they write and so write nothing at all on a re-run; the **region**
-and the **shipping options** re-issue their update unconditionally whenever the
-row exists, so every promoted digest rewrites the region's country list and
-both flat prices and emits `region.updated` and `shipping_option.updated`. The
+It is not, however, silent the second time. Seven of the ten record kinds
+compare before they write and so write nothing at all on a re-run; the
+**region**, the twenty-seven **tax regions** and the **shipping options**
+re-issue their update unconditionally whenever the row exists, so every promoted
+digest rewrites the region's country list, all twenty-seven VAT rates and both
+flat prices, and emits `region.updated` and `shipping_option.updated`. The
 end state is unchanged either way. `backend/tests/commerce-medusa-semantics.test.ts`
 asserts that exact set of second-run writes, so the claim cannot quietly drift.
 
@@ -1749,12 +1800,20 @@ dimensions, the coupons that are still valid at the moment of the run, the tax
 zones and rates, and the media.
 
 It does **not** seed the shipping zones and methods. Those are the commercial
-model Task 1 froze, declared in `backend/src/commerce/shipping-model.ts` and
-applied by `npm run configure:commerce` — see [the commerce
+model the operator froze, declared in `backend/src/commerce/shipping-model.ts`
+and applied by `npm run configure:commerce` — see [the commerce
 configuration](#the-commerce-configuration). A manifest that still carries a
 `shippingZones` section is refused with a message saying where it moved to,
 rather than silently skipped: an operator who exported the section believes it
 is being applied, and one price may have only one writer.
+
+It is also **no longer the source of the product, its price or the tax rates on a
+normal deployment.** `npm run seed:product` writes the one product from
+`backend/src/commerce/product-model.ts` and `configure:commerce` writes the tax
+regions from `backend/src/commerce/tax-model.ts`, both from the predeploy Job,
+because nothing a promoted digest depends on may wait for somebody to stage an
+archive by hand. The import's own copies of those upserts still exist and would
+still run against a staged archive; retiring them is a separate change.
 
 It **refuses** WordPress users, WooCommerce customer accounts, sessions and
 order history — it does not filter them silently. Customer accounts and order

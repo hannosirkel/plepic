@@ -8,11 +8,14 @@ import {
   createShippingOptionsWorkflow,
   createShippingProfilesWorkflow,
   createStockLocationsWorkflow,
+  createTaxRatesWorkflow,
+  createTaxRegionsWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
   updateRegionsWorkflow,
   updateServiceZonesWorkflow,
   updateShippingOptionsWorkflow,
   updateStoresWorkflow,
+  updateTaxRatesWorkflow,
 } from "@medusajs/medusa/core-flows";
 
 import type { CommerceConfigurationTarget, CommerceRecord } from "./configuration.js";
@@ -70,6 +73,8 @@ export class MedusaCommerceConfigurationTarget implements CommerceConfigurationT
         return this.applyStoreCurrency(record);
       case "region":
         return this.applyRegion(record);
+      case "tax-region":
+        return this.applyTaxRegion(record);
       case "stock-location":
         return this.applyStockLocation(record);
       case "stock-location-fulfillment-provider":
@@ -186,6 +191,69 @@ export class MedusaCommerceConfigurationTarget implements CommerceConfigurationT
           is_tax_inclusive: record.taxInclusivePrices,
           payment_providers: [...record.paymentProviderIds],
         },
+      },
+    });
+  }
+
+  /**
+   * Converges one country's tax region and the single rate inside it.
+   *
+   * Lifted from `src/catalogue-import/medusa-target.ts`, which had it right:
+   * look up the region by country code, create it only if absent, then look up
+   * the rate by that region **and** its code, and create or update. The two
+   * lookups are separate because the two rows are created by different
+   * workflows and a run interrupted between them must converge on the next pass
+   * rather than fail on a region that already exists.
+   *
+   * `is_default: true` is what makes `automatic_taxes` pick this rate up: a
+   * region's default rate is the one applied to a line with no matching rate
+   * rule, and every line here is such a line.
+   *
+   * It re-issues its update whenever the rate exists rather than comparing
+   * first, which is a knowing cost — twenty-seven `updateTaxRatesWorkflow` calls
+   * on every promoted digest. The configuration's header names it and
+   * `tests/commerce-medusa-semantics.test.ts` asserts the exact set of writes a
+   * second run makes, so it is a documented cost rather than a surprise.
+   */
+  private async applyTaxRegion(
+    record: Extract<CommerceRecord, { kind: "tax-region" }>,
+  ): Promise<void> {
+    const countryCode = record.countryCode.toLowerCase();
+    let region = await this.one<{ id: string }>("tax_region", ["id"], {
+      country_code: countryCode,
+    });
+
+    if (region === undefined) {
+      const { result } = await createTaxRegionsWorkflow(this.container).run({
+        input: [{ country_code: countryCode }],
+      });
+      region = { id: result[0]!.id };
+    }
+
+    const rate = await this.one<{ id: string }>("tax_rate", ["id"], {
+      tax_region_id: region.id,
+      code: record.code,
+    });
+
+    if (rate === undefined) {
+      await createTaxRatesWorkflow(this.container).run({
+        input: [
+          {
+            tax_region_id: region.id,
+            name: record.name,
+            code: record.code,
+            rate: record.ratePercent,
+            is_default: true,
+          },
+        ],
+      });
+      return;
+    }
+
+    await updateTaxRatesWorkflow(this.container).run({
+      input: {
+        selector: { id: rate.id },
+        update: { name: record.name, rate: record.ratePercent },
       },
     });
   }

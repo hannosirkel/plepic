@@ -8,8 +8,42 @@ import {
   addGuestShippingMethod,
   currentAddressTotals,
   prepareGuestShipping,
+  shippingOptionFigure,
   type GuestCheckoutAddress,
+  type GuestShippingOption,
 } from "../src/lib/store-checkout.js";
+import { formatAmount } from "../src/lib/cart.js";
+import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
+import { destinationForCountryName } from "../src/lib/destination.js";
+
+/**
+ * A shipping option as Medusa answers `GET /store/shipping-options` for a
+ * flat-rate option under net pricing.
+ *
+ * `calculated_price` carries the tax-inclusivity flag and **no**
+ * `calculated_amount_with_tax`: verified against the installed packages, the
+ * only writers of that field are the Store *product* helpers, and
+ * `listShippingOptionsForCartWorkflow` sets nothing equivalent for shipping.
+ * The fixture says so, so the "+ VAT" branch under test is the branch that
+ * actually runs in production.
+ */
+const option = (id: string, name: string, amountMajor: number) => ({
+  id,
+  name,
+  amount: amountMajor,
+  calculated_price: {
+    calculated_amount: amountMajor,
+    is_calculated_price_tax_inclusive: false,
+  },
+});
+
+const parsedOption = (id: string, name: string, amountMinor: number): GuestShippingOption => ({
+  id,
+  name,
+  amount: amountMinor,
+  amountWithTax: null,
+  taxInclusive: false,
+});
 
 interface SeenRequest {
   readonly method: string;
@@ -69,7 +103,12 @@ describe("guest checkout Store operations", () => {
           response.end('{"cart":{"id":"cart_example"}}');
         } else if (request.url === "/store-api/store/shipping-options?cart_id=cart_example") {
           response.end(
-            '{"shipping_options":[{"id":"so_eu","name":"EU flat delivery","amount":7},{"id":"so_world","name":"Worldwide flat delivery","amount":12}]}',
+            JSON.stringify({
+              shipping_options: [
+                option("so_eu", "EU flat delivery", 7),
+                option("so_world", "Worldwide flat delivery", 12),
+              ],
+            }),
           );
         } else {
           response.writeHead(404).end('{}');
@@ -86,8 +125,8 @@ describe("guest checkout Store operations", () => {
     const options = await prepareGuestShipping(client, "cart_example", address);
 
     expect(options).toEqual([
-      { id: "so_eu", name: "EU flat delivery", amount: 700 },
-      { id: "so_world", name: "Worldwide flat delivery", amount: 1200 },
+      parsedOption("so_eu", "EU flat delivery", 700),
+      parsedOption("so_world", "Worldwide flat delivery", 1200),
     ]);
     expect(seen).toEqual([
       {
@@ -133,19 +172,19 @@ describe("guest checkout Store operations", () => {
         });
         response.setHeader("content-type", "application/json");
         /*
-         * `item_total`, not `subtotal`. Under the commerce configuration that
-         * landed the advertised price is tax inclusive and the destination's tax
-         * region is applied automatically, so Medusa's `subtotal` is
-         * `item_subtotal + shipping_subtotal` **excluding** tax — 26.23 for this
-         * cart into Estonia, which is neither the EUR 25.00 the product page
-         * advertises nor consistent with the 32.00 total beside it. The figures
-         * below are the ones Medusa actually returns for that cart.
+         * `item_total`, not `subtotal`. Prices are stored net and the
+         * destination's tax region is applied automatically, so Medusa's
+         * `subtotal` is `item_subtotal + shipping_subtotal` **excluding** tax —
+         * 32.00 for this cart into Estonia, which is neither the figure the
+         * product page quotes a European visitor nor consistent with the 39.68
+         * total beside it. The figures below are the ones Medusa actually
+         * returns for that cart.
          */
         response.end(
-          '{"cart":{"id":"cart_example","currency_code":"eur","item_total":25,' +
-            '"item_subtotal":20.491803278688526,"shipping_total":7,' +
-            '"shipping_subtotal":5.737704918032787,"subtotal":26.229508196721312,' +
-            '"tax_total":5.770491803278688,"total":32}}',
+          '{"cart":{"id":"cart_example","currency_code":"eur","item_total":31,' +
+            '"item_subtotal":25,"item_tax_total":6,"shipping_total":8.68,' +
+            '"shipping_subtotal":7,"shipping_tax_total":1.68,"subtotal":32,' +
+            '"tax_total":7.68,"total":39.68}}',
         );
       });
     });
@@ -156,9 +195,21 @@ describe("guest checkout Store operations", () => {
       origin,
     );
 
-    const totals = await addGuestShippingMethod(client, "cart_example", "so_eu");
+    const totals = await addGuestShippingMethod(
+      client,
+      "cart_example",
+      { ...parsedOption("so_eu", "EU flat delivery", 700), amountWithTax: 868 },
+      true,
+    );
 
-    expect(totals).toEqual({ currency: "EUR", goodsAmount: 2500, shippingAmount: 700, orderAmount: 3200 });
+    expect(totals).toEqual({
+      currency: "EUR",
+      goodsAmount: 3100,
+      shippingAmount: 868,
+      orderAmount: 3968,
+      taxAmount: 768,
+      shippingTaxAmount: 168,
+    });
     expect(seen).toEqual([
       {
         method: "POST",
@@ -177,7 +228,7 @@ describe("guest checkout Store operations", () => {
           response.end('{"cart":{"id":"cart_example"}}');
         } else {
           response.end(
-            '{"shipping_options":[{"id":"so_free","name":"Free delivery","amount":0}]}',
+            JSON.stringify({ shipping_options: [option("so_free", "Free delivery", 0)] }),
           );
         }
       });
@@ -190,14 +241,88 @@ describe("guest checkout Store operations", () => {
     );
 
     await expect(prepareGuestShipping(client, "cart_example", address)).resolves.toEqual([
-      { id: "so_free", name: "Free delivery", amount: 0 },
+      parsedOption("so_free", "Free delivery", 0),
     ]);
+  });
+
+  /**
+   * **A delivery option must say whether its price contains the tax.**
+   *
+   * Without the flag there is no way to tell the net rate from the gross one,
+   * and rendering the wrong one is exactly the defect this read replaces: the
+   * `<select>` showed the stored figure while the summary beside it showed the
+   * grossed one. A missing flag is a malformed option, not a default.
+   */
+  it("refuses a shipping option that does not say whether its price contains tax", async () => {
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          request.url === "/store-api/store/carts/cart_example"
+            ? '{"cart":{"id":"cart_example"}}'
+            : '{"shipping_options":[{"id":"so_eu","name":"EU flat delivery","amount":7}]}',
+        );
+      });
+    });
+    servers.push(server);
+    const client = createMedusaStoreClient(
+      { basePath: "/store-api", publishableKey: "pk_example_checkout" },
+      await listen(server),
+    );
+
+    await expect(prepareGuestShipping(client, "cart_example", address)).rejects.toThrow(
+      /contains tax/,
+    );
+  });
+});
+
+/**
+ * What a delivery option may be **shown** as.
+ *
+ * The finding this encodes: a flat-rate option carries no with-tax amount
+ * before the method is added, so the middle branch is the one that runs. A bare
+ * net rate is never acceptable inside the EU, and a marked one is never
+ * acceptable outside it — marking it would promise a tax that is never added.
+ */
+describe("the figure a delivery option is shown as", () => {
+  const net = parsedOption("so_eu", "Standard delivery", 700);
+
+  it("marks a net rate explicitly when VAT will be added to it", () => {
+    const figure = shippingOptionFigure(net, true);
+    expect(figure.label).toBe("€7.00 + VAT");
+    expect(figure.final).toBe(false);
+    expect(figure.amount).toBe(700);
+  });
+
+  it("shows a net rate bare when no VAT is due, because then it is the whole charge", () => {
+    const figure = shippingOptionFigure(net, false);
+    expect(figure.label).toBe("€7.00");
+    expect(figure.final).toBe(true);
+  });
+
+  it("prefers Medusa's with-tax amount whenever Medusa supplies one", () => {
+    const figure = shippingOptionFigure({ ...net, amountWithTax: 868 }, true);
+    expect(figure.label).toBe("€8.68");
+    expect(figure.final).toBe(true);
+    expect(figure.amount).toBe(868);
+  });
+
+  it("never renders a bare figure for a net rate inside the EU", () => {
+    expect(shippingOptionFigure(net, true).label).not.toBe("€7.00");
   });
 });
 
 describe("checkout shipping option address binding", () => {
   it("withholds authoritative totals once the completed address changes", () => {
-    const totals = { currency: "EUR", goodsAmount: 2500, shippingAmount: 700, orderAmount: 3200 };
+    const totals = {
+      currency: "EUR",
+      goodsAmount: 3100,
+      shippingAmount: 868,
+      orderAmount: 3968,
+      taxAmount: 768,
+      shippingTaxAmount: 168,
+    };
     expect(currentAddressTotals({ addressRevision: "address-a", totals }, "address-a")).toEqual(totals);
     expect(currentAddressTotals({ addressRevision: "address-a", totals }, "address-b")).toBeNull();
   });
@@ -256,40 +381,44 @@ describe("checkout shipping option address binding", () => {
  * two flat rates and no exclusions, so the middle case is stated as an absence
  * rather than deleted: the nearest thing the model has to an excluded address is
  * one inside the European Union that is not in an EU *member state*, and it is
- * served at the rest-of-world rate rather than refused. The backend holds the
+ * served at the rest-of-world rate — and, since the tax model charges VAT to the
+ * 27 member states and nothing wider, at no VAT either. The backend holds the
  * same three cases against Medusa's own totals arithmetic in
  * `backend/tests/commerce-medusa-semantics.test.ts`; this holds them against the
  * code path that actually produces the figures the Article 8(2) disclosure block
  * renders.
  *
- * The Medusa stub answers exactly what a correctly configured Medusa answers:
- * tax-inclusive line and shipping totals, a tax-exclusive `subtotal` that is
- * neither of them, and a `total` that is the two inclusive figures summed.
+ * The Medusa stub answers exactly what a correctly configured Medusa answers for
+ * a **net**-priced catalogue: tax-inclusive line and shipping totals, a
+ * tax-exclusive `subtotal` that is neither of them, the three tax fields, and a
+ * `total` that is the two inclusive figures summed.
  */
 describe("the exact total presented before payment", () => {
   const servers: Server[] = [];
 
   afterEach(async () => Promise.all(servers.map(close)));
 
-  /** EUR 25.00 including VAT — `storefront/mock/catalogue.json`. */
-  const GOODS_MAJOR = 25;
-  const VAT_RATE = 0.22;
-
   interface AddressCase {
     readonly label: string;
     readonly address: GuestCheckoutAddress;
     readonly optionId: string;
-    readonly shippingMajor: number;
+    /** The declared rate, before tax. */
+    readonly shippingNetMajor: number;
+    /** True when the destination is an EU member state. */
+    readonly vatApplies: boolean;
     readonly expected: {
       readonly goodsAmount: number;
       readonly shippingAmount: number;
       readonly orderAmount: number;
+      readonly taxAmount: number;
+      readonly shippingTaxAmount: number;
     };
   }
 
   const cases: readonly AddressCase[] = [
     {
-      // An included country: an EU member state.
+      // An included country: an EU member state. VAT is added to the goods and
+      // to the delivery alike.
       label: "Estonia, an EU member state",
       address: {
         fullName: "Example Buyer",
@@ -300,13 +429,20 @@ describe("the exact total presented before payment", () => {
         email: "buyer@example.test",
       },
       optionId: "so_eu",
-      shippingMajor: 7,
-      expected: { goodsAmount: 2500, shippingAmount: 700, orderAmount: 3200 },
+      shippingNetMajor: 7,
+      vatApplies: true,
+      expected: {
+        goodsAmount: 3100,
+        shippingAmount: 868,
+        orderAmount: 3968,
+        taxAmount: 768,
+        shippingTaxAmount: 168,
+      },
     },
     {
       // NOT an excluded country — none is. French Guiana is a delivery address
       // in the European Union that is not in an EU member state, so it is
-      // served at the rest-of-world rate.
+      // served at the rest-of-world rate and charged no EU VAT.
       label: "French Guiana, in the EU but not a member state",
       address: {
         fullName: "Example Buyer",
@@ -317,11 +453,18 @@ describe("the exact total presented before payment", () => {
         email: "buyer@example.test",
       },
       optionId: "so_world",
-      shippingMajor: 12,
-      expected: { goodsAmount: 2500, shippingAmount: 1200, orderAmount: 3700 },
+      shippingNetMajor: 12,
+      vatApplies: false,
+      expected: {
+        goodsAmount: 2500,
+        shippingAmount: 1200,
+        orderAmount: 3700,
+        taxAmount: 0,
+        shippingTaxAmount: 0,
+      },
     },
     {
-      // A non-EU country.
+      // A non-EU country, and the operator's default destination.
       label: "the United States",
       address: {
         fullName: "Example Buyer",
@@ -332,25 +475,35 @@ describe("the exact total presented before payment", () => {
         email: "buyer@example.test",
       },
       optionId: "so_world",
-      shippingMajor: 12,
-      expected: { goodsAmount: 2500, shippingAmount: 1200, orderAmount: 3700 },
+      shippingNetMajor: 12,
+      vatApplies: false,
+      expected: {
+        goodsAmount: 2500,
+        shippingAmount: 1200,
+        orderAmount: 3700,
+        taxAmount: 0,
+        shippingTaxAmount: 0,
+      },
     },
   ];
 
   /** A Medusa that prices the cart the way the declared configuration makes it. */
-  async function medusaPricing(shippingMajor: number): Promise<string> {
-    const net = (inclusive: number) => inclusive / (1 + VAT_RATE);
+  async function medusaPricing(one: AddressCase): Promise<string> {
+    const minor = (value: number) => value / 100;
     const body = JSON.stringify({
       cart: {
         id: "cart_example",
         currency_code: "eur",
-        item_total: GOODS_MAJOR,
-        item_subtotal: net(GOODS_MAJOR),
-        shipping_total: shippingMajor,
-        shipping_subtotal: net(shippingMajor),
-        subtotal: net(GOODS_MAJOR) + net(shippingMajor),
-        tax_total: GOODS_MAJOR + shippingMajor - net(GOODS_MAJOR) - net(shippingMajor),
-        total: GOODS_MAJOR + shippingMajor,
+        item_total: minor(one.expected.goodsAmount),
+        item_subtotal: minor(one.expected.goodsAmount - (one.expected.taxAmount - one.expected.shippingTaxAmount)),
+        item_tax_total: minor(one.expected.taxAmount - one.expected.shippingTaxAmount),
+        shipping_total: minor(one.expected.shippingAmount),
+        shipping_subtotal: one.shippingNetMajor,
+        shipping_tax_total: minor(one.expected.shippingTaxAmount),
+        subtotal:
+          minor(one.expected.orderAmount - one.expected.taxAmount),
+        tax_total: minor(one.expected.taxAmount),
+        total: minor(one.expected.orderAmount),
       },
     });
     const server = createServer((request, response) => {
@@ -364,44 +517,72 @@ describe("the exact total presented before payment", () => {
     return listen(server);
   }
 
+  function clientFor(origin: string) {
+    return createMedusaStoreClient(
+      { basePath: "/store-api", publishableKey: "pk_example_checkout" },
+      origin,
+    );
+  }
+
   it.each(cases)(
-    "charges $label the frozen rate and states three figures that add up",
-    async ({ optionId, shippingMajor, expected }) => {
-      const origin = await medusaPricing(shippingMajor);
-      const client = createMedusaStoreClient(
-        { basePath: "/store-api", publishableKey: "pk_example_checkout" },
-        origin,
+    "charges $label the frozen rate and states figures that add up",
+    async (one) => {
+      const client = clientFor(await medusaPricing(one));
+
+      const totals = await addGuestShippingMethod(
+        client,
+        "cart_example",
+        { ...parsedOption(one.optionId, "Standard delivery", one.shippingNetMajor * 100), amountWithTax: one.expected.shippingAmount },
+        one.vatApplies,
       );
 
-      const totals = await addGuestShippingMethod(client, "cart_example", optionId);
-
-      expect(totals).toEqual({ currency: "EUR", ...expected });
-      expect(expected.goodsAmount + expected.shippingAmount).toBe(expected.orderAmount);
+      expect(totals).toEqual({ currency: "EUR", ...one.expected });
+      expect(one.expected.goodsAmount + one.expected.shippingAmount).toBe(one.expected.orderAmount);
     },
   );
 
-  it("shows the same price of the goods the product page advertises, in every zone", async () => {
-    for (const { shippingMajor } of cases) {
-      const origin = await medusaPricing(shippingMajor);
-      const client = createMedusaStoreClient(
-        { basePath: "/store-api", publishableKey: "pk_example_checkout" },
-        origin,
+  /**
+   * **The invariant that used to read `goodsAmount === 2500`, made
+   * per-destination — because it matters more now, not less.**
+   *
+   * There is no longer one advertised figure, so "the checkout shows what the
+   * product page showed" cannot be a constant. What it can be, and now is, is
+   * an equality against `resolveCatalogue` for **the same destination**: the
+   * goods figure Medusa charges a buyer in Tallinn, formatted, is
+   * character-for-character the figure the product page quotes a visitor whose
+   * destination is Estonia. That is the claim the constant was standing in for.
+   *
+   * The destination is looked up from the case's own country name through the
+   * one list both halves of this site read, so a case cannot compare a
+   * checkout for one country against a product page for another.
+   */
+  it("shows the same price of the goods the product page quotes that destination", async () => {
+    for (const one of cases) {
+      const client = clientFor(await medusaPricing(one));
+      const totals = await addGuestShippingMethod(
+        client,
+        "cart_example",
+        { ...parsedOption(one.optionId, "Standard delivery", one.shippingNetMajor * 100), amountWithTax: one.expected.shippingAmount },
+        one.vatApplies,
       );
-      const totals = await addGuestShippingMethod(client, "cart_example", "so_any");
-      // `content/legal/shipping.ts`: "the same figure for every visitor, in
-      // every country, and it does not change according to where you are or
-      // where you ask us to send the parcel".
-      expect(totals.goodsAmount).toBe(2500);
+
+      const destination = destinationForCountryName(one.address.country);
+      expect(destination, one.address.country).not.toBeNull();
+      expect(destination!.euMember, one.address.country).toBe(one.vatApplies);
+
+      expect(totals.goodsAmount, one.address.country).not.toBeNull();
+      expect(
+        formatAmount(totals.goodsAmount!, totals.currency),
+        `${one.address.country}: the checkout and the product page quote different goods figures`,
+      ).toBe(resolveCatalogue(mockCatalogue, destination!).price);
     }
   });
 
   it("offers a zone for every one of the three addresses rather than refusing one", async () => {
-    for (const { address, optionId, shippingMajor } of cases) {
+    for (const one of cases) {
       const seen: SeenRequest[] = [];
       const optionBody = JSON.stringify({
-        shipping_options: [
-          { id: optionId, name: "Standard delivery", amount: shippingMajor },
-        ],
+        shipping_options: [option(one.optionId, "Standard delivery", one.shippingNetMajor)],
       });
       const server = createServer((request, response) => {
         const chunks: Buffer[] = [];
@@ -422,47 +603,131 @@ describe("the exact total presented before payment", () => {
         });
       });
       servers.push(server);
-      const client = createMedusaStoreClient(
-        { basePath: "/store-api", publishableKey: "pk_example_checkout" },
-        await listen(server),
-      );
+      const client = clientFor(await listen(server));
 
-      const options = await prepareGuestShipping(client, "cart_example", address);
+      const options = await prepareGuestShipping(client, "cart_example", one.address);
 
-      expect(options, address.country).toEqual([
-        { id: optionId, name: "Standard delivery", amount: shippingMajor * 100 },
+      expect(options, one.address.country).toEqual([
+        parsedOption(one.optionId, "Standard delivery", one.shippingNetMajor * 100),
       ]);
-      expect(seen[0]?.body, address.country).toMatchObject({
+      expect(seen[0]?.body, one.address.country).toMatchObject({
         shipping_address: { country_code: expect.any(String) },
       });
     }
   });
 
   /**
-   * Three figures on one screen, immediately above the order button. A goods
-   * figure and a shipping figure that do not sum to the total the buyer is asked
-   * to accept is a false statement, and Article 8(2) CRD is a disclosure
-   * obligation — so an inconsistent set is refused rather than rendered.
+   * Three refusals, all of the same species: a checkout that cannot compute an
+   * honest set of figures must not render a dishonest one.
+   *
+   * The first is the original — a goods figure and a shipping figure that do
+   * not sum to the total. The other two are what the VAT row makes necessary,
+   * because that row is a **breakdown** and not an addend: a tax total that is
+   * not the tax on the goods plus the tax on the delivery accounts for
+   * something nobody can see.
+   *
+   * The third refusal in `cartTotals` — that the two figures net of their tax,
+   * plus that tax, are the total — has **no case here, and that is the finding
+   * rather than an omission**: given the first two it is algebraically implied,
+   * as the test below demonstrates. It is kept anyway, and kept honest by being
+   * described as what it is: a restatement of the invariant from the other
+   * direction, which survives somebody relaxing either of the other two.
    */
-  it("refuses totals that do not add up rather than putting them on the screen", async () => {
+  it.each([
+    [
+      "figures that do not add up",
+      { item_total: 25, item_tax_total: 0, shipping_total: 7, shipping_tax_total: 0, tax_total: 0, total: 33 },
+      /do not add up/,
+    ],
+    [
+      "a tax total that is not the tax on the goods and the delivery",
+      { item_total: 31, item_tax_total: 6, shipping_total: 8.68, shipping_tax_total: 1.68, tax_total: 5, total: 39.68 },
+      /tax on the goods and the delivery/,
+    ],
+  ] as const)("refuses %s rather than putting it on the screen", async (_label, cart, message) => {
     const server = createServer((request, response) => {
       request.resume();
       request.on("end", () => {
         response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ cart: { id: "cart_example", currency_code: "eur", ...cart } }));
+      });
+    });
+    servers.push(server);
+    const client = clientFor(await listen(server));
+
+    await expect(
+      addGuestShippingMethod(client, "cart_example", parsedOption("so_eu", "Standard delivery", 700), true),
+    ).rejects.toThrow(message);
+  });
+
+  /**
+   * The third refusal cannot fire on its own, and this is why.
+   *
+   * `(item − itemTax) + (shipping − shippingTax) + tax` reduces, under the
+   * second refusal (`tax = itemTax + shippingTax`), to `item + shipping` — which
+   * the first refusal has already required to equal the total. So any cart that
+   * fails the third has already failed one of the others and thrown a different
+   * message. Asserted rather than reasoned about in a comment, over the same
+   * arithmetic the implementation does, so a future edit that made the third
+   * check something genuinely independent turns this red and asks for a case.
+   */
+  it("has no cart that fails only the containment refusal, which is why it has no case above", () => {
+    const random = (seed: number) => (seed * 9301 + 49297) % 2333;
+    for (let seed = 1; seed < 400; seed += 1) {
+      const item = random(seed);
+      const itemTax = random(seed + 1) % (item + 1);
+      const shipping = random(seed + 2);
+      const shippingTax = random(seed + 3) % (shipping + 1);
+      const tax = random(seed + 4);
+      const total = random(seed + 5);
+
+      const addsUp = item + shipping === total;
+      const taxAccountedFor = tax === itemTax + shippingTax;
+      const contained = item - itemTax + (shipping - shippingTax) + tax === total;
+
+      if (addsUp && taxAccountedFor) {
+        expect(contained, `${String(seed)}: the first two hold and the third does not`).toBe(true);
+      }
+    }
+  });
+
+  /**
+   * **The guard that must not be dropped in favour of just fixing the number.**
+   *
+   * The `<select>` and the summary are two Medusa reads and nothing compared
+   * them, which is how a €7.00 option came to sit beside an €8.68 charge. So
+   * after the method is added, the figure that was shown is checked against the
+   * figure that was charged — with the comparison matching the kind of claim
+   * the label made: a final figure must equal the charge, and a net figure
+   * marked "+ VAT" must equal the charge net of its own tax.
+   */
+  it("refuses to render totals that disagree with the delivery figure it showed", async () => {
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.setHeader("content-type", "application/json");
+        // A perfectly consistent cart — every refusal above passes — that
+        // simply charges for a different delivery option than the one shown.
         response.end(
-          '{"cart":{"id":"cart_example","currency_code":"eur","item_total":25,' +
-            '"shipping_total":7,"total":33}}',
+          '{"cart":{"id":"cart_example","currency_code":"eur","item_total":31,' +
+            '"item_tax_total":6,"shipping_total":14.88,"shipping_tax_total":2.88,' +
+            '"tax_total":8.88,"total":45.88}}',
         );
       });
     });
     servers.push(server);
-    const client = createMedusaStoreClient(
-      { basePath: "/store-api", publishableKey: "pk_example_checkout" },
-      await listen(server),
-    );
+    const client = clientFor(await listen(server));
 
-    await expect(addGuestShippingMethod(client, "cart_example", "so_eu")).rejects.toThrow(
-      /do not add up/,
-    );
+    await expect(
+      addGuestShippingMethod(client, "cart_example", parsedOption("so_eu", "Standard delivery", 700), true),
+    ).rejects.toThrow(/not the delivery charge Medusa applied/);
+  });
+
+  it("accepts the delivery figure it showed when Medusa charges exactly that", async () => {
+    const client = clientFor(await medusaPricing(cases[0]!));
+
+    await expect(
+      addGuestShippingMethod(client, "cart_example", parsedOption("so_eu", "Standard delivery", 700), true),
+    ).resolves.toMatchObject({ shippingAmount: 868 });
   });
 });

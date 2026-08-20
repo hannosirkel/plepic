@@ -18,12 +18,19 @@
  *
  * Anchors, `covers`, sources and every placeholder token are
  * byte-identical to the English page. `reviewStatus` is
- * `operator-approved`: the operator supplied the merchant identity, the
- * deployment manifests now serve it, and the page as served is what was
- * approved. That field records **that** approval and nothing else — the
- * qualified reader's acceptance of the Estonian text remains an operator act
- * recorded outside this repository, with no field here, and this status does
- * not represent it.
+ * `operator-approved`, and it records **both** things. The page **as served**:
+ * the operator supplied the merchant identity and the deployment manifests now
+ * serve all seven `MERCHANT_*` values, so the tokens below resolve to the
+ * registered identity rather than to visible gaps. And the **qualified
+ * reader's acceptance of the Estonian text**, which the operator confirmed as
+ * given on 2026-08-20 and recorded in the project's decision log, which lives
+ * outside this repository; it is no longer an act recorded only outside this
+ * repository, and earlier revisions of this comment saying otherwise were
+ * describing a state that has since changed.
+ *
+ * It is not a standing approval of whatever this page may later say. A change
+ * to its substance needs its own reading, exactly as the ones recorded above
+ * did.
  */
 
 import type { LegalPage } from "../../schema.js";

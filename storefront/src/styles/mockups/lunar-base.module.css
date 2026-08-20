@@ -102,11 +102,41 @@
   font-size: var(--purchase-price-size);
 }
 
+/*
+ * The net/VAT split, directly under the figure it explains.
+ *
+ * Set at the note size and the note colour rather than the price colour: it is
+ * a gloss on the emphasised line above, and promoting it would give the hero
+ * two figures competing for the same job. It sits *above* the shipping note
+ * because it is about what the figure is made of, and the shipping note is
+ * about what is not in it.
+ */
+.heroPriceBreakdown {
+  grid-column: 1;
+  margin: 0;
+  font-size: var(--purchase-note-size);
+  color: var(--purchase-note-color);
+}
+
 .heroPriceNote {
   grid-column: 1;
   margin: 0;
   font-size: var(--purchase-note-size);
   color: var(--purchase-note-color);
+}
+
+/*
+ * The destination control, inside the price block rather than beside it: it
+ * governs the figure three lines above, and a control that has drifted away
+ * from what it changes reads as a site-wide preference instead.
+ *
+ * Width-limited, so a 249-entry `<select>` does not stretch across the hero
+ * column and read as the page's main input.
+ */
+.heroDestination {
+  grid-column: 1;
+  max-width: var(--purchase-panel-max-width);
+  margin-top: var(--space-xs);
 }
 
 .heroAvailability {
@@ -117,9 +147,15 @@
   color: var(--purchase-availability-color);
 }
 
+/*
+ * `1 / -1` rather than a counted span: the price block grew two rows when the
+ * destination arrived, and a hard-coded `span 3` would have left the Buy
+ * action centred against the top half of it. `-1` is whatever the last row
+ * turns out to be, including when the selector slot is absent.
+ */
 .heroActions {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / -1;
   align-self: center;
 }
 

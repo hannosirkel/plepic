@@ -7,9 +7,11 @@ import { mockCatalogue, resolveCatalogue } from "../../../../lib/catalogue.js";
 import { placeholderValuesFrom } from "../../../../lib/configuration-placeholders.js";
 import { absoluteUrl } from "../../../../lib/urls.js";
 import { buildProductJsonLd } from "../../../../lib/product-jsonld.js";
+import { getRequestDestination } from "../../../../lib/destination-request.js";
 import { getRequestNonce } from "../../../../lib/nonce.js";
 import { loadStoreProduct } from "../../../../lib/store-product.js";
 import { AddToCartButton } from "../../../../components/shop/AddToCartButton.js";
+import { DestinationSelector } from "../../../../components/shop/DestinationSelector.js";
 import { makeMetadata } from "../../../../lib/page-shell.js";
 import { findPage } from "../../../../lib/seo.js";
 
@@ -38,7 +40,7 @@ export const generateMetadata = makeMetadata("lunarBase");
 export default async function LunarBasePage() {
   const { baseUrl } = loadSiteHostConfig();
   const page = findPage("lunarBase");
-  const nonce = await getRequestNonce();
+  const [nonce, destination] = await Promise.all([getRequestNonce(), getRequestDestination()]);
   const runtime = getRuntimeConfig();
   // Both environments read their own Store database. Browser baselines use a
   // synthetic Medusa server in the Playwright harness, never a page fallback.
@@ -47,7 +49,7 @@ export default async function LunarBasePage() {
     publishableKey: runtime.medusa.publishableKey,
     presentation: mockCatalogue,
   });
-  const catalogue = resolveCatalogue(store.catalogue);
+  const catalogue = resolveCatalogue(store.catalogue, destination);
   const analyticsProduct = store.catalogue;
 
   const jsonLd = buildProductJsonLd({
@@ -61,6 +63,7 @@ export default async function LunarBasePage() {
       <LunarBaseMockup
         catalogue={catalogue}
         merchant={placeholderValuesFrom(runtime.merchant)}
+        destinationSelector={<DestinationSelector destinationCode={destination.code} />}
         primaryPurchaseAction={<AddToCartButton label="Add to basket" variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
       />
       <JsonLdScript data={jsonLd} nonce={nonce} />

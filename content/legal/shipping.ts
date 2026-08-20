@@ -7,6 +7,47 @@
  * stale silently, which on this particular page is a misrepresentation rather
  * than a typo.
  *
+ * ## The VAT section was rewritten on 2026-08-18, and the reason is arithmetic
+ *
+ * Everything below this heading describes the page as it stood while the
+ * advertised figure **contained** the tax. It does not any more. The advertised
+ * figure is the price **before** tax; Estonian VAT is added for a delivery
+ * address in the European Union and is added nowhere else, so the price of the
+ * goods is one figure inside the EU and a lower one outside it. That makes the
+ * previous
+ * section's central claims false in both directions at once — *"included means
+ * contained within that figure rather than added to it"* is the opposite of
+ * what happens inside the EU, and *"it is the same figure for every visitor, in
+ * every country"* is the opposite of what happens between the two.
+ *
+ * The replacement wording below is the operator's, supplied whole, and it is
+ * structured around the fact that there is no longer one figure to talk about:
+ * `{priceNet}` is the invariant, `{priceGross}` and `{priceVat}` are what the
+ * EU adds to it, `{vatRate}` is the rate, and `{price}` — the only one of the
+ * five that moves — is whichever of the two the reader's own destination
+ * attracts. All five resolve from `storefront/src/lib/catalogue.ts` against two
+ * amounts Medusa computed; nothing on this site multiplies by a rate.
+ *
+ * **The last paragraph is load-bearing and is not a hedge.** The destination
+ * selector defaults to the United States, so a European reader who has not
+ * touched it is shown the lower figure. The operator made that choice knowing
+ * it, on the condition that no figure is ever shown without its destination
+ * beside it — which is what `{priceTaxQualifier}` in the callout does — and
+ * that the page says plainly that the setting decides which price is *shown*
+ * and never what is *charged*. That sentence is the second half of the
+ * condition.
+ *
+ * The business-buyer paragraph survives, corrected: it used to say the price
+ * had "any tax that is due contained within it", which is now false, and it now
+ * says where the VAT amount appears instead. The delivery section is untouched.
+ *
+ * ## What follows is the record of the previous revision, kept as history
+ *
+ * It is left in place because the reasoning it records — why an unqualified
+ * "VAT included" was struck off, why the qualification is composed in one place
+ * and read by every surface, why the callout is two parts and not one string —
+ * is all still binding. Only the *words* it settled have been superseded.
+ *
  * Two changes come from the second qualified read of 2026-08-09:
  *
  * - **Minor 2** — *"that figure is inclusive of value added tax"* was untrue
@@ -96,7 +137,7 @@ export const shipping: LegalPage = {
   route: "legalShipping",
   title: "Shipping and delivery",
   description:
-    "Where we ship, how long dispatch and delivery take, how shipping is charged, and how tax is included in the price you see.",
+    "Where we ship, how long dispatch and delivery take, how shipping is charged, and how tax is added to the price you see.",
   indexable: true,
   sections: ["delivery", "vat"],
   covers: ["delivery-terms", "dispatch-estimate", "vat-presentation"],
@@ -121,15 +162,17 @@ export const shipping: LegalPage = {
       heading: "How the price is presented",
       covers: ["vat-presentation"],
       callout: {
-        lead: "{price} · VAT included where applicable",
+        lead: "{price} · {priceTaxQualifier}",
         detail:
-          "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.",
+          "Shipping is calculated at checkout, and VAT is added to it for delivery inside the European Union. Non-EU taxes and duties, if any, are not included.",
       },
       body: [
-        "That is the price shown on the product page and in the basket, and it is the price a consumer pays for the goods.",
-        "Included means contained within that figure rather than added to it. It is the same figure for every visitor, in every country, and it does not change according to where you are or where you ask us to send the parcel — including where no VAT is due at all. Where tax is due, which tax applies is worked out from the confirmed delivery address at checkout.",
-        "Shipping is the only amount added at checkout, and it is shown to you before you commit to the order.",
-        "Business buyers: the displayed price is a consumer price, with any tax that is due contained within it. If you need an invoice with the tax treatment stated for your own accounting, write to us at {merchantContactAddress} before ordering.",
+        "The price of the game before tax is {priceNet}. That figure is the same wherever you are; what changes is the tax added to it.",
+        "For delivery to an address in the European Union we add Estonian value added tax at {vatRate}. The price of the goods is then {priceGross} — {priceNet} plus {priceVat} of VAT — and that is the figure you pay.",
+        "For delivery anywhere else no EU VAT is due and none is added. The price of the goods is {priceNet}, and that is the figure you pay.",
+        "Shipping is charged the same way. The rate is quoted before tax; for delivery inside the European Union Estonian VAT at {vatRate} is added to it, and for delivery anywhere else it is not. You see the exact amount, with any tax in it, before you pay.",
+        "Which of these applies to you is worked out from the delivery address you confirm at checkout. Before you have entered one, the figure shown is chosen from the destination set on this site, which you can change; it never decides what you are charged.",
+        "Business buyers: the price shown is a consumer price. Where Estonian VAT is added, the amount of it is shown separately at checkout, before you pay. If you need an invoice with the tax treatment stated for your own accounting, write to us at {merchantContactAddress} before ordering.",
       ],
       source: "price-presentation",
     },

@@ -16,6 +16,11 @@ import {
   DELIVERABLE_COUNTRY_CODES,
   EU_MEMBER_STATE_CODES,
 } from "../src/commerce/shipping-model.js";
+import {
+  ESTONIAN_STANDARD_VAT_PERCENT,
+  VAT_RATE_CODE,
+  VAT_RATE_NAME,
+} from "../src/commerce/tax-model.js";
 
 /**
  * A file from elsewhere in this repository, read as text.
@@ -29,6 +34,24 @@ import {
  */
 function repositoryText(relative: string): string {
   return readFileSync(join(__dirname, "..", "..", relative), "utf8");
+}
+
+/**
+ * The same file with its comments removed — the words a **reader** meets,
+ * rather than the record of the words they used to meet.
+ *
+ * Needed because `content/legal/shipping.ts` keeps its superseded
+ * inclusive-pricing claims in its own doc comment, as the record of what was
+ * replaced and why, and a substring check over the raw text cannot tell that
+ * apart from the claim being back on the page. Importing the module and reading
+ * its body strings would be better still and is not available here: `content/`
+ * is a separate TypeScript program and a backend test that imported it would
+ * drag that toolchain in behind it — see {@link repositoryText}.
+ */
+function readerText(relative: string): string {
+  return repositoryText(relative)
+    .replaceAll(/\/\*[\s\S]*?\*\//g, " ")
+    .replaceAll(/\/\/[^\n]*/g, " ");
 }
 
 class RecordingTarget implements CommerceConfigurationTarget {
@@ -62,6 +85,7 @@ describe("the declared commerce configuration", () => {
     expect(commerceRecords().map((record) => record.kind)).toEqual([
       "store-currency",
       "region",
+      ...EU_MEMBER_STATE_CODES.map(() => "tax-region"),
       "stock-location",
       "stock-location-fulfillment-provider",
       "fulfillment-set",
@@ -91,29 +115,74 @@ describe("the declared commerce configuration", () => {
   });
 
   /**
-   * `content/legal/shipping.ts`: "Included means contained within that figure
-   * rather than added to it." That sentence is true of what Medusa computes only
-   * while the **currency's** preference is set — without it Medusa treats EUR
-   * 25.00 as a net price and adds the destination's VAT on top, and the checkout
-   * would present a total the product page never advertised.
+   * **EUR 25.00 is the net price and VAT is added**, which is the legacy shop's
+   * behaviour and the operator's settled decision. Every price this deployment
+   * holds is therefore tax **exclusive**, and both preferences have to say so.
    *
-   * The region's own flag is not enough and never was: `@medusajs/pricing`
-   * consults the `region_id` preference only for a price that carries a
-   * `region_id` price rule, and neither the product price nor the shipping price
-   * carries one. `commerce-medusa-semantics.test.ts` proves that with Medusa's
-   * own arithmetic; this holds the declaration that feeds it.
+   * They are asserted in one test, together, because they have to *move*
+   * together. `@medusajs/pricing` consults the `region_id` preference ahead of
+   * the `currency_code` one for any price carrying a `region_id` price rule
+   * (`services/pricing-module.js:1191`), so a configuration that flipped the
+   * currency alone would be one region-scoped price away from charging the
+   * advertised EUR 25.00 and booking EUR 4.84 of VAT out of it — a 19% cut to
+   * the net take with no visible symptom.
+   * `commerce-medusa-semantics.test.ts` holds the preferences Medusa's own
+   * region workflows actually write; this holds the declaration that feeds them.
    */
-  it("declares the currency's prices tax inclusive, which is what Medusa reads", () => {
+  it("declares every price tax exclusive, on the currency and on the region alike", () => {
     const currencies = only("store-currency");
     expect(currencies).toHaveLength(1);
     expect(currencies[0]!.currencyCode).toBe("EUR");
-    expect(currencies[0]!.taxInclusivePrices).toBe(true);
+    expect(currencies[0]!.taxInclusivePrices).toBe(false);
+
+    const [region] = only("region");
+    expect(region!.taxInclusivePrices).toBe(false);
   });
 
-  it("states the same intent on the region, and applies destination taxes automatically", () => {
+  it("applies the destination's tax region automatically", () => {
     const [region] = only("region");
-    expect(region!.taxInclusivePrices).toBe(true);
     expect(region!.automaticTaxes).toBe(true);
+  });
+
+  /**
+   * One tax region per EU member state, all at Estonia's domestic rate.
+   *
+   * The shop is below the EUR 10,000 intra-Community distance-selling threshold,
+   * so it charges its own country's rate everywhere in the Union rather than the
+   * destination's. That is why twenty-seven regions carry one figure instead of
+   * twenty-seven — and why the country list is
+   * {@link EU_MEMBER_STATE_CODES} itself rather than a second list that could
+   * drift from the one the shipping zones are cut by.
+   */
+  it("declares Estonia's rate in every EU member state and nowhere else", () => {
+    const regions = only("tax-region");
+    expect(regions.map((region) => region.countryCode)).toEqual([...EU_MEMBER_STATE_CODES]);
+    expect(regions).toHaveLength(27);
+
+    for (const region of regions) {
+      expect(region.ratePercent, region.countryCode).toBe(ESTONIAN_STANDARD_VAT_PERCENT);
+      expect(region.name, region.countryCode).toBe(VAT_RATE_NAME);
+      expect(region.code, region.countryCode).toBe(VAT_RATE_CODE);
+    }
+
+    // No VAT outside the EU: a rest-of-world destination resolves to no tax
+    // region at all, so Medusa's automatic taxes find nothing to apply.
+    const taxed = new Set(regions.map((region) => region.countryCode));
+    for (const code of DELIVERABLE_COUNTRY_CODES) {
+      expect(taxed.has(code), code).toBe(EU_MEMBER_STATE_CODES.includes(code));
+    }
+  });
+
+  /**
+   * The rate a tax region declares must be reachable before anything is priced
+   * against it, and the region has to exist before its tax regions are asserted
+   * — Medusa's `automatic_taxes` resolves an address through the tax module,
+   * which is a different module from the one holding the region.
+   */
+  it("declares the tax regions after the region and before the stock location", () => {
+    const kinds = commerceRecords().map((record) => record.kind);
+    expect(kinds.indexOf("tax-region")).toBeGreaterThan(kinds.indexOf("region"));
+    expect(kinds.lastIndexOf("tax-region")).toBeLessThan(kinds.indexOf("stock-location"));
   });
 
   /**
@@ -218,6 +287,7 @@ describe("the declared commerce configuration", () => {
     expect(applied).toEqual([
       "store-currency",
       "region",
+      ...EU_MEMBER_STATE_CODES.map(() => "tax-region"),
       "stock-location",
       "stock-location-fulfillment-provider",
       "fulfillment-set",
@@ -234,6 +304,8 @@ describe("the declared commerce configuration", () => {
  */
 describe("the pages that describe this configuration", () => {
   const shipping = repositoryText("content/legal/shipping.ts");
+  /* The same page without its comments — see `readerText`. */
+  const shippingProse = readerText("content/legal/shipping.ts");
   const terms = repositoryText("content/legal/terms.ts");
   const catalogue = repositoryText("storefront/src/lib/catalogue.ts");
   const checkout = repositoryText("storefront/src/lib/store-checkout.ts");
@@ -251,20 +323,70 @@ describe("the pages that describe this configuration", () => {
     }
   });
 
-  it('backs "contained within that figure rather than added to it" with tax-inclusive prices', () => {
-    expect(shipping).toContain("contained within that figure rather than added to it");
-
+  /**
+   * **The disagreement this test was holding open is now closed.**
+   *
+   * The previous revision pinned `content/legal/shipping.ts` to *"Included
+   * means contained within that figure rather than added to it"* — not because
+   * that was true, but because it was **false and known to be**: the
+   * configuration had moved to net prices and the copy had not, and rewording a
+   * twice-reviewed legal page was an operator decision this file could not
+   * make. So it recorded the disagreement and promised to be rewritten "against
+   * the new sentence" when the storefront half landed.
+   *
+   * That half has landed. The page now says the tax is **added** for a delivery
+   * address in the European Union and added nowhere else, and this asserts the
+   * new sentence against the two preferences that make it true.
+   *
+   * **The superseded sentence is refused rather than merely unasserted**, and
+   * that matters more than it looks: it survives in the page's own doc comment,
+   * as the record of what was replaced and why. A substring check for the new
+   * wording alone would have passed on a file that still carried the old claim
+   * in its prose — which is exactly the shape of the defect the whole re-check
+   * exists to catch — so the refusal is scoped to the page **without its
+   * comments**, which is where a reader meets it.
+   */
+  it("declares tax-exclusive prices, and the legal page now says the tax is added", () => {
     const [currency] = commerceRecords().filter((record) => record.kind === "store-currency");
-    expect(currency).toMatchObject({ kind: "store-currency", taxInclusivePrices: true });
+    expect(currency).toMatchObject({ kind: "store-currency", taxInclusivePrices: false });
 
     const [region] = commerceRecords().filter((record) => record.kind === "region");
-    expect(region).toMatchObject({ kind: "region", taxInclusivePrices: true });
+    expect(region).toMatchObject({ kind: "region", taxInclusivePrices: false });
+
+    expect(
+      shipping,
+      "content/legal/shipping.ts no longer says VAT is added for an EU delivery address",
+    ).toContain("we add Estonian value added tax at {vatRate}");
+    expect(
+      shipping,
+      "content/legal/shipping.ts no longer says no EU VAT is added anywhere else",
+    ).toContain("For delivery anywhere else no EU VAT is due and none is added.");
+
+    for (const claim of [
+      "contained within that figure rather than added to it",
+      "It is the same figure for every visitor",
+      "VAT included where applicable",
+    ]) {
+      expect(
+        shippingProse,
+        `a superseded inclusive-pricing claim is back on the page a buyer reads: "${claim}"`,
+      ).not.toContain(claim);
+    }
   });
 
+  /**
+   * The delivery-address rule, in the sentence that now carries it. The page
+   * used to say "which tax applies is worked out from the confirmed delivery
+   * address at checkout"; the replacement says the same thing about which
+   * *treatment* applies, in the operator's own wording, and adds the half that
+   * matters before an address exists — that the destination set on the site
+   * decides which figure is shown and never what is charged.
+   */
   it("backs the delivery-address tax rule with automatic taxes", () => {
     expect(shipping).toContain(
-      "which tax applies is worked out from the confirmed delivery address at checkout",
+      "worked out from the delivery address you confirm at checkout",
     );
+    expect(shipping).toContain("it never decides what you are charged");
 
     const [region] = commerceRecords().filter((record) => record.kind === "region");
     expect(region).toMatchObject({ kind: "region", automaticTaxes: true });
@@ -272,7 +394,7 @@ describe("the pages that describe this configuration", () => {
 
   it('backs "calculated at checkout once you have entered a delivery address" with per-zone rates', () => {
     expect(shipping).toContain("calculated at checkout once you have entered a delivery address");
-    expect(catalogue).toContain("Shipping calculated at checkout.");
+    expect(catalogue).toContain("Shipping is calculated at checkout");
 
     // Two zones at two different prices is exactly why the charge cannot be
     // shown before an address: there is no single figure to show.

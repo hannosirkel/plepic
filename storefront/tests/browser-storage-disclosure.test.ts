@@ -56,14 +56,32 @@
  *    cookies via `next/headers` and `NextResponse` *are* caught now, after
  *    review pass 2 showed both passing green.
  *
- * ## Why cookies are an assertion and not a mapping
+ * ## Why cookies are a pinned list and not a mapping
  *
- * The cookie table names three cookies and every one of them is set by a
- * third-party script, not by this application. If `src/` writes a cookie
- * itself, the honest disclosure is a fourth **row** with a provider and a
- * duration, not a fourth sentence — a different edit, on a page carrying two
- * qualified-reader reviews. This guard therefore fails rather than guessing,
- * on every form it knows.
+ * The cookie table used to name three cookies, every one of them set by a
+ * third-party script rather than by this application, and this guard simply
+ * required `src/` to write **none**. That is no longer true, and the change is
+ * the one the earlier revision predicted:
+ * `src/components/shop/DestinationSelector.tsx` sets `plepic_destination`,
+ * because the advertised price became destination-dependent and a
+ * server-rendered figure needs a destination the server can read.
+ *
+ * The guard did not become a mapping from writes to rows, because it cannot be
+ * one — a text scan does not resolve `DESTINATION_COOKIE_NAME` to
+ * `"plepic_destination"`. It does two things instead, which together cost a
+ * decision:
+ *
+ * 1. the set of files that write a cookie is **pinned**, exactly as the Web
+ *    Storage writers are, so a second module setting one goes red; and
+ * 2. every published edition's cookie table is required to carry a row for
+ *    each {@link DISCLOSED_FIRST_PARTY_COOKIES} entry, with all four columns
+ *    filled — so the row cannot be removed, and cannot be added with the
+ *    provider or the duration left blank.
+ *
+ * The residue is the same shape as the Web Storage one and is recorded rather
+ * than papered over: a **second** cookie written from the file already listed
+ * below still passes. Adding one means adding its name here and its row there,
+ * and this comment is the notice.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -162,6 +180,19 @@ const COOKIE_TABLE_COLUMNS: Readonly<Record<Locale, readonly string[]>> = {
  * disclosure it falsifies is a **table** captioned "Cookies this site can set"
  * rather than a sentence.
  */
+/**
+ * The first-party cookies this site sets, by the name a reader sees in the
+ * table.
+ *
+ * Written out rather than derived: the write is
+ * `document.cookie = \`${DESTINATION_COOKIE_NAME}=…\``, an identifier, and a
+ * text scan does not resolve it. What that costs is one line here whenever a
+ * cookie is added — which is the point, because the same edit has to add a row
+ * to a twice-reviewed legal page in two languages, and a list somebody has to
+ * touch is a list somebody has to think about.
+ */
+const DISCLOSED_FIRST_PARTY_COOKIES: readonly string[] = ["plepic_destination"];
+
 const COOKIE_WRITE_FORMS: readonly (readonly [string, RegExp])[] = [
   ["a `document.cookie` assignment", /\bdocument\s*\.\s*cookie\s*=/],
   [
@@ -296,16 +327,63 @@ describe("the privacy notice accounts for every browser store this site writes",
     });
   }
 
-  it("fails rather than guessing on every cookie-write form it knows", () => {
+  it("pins which file writes a cookie, so a new one has to be a decision", () => {
+    /*
+     * This assertion used to be `toEqual([])` — no cookie at all. The
+     * destination selector is the first legitimate first-party cookie this
+     * site sets, and the guard was not weakened to let it through: the
+     * refusal became a **pin**, so the set of files that may write one is
+     * enumerated here and the disclosure each of them owes is asserted below.
+     * A second module writing a cookie is exactly as red as it was.
+     *
+     * Note this check knows the forms listed in COOKIE_WRITE_FORMS above and
+     * is not exhaustive: it is a floor, so passing it is not evidence that no
+     * other cookie is set.
+     */
     expect(
-      cookieWriters,
-      "src/ writes a first-party cookie. The table captioned \"Cookies this site can set\" " +
-        "would need a fourth row with a provider and a duration — an operator decision on a " +
-        "twice-reviewed legal page, not a sentence this guard can infer. Note this check " +
-        "knows the forms listed in COOKIE_WRITE_FORMS above and is not exhaustive: it is a " +
-        "floor, so passing it is not evidence that no cookie is set.",
-    ).toEqual([]);
+      cookieWriters.map(({ file }) => file).toSorted(),
+      "a module other than the one below now writes a first-party cookie. The table captioned " +
+        '"Cookies this site can set" would need another row with a provider and a duration — an ' +
+        "operator decision on a twice-reviewed legal page, not a row this guard can infer",
+    ).toEqual(["src/components/shop/DestinationSelector.tsx"]);
   });
+
+  /**
+   * Every first-party cookie this site sets has a **row**, in every edition,
+   * with all four columns filled.
+   *
+   * A row rather than a sentence, and that asymmetry with the two Web Storage
+   * disclosures above is deliberate rather than an inconsistency: those two
+   * are not cookies, have no provider and no expiry, and would sit in the
+   * table with three empty columns. A cookie has both, so it takes the shape
+   * the table exists for — which is the operator's own structure of
+   * 2026-08-10 and `content/legal/privacy.ts`'s recorded reasoning.
+   *
+   * The duration column is checked for content specifically. It is the column
+   * a reader came for and the one that quietly becomes an empty string when a
+   * row is added in a hurry.
+   */
+  for (const locale of LOCALES) {
+    it(`${locale}: gives every first-party cookie a row with all four columns`, () => {
+      const table = consentSectionIn(locale)?.table;
+      expect(table, "the cookie table is gone").toBeDefined();
+
+      for (const cookie of DISCLOSED_FIRST_PARTY_COOKIES) {
+        const row = (table?.rows ?? []).find((cells) => cells[0] === cookie);
+        expect(
+          row,
+          `src/ sets the ${cookie} cookie and the ${locale} cookie table has no row for it`,
+        ).toBeDefined();
+        expect(row).toHaveLength(4);
+        for (const [index, cell] of (row ?? []).entries()) {
+          expect(
+            (cell ?? "").trim().length,
+            `the ${locale} row for ${cookie} leaves "${String(table?.columns[index])}" empty`,
+          ).toBeGreaterThan(0);
+        }
+      }
+    });
+  }
 
   it("pins which file writes each store, so a new write site has to be a decision", () => {
     /*

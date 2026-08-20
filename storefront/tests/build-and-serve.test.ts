@@ -70,6 +70,7 @@ import { formatAmount } from "../src/lib/cart.js";
 import { RUNTIME_ENV_VARS, type RuntimeEnvVar } from "../src/config/runtime-env.js";
 import { RUNTIME_CONFIG_ELEMENT_ID } from "../src/lib/client-runtime-config.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
+import { DESTINATION_COOKIE_NAME, destinationForCode } from "../src/lib/destination.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import {
   DEFAULT_LOCALE,
@@ -472,9 +473,17 @@ async function startBackendServer(): Promise<string> {
                     manage_inventory: true,
                     allow_backorder: false,
                     inventory_quantity: 12,
+                    // Both amounts, as Medusa returns them once the request
+                    // names a VAT country: the stored price is net, and
+                    // `wrapProductsWithTaxPrices` adds the pair. A fixture with
+                    // only `calculated_amount` is a fixture the loader refuses,
+                    // which is the intended behaviour rather than a gap.
                     calculated_price: {
                       currency_code: mockCatalogue.price.currency.toLowerCase(),
                       calculated_amount: mockCatalogue.price.amount / 100,
+                      calculated_amount_without_tax: mockCatalogue.price.amount / 100,
+                      calculated_amount_with_tax: mockCatalogue.price.amountWithTax / 100,
+                      is_calculated_price_tax_inclusive: false,
                     },
                   },
                 ],
@@ -1071,33 +1080,135 @@ describe("the legal pages serve their content, resolved from the runtime environ
   });
 
   /**
-   * Minor 2, and the operator's replacement wording of 2026-08-10: no
-   * unqualified "VAT included" on the page whose job is to say something more
-   * careful, because no EU VAT is due on an export.
+   * **The destination cookie reaches the served figure, end to end.**
+   *
+   * Every other test of this proves a piece: the resolver picks between two
+   * amounts, the route reads the cookie, the selector writes it. None of them
+   * proves the chain, and the chain is where a server-rendered price actually
+   * lives — a `cookies()` call that was optimised into a static render, or a
+   * prop that stopped being threaded, would leave every unit test green and
+   * every visitor quoted the United States.
+   *
+   * So: one request with no cookie and one with `EE`, against the same built
+   * server, asserting that the figure **and** the qualification beside it both
+   * move. The expected values come from `resolveCatalogue` rather than from
+   * literals, so this cannot pass by both sides being edited to the same wrong
+   * pair.
+   */
+  it("serves the figure the destination cookie asks for, with its destination beside it", async () => {
+    const untouched = resolveCatalogue();
+    const european = resolveCatalogue(mockCatalogue, destinationForCode("EE"));
+    expect(untouched.price, "the two destinations resolve to the same figure").not.toBe(
+      european.price,
+    );
+
+    const withoutCookie = await requestWithHost(
+      server.port,
+      ROUTE_PATHS.lunarBase,
+      "runtime.example.com",
+    );
+    expect(withoutCookie.status).toBe(200);
+    const defaultText = paintedText(withoutCookie.body).replaceAll(/\s+/g, " ");
+    expect(defaultText).toContain(untouched.priceHeadline);
+    expect(defaultText).toContain(untouched.priceTaxBreakdown);
+
+    const withCookie = await requestWithHost(
+      server.port,
+      ROUTE_PATHS.lunarBase,
+      "runtime.example.com",
+      { headers: { Cookie: `${DESTINATION_COOKIE_NAME}=EE` } },
+    );
+    expect(withCookie.status).toBe(200);
+    const europeanText = paintedText(withCookie.body).replaceAll(/\s+/g, " ");
+    expect(europeanText).toContain(european.priceHeadline);
+    expect(europeanText).toContain(european.priceTaxBreakdown);
+    expect(
+      europeanText,
+      "the page still quotes the default destination's figure to a European visitor",
+    ).not.toContain(untouched.priceHeadline);
+  });
+
+  /**
+   * And the control that writes it is on the page, with every destination in
+   * it. A price a visitor cannot re-quote is a price they have to take on
+   * trust, which is the thing the operator's default made unacceptable.
+   */
+  it("serves the destination control the price qualification refers to", async () => {
+    const response = await requestWithHost(
+      server.port,
+      ROUTE_PATHS.lunarBase,
+      "runtime.example.com",
+    );
+
+    expect(response.body).toContain('name="destination"');
+    expect(response.body).toContain('value="EE"');
+    expect(response.body).toContain('value="US"');
+    expect(paintedText(response.body)).toContain(
+      "This decides which price is shown, not what you are charged.",
+    );
+  });
+
+  /**
+   * The served half of the VAT section, rewritten with the model on
+   * 2026-08-18.
+   *
+   * The advertised figure is net: VAT is added for a delivery address in the
+   * European Union and added nowhere else. So the page no longer says the tax
+   * is "contained within that figure", and no longer says the figure is the
+   * same everywhere — both were true of a gross price and both are false of
+   * this one. What it says instead is the pair that carries the same weight,
+   * and the served page is where that is checked, because a placeholder that
+   * stopped resolving would show up here as a missing figure rather than as a
+   * passing string match.
+   *
+   * The request carries no destination cookie, so this is the page as an
+   * untouched first visit renders it — the operator's declared default. That is
+   * deliberate: it is the state the whole "the figure never appears alone"
+   * condition exists for.
    */
   it("serves one statement about tax on the shipping page, and it is the qualified one", async () => {
     const response = await requestWithHost(server.port, "/legal/shipping", "runtime.example.com");
     expect(response.status).toBe(200);
 
+    const catalogue = resolveCatalogue();
     const text = paintedText(response.body);
-    expect(text).toContain(`${resolveCatalogue().price} · VAT included where applicable`);
-    expect(text).toContain("Non-EU taxes and duties, if any, are not included.");
-    expect(text, "the shipping page asserts VAT is included, unqualified").not.toMatch(
-      /VAT included(?! where applicable)/,
-    );
-    /*
-     * Unified to the operator's wording on 2026-08-10, and unify was not
-     * delete: the callout states the qualification once, and the body still
-     * says how the tax sits in the figure and that the figure is unchanged
-     * where none is due. `tests/legal-pages.test.tsx` carries that property in
-     * full; this is its served-page half.
-     */
     const collapsed = text.replaceAll(/\s+/g, " ");
-    expect(collapsed).toContain("contained within that figure rather than added to it");
-    expect(collapsed).toMatch(/does not change[^.]*including where no VAT is due at all/);
-    expect(collapsed, "the body restates the callout's conditional one line below it").not.toMatch(
-      /[Ww]here VAT is due/,
+
+    expect(collapsed).toContain(catalogue.priceHeadline);
+    expect(collapsed).toContain(catalogue.destinationName);
+    expect(text).toContain("Non-EU taxes and duties, if any, are not included.");
+    expect(text, "a superseded inclusive-pricing claim is back on the page").not.toMatch(
+      /VAT included/,
     );
+
+    /*
+     * **VAT added inside the EU, not added outside it — and the gross figure
+     * carries its own condition rather than borrowing one from the callout.**
+     *
+     * This is the state where that matters: the request carries no cookie, so
+     * the callout is showing the net figure while the body states the gross
+     * one. The body used to end that statement with "That is the figure shown
+     * above", which was then false, and an earlier revision of this very test
+     * asserted the net headline and the gross sentence together and passed —
+     * so the assertion below is the whole sentence, ending included, and the
+     * deictic form is refused outright.
+     */
+    expect(collapsed).toContain(
+      `The price of the goods is then ${catalogue.priceGross} — ${catalogue.priceNet} plus ${catalogue.priceVat} of VAT — and that is the figure you pay.`,
+    );
+    expect(
+      collapsed,
+      "the page points at a figure that depends on who is reading it",
+    ).not.toMatch(/shown above/i);
+    expect(collapsed).toContain("For delivery anywhere else no EU VAT is due and none is added.");
+    expect(collapsed).toContain(catalogue.vatRate);
+
+    // And the headline really is the other figure, so the pairing above is the
+    // one a default visitor is served rather than a hypothetical.
+    expect(catalogue.price).not.toBe(catalogue.priceGross);
+
+    // And the sentence the United States default rests on.
+    expect(collapsed).toContain("it never decides what you are charged");
   });
 
   /**
@@ -2715,16 +2826,29 @@ describe("the served SEO surface", () => {
     expect(offer["@type"]).toBe("Offer");
     expect(offer.url).toBe(`${RUNTIME_ENV.SITE_BASE_URL}${ROUTE_PATHS.lunarBase}`);
     expect(offer.priceCurrency).toBe(mockCatalogue.price.currency);
-    // A decimal string, never minor units: "25.00", not "2500".
+    // A decimal string, never minor units: "31.00", not "3100".
     expect(offer.price).toMatch(/^\d+\.\d{2}$/);
     expect(offer.availability).toMatch(/^https:\/\/schema\.org\/\w+$/);
 
-    // The same amount the page paints, from the same request.
+    /*
+     * **The published figure and the painted figure are deliberately different
+     * now, and this is where that is asserted rather than assumed.**
+     *
+     * The page's figure follows the visitor's destination; this request carries
+     * no destination cookie, so it paints the default one's — the net figure.
+     * The block publishes the gross EU figure to every requester, because a
+     * crawler has no destination and because varying an advertised price by
+     * requester is cloaking-adjacent. Both are checked against
+     * `resolveCatalogue` rather than against literals, so neither can drift.
+     */
     const painted = paintedText(response.body);
-    expect(painted).toContain(
-      formatAmount(mockCatalogue.price.amount, mockCatalogue.price.currency),
-    );
-    expect(Number(offer.price) * 100).toBeCloseTo(mockCatalogue.price.amount, 6);
+    expect(painted).toContain(resolveCatalogue().price);
+    expect(Number(offer.price) * 100).toBeCloseTo(mockCatalogue.price.amountWithTax, 6);
+
+    const specification = offer.priceSpecification as Record<string, unknown>;
+    expect(specification["@type"]).toBe("UnitPriceSpecification");
+    expect(specification.valueAddedTaxIncluded).toBe(true);
+    expect(specification.price).toBe(offer.price);
   });
 
   /**

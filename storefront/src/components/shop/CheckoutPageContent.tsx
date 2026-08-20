@@ -25,13 +25,30 @@
  * button where a reader could be bound without having passed it.
  *
  * Two things are between the last disclosure and the button, and both belong
- * there. The **price qualification** ("VAT included where applicable. Shipping
- * calculated at checkout. Non-EU taxes and duties, if any, are not included.")
- * is the catalogue's own qualifier on the two figures directly above it, which
- * is where a qualification has to be to qualify anything;
+ * there. The **price qualification** — `catalogue.priceQualifiers`, which
+ * states the destination the figures are quoted for, whether VAT is in them,
+ * and what is not — is the catalogue's own qualifier on the figures directly
+ * above it, which is where a qualification has to be to qualify anything;
  * `tests/shop-pages.test.tsx` pins the set of what may appear here to exactly
  * that sentence, so a third thing cannot arrive unnoticed. The **consent
  * line** is next, immediately above the control it describes.
+ *
+ * ## The seventh value, and why it is worded as a breakdown
+ *
+ * Article 8(2) names six disclosures. The VAT row is a seventh value between
+ * the shipping charge and the total, and it is a **breakdown of the two figures
+ * above it rather than an addend**: prices are net in storage but every figure
+ * on this screen comes from Medusa with its tax already inside it, so the tax
+ * is contained in the price of the goods and in the shipping charge, not added
+ * to them. A row headed simply "VAT" in that position reads as something to
+ * add, and the column would not sum. `content/shop.ts`'s `vatLabel` says
+ * "Includes", and `src/lib/store-checkout.ts` refuses a set of totals in which
+ * that word would be false.
+ *
+ * It is **absent** for an order that attracts no VAT, not zero — the same
+ * argument `src/lib/cart.ts` makes about formatted zeros. No EU VAT arises on
+ * an export at all; a row of zero would state a zero-rating this shop does not
+ * apply.
  *
  * ## One paragraph is below the button, deliberately
  *
@@ -131,9 +148,11 @@ import type { ChangeEvent, FormEvent } from "react";
 
 import { checkout, unavailableFigure } from "../../../../content/shop.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
-import { resolveCatalogue } from "../../lib/catalogue.js";
+import { destinationForCode, destinationForCountryName } from "../../lib/destination.js";
+import { checkoutPriceQualification } from "../../lib/price-qualification.js";
 import {
   cartTotals,
+  catalogueLinesForDestination,
   declaredShippingMethod,
   deliveryCountries,
   formatAmount,
@@ -149,6 +168,7 @@ import {
   addGuestShippingMethod,
   currentAddressTotals,
   prepareGuestShipping,
+  shippingOptionFigure,
   type AddressBoundTotals,
   type GuestShippingOption,
 } from "../../lib/store-checkout.js";
@@ -291,8 +311,7 @@ export function CheckoutPageContent({
   latencyMs,
   initialAddress = EMPTY_ADDRESS,
 }: CheckoutPageContentProps) {
-  const catalogue = resolveCatalogue();
-  const { lines } = useCart();
+  const { lines, destinationCode } = useCart();
   const baseId = useId();
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const outcomeRef = useRef<HTMLParagraphElement>(null);
@@ -354,15 +373,64 @@ export function CheckoutPageContent({
    * all rather than the dearer one.
    */
   const deliveryZone = addressComplete ? zoneForCountryName((values.country ?? "").trim()) : null;
-  const mockTotals = useMemo(() => cartTotals(lines, { deliveryZone }), [lines, deliveryZone]);
+  /*
+   * The mock basket is priced when the provider mounts, for the destination set
+   * on the site; the address entered here may be somewhere else. Re-pricing the
+   * lines for the address is what stops the goods figure and the shipping
+   * figure being quoted for two different places — which is what Medusa does on
+   * the real path, for the same reason. See `catalogueLinesForDestination`.
+   */
+  const mockDestination =
+    (addressComplete ? destinationForCountryName((values.country ?? "").trim()) : null) ??
+    destinationForCode(destinationCode);
+  const mockTotals = useMemo(
+    () => cartTotals(catalogueLinesForDestination(lines, mockDestination), { deliveryZone }),
+    [lines, deliveryZone, mockDestination],
+  );
   const pendingStoreTotals = useMemo(
-    () => ({ ...cartTotals(lines, { deliveryZone: null }), shippingAmount: null, orderAmount: null }),
+    () => ({
+      ...cartTotals(lines, { deliveryZone: null }),
+      shippingAmount: null,
+      orderAmount: null,
+      taxAmount: null,
+      shippingTaxAmount: null,
+    }),
     [lines],
   );
   const totals =
     scenario === null
       ? currentAddressTotals(storeTotals, addressRevision) ?? pendingStoreTotals
       : mockTotals;
+  /*
+   * **The qualification follows whatever priced the figures beside it**, and
+   * the deciding is in `src/lib/price-qualification.ts` rather than here.
+   *
+   * It moved because it could not be defended here. This component mounts its
+   * totals in effects and the storefront suite is Node-only, so the production
+   * branch of that decision was unreachable from any test — a mutation
+   * collapsing it to the mock layer's rule left the whole suite green while
+   * making the block claim a delivery address's tax treatment over the
+   * basket's figures. As a pure function over plain values, every state either
+   * path can be in is driven directly in
+   * `tests/price-qualification.test.ts`.
+   */
+  const qualification = checkoutPriceQualification(
+    scenario === null
+      ? {
+          kind: "store",
+          storeTotals,
+          addressRevision,
+          countryName: values.country ?? "",
+          destinationCode,
+        }
+      : {
+          kind: "mock",
+          addressComplete,
+          deliveryZone,
+          countryName: values.country ?? "",
+          destinationCode,
+        },
+  );
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
@@ -476,16 +544,26 @@ export function CheckoutPageContent({
     setSelectedShippingOption(optionId);
     setStoreTotals(null);
     if (optionId === "") return;
+    const chosen = shippingOptions.find((option) => option.id === optionId);
     const cartId = storedMedusaCartId();
-    if (cartId === null) {
+    if (chosen === undefined || cartId === null) {
       setShippingState("error");
       return;
     }
     setShippingState("loading");
+    /*
+     * `addGuestShippingMethod` takes the whole option, not its id, because it
+     * carries the guard: the figure this `<select>` just showed for it has to
+     * be the figure Medusa then charged, or nothing is rendered and the order
+     * stays unplaceable. That refusal arrives here as a rejected promise and
+     * lands in the `error` state below, which is the state that shows no
+     * total.
+     */
     void addGuestShippingMethod(
       createMedusaStoreClient(browserRuntimeConfig().medusa),
       cartId,
-      optionId,
+      chosen,
+      deliveryZone === "europeanUnion",
     ).then(
       (nextTotals) => {
         if (request !== shippingRequest.current) return;
@@ -811,9 +889,13 @@ export function CheckoutPageContent({
                     onChange={(event) => selectShippingOption(event.currentTarget.value)}
                   >
                     <option value="">Choose a delivery method</option>
+                    {/* Never a bare `option.amount`. That is the net rate, and
+                        rendering it unmarked beside a summary charging the
+                        gross one is two prices for one delivery — see
+                        `shippingOptionFigure`. */}
                     {shippingOptions.map((option) => (
                       <option key={option.id} value={option.id}>
-                        {option.name} — {formatAmount(option.amount, "EUR")}
+                        {option.name} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
                       </option>
                     ))}
                   </select>
@@ -940,6 +1022,23 @@ export function CheckoutPageContent({
                   : formatAmount(totals.shippingAmount, totals.currency)}
               </dd>
             </div>
+            {/* The seventh value, and a **breakdown of the two above it**
+                rather than an addend — see `content/shop.ts`'s `vatLabel` and
+                the two refusals in `src/lib/store-checkout.ts` that make the
+                word "Includes" true.
+
+                Absent, not zero, when no VAT arises. `null` is "nobody has
+                been asked" (the mock layer, and the pre-address state); `0` is
+                Medusa's answer for a destination outside the EU. Neither is a
+                row: a formatted zero here would state a zero-rating this shop
+                does not apply, which is the same argument `src/lib/cart.ts`
+                makes about a price of nothing. */}
+            {totals.taxAmount !== null && totals.taxAmount > 0 ? (
+              <div className={styles.summaryRow}>
+                <dt>{qualification.vatLabel}</dt>
+                <dd>{formatAmount(totals.taxAmount, totals.currency)}</dd>
+              </div>
+            ) : null}
             <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>
               <dt>{checkout.order.totalLabel}</dt>
               {/* Two different reasons there is no total, and they are not the
@@ -974,7 +1073,7 @@ export function CheckoutPageContent({
             </div>
           </dl>
 
-          <p className={styles.note}>{catalogue.priceQualifiers}</p>
+          <p className={styles.note}>{qualification.text}</p>
 
           <p className={styles.consentLine}>{CONSENT_LINE}</p>
 

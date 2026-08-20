@@ -1,0 +1,75 @@
+/*
+ * The destination selector.
+ *
+ * It sits directly under a price, on the purchase panel and in the basket, and
+ * everything here is in service of one thing: it has to read as **part of the
+ * price statement** rather than as a filter or a preference. So it is one
+ * column — label, control, sentence — at the reading size, with no card, no
+ * border and no background of its own, and it inherits whatever layer it is
+ * dropped into.
+ *
+ * Every value is a `design/tokens.css` token, per layer, for the reason that
+ * file's own test exists: a component that hard-codes a colour renders white
+ * on near-black inside `[data-layer="lunar"]` and nobody sees it until a
+ * contrast check does.
+ */
+
+.selector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs, 0.25rem);
+}
+
+.label {
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+}
+
+/*
+ * The same box the checkout's country field is, so a visitor meets one control
+ * twice rather than two controls once. `line-height` on a `<select>` rather
+ * than block padding: padding on a select is not honoured consistently across
+ * engines, and the 44px pointer target is a requirement rather than a look.
+ */
+.field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--button-min-height);
+  padding-block: 0;
+  padding-inline: var(--space-sm);
+  line-height: var(--button-min-height);
+  border: var(--border-width) solid var(--border-interactive);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.field:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+
+/*
+ * The live region is always in the document — an element that appears is not
+ * reliably announced — and costs no box when it is empty.
+ */
+.status {
+  margin: 0;
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+}
+
+.status:empty {
+  display: none;
+}

@@ -48,7 +48,9 @@ import { getRuntimeConfig } from "../config/runtime-config.js";
 import { legalPagesByLocale } from "../../../content/legal/index.js";
 import { contentFor, type LegalPage } from "../../../content/schema.js";
 import type { Locale, RouteId } from "../../../content/routes.js";
+import { resolveCatalogue } from "../lib/catalogue.js";
 import { placeholderValuesFrom } from "../lib/configuration-placeholders.js";
+import { getRequestDestination } from "../lib/destination-request.js";
 import { lookupPage } from "../lib/seo.js";
 import { localeForPathSegment, routeIdForPath } from "../lib/urls.js";
 
@@ -69,11 +71,31 @@ export interface LocalizedRouteProps {
  * render this, so there is one projection of `content/legal/*` and not two to
  * disagree with each other.
  */
-export function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
+export async function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
   const page = lookupLegalPage(routeId, locale);
   if (page === undefined) notFound();
 
   const config = getRuntimeConfig();
+  /*
+   * `/legal/shipping` states `{price}`, and `{price}` is destination-dependent
+   * — the gross figure for a delivery address in the EU and the net one for
+   * any other. A legal page rendered against the default destination for
+   * everybody would show a European reader the export figure, one screen away
+   * from the product page showing them the European one, and the page that
+   * explains VAT presentation is the last place two answers may appear.
+   *
+   * Reading the cookie makes these routes dynamic. That is a real cost and it
+   * is accepted: every other route on this site already reads `headers()` for
+   * the CSP nonce, and a cached legal page quoting somebody else's price is
+   * not a saving.
+   *
+   * **The locale goes in too, and it is not decoration.** The qualification
+   * `{priceTaxQualifier}` resolves to is prose, and it is the emphasised first
+   * line under this page's VAT heading. Resolving it without a locale is what
+   * made `/et/legal/shipping` render an English sentence on an approved
+   * Estonian legal notice.
+   */
+  const destination = await getRequestDestination();
 
   return (
     <LegalPageContent
@@ -81,6 +103,7 @@ export function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
       locale={locale}
       values={placeholderValuesFrom(config.merchant)}
       externalTargets={config.externalTargets}
+      catalogue={resolveCatalogue(undefined, destination, locale)}
     />
   );
 }
@@ -94,7 +117,7 @@ export function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
  * error, which is pressure in exactly the wrong direction.
  */
 export const LOCALIZED_ROUTE_VIEWS: Partial<
-  Readonly<Record<RouteId, (props: LocalizedRouteProps) => ReactNode>>
+  Readonly<Record<RouteId, (props: LocalizedRouteProps) => ReactNode | Promise<ReactNode>>>
 > = {
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,

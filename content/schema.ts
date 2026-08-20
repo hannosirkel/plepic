@@ -274,7 +274,48 @@ export const PLACEHOLDERS = {
   price: {
     source: "catalogue",
     description:
-      "Advertised price with currency, rendered from the catalogue entry.",
+      "Advertised price with currency, rendered from the catalogue entry, **for the destination currently set** — the gross figure for a delivery address in the EU and the net one for any other.",
+  },
+  /*
+   * The five tokens the net-pricing copy needs, added together with their
+   * resolvers in `storefront/src/lib/catalogue.ts` because
+   * `storefront/tests/catalogue.test.ts` pins the two tables set-equal in both
+   * directions.
+   *
+   * They exist because `content/` forbids a currency symbol or a money amount
+   * in prose — `content.test.ts` enforces it — and the operator's replacement
+   * VAT wording states four money-or-rate facts in one section: the price
+   * before tax, the price with it, the tax between them, and the rate.
+   * `{price}` alone cannot carry them, and `{price}` is now
+   * **destination-dependent** where these four are not: `{priceNet}`,
+   * `{priceGross}`, `{priceVat}` and `{vatRate}` say the same thing wherever
+   * the reader is, which is exactly why the copy uses them to explain what
+   * `{price}` means. `{priceTaxQualifier}` is the one that does move, and it
+   * moves because it names the destination.
+   */
+  priceNet: {
+    source: "catalogue",
+    description:
+      "Price of the goods before tax, with currency. The same figure for every destination.",
+  },
+  priceGross: {
+    source: "catalogue",
+    description:
+      "Price of the goods for a delivery address in the EU, with currency — the price before tax plus VAT.",
+  },
+  priceVat: {
+    source: "catalogue",
+    description: "The VAT added to the goods for a delivery address in the EU, with currency.",
+  },
+  vatRate: {
+    source: "catalogue",
+    description:
+      "The VAT rate charged on an EU destination, as a percentage — quoted, never applied. The rate itself is declared in backend/src/commerce/tax-model.ts.",
+  },
+  priceTaxQualifier: {
+    source: "catalogue",
+    description:
+      "The tax state and the destination the price is quoted for, in the operator's words — the half of the price headline that follows the figure.",
   },
   priceLine: {
     source: "catalogue",

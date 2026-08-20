@@ -29,9 +29,9 @@
  * **Every `content/` string this component renders goes through `resolve`,
  * not only the ones a reviewer happened to look at.** The first revision
  * threaded the resolver into the purchase panel and the calls to action and
- * rendered `productFaq` verbatim, so "How much is shipping?" answered "…the
- * same everywhere: {priceLine}" on the shipping product page — inside a
- * closed `<details>`, which is exactly why every test missed it.
+ * rendered `productFaq` verbatim, so "How much is shipping?" answered with a
+ * literal "{priceLine}" on the shipping product page — inside a closed
+ * `<details>`, which is exactly why every test missed it.
  * `tests/no-unresolved-placeholder.test.tsx` now fails on any `{token}`
  * reaching rendered text on any real route, open or closed `<details>`
  * included.
@@ -104,6 +104,17 @@ export interface LunarBaseMockupProps {
   readonly merchant?: ConfigurationPlaceholderValues;
   /** Narrow client island rendered in both existing primary purchase slots. */
   readonly primaryPurchaseAction?: ReactNode;
+  /**
+   * The destination control, rendered once — in the hero, directly under the
+   * figure it governs.
+   *
+   * Once rather than twice: two selects on one page saying the same thing is
+   * two controls a reader has to reconcile, and the purchase panel further
+   * down carries the destination in words through
+   * `catalogue.priceTaxQualifier` regardless. It is a slot rather than an
+   * import because it is a client island and this component is not.
+   */
+  readonly destinationSelector?: ReactNode;
 }
 
 /**
@@ -134,6 +145,7 @@ export function LunarBaseMockup({
   catalogue = resolveCatalogue(),
   merchant = NO_CONFIGURATION_VALUES,
   primaryPurchaseAction,
+  destinationSelector,
 }: LunarBaseMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
@@ -169,7 +181,11 @@ export function LunarBaseMockup({
                 <span className={styles.heroPriceFigure}>{catalogue.price}</span>
                 {`${PRICE_HEADLINE_SEPARATOR}${catalogue.priceTaxQualifier}`}
               </p>
+              <p className={styles.heroPriceBreakdown}>{catalogue.priceTaxBreakdown}</p>
               <p className={styles.heroPriceNote}>{catalogue.priceShippingNote}</p>
+              {destinationSelector === undefined ? null : (
+                <div className={styles.heroDestination}>{destinationSelector}</div>
+              )}
               <p className={styles.heroAvailability}>{catalogue.availabilityLabel}</p>
               <div className={styles.heroActions}>
                 {primaryPurchaseAction ?? <CallToActionLink action={heroBuyAction} resolveLabel={resolve} />}

@@ -76,6 +76,8 @@
  */
 
 import { catalogueLine, clampQuantity, MAX_QUANTITY_PER_LINE, type CartLine } from "./cart.js";
+import { mockCatalogue } from "./catalogue.js";
+import { defaultDestination, type Destination } from "./destination.js";
 
 export const DEFAULT_LATENCY_MS = 450;
 
@@ -182,12 +184,23 @@ export interface MockBasketState {
 
 export const EMPTY_BASKET: MockBasketState = { lines: [], pending: {}, failure: null };
 
-/** The basket a route renders for a given scenario. `null` is the empty default. */
-export function basketForScenario(scenario: MockScenario | null): MockBasketState {
+/**
+ * The basket a route renders for a given scenario. `null` is the empty default.
+ *
+ * The destination is threaded in because a mock line is priced like a real one
+ * — the catalogue's gross amount inside the EU and its net amount elsewhere.
+ * A mock basket that ignored it would paint figures no buyer can be shown, and
+ * the qualification the checkout renders beside them would be the one thing on
+ * the screen that was false. See `catalogueLine` in `./cart.js`.
+ */
+export function basketForScenario(
+  scenario: MockScenario | null,
+  destination: Destination = defaultDestination,
+): MockBasketState {
   if (scenario === null) return EMPTY_BASKET;
 
-  const line = catalogueLine(1);
-  const unavailableLine: CartLine = { ...catalogueLine(1), availability: "OutOfStock" };
+  const line = catalogueLine(1, mockCatalogue, "lunar-base", destination);
+  const unavailableLine: CartLine = { ...line, availability: "OutOfStock" };
 
   switch (scenario) {
     case "filled":
@@ -211,6 +224,8 @@ export interface MockActionOptions {
   readonly latencyMs?: number;
   /** Makes every action fail — the `error` scenario, and nothing else. */
   readonly failing?: boolean;
+  /** The destination a newly created line is priced for. See `basketForScenario`. */
+  readonly destination?: Destination;
 }
 
 /**
@@ -234,7 +249,9 @@ export async function addCatalogueLineAction(
   if (options.failing === true) return { ok: false, reason: "action-failed" };
 
   const existing = lines[0];
-  if (existing === undefined) return { ok: true, lines: [catalogueLine(1)] };
+  if (existing === undefined) {
+    return { ok: true, lines: [catalogueLine(1, mockCatalogue, "lunar-base", options.destination)] };
+  }
 
   /*
    * Refuses; never reinterprets — the same rule `parseQuantityInput` states

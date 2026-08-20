@@ -80,10 +80,21 @@ for cluster_invoked_script in \
   )' "${cluster_invoked_script}" ||
     { echo "the built image declares no \"${cluster_invoked_script}\" script" >&2; exit 1; }
 done
-# The two `medusa exec` scripts each name a file, and the built image is the
-# only place the compiled half of that name exists. `predeploy` reaches
-# `seed-administrator` through `seed:administrator`, so it is asserted by file
-# as well as by script name.
+# Every `medusa exec` script names a file, and the built image is the only place
+# the compiled half of that name exists. The script-name loop above cannot see
+# these: `predeploy` reaches three of them through `npm run`, so the manifest
+# names `predeploy` and the file it ends up executing is one indirection away.
+#
+# **`configure-commerce.js` was missing from this list while its two siblings
+# were on it,** which is the gap the fourth entry closes. The failure it left
+# open is quiet and total: the `.ts` fallback in each script exists because a
+# local checkout has only the source, so a build that failed to compile one of
+# these files does not error — it silently takes the fallback branch and dies in
+# the cluster on `Cannot find module 'ts-node'`, which `npm ci --omit=dev`
+# leaves out of the image. That is the predeploy Job failing at wave -10, so the
+# Argo CD Application never syncs and no workload starts.
 test -s backend/.medusa/server/src/scripts/catalogue-import.js
 test -s backend/.medusa/server/src/scripts/seed-administrator.js
+test -s backend/.medusa/server/src/scripts/configure-commerce.js
+test -s backend/.medusa/server/src/scripts/seed-product.js
 npm run test:unit

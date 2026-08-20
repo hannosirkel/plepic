@@ -16,16 +16,23 @@
  * and it is applied by `npm run configure:commerce` from the predeploy Job —
  * before any pod serves traffic and before the import Job is ever staged.
  *
- * ## Shipping is configured here and nowhere else
+ * ## Shipping and tax are configured here and nowhere else
  *
  * The catalogue import used to seed the shipping zones and methods from the
- * archive's `shippingZones` section. It no longer does, and the section is
- * refused: two writers of one price is a way for the rates a buyer is charged to
- * stop being the rates the operator froze, and the export is the *old* shop's
- * shipping configuration rather than Task 1's model. `src/catalogue-import/`
- * keeps the product, its price and stock, the still-valid coupons, the tax
- * regions and the media; the zones, the methods and their two flat rates are
- * {@link ./shipping-model.js}'s.
+ * archive's `shippingZones` section, and the tax regions from its `taxRegions`
+ * section. It no longer seeds either: two writers of one price is a way for the
+ * rates a buyer is charged to stop being the rates the operator froze, and the
+ * export is the *old* shop's configuration rather than the model this repository
+ * declares. The zones, the methods and their two flat rates are
+ * {@link ./shipping-model.js}'s; the VAT rate and the countries it applies in
+ * are {@link ./tax-model.js}'s.
+ *
+ * The catalogue-import Job still carries its own copies of those upserts. It is
+ * a Job that is not on this critical path and retiring it is a deliberately
+ * separate change — but while both exist, this file is the writer that runs on
+ * every promoted digest and the import is the one that runs when an operator
+ * stages an archive, so this file wins by simply running last and asserting the
+ * declared figures.
  *
  * ## Every record is an assertion addressed by a natural key
  *
@@ -36,13 +43,16 @@
  * of a record is the same assertion as the first, and a run interrupted halfway
  * converges when it is run again.
  *
- * **Idempotent is not the same as silent.** Seven of the nine record kinds write
+ * **Idempotent is not the same as silent.** Seven of the ten record kinds write
  * nothing at all on a second run, because they compare before they write. The
- * region and the shipping options do not: they re-issue their update whenever
- * the row exists, so every promoted digest rewrites the region's country list
- * and both flat prices and emits `region.updated` and `shipping_option.updated`.
- * The end state is the same either way, which is what idempotence means here —
- * but a reader watching the event bus will see those two.
+ * region, the tax regions and the shipping options do not: they re-issue their
+ * update whenever the row exists, so every promoted digest rewrites the region's
+ * country list, all twenty-seven VAT rates and both flat prices, and emits
+ * `region.updated` and `shipping_option.updated`. The end state is the same
+ * either way, which is what idempotence means here — but a reader watching the
+ * event bus will see them, and
+ * `tests/commerce-medusa-semantics.test.ts` asserts the exact set so that this
+ * paragraph cannot quietly stop being true.
  *
  * ## The natural keys are display names, and renaming one in the Admin hurts
  *
@@ -63,6 +73,12 @@ import {
   SHIPPING_CURRENCY,
   SHIPPING_ZONES,
 } from "./shipping-model.js";
+import {
+  ESTONIAN_STANDARD_VAT_PERCENT,
+  VAT_COUNTRY_CODES,
+  VAT_RATE_CODE,
+  VAT_RATE_NAME,
+} from "./tax-model.js";
 
 /**
  * The one region.
@@ -108,18 +124,20 @@ export type CommerceRecord =
       readonly currencyCode: string;
       /**
        * Whether an advertised price contains the tax rather than having it
-       * added. `content/legal/shipping.ts` says "Included means contained
-       * within that figure rather than added to it", and **this** is the switch
-       * that makes that sentence true of what Medusa actually computes.
+       * added. **It is `false` here, and it is the operator's decision**: EUR
+       * 25.00 is the *net* price and VAT is added on top for an EU destination,
+       * which is what the legacy shop does at checkout. See
+       * {@link ./tax-model.js}.
        *
-       * It has to be the *currency* preference rather than the region's.
-       * `@medusajs/pricing`'s `isTaxInclusive` consults the `region_id`
-       * preference only when the price itself carries a `region_id` price rule,
-       * and neither price here does: the product price is written by
-       * `src/catalogue-import/medusa-target.ts` as `[{ amount, currency_code }]`
-       * and the shipping price by `./medusa-target.ts` as
-       * `[{ currency_code, amount }]`. Resolution falls through to the
-       * `currency_code` preference, whose model default is `false`.
+       * `updateStoresWorkflow` forwards this to the pricing module's
+       * `price_preference` keyed on `currency_code`, and
+       * `@medusajs/pricing`'s `isTaxInclusive` reads that preference for a price
+       * carrying no `region_id` price rule — which is every price this
+       * deployment writes: the product price as `[{ amount, currency_code }]`
+       * and the shipping price as `[{ currency_code, amount }]`.
+       *
+       * **It is not enough on its own, and the region record's flag is not
+       * decoration.** Read that one next; the two have to move together.
        */
       readonly taxInclusivePrices: boolean;
     }
@@ -131,21 +149,68 @@ export type CommerceRecord =
       readonly countryCodes: readonly string[];
       readonly paymentProviderIds: readonly string[];
       /**
-       * The region's own tax-inclusivity preference.
+       * The region's own tax-inclusivity preference — **a live hazard, not a
+       * statement of intent.** This docstring used to call it the latter and
+       * that was wrong in a way that costs money.
        *
-       * **This flag alone does not make a price tax inclusive**, which is why
-       * the `store-currency` record above exists; see its documentation for the
-       * resolution rule. It is declared anyway because it is the correct
-       * statement of intent for this region, and because it is what Medusa
-       * consults the moment any price here gains a `region_id` price rule.
+       * `createRegionsWorkflow` strips this off the region row and writes it to
+       * the pricing module as `{ attribute: "region_id", value: <region id>,
+       * is_tax_inclusive }`
+       * (`@medusajs/core-flows/dist/region/workflows/create-regions.js:67-88`);
+       * `updateRegionsWorkflow` rewrites the same row whenever the field is
+       * present (`update-regions.js:56-75`). `@medusajs/pricing`'s
+       * `isTaxInclusive` then consults it **ahead of** the currency preference
+       * for any price carrying a `region_id` price rule
+       * (`services/pricing-module.js:1191`).
+       *
+       * No price this deployment writes carries such a rule *today*. That is the
+       * whole of the protection, and it is one region-scoped price away from
+       * being gone: a price list, a region-specific override, an operator's edit
+       * in the Admin. If this said `true` while the currency said `false`, the
+       * first such price would make the shop charge the advertised EUR 25.00 and
+       * book EUR 4.84 of VAT out of it — a 19% cut to the net take, with every
+       * figure on every page still reading EUR 25.00 and nothing to notice.
+       *
+       * So the two flags are declared as one decision and must be changed as
+       * one. `tests/commerce-medusa-semantics.test.ts` asserts that the
+       * configuration leaves **no** tax-inclusive price preference behind, for
+       * either attribute, over the graph Medusa's own region workflows write.
        */
       readonly taxInclusivePrices: boolean;
       /**
-       * Whether Medusa applies the destination's tax region automatically. With
-       * tax-inclusive prices this changes the *tax portion* of a total and never
-       * the total, which is the other half of the same promise.
+       * Whether Medusa resolves the destination's tax region automatically.
+       *
+       * With tax-**exclusive** prices this decides the total and not merely its
+       * composition: an EU address resolves to one of the tax regions declared
+       * below and pays EUR 39.68, and an address anywhere else resolves to no
+       * tax region, carries no tax line, and pays EUR 37.00.
        */
       readonly automaticTaxes: boolean;
+    }
+  | {
+      /**
+       * One country's tax region and the single rate within it.
+       *
+       * These moved here from the catalogue import. That import reads them from
+       * a WooCommerce archive, which is the *old* shop's tax configuration
+       * rather than the model the operator froze — the same reason the shipping
+       * zones are declared here and the archive's `shippingZones` section is
+       * refused outright. A rate a buyer is charged may have one writer, and
+       * this is it.
+       *
+       * There are twenty-seven of them and they all carry Estonia's rate; see
+       * {@link ./tax-model.js} for why, and for the citation behind the figure.
+       */
+      readonly kind: "tax-region";
+      /** The ISO 3166-1 alpha-2 country code. */
+      readonly key: string;
+      readonly countryCode: string;
+      /** What the Admin shows against the rate. */
+      readonly name: string;
+      /** A percentage: `24` is 24 %. */
+      readonly ratePercent: number;
+      /** The natural key the rate is addressed by within its region. */
+      readonly code: string;
     }
   | { readonly kind: "stock-location"; readonly key: string; readonly name: string }
   | {
@@ -226,8 +291,10 @@ export interface CommerceConfigurationTarget {
  * to create it at all; and the sales-channel link is placed before the zones so
  * that a run which fails partway has already made the location reachable. The
  * currency's tax treatment goes first because it governs how every price this
- * deployment holds is read — including the product price, which a different
- * command writes.
+ * deployment holds is read — including the product price, which
+ * `npm run seed:product` writes. The tax regions follow the region and precede
+ * everything physical, so that a run interrupted after the region has already
+ * put the rates behind `automatic_taxes` in place.
  */
 export function commerceRecords(): readonly CommerceRecord[] {
   return [
@@ -235,7 +302,8 @@ export function commerceRecords(): readonly CommerceRecord[] {
       kind: "store-currency",
       key: SHIPPING_CURRENCY,
       currencyCode: SHIPPING_CURRENCY,
-      taxInclusivePrices: true,
+      // Net prices, VAT added. Moves only together with the region's flag below.
+      taxInclusivePrices: false,
     },
     {
       kind: "region",
@@ -244,9 +312,18 @@ export function commerceRecords(): readonly CommerceRecord[] {
       currencyCode: SHIPPING_CURRENCY,
       countryCodes: DELIVERABLE_COUNTRY_CODES,
       paymentProviderIds: [STRIPE_PAYMENT_PROVIDER_ID],
-      taxInclusivePrices: true,
+      // Net prices, VAT added. Moves only together with the currency's flag above.
+      taxInclusivePrices: false,
       automaticTaxes: true,
     },
+    ...VAT_COUNTRY_CODES.map<CommerceRecord>((countryCode) => ({
+      kind: "tax-region",
+      key: countryCode,
+      countryCode,
+      name: VAT_RATE_NAME,
+      ratePercent: ESTONIAN_STANDARD_VAT_PERCENT,
+      code: VAT_RATE_CODE,
+    })),
     { kind: "stock-location", key: STOCK_LOCATION_NAME, name: STOCK_LOCATION_NAME },
     {
       kind: "stock-location-fulfillment-provider",

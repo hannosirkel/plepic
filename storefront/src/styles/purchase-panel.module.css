@@ -75,6 +75,18 @@
   font-size: var(--purchase-price-size);
 }
 
+/*
+ * The net/VAT split — a gloss on the emphasised line above, so it takes the
+ * note size and the note colour rather than competing with the figure. It
+ * precedes `.note` because it says what the figure is made of and `.note` says
+ * what is not in it.
+ */
+.breakdown {
+  margin: 0;
+  font-size: var(--purchase-note-size);
+  color: var(--purchase-note-color);
+}
+
 .note {
   margin: 0;
   font-size: var(--purchase-note-size);

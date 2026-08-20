@@ -182,12 +182,40 @@ describe("the scripts the deploys manifests invoke", () => {
   });
 
   /**
+   * The one product is the predeploy Job's fourth step, and it has to come
+   * **after** the configuration rather than beside it: the product binds to a
+   * shipping profile and to the default sales channel, and
+   * `configure:commerce` is what creates the profile. Seeding first would refuse
+   * with "run npm run configure:commerce before seeding the product" and, being
+   * an Argo CD sync hook, would stop the Application syncing at all.
+   *
+   * It is in this Job for the reason the configuration is: `deploys` names the
+   * workloads it runs, the manifests are in a repository this workspace may not
+   * change, and a fifth `args: [npm, run, …]` would be a script no manifest
+   * invokes. Without it `GET /store/products` is empty on a fresh environment
+   * and every page that reads the catalogue refuses, until somebody stages a
+   * WooCommerce archive by hand for the import Job.
+   */
+  it("seeds the one product in predeploy, after configuring commerce", () => {
+    const predeploy = expand("predeploy");
+    expect(predeploy).toContain("seed-product");
+    expect(predeploy.indexOf("configure-commerce")).toBeLessThan(
+      predeploy.indexOf("seed-product"),
+    );
+  });
+
+  /**
    * Every `medusa exec` script prefers the compiled `.js` beside it and falls
    * back to the `.ts`. That is not a nicety: the built image has only the
    * compiled file and a local checkout has only the source, and a script that
    * named one of them would work in exactly one of the two places.
    */
-  it.each(["catalogue:import", "seed:administrator", "configure:commerce"])(
+  it.each([
+    "catalogue:import",
+    "seed:administrator",
+    "configure:commerce",
+    "seed:product",
+  ])(
     "lets %s resolve either the built or the source file",
     (name) => {
       expect(scripts[name]).toContain(".js");

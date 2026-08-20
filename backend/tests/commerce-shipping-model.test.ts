@@ -13,6 +13,7 @@ import {
   shippingAmountMinorForCountry,
   shippingZoneForCountry,
 } from "../src/commerce/shipping-model.js";
+import { ESTONIAN_STANDARD_VAT_PERCENT } from "../src/commerce/tax-model.js";
 
 /**
  * The commercial model Task 1 froze, held to the figures the operator froze it
@@ -24,6 +25,13 @@ import {
  * while the shop as configured would have presented EUR 39.04 for the EUR 32.00
  * it claimed. It now lives in `commerce-medusa-semantics.test.ts`, computed by
  * Medusa's own totals code from the configuration this repository declares.
+ *
+ * **Both of those figures are history rather than the current model.** The
+ * operator has since settled EUR 25.00 as a *net* price with Estonian VAT added
+ * on an EU destination, so an EU cart now totals EUR 39.68 and a rest-of-world
+ * cart EUR 37.00. The two flat shipping rates asserted below are unchanged by
+ * that — they are net figures too, and the destination zone is still the only
+ * thing that selects between them.
  */
 
 function storefrontJson<T>(relative: string): T {
@@ -40,6 +48,7 @@ interface StorefrontShipping {
   readonly method: {
     readonly currency: string;
     readonly rates: { readonly europeanUnion: number; readonly restOfWorld: number };
+    readonly ratesWithTax: { readonly europeanUnion: number; readonly restOfWorld: number };
   };
 }
 
@@ -146,6 +155,34 @@ describe("the frozen shipping model", () => {
     expect(method.currency).toBe(SHIPPING_CURRENCY);
     expect(method.rates.europeanUnion).toBe(EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR);
     expect(method.rates.restOfWorld).toBe(REST_OF_WORLD_SHIPPING_AMOUNT_MINOR);
+  });
+
+  /**
+   * **The grossed figures the checkout actually charges, derived rather than
+   * trusted.**
+   *
+   * `mock/shipping.json` declares each zone's rate twice — before tax and with
+   * it — because the storefront may not apply a rate and therefore cannot
+   * compute the second from the first. That makes the grossed pair *data*, and
+   * data with nothing behind it is exactly what this file exists to prevent.
+   * So the multiplication happens **here**, on the side of the boundary where
+   * the rate is declared.
+   *
+   * The rest-of-world figures are equal on purpose: no EU VAT arises on an
+   * export, so the charged figure and the quoted rate are the same number. It
+   * is asserted rather than skipped, because "the same" and "forgotten" look
+   * identical in a JSON file.
+   */
+  it("grosses the EU rate at the declared VAT percentage and leaves the export rate alone", () => {
+    const { method } = storefrontJson<StorefrontShipping>("mock/shipping.json");
+
+    expect(method.ratesWithTax.europeanUnion).toBe(
+      Math.round(
+        EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR * (1 + ESTONIAN_STANDARD_VAT_PERCENT / 100),
+      ),
+    );
+    expect(method.ratesWithTax.restOfWorld).toBe(REST_OF_WORLD_SHIPPING_AMOUNT_MINOR);
+    expect(method.ratesWithTax.europeanUnion).toBeGreaterThan(method.rates.europeanUnion);
   });
 
   it("never guesses a zone, and never falls back to the dearer rate", () => {

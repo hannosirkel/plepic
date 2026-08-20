@@ -27,6 +27,8 @@ import { returns } from "../../content/legal/returns.js";
 import { shipping } from "../../content/legal/shipping.js";
 import { terms } from "../../content/legal/terms.js";
 import { basket, checkout, unavailableFigure } from "../../content/shop.js";
+import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
+import { destinationForCountryName } from "../src/lib/destination.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
 import {
   CHECKOUT_ORDER_POST_PATH,
@@ -47,6 +49,7 @@ import {
   cartTotals,
   catalogueLine,
   clampQuantity,
+  assertPriceable,
   declaredShippingMethod,
   deliveryCountries,
   formatAmount,
@@ -301,9 +304,17 @@ describe("Article 8(2) CRD: the six disclosures, immediately above the button", 
     expect(button).toBeGreaterThan(consent);
 
     // Nothing but the price qualification sits between them. Anything else
-    // appearing here is an interposition Article 8(2) does not allow.
+    // appearing here is an interposition Article 8(2) does not allow. The
+    // expected value is the catalogue's own composition rather than a literal,
+    // because the qualification now names the destination the page is being
+    // rendered for and a literal would pin one destination's wording.
     const between = text.slice(lastDisclosure + DELIVERY_ESTIMATE.length, consent).trim();
-    expect(between.replace(/\s+/g, " ")).toBe("VAT included where applicable. Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.");
+    // Before a delivery address exists the figures follow the destination set
+    // on the site, and the block says both things: the qualification for that
+    // destination, and that the address is what will decide it.
+    expect(between.replace(/\s+/g, " ")).toBe(
+      `${resolveCatalogue().priceQualifiers} ${checkout.order.destinationProvisional}`,
+    );
   });
 
   it("keeps the pre-contract prose above the disclosure block, never below the button", () => {
@@ -646,6 +657,75 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     expect(formatAmount(declaredShippingMethod.rates.restOfWorld, "EUR")).toBe("€12.00");
   });
 
+  /**
+   * **The import-time refusals, reached.**
+   *
+   * `assertPriceable` runs over a committed file at import, so every branch in
+   * it is unreachable from a test that only imports the module — which makes it
+   * decoration rather than a guard, by this suite's own standard. It grew a new
+   * branch with the tax-inclusive rate table, and a new unreachable branch is
+   * worse than an inherited one, so it is exported and driven here.
+   *
+   * The last case is the one the new table introduced: a zone priced *lower*
+   * with tax than without means one of the two tables is wrong and the checkout
+   * has no way to tell which, so it refuses rather than charging either.
+   */
+  it("refuses a shipping file that cannot price an order", () => {
+    const usable = declaredShippingMethod;
+    expect(assertPriceable(usable)).toBe(usable);
+
+    for (const [label, broken] of [
+      ["a missing rate", { ...usable, rates: { ...usable.rates, europeanUnion: 0 } }],
+      [
+        "a missing tax-inclusive rate",
+        { ...usable, ratesWithTax: { ...usable.ratesWithTax, restOfWorld: Number.NaN } },
+      ],
+      [
+        "a zone that costs less with tax than without",
+        {
+          ...usable,
+          ratesWithTax: { ...usable.ratesWithTax, europeanUnion: usable.rates.europeanUnion - 1 },
+        },
+      ],
+    ] as const) {
+      expect(() => assertPriceable(broken), label).toThrow(/shipping\.json/);
+    }
+  });
+
+  /**
+   * **"Nothing has been asked" is not "nothing", for the tax as for the price.**
+   *
+   * A line from Medusa carries no per-line tax — on that path every figure the
+   * checkout renders comes from `store-checkout.ts` instead — so a basket built
+   * from one has no honest VAT figure to state, and states none. The condition
+   * that produces that could be dropped with the suite green, because no
+   * current path reaches it: the mock layer always answers and the served
+   * checkout never asks. Latent, and pinned rather than argued about.
+   */
+  it("states no tax for a line that never answered, rather than a zero", () => {
+    const medusaShapedLine: CartLine = {
+      id: "line_example",
+      productName: "Lunar Base",
+      unitAmount: 3100,
+      currency: "EUR",
+      quantity: 1,
+      availability: "InStock",
+    };
+
+    expect(medusaShapedLine.taxAmount).toBeUndefined();
+    expect(
+      cartTotals([medusaShapedLine], { deliveryZone: "europeanUnion" }).taxAmount,
+      "a basket that was never asked about tax stated a figure for it",
+    ).toBeNull();
+
+    // And the catalogue's own line does answer, so the pin is not vacuous.
+    expect(
+      cartTotals([catalogueLine(1, undefined, "lunar-base", destinationForCountryName("Estonia")!)], {
+        deliveryZone: "europeanUnion",
+      }).taxAmount,
+    ).toBeGreaterThan(0);
+  });
+
   it("withholds the shipping charge and the total until a delivery address exists", () => {
     const lines = [catalogueLine(1)];
     const withoutAddress = cartTotals(lines, { deliveryZone: null });
@@ -653,23 +733,54 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     expect(withoutAddress.orderAmount).toBeNull();
   });
 
-  it("adds the zone's shipping charge to the goods, and nothing else", () => {
+  /**
+   * The **charged** shipping figure, not the quoted-before-tax rate.
+   * `declaredShippingMethod.rates` is what the operator froze and what the
+   * legal page describes as a rate; `ratesWithTax` is what a buyer pays, and
+   * the totals on the Article 8(2) screen must be what a buyer pays.
+   */
+  it("adds the zone's charged shipping figure to the goods, and nothing else", () => {
     const lines = [catalogueLine(2)];
     for (const zone of SHIPPING_ZONES) {
       const totals = cartTotals(lines, { deliveryZone: zone });
       expect(totals.goodsAmount).toBe(lines[0]!.unitAmount * 2);
-      expect(totals.shippingAmount).toBe(declaredShippingMethod.rates[zone]);
-      expect(totals.orderAmount).toBe(totals.goodsAmount! + declaredShippingMethod.rates[zone]);
+      expect(totals.shippingAmount).toBe(declaredShippingMethod.ratesWithTax[zone]);
+      expect(totals.orderAmount).toBe(totals.goodsAmount! + declaredShippingMethod.ratesWithTax[zone]);
     }
   });
 
+  /**
+   * The zone axis is still real once tax is in the figures, and it is worth
+   * asserting that it survived: EU delivery is quoted lower before tax **and**
+   * charged lower after it, so grossing the rates did not collapse the
+   * distinction the whole zone model exists for.
+   */
   it("charges an EU address less than a non-EU one, so the axis is not decorative", () => {
     const lines = [catalogueLine(1)];
     const eu = cartTotals(lines, { deliveryZone: "europeanUnion" });
     const nonEu = cartTotals(lines, { deliveryZone: "restOfWorld" });
     expect(eu.shippingAmount).toBeLessThan(nonEu.shippingAmount!);
+    expect(declaredShippingMethod.rates.europeanUnion).toBeLessThan(
+      declaredShippingMethod.rates.restOfWorld,
+    );
     expect(nonEu.orderAmount! - eu.orderAmount!).toBe(
-      declaredShippingMethod.rates.restOfWorld - declaredShippingMethod.rates.europeanUnion,
+      declaredShippingMethod.ratesWithTax.restOfWorld -
+        declaredShippingMethod.ratesWithTax.europeanUnion,
+    );
+  });
+
+  /**
+   * And the two tables differ exactly where VAT is due: the EU rate is grossed,
+   * the rest-of-world rate is the same figure twice because no EU VAT arises on
+   * an export. Neither figure is computed here — both are declared in
+   * `mock/shipping.json` and derived from the rate on the backend side.
+   */
+  it("charges the EU rate with tax and the rest-of-world rate without", () => {
+    expect(declaredShippingMethod.ratesWithTax.europeanUnion).toBeGreaterThan(
+      declaredShippingMethod.rates.europeanUnion,
+    );
+    expect(declaredShippingMethod.ratesWithTax.restOfWorld).toBe(
+      declaredShippingMethod.rates.restOfWorld,
     );
   });
 
@@ -686,12 +797,24 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     expect(text).toContain(checkout.order.totalPending);
   });
 
+  /**
+   * The checkout carries the catalogue's own qualification, which since
+   * 2026-08-18 names the destination the figures are quoted for. It used to pin
+   * the literal "VAT included where applicable"; that claim is gone from the
+   * whole site, because the price no longer contains the tax.
+   *
+   * What replaces it is the pair that now matters — the destination is named,
+   * and the tax state is stated one way or the other — plus the refusal of the
+   * superseded claim, so it cannot come back.
+   */
   it("carries the same tax qualification the legal page and the product page carry", () => {
     const text = visibleText(renderCheckout("filled"));
-    expect(text).toContain("VAT included where applicable");
-    expect(text, "an unqualified VAT claim reached the checkout").not.toMatch(
-      /VAT included(?! where applicable)/,
-    );
+    const catalogue = resolveCatalogue();
+
+    expect(text).toContain(catalogue.priceQualifiers);
+    expect(text).toContain(catalogue.destinationName);
+    expect(text).toMatch(/(?:^|\s)(?:No )?VAT added, delivering to /);
+    expect(text, "a superseded VAT claim reached the checkout").not.toMatch(/VAT included/);
   });
 
   it("clamps an already-numeric quantity into what a basket may hold", () => {
@@ -963,10 +1086,10 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
 
     it("shows no shipping value and no total value, in either zone's amount", () => {
       for (const zone of SHIPPING_ZONES) {
-        const charge = formatAmount(declaredShippingMethod.rates[zone], "EUR");
+        const charge = formatAmount(declaredShippingMethod.ratesWithTax[zone], "EUR");
         expect(text, `${charge} was disclosed without a delivery address`).not.toContain(charge);
         const total = formatAmount(
-          catalogueLine(1).unitAmount + declaredShippingMethod.rates[zone],
+          catalogueLine(1).unitAmount + declaredShippingMethod.ratesWithTax[zone],
           "EUR",
         );
         expect(text, `${total} was disclosed without a delivery address`).not.toContain(total);
@@ -989,20 +1112,74 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
         const orderBlock = html.slice(html.indexOf('aria-labelledby="checkout-order-heading"'));
         const text = visibleText(orderBlock);
 
-        const charge = formatAmount(declaredShippingMethod.rates[zone], "EUR");
-        const total = formatAmount(
-          catalogueLine(1).unitAmount + declaredShippingMethod.rates[zone],
-          "EUR",
-        );
+        /*
+         * Every figure is the one **this delivery address** produces: the goods
+         * re-priced for its destination, the delivery charged with whatever tax
+         * that destination attracts. A screen that mixed the two — the goods
+         * quoted for the destination set on the site, the delivery for the
+         * address — is what `catalogueLinesForDestination` exists to prevent.
+         */
+        const destination = destinationForCountryName(country);
+        expect(destination, country).not.toBeNull();
+        const goods = catalogueLine(1, undefined, "lunar-base", destination!).unitAmount;
+        const charge = formatAmount(declaredShippingMethod.ratesWithTax[zone], "EUR");
+        const total = formatAmount(goods + declaredShippingMethod.ratesWithTax[zone], "EUR");
 
         // 1 the goods, 2 the price of the goods.
         expect(text).toContain("Lunar Base × 1");
-        expect(text).toContain(formatAmount(catalogueLine(1).unitAmount, "EUR"));
+        expect(text).toContain(formatAmount(goods, "EUR"));
         // 3 the shipping charge, and it is this country's, not the other's.
         expect(text, `${country} was not charged ${charge}`).toContain(charge);
         expect(text).not.toContain(
-          formatAmount(declaredShippingMethod.rates[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
+          formatAmount(declaredShippingMethod.ratesWithTax[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
         );
+        /*
+         * **And the qualification names this address's country, never the
+         * destination set on the site.**
+         *
+         * This render carries the default destination — the provider is given
+         * no `destinationCode`, so it is the United States — while the address
+         * is Estonian. The block used to read "No VAT added, delivering to
+         * United States" one line above the order button, over Medusa's
+         * Estonian figures: a false pre-contract disclosure on the exact screen
+         * Article 8(2) CRD is about. Both halves are asserted, because the
+         * positive one alone would pass on a page that named both.
+         */
+        expect(text, `${country}'s figures are qualified for somewhere else`).toContain(
+          resolveCatalogue(undefined, destination!).priceTaxQualifier,
+        );
+        expect(
+          text,
+          `${country}'s order block quotes the destination cookie instead of the delivery address`,
+        ).not.toContain(resolveCatalogue().priceTaxQualifier);
+        expect(text).not.toContain(checkout.order.destinationProvisional);
+
+        /*
+         * **And the seventh value is on the screen when there is one to
+         * state.** `content/legal/shipping.ts` promises the VAT amount "is
+         * shown separately at checkout", so an EU order charged a
+         * tax-inclusive total with no VAT row would be the page failing its
+         * own promise. Absent — not zero — for the destination that attracts
+         * none.
+         */
+        const vatLabel = resolveCataloguePlaceholders(
+          checkout.order.vatLabel,
+          resolveCatalogue(undefined, destination!),
+        );
+        if (zone === "europeanUnion") {
+          const tax = formatAmount(
+            goods -
+              catalogueLine(1, undefined, "lunar-base", destinationForCountryName("Norway")!)
+                .unitAmount +
+              declaredShippingMethod.ratesWithTax[zone] -
+              declaredShippingMethod.rates[zone],
+            "EUR",
+          );
+          expect(text, `${country} states no VAT amount`).toContain(vatLabel);
+          expect(text).toContain(tax);
+        } else {
+          expect(text, `${country} states a VAT amount where none is due`).not.toContain(vatLabel);
+        }
         // 4 the total.
         expect(text).toContain(total);
         // 5 the delivery address, as a value and without the email address.
@@ -1475,8 +1652,23 @@ describe("no invented customer exists anywhere in this unit", () => {
   it("ships no cart fixture of people, only the catalogue's own product line", () => {
     const line = catalogueLine(1);
     expect(line.productName).toBe("Lunar Base");
+    /*
+     * The whole shape, so a field carrying anything about a *person* cannot be
+     * added without this failing. `taxAmount` joined the list when the price
+     * became net: it is the tax contained in `unitAmount`, derived from the two
+     * amounts the catalogue holds, and it is a fact about the product's
+     * destination rather than about anybody buying it.
+     */
     expect(Object.keys(line).toSorted()).toEqual(
-      ["availability", "currency", "id", "productName", "quantity", "unitAmount"].toSorted(),
+      [
+        "availability",
+        "currency",
+        "id",
+        "productName",
+        "quantity",
+        "taxAmount",
+        "unitAmount",
+      ].toSorted(),
     );
   });
 
