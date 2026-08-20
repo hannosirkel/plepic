@@ -17,6 +17,15 @@
  * A basket is in any case storage "strictly necessary for a service the
  * user explicitly requested" under ePrivacy Article 5(3) and needs no consent.
  *
+ * **The destination *is* a cookie, and the two choices are consistent rather
+ * than contradictory.** `src/lib/destination.ts` keeps the country a visitor is
+ * being quoted for in `plepic_destination`, because the price is composed on
+ * the server and the server cannot see session storage — and because a
+ * destination is a statement about where somebody lives rather than about one
+ * tab. A cart identity is the opposite on both counts. Neither is stored where
+ * it is out of habit, and both are disclosed: the basket as prose, the
+ * destination as a row in the cookie table.
+ *
  * **What is stored is only the opaque Medusa cart id.** Product details,
  * quantities, prices, email and postal addresses remain in Medusa and are
  * retrieved again for the current tab. Nothing about a person is written to
@@ -57,6 +66,7 @@ import {
 import type { ReactNode } from "react";
 
 import type { CartLine } from "./cart.js";
+import { DEFAULT_DESTINATION_CODE, destinationForCode } from "./destination.js";
 import { createMedusaStoreClient } from "./medusa-client.js";
 import type { ClientRuntimeConfig } from "./client-runtime-config.js";
 import { medusaMajorToMinor } from "./store-money.js";
@@ -83,23 +93,83 @@ function runtimeConfig(): ClientRuntimeConfig {
   return JSON.parse(element.textContent) as ClientRuntimeConfig;
 }
 
+/**
+ * The basket's lines, priced the way the buyer will be charged.
+ *
+ * **`item_total` and each line's `total`, never `unit_price`.** `unit_price` is
+ * the stored price, and the stored price is now **net**: a basket built from it
+ * stated the net figure for goods Medusa charges the gross one for, on the
+ * screen whose figures feed the Article 8(2) disclosure block on
+ * `/checkout`. Medusa's
+ * `cart.item_total` is line items after discounts **including** tax, which is
+ * what `./store-checkout.js` argues for at length on the checkout path and what
+ * `./store-payment.js` already read on the confirmation path. This is the
+ * basket agreeing with both.
+ *
+ * The per-unit figure the basket's price column shows is each line's own
+ * `total` divided by its quantity, and a division that is not exact is
+ * **refused** rather than rounded. A rounded unit price beside an unrounded
+ * line total is two answers to "what does one cost?", and this shop's one
+ * product divides exactly at every quantity a basket may hold. If a future
+ * catalogue does not, that is a presentation decision somebody has to make on
+ * purpose — a column showing "from" pricing, or no unit column — rather than a
+ * cent this function invented.
+ *
+ * The line totals are then checked to sum to `item_total`, for the same reason
+ * `cartTotals` in `./store-checkout.js` refuses three figures that do not add
+ * up: the two are computed by different parts of Medusa, and a basket whose
+ * lines do not account for its own goods figure has told a buyer something
+ * untrue about at least one of them.
+ */
 export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
-  const value = cart as { items?: readonly { id?: string; title?: string; unit_price?: number; quantity?: number; variant?: { id?: string; manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string };
+  const value = cart as { items?: readonly { id?: string; title?: string; total?: number; quantity?: number; variant?: { id?: string; manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string; item_total?: number };
   if (!Array.isArray(value.items) || typeof value.currency_code !== "string") throw new Error("Medusa Store cart response is malformed");
-  return value.items.map((line) => {
-    if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.quantity)) throw new Error("Medusa Store cart line is malformed");
+  const currency = value.currency_code;
+  const lines = value.items.map((line) => {
+    if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.quantity) || (line.quantity as number) <= 0) throw new Error("Medusa Store cart line is malformed");
+    const quantity = line.quantity as number;
+    const lineTotal = medusaMajorToMinor(line.total, currency);
+    if (lineTotal % quantity !== 0) throw new Error("Medusa Store cart line does not divide into a whole unit price");
     const variant = line.variant;
     const available = variant?.manage_inventory !== true || variant.allow_backorder === true || (Number.isInteger(variant.inventory_quantity) && variant.inventory_quantity! > 0);
-    return { id: line.id, ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}), productName: line.title, unitAmount: medusaMajorToMinor(line.unit_price, value.currency_code!), currency: value.currency_code!.toUpperCase(), quantity: line.quantity, availability: available ? "InStock" : "OutOfStock" };
+    return { id: line.id, ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}), productName: line.title, unitAmount: lineTotal / quantity, currency: currency.toUpperCase(), quantity, availability: available ? "InStock" : "OutOfStock" } satisfies CartLine;
   });
+  if (lines.reduce((sum, line) => sum + line.unitAmount * line.quantity, 0) !== medusaMajorToMinor(value.item_total, currency)) {
+    throw new Error("Medusa Store cart lines do not add up to the cart's own goods figure");
+  }
+  return lines;
 }
 
 type StoreClient = ReturnType<typeof createMedusaStoreClient>;
+
+/**
+ * Tells Medusa where the parcel is going, so it can answer for a real
+ * destination.
+ *
+ * Without a `shipping_address.country_code` a cart has no tax region, so
+ * `item_total` comes back equal to the net subtotal and a European buyer's
+ * basket states the export price. The destination the visitor set on this site
+ * is written on as soon as a basket exists, and **the checkout overwrites it
+ * the moment a real address is entered** (`prepareGuestShipping` in
+ * `./store-checkout.js` sends the whole postal address). So this is a
+ * provisional answer that a confirmed one replaces — never the thing a buyer is
+ * charged on.
+ */
+export async function applyDestinationToCart(
+  sdk: StoreClient,
+  cartId: string,
+  countryCode: string,
+): Promise<void> {
+  await sdk.store.cart.update(cartId, {
+    shipping_address: { country_code: countryCode.toLowerCase() },
+  });
+}
 
 /** Adds the sole Store product to a new or existing cart and measures only the accepted line. */
 export async function addStoreCatalogueLine(
   sdk: StoreClient,
   existingCartId: string | null,
+  countryCode: string,
 ): Promise<{ readonly cartId: string; readonly lines: readonly CartLine[] }> {
   const { products } = await sdk.store.product.list({ limit: 1, fields: "id,variants.*" });
   const variantId = products[0]?.variants?.[0]?.id;
@@ -115,6 +185,9 @@ export async function addStoreCatalogueLine(
     if (typeof createdId !== "string" || createdId.length === 0) throw new Error("Medusa Store cart is not ready");
     cartId = createdId;
   }
+  // Before the line, not after: the line's tax is computed against whatever
+  // address the cart holds when it is created.
+  await applyDestinationToCart(sdk, cartId, countryCode);
 
   const updated = await sdk.store.cart.createLineItem(cartId, { variant_id: variantId, quantity: 1 });
   const lines = cartLinesFromStore(updated.cart);
@@ -167,6 +240,17 @@ export interface CartContextValue extends MockBasketState {
   readonly remove: (id: string) => void;
   /** True while any line has an action in flight. */
   readonly busy: boolean;
+  /**
+   * The destination the surrounding page is quoting, as an ISO 3166-1 alpha-2
+   * code.
+   *
+   * Carried on the cart context because the two client surfaces that need it —
+   * the basket and the checkout — already consume this context, and because
+   * it is the same value the basket's own Medusa cart was priced with. A
+   * component reading the cookie itself would be free to disagree with the
+   * server's first paint.
+   */
+  readonly destinationCode: string;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -174,13 +258,29 @@ const CartContext = createContext<CartContextValue | null>(null);
 export interface CartProviderProps {
   /** The scenario the route was requested with, or `null` for the real default. */
   readonly scenario: MockScenario | null;
+  /**
+   * The destination this visitor has set, as an ISO 3166-1 alpha-2 code.
+   *
+   * It is read from the cookie **on the server** and handed down as a prop
+   * rather than read here, so the first paint and the hydrated render agree
+   * about which figure the page is quoting — see `./destination.js`. It is
+   * written onto the Medusa cart so Medusa's own totals answer for a real
+   * destination; the checkout replaces it with the confirmed delivery address.
+   */
+  readonly destinationCode?: string;
   /** Overridden to `0` by tests so an action resolves without a timer. */
   readonly latencyMs?: number;
   readonly children: ReactNode;
 }
 
-export function CartProvider({ scenario, latencyMs, children }: CartProviderProps) {
-  const initial = useMemo(() => basketForScenario(scenario), [scenario]);
+export function CartProvider({
+  scenario,
+  destinationCode = DEFAULT_DESTINATION_CODE,
+  latencyMs,
+  children,
+}: CartProviderProps) {
+  const destination = useMemo(() => destinationForCode(destinationCode), [destinationCode]);
+  const initial = useMemo(() => basketForScenario(scenario, destination), [scenario, destination]);
   const [lines, setLines] = useState<readonly CartLine[]>(initial.lines);
   const [pending, setPending] = useState<Readonly<Record<string, LinePending>>>(initial.pending);
   const [failure, setFailure] = useState<BasketFailure | null>(initial.failure);
@@ -194,7 +294,10 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
   linesRef.current = lines;
 
   const failing = scenario === "error";
-  const options = useMemo(() => ({ latencyMs, failing }), [latencyMs, failing]);
+  const options = useMemo(
+    () => ({ latencyMs, failing, destination }),
+    [latencyMs, failing, destination],
+  );
 
   // Restore before the first paint; see this module's doc comment. A scenario
   // is an explicit request for a particular state and wins over the session —
@@ -212,11 +315,20 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     cartId.current = stored;
     void (async () => {
       try {
-        const { cart } = await createMedusaStoreClient(runtimeConfig().medusa).store.cart.retrieve(stored);
+        const sdk = createMedusaStoreClient(runtimeConfig().medusa);
+        /*
+         * The destination may have changed in another tab since this cart was
+         * last touched — the cookie is not tab-scoped and the cart id is. So the
+         * restored basket is re-quoted for the destination this document is
+         * showing, rather than for whichever one created it, and the figures on
+         * the basket page and the figure beside the price cannot disagree.
+         */
+        await applyDestinationToCart(sdk, stored, destinationCode);
+        const { cart } = await sdk.store.cart.retrieve(stored);
         setLines(cartLinesFromStore(cart));
       } catch { forgetMedusaCartId(); cartId.current = null; setFailure("action"); }
     })();
-  }, [scenario, initial.lines]);
+  }, [scenario, initial.lines, destinationCode]);
 
   const run = useCallback(
     async (
@@ -256,14 +368,14 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
     }
     void run("lunar-base", "adding", async () => {
       const sdk = createMedusaStoreClient(runtimeConfig().medusa);
-      const added = await addStoreCatalogueLine(sdk, cartId.current);
+      const added = await addStoreCatalogueLine(sdk, cartId.current, destinationCode);
       if (cartId.current === null) {
         cartId.current = added.cartId;
         rememberMedusaCartId(added.cartId);
       }
       return { ok: true, lines: added.lines };
     });
-  }, [run, options, scenario]);
+  }, [run, options, scenario, destinationCode]);
 
   const updateQuantity = useCallback(
     (id: string, quantity: number) => {
@@ -292,8 +404,9 @@ export function CartProvider({ scenario, latencyMs, children }: CartProviderProp
       updateQuantity,
       remove,
       busy: Object.keys(pending).length > 0,
+      destinationCode,
     }),
-    [lines, pending, failure, add, updateQuantity, remove],
+    [lines, pending, failure, add, updateQuantity, remove, destinationCode],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

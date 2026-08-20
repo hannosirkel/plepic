@@ -94,6 +94,7 @@ import { useId, useState } from "react";
 
 import { basket, checkout as checkoutCopy, unavailableFigure } from "../../../../content/shop.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../../lib/catalogue.js";
+import { destinationForCode } from "../../lib/destination.js";
 import {
   cartTotals,
   formatAmount,
@@ -131,9 +132,9 @@ const QUANTITY_ERROR_MESSAGE =
 const LIMIT_ERROR_MESSAGE = `${basket.limitError.prefix}${String(MAX_QUANTITY_PER_LINE)}${basket.limitError.suffix}`;
 
 function BasketLine({ line }: { readonly line: CartLine }) {
-  const catalogue = resolveCatalogue();
+  const { pending, updateQuantity, remove, destinationCode } = useCart();
+  const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode));
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
-  const { pending, updateQuantity, remove } = useCart();
   const fieldId = useId();
   const errorId = `${fieldId}-error`;
   const [field, setField] = useState(() => initialQuantityField(line.quantity));
@@ -276,13 +277,21 @@ function pendingLabel(state: LinePending | undefined): string {
 }
 
 export function BasketPageContent() {
-  const catalogue = resolveCatalogue();
+  const { lines, failure, add, busy, destinationCode } = useCart();
+  const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode));
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
-  const { lines, failure, add, busy } = useCart();
 
-  // No address form here, so no zone and therefore no charge. The basket says
-  // "Calculated at checkout", which is what `content/legal/shipping.ts` says
-  // and is now true of two rates rather than one.
+  /*
+   * No address form here, so no zone and therefore no charge. The basket says
+   * "Calculated at checkout", which is what `content/legal/shipping.ts` says
+   * and is true of two rates rather than one.
+   *
+   * The **goods** figure is a different matter and no longer comes from this
+   * call in the served application: every line reaching it was built by
+   * `cartLinesFromStore`, which prices each one off Medusa's tax-inclusive
+   * line total. `cartTotals` sums what it is given; what it is given is
+   * already the figure the buyer is charged.
+   */
   const totals = cartTotals(lines, { deliveryZone: null });
   const blocked = lines.some((line) => !isAvailable(line));
 

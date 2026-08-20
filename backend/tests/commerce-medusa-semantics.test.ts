@@ -13,6 +13,7 @@ import {
 } from "../src/commerce/configuration.js";
 import { MedusaCommerceConfigurationTarget } from "../src/commerce/medusa-target.js";
 import {
+  EU_MEMBER_STATE_CODES,
   SHIPPING_ZONES,
   shippingAmountMinorForCountry,
 } from "../src/commerce/shipping-model.js";
@@ -134,7 +135,36 @@ function fakeMedusa(): FakeMedusa {
     });
   };
 
-  const workflows: Record<string, (input: never) => void> = {
+  /**
+   * The `price_preference` upsert both region workflows perform.
+   *
+   * `createRegionsWorkflow` strips `is_tax_inclusive` off the region row and
+   * forwards it to `createPricePreferencesWorkflow` as
+   * `{ attribute: "region_id", value: <region id>, is_tax_inclusive }`
+   * (`@medusajs/core-flows/dist/region/workflows/create-regions.js:67-88`), and
+   * `updateRegionsWorkflow` does the same through
+   * `updatePricePreferencesWorkflow` whenever the field is present at all
+   * (`update-regions.js:56-75`). Modelling it is what makes the region flag
+   * visible here as the live hazard it is rather than as a statement of intent.
+   */
+  const setRegionPreference = (regionId: string, isTaxInclusive: unknown) => {
+    if (isTaxInclusive === undefined) return;
+    const existing = table("price_preference").find(
+      (row) => row.attribute === "region_id" && row.value === regionId,
+    );
+    if (existing === undefined) {
+      table("price_preference").push({
+        id: id("prpref"),
+        attribute: "region_id",
+        value: regionId,
+        is_tax_inclusive: isTaxInclusive,
+      });
+      return;
+    }
+    existing.is_tax_inclusive = isTaxInclusive;
+  };
+
+  const workflows: Record<string, (input: never) => unknown> = {
     updateStoresWorkflow: (input: {
       selector: { id: string };
       update: {
@@ -168,10 +198,22 @@ function fakeMedusa(): FakeMedusa {
       }
     },
 
-    createRegionsWorkflow: (input: { regions: { name: string }[] }) => {
-      for (const region of input.regions) table("region").push({ id: id("reg"), ...region });
+    createRegionsWorkflow: (input: {
+      regions: { name: string; is_tax_inclusive?: boolean }[];
+    }) => {
+      for (const region of input.regions) {
+        const { is_tax_inclusive, ...rest } = region;
+        const regionId = id("reg");
+        table("region").push({ id: regionId, ...rest });
+        setRegionPreference(regionId, is_tax_inclusive);
+      }
     },
-    updateRegionsWorkflow: () => undefined,
+    updateRegionsWorkflow: (input: {
+      selector: { id: string };
+      update: { is_tax_inclusive?: boolean };
+    }) => {
+      setRegionPreference(input.selector.id, input.update.is_tax_inclusive);
+    },
 
     createStockLocationsWorkflow: (input: { locations: { name: string }[] }) => {
       for (const location of input.locations) {
@@ -246,6 +288,29 @@ function fakeMedusa(): FakeMedusa {
       }
     },
     updateShippingOptionsWorkflow: () => undefined,
+
+    createTaxRegionsWorkflow: (input: { country_code: string }[]) =>
+      input.map((region) => {
+        const row = { id: id("txreg"), ...region };
+        table("tax_region").push(row);
+        return row;
+      }),
+    createTaxRatesWorkflow: (
+      input: { tax_region_id: string; name: string; code: string; rate: number }[],
+    ) =>
+      input.map((rate) => {
+        const row = { id: id("txrate"), ...rate };
+        table("tax_rate").push(row);
+        return row;
+      }),
+    updateTaxRatesWorkflow: (input: {
+      selector: { id: string };
+      update: { name: string; rate: number };
+    }) => {
+      const rate = table("tax_rate").find((row) => row.id === input.selector.id);
+      if (rate === undefined) throw new Error("no such tax rate");
+      Object.assign(rate, input.update);
+    },
   };
 
   const query = {
@@ -277,12 +342,16 @@ function workflowStub(name: string) {
   return (container: MedusaContainer) => ({
     run: ({ input }: { input: unknown }) => {
       const bound = container as unknown as {
-        __workflows: Record<string, (input: unknown) => void>;
+        __workflows: Record<string, (input: unknown) => unknown>;
         __writes: string[];
       };
       bound.__writes.push(name);
-      bound.__workflows[name]?.(input);
-      return Promise.resolve({ result: [] });
+      // The rows a workflow creates are its `result`, because a caller reads
+      // them: `applyTaxRegion` takes the identifier of the tax region it just
+      // created straight off `result[0]`, so a stub that always answered `[]`
+      // would fail on the create path and pass on the update path.
+      const result = bound.__workflows[name]?.(input);
+      return Promise.resolve({ result: result ?? [] });
     },
   });
 }
@@ -295,10 +364,13 @@ vi.mock("@medusajs/medusa/core-flows", () => ({
   createShippingOptionsWorkflow: workflowStub("createShippingOptionsWorkflow"),
   createShippingProfilesWorkflow: workflowStub("createShippingProfilesWorkflow"),
   createStockLocationsWorkflow: workflowStub("createStockLocationsWorkflow"),
+  createTaxRatesWorkflow: workflowStub("createTaxRatesWorkflow"),
+  createTaxRegionsWorkflow: workflowStub("createTaxRegionsWorkflow"),
   linkSalesChannelsToStockLocationWorkflow: workflowStub(
     "linkSalesChannelsToStockLocationWorkflow",
   ),
   updateRegionsWorkflow: workflowStub("updateRegionsWorkflow"),
+  updateTaxRatesWorkflow: workflowStub("updateTaxRatesWorkflow"),
   updateServiceZonesWorkflow: workflowStub("updateServiceZonesWorkflow"),
   updateShippingOptionsWorkflow: workflowStub("updateShippingOptionsWorkflow"),
   updateStoresWorkflow: workflowStub("updateStoresWorkflow"),
@@ -354,13 +426,59 @@ describe("the graph the configuration leaves behind", () => {
   });
 
   /**
+   * **No price this deployment holds may be tax inclusive — including by the
+   * back door.**
+   *
+   * `@medusajs/pricing`'s `isTaxInclusive` reads the `region_id` preference
+   * ahead of the `currency_code` one for any price carrying a `region_id` price
+   * rule (`services/pricing-module.js:1191`). Neither price written here carries
+   * one *today*, which is exactly what makes the region flag dangerous: it is
+   * one region-scoped price away from being the flag that decides, and the
+   * failure it produces is silent. A cart would total the advertised EUR 25.00
+   * and book EUR 4.84 of VAT out of it — a 19% cut to the net take with every
+   * figure on every page unchanged.
+   *
+   * So the assertion is over the preferences the configuration actually leaves
+   * behind, not over the record that declares one of them: `createRegionsWorkflow`
+   * and `updateRegionsWorkflow` both write that row, and this walks the graph
+   * they wrote.
+   */
+  it("leaves no tax-inclusive price preference behind, for the region or the currency", async () => {
+    const medusa = fakeMedusa();
+    await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
+
+    const preferences = medusa.rows.price_preference ?? [];
+    // Non-vacuity: the region preference has to be *there* and `false`, because
+    // "no such row" and "a row saying false" are different futures — Medusa's
+    // model default for a missing preference is `false` today, but an absent row
+    // is not something this configuration asserted.
+    expect(
+      preferences.map((row) => ({
+        attribute: row.attribute,
+        is_tax_inclusive: row.is_tax_inclusive,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { attribute: "region_id", is_tax_inclusive: false },
+        { attribute: "currency_code", is_tax_inclusive: false },
+      ]),
+    );
+    expect(preferences.filter((row) => row.is_tax_inclusive === true)).toEqual([]);
+  });
+
+  /**
    * The predeploy Job is an Argo CD sync hook and runs again on every promoted
    * digest, so the second run is the expected path. It is a no-op for every
    * record kind that compares before it writes — and, honestly, is not one for
-   * the region or the shipping options, which re-issue their update
-   * unconditionally. Asserting the exact set keeps that statement true.
+   * the region, the shipping options or the tax rates, which re-issue their
+   * update unconditionally. Asserting the exact set keeps that statement true.
+   *
+   * The twenty-seven `updateTaxRatesWorkflow` calls are the cost of lifting the
+   * catalogue import's tax-region upsert unchanged rather than teaching it to
+   * compare first. They are named here rather than hidden behind a count, so a
+   * reader watching the event bus is told what to expect.
    */
-  it("writes only the two updates it knowingly re-issues on a second run", async () => {
+  it("writes only the updates it knowingly re-issues on a second run", async () => {
     const medusa = fakeMedusa();
     await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
 
@@ -369,6 +487,7 @@ describe("the graph the configuration leaves behind", () => {
 
     expect(medusa.writes).toEqual([
       "updateRegionsWorkflow",
+      ...EU_MEMBER_STATE_CODES.map(() => "updateTaxRatesWorkflow"),
       "updateShippingOptionsWorkflow",
       "updateShippingOptionsWorkflow",
     ]);
@@ -388,7 +507,7 @@ describe("the graph the configuration leaves behind", () => {
  * 2. The total a buyer is presented with, computed by Medusa
  * ------------------------------------------------------------------ */
 
-/** The advertised price, from `storefront/mock/catalogue.json`. Minor units. */
+/** The **net** advertised price, from `src/commerce/product-model.ts`. Minor units. */
 const GOODS_AMOUNT_MINOR = 2500;
 
 /**
@@ -410,9 +529,28 @@ function declaredTaxInclusivity(currencyCode: string): boolean {
   return preference?.kind === "store-currency" ? preference.taxInclusivePrices : false;
 }
 
+/**
+ * The VAT rate a delivery address is charged, **read from the configuration**
+ * rather than written here.
+ *
+ * A destination with no declared tax region resolves to no rate at all, which is
+ * exactly what Medusa does with it: `automatic_taxes` looks the address up in
+ * the tax module and finds nothing, so the cart carries no tax line. That is the
+ * rest-of-world answer and it is the right one — no EU VAT is due on an export.
+ */
+function declaredVatPercent(countryCode: string): number {
+  const declared = commerceRecords().find(
+    (record) =>
+      record.kind === "tax-region" &&
+      record.countryCode.toUpperCase() === countryCode.toUpperCase(),
+  );
+  return declared?.kind === "tax-region" ? declared.ratePercent : 0;
+}
+
 interface PresentedTotals {
   readonly goodsMinor: number;
   readonly shippingMinor: number;
+  readonly itemTaxMinor: number;
   readonly totalMinor: number;
 }
 
@@ -446,24 +584,33 @@ function presentedTotals(options: {
 
   const minor = (value: unknown) => Math.round(Number(value) * 100);
   return {
-    // The same three fields `storefront/src/lib/store-checkout.ts` reads.
+    // The same three fields `storefront/src/lib/store-checkout.ts` reads, plus
+    // the VAT booked out of — or added to — the goods, which is the figure that
+    // tells the two commercial models apart when the total alone does not.
     goodsMinor: minor(cart.item_total),
     shippingMinor: minor(cart.shipping_total),
+    itemTaxMinor: minor(cart.item_tax_total),
     totalMinor: minor(cart.total),
   };
 }
 
 /**
- * The three address cases the checkbox names, with the exact total each is
- * presented with before payment — and with the destination's VAT rate varied
- * underneath each of them, because that is the claim being tested.
+ * The address cases the checkbox names, with the exact figures each is presented
+ * with before payment.
  *
- * `content/legal/shipping.ts`: *"It is the same figure for every visitor, in
- * every country, and it does not change according to where you are or where you
- * ask us to send the parcel."* A single asserted number per country cannot show
- * that; a number that is the same across every rate the destination might carry
- * can. The rates are the range of EU VAT standard rates plus zero, which is what
- * a destination with no seeded tax region resolves to.
+ * **The rate is no longer swept, and that is the change.** The previous version
+ * of this table asserted one total per country *at every VAT rate*, because the
+ * commercial model then was one tax-inclusive figure worldwide and rate
+ * invariance was the property worth proving. The operator has since settled the
+ * opposite model: EUR 25.00 is the **net** price and Estonian VAT is added on an
+ * EU destination, exactly as the legacy shop adds it at checkout. A total that
+ * did not move with the rate would now mean the VAT was not being charged, so
+ * sweeping the rate here would assert the defect rather than the behaviour.
+ *
+ * What replaces it is stricter in the direction that matters: the rate is read
+ * out of the declared configuration by {@link declaredVatPercent} rather than
+ * written into the case, so a missing or mis-rated tax region moves these
+ * numbers and turns the table red.
  */
 describe("the exact total presented before payment", () => {
   const VAT_PERCENTS = [0, 17, 20, 22, 24, 27] as const;
@@ -471,60 +618,139 @@ describe("the exact total presented before payment", () => {
   const cases: readonly {
     readonly label: string;
     readonly countryCode: string;
+    /** The flat delivery charge the shipping model declares, net. Minor units. */
     readonly shippingMinor: number;
+    /** What the configuration must charge this destination. */
+    readonly vatPercent: number;
+    /** `cart.item_total` — the goods with their VAT. */
+    readonly goodsMinor: number;
+    /** `cart.shipping_total` — the delivery charge with its VAT. */
+    readonly shippingTotalMinor: number;
     readonly totalMinor: number;
   }[] = [
-    // An included country: an EU member state.
-    { label: "Estonia", countryCode: "EE", shippingMinor: 700, totalMinor: 3200 },
-    // A second member state, so the zone is not one country wide.
-    { label: "Germany", countryCode: "DE", shippingMinor: 700, totalMinor: 3200 },
+    // An included country: an EU member state. 25.00 + 6.00 goods, 7.00 + 1.68
+    // shipping. Shipping is net too, and grosses with the goods.
+    {
+      label: "Estonia",
+      countryCode: "EE",
+      shippingMinor: 700,
+      vatPercent: 24,
+      goodsMinor: 3100,
+      shippingTotalMinor: 868,
+      totalMinor: 3968,
+    },
+    // A second member state, so the zone is not one country wide — and charged
+    // Estonia's rate rather than Germany's, because the shop is below the
+    // EUR 10,000 OSS threshold and charges its domestic rate.
+    {
+      label: "Germany",
+      countryCode: "DE",
+      shippingMinor: 700,
+      vatPercent: 24,
+      goodsMinor: 3100,
+      shippingTotalMinor: 868,
+      totalMinor: 3968,
+    },
     /*
      * The checkbox asks for "an excluded one". NO COUNTRY IS EXCLUDED — the
      * operator's decision is worldwide delivery — so the case is the nearest
      * thing the model has: a delivery address inside the European Union that is
      * not in an EU *member state*. It is served, at the rest-of-world rate,
-     * rather than refused.
+     * rather than refused — and, being outside the EU VAT territory for this
+     * purpose, carries no EU VAT.
      */
-    { label: "French Guiana", countryCode: "GF", shippingMinor: 1200, totalMinor: 3700 },
-    { label: "Åland Islands", countryCode: "AX", shippingMinor: 1200, totalMinor: 3700 },
-    // A non-EU country.
-    { label: "United States", countryCode: "US", shippingMinor: 1200, totalMinor: 3700 },
-    { label: "Japan", countryCode: "JP", shippingMinor: 1200, totalMinor: 3700 },
+    {
+      label: "French Guiana",
+      countryCode: "GF",
+      shippingMinor: 1200,
+      vatPercent: 0,
+      goodsMinor: 2500,
+      shippingTotalMinor: 1200,
+      totalMinor: 3700,
+    },
+    {
+      label: "Åland Islands",
+      countryCode: "AX",
+      shippingMinor: 1200,
+      vatPercent: 0,
+      goodsMinor: 2500,
+      shippingTotalMinor: 1200,
+      totalMinor: 3700,
+    },
+    // A non-EU country. No VAT outside the EU.
+    {
+      label: "United States",
+      countryCode: "US",
+      shippingMinor: 1200,
+      vatPercent: 0,
+      goodsMinor: 2500,
+      shippingTotalMinor: 1200,
+      totalMinor: 3700,
+    },
+    {
+      label: "Japan",
+      countryCode: "JP",
+      shippingMinor: 1200,
+      vatPercent: 0,
+      goodsMinor: 2500,
+      shippingTotalMinor: 1200,
+      totalMinor: 3700,
+    },
   ];
 
   it.each(cases)(
-    "presents $label EUR $shippingMinor of shipping on a $totalMinor total, at every VAT rate",
-    ({ countryCode, shippingMinor, totalMinor }) => {
+    "presents $label a $totalMinor total on $vatPercent% VAT and EUR $shippingMinor of net shipping",
+    ({ countryCode, shippingMinor, vatPercent, goodsMinor, shippingTotalMinor, totalMinor }) => {
       expect(shippingAmountMinorForCountry(countryCode)).toBe(shippingMinor);
+      expect(declaredVatPercent(countryCode), `${countryCode} VAT rate`).toBe(vatPercent);
 
-      for (const vatPercent of VAT_PERCENTS) {
-        expect(
-          presentedTotals({
-            shippingMinor,
-            vatPercent,
-            taxInclusive: declaredTaxInclusivity("EUR"),
-          }),
-          `${countryCode} at ${String(vatPercent)}%`,
-        ).toEqual({ goodsMinor: GOODS_AMOUNT_MINOR, shippingMinor, totalMinor });
-      }
+      expect(
+        presentedTotals({
+          shippingMinor,
+          vatPercent: declaredVatPercent(countryCode),
+          taxInclusive: declaredTaxInclusivity("EUR"),
+        }),
+        countryCode,
+      ).toEqual({
+        goodsMinor,
+        shippingMinor: shippingTotalMinor,
+        itemTaxMinor: goodsMinor - GOODS_AMOUNT_MINOR,
+        totalMinor,
+      });
     },
   );
 
   /**
-   * The negative control, and the defect that reached review: with the currency
-   * preference left at Medusa's `false` default, the very same configuration
-   * charges an Estonian address EUR 39.04 for a page advertising EUR 25.00.
+   * **The negative control, inverted.** It used to prove that leaving the
+   * currency preference at Medusa's `false` default charged VAT on top of a
+   * price advertised as containing it. The commercial model is now the other
+   * one, so the control is the other one: setting inclusivity back to `true`
+   * charges the advertised EUR 25.00 and books EUR 4.84 of VAT *out of* it —
+   * 25.00 × 24/124 — which is a 19% cut to the net take, silently, with every
+   * figure on every page still reading EUR 25.00.
    *
-   * This is here so that "the flag is set" is never again the whole of the
-   * evidence. If the flag stops being load-bearing, this goes red too.
+   * `item_tax_total` is asserted explicitly and not merely implied by the total,
+   * because the total is what makes the defect invisible: a reader comparing
+   * EUR 32.00 to EUR 25.00 sees a shop that undercharged, not a shop that gave
+   * a fifth of its revenue to the tax authority.
    */
-  it("would charge VAT on top of the advertised price without that preference", () => {
-    const configured = presentedTotals({ shippingMinor: 700, vatPercent: 22, taxInclusive: true });
-    const unset = presentedTotals({ shippingMinor: 700, vatPercent: 22, taxInclusive: false });
+  it("would charge the advertised price and book VAT out of it if inclusivity returned", () => {
+    const configured = presentedTotals({ shippingMinor: 700, vatPercent: 24, taxInclusive: false });
+    const inclusive = presentedTotals({ shippingMinor: 700, vatPercent: 24, taxInclusive: true });
 
-    expect(configured).toEqual({ goodsMinor: 2500, shippingMinor: 700, totalMinor: 3200 });
-    expect(unset).toEqual({ goodsMinor: 3050, shippingMinor: 854, totalMinor: 3904 });
-    expect(declaredTaxInclusivity("EUR")).toBe(true);
+    expect(configured).toEqual({
+      goodsMinor: 3100,
+      shippingMinor: 868,
+      itemTaxMinor: 600,
+      totalMinor: 3968,
+    });
+    expect(inclusive).toEqual({
+      goodsMinor: 2500,
+      shippingMinor: 700,
+      itemTaxMinor: 484,
+      totalMinor: 3200,
+    });
+    expect(declaredTaxInclusivity("EUR")).toBe(false);
   });
 
   /**
@@ -532,6 +758,9 @@ describe("the exact total presented before payment", () => {
    * three figures do not sum, and `content/legal/terms.ts` lists all three among
    * what a buyer sees above the order button. That the sum holds is a property
    * of Medusa's arithmetic, so it is checked against Medusa's arithmetic.
+   *
+   * This one still sweeps the rate, because the sum holds at every rate whether
+   * or not the total does — which is the whole of what it claims.
    */
   it("produces three figures that add up, which is what the checkout requires", () => {
     for (const zone of SHIPPING_ZONES) {

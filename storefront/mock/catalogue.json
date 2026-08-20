@@ -1,11 +1,13 @@
 {
-  "$comment": "The mock catalogue — a contract, not a fixture. Every value here mirrors what Task 5's live Medusa catalogue will be seeded with: same price, same stock state, same product name and copy. The frozen commercial facts (Task 1, the operator's migration-inputs manifest, 2026-08-09): one physical copy of Lunar Base, EUR 25.00 VAT included as one advertised price worldwide (shipping calculated at checkout, never altered by destination), stock unmanaged (a statement, never a count), 2-6 players, about 30 minutes to play, about a minute to set up, 90 cards. Task 5 either derives its CI seed fixture from this file or a test asserts equality between the two — see storefront/tests/catalogue.test.ts.",
+  "$comment": "The mock catalogue — a contract, not a fixture. Every value here mirrors what the live Medusa catalogue is seeded with, and `backend/tests/commerce-product-seed.test.ts` reads this file as data and holds it to `backend/src/commerce/product-model.ts` and `backend/src/commerce/tax-model.ts` on the name, the net amount, the gross amount, the VAT rate, the currency, `taxIncluded` and the availability. That test is the join; the sentence alone was not one, and this file said the opposite of the backend for as long as the sentence was all there was. The frozen commercial facts (the operator, 2026-08-18): one physical copy of Lunar Base; EUR 25.00 **net — VAT is added, not contained** — at Estonia's 24% standard rate for a delivery address in the EU and not at all outside it, which is what the legacy shop does at checkout (see backend/src/commerce/tax-model.ts); shipping calculated at checkout and net on the same rule; stock unmanaged (a statement, never a count); 2-6 players, about 30 minutes to play, about a minute to set up, 90 cards. THE ADVERTISED FIGURE IS THEREFORE DESTINATION-DEPENDENT and this file carries both halves of it rather than one: `amount` is the net figure Medusa returns as `calculated_amount_without_tax` and `amountWithTax` is the EU gross figure it returns as `calculated_amount_with_tax`. Neither is computed in the storefront — `storefront/src/lib/catalogue.ts` chooses between them on the destination and never applies a rate — which is why `vatRatePercent` is here as a fact to *state* rather than to multiply by: it is the rate the copy quotes, pinned to `ESTONIAN_STANDARD_VAT_PERCENT` from the other side.",
   "product": {
     "name": "Lunar Base",
     "price": {
       "amount": 2500,
+      "amountWithTax": 3100,
       "currency": "EUR",
-      "taxIncluded": true
+      "taxIncluded": false,
+      "vatRatePercent": 24
     },
     "availability": "InStock",
     "players": { "min": 2, "max": 6 },

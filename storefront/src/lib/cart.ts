@@ -10,12 +10,31 @@
  *
  * The product, its price and its stock state come from
  * `storefront/mock/catalogue.json` through {@link ./catalogue.js}, which is
- * the frozen commercial contract Task 5's live catalogue is seeded to match.
+ * the frozen commercial contract the live catalogue is seeded to match.
  * The shipping charge comes from `storefront/mock/shipping.json`: one declared
  * method, **two flat rates on a zone axis** — both operator-supplied on
  * 2026-08-10 — because the plan forbids calculated carrier rates and live
  * carrier rates are out of scope. **No price literal appears in this file**,
  * which is what `tests/no-hardcoded-price.test.ts` enforces across `src/`.
+ *
+ * ## Every figure here is net, and that is the mock layer's whole scope
+ *
+ * Both declared shipping rates are **before tax**, on the same rule as the
+ * product price: Estonian VAT is added to delivery inside the EU and to nothing
+ * else. This module does not add it, and there is no rate here to add — see
+ * `./catalogue.js` for why the storefront computes no tax anywhere.
+ *
+ * The consequence is worth stating plainly rather than discovering. What
+ * {@link cartTotals} produces is the bill for a destination that is charged no
+ * VAT, which is the rest of the world — the net price of the goods, the
+ * rest-of-world delivery rate, and their sum — and it is exactly right for that
+ * destination and understated for an EU one. That is tolerable because the only surfaces
+ * that use it are the `?mock=` scenarios, which are unreachable on a live
+ * hostname (`isMockLayerEnabled`), and the pre-address state of `/checkout`,
+ * which states no total at all. **Every figure a real buyer is shown comes from
+ * Medusa**: `./cart-store.js` reads `item_total` off the cart and
+ * `./store-checkout.js` reads the six checkout totals, because Medusa is the
+ * thing that knows the destination's tax.
  *
  * ## The zone, and why the country field is a selection
  *
@@ -65,8 +84,27 @@
  */
 
 import { mockCatalogue, type CatalogueAvailability, type CatalogueProduct } from "./catalogue.js";
-import countriesSource from "../../mock/countries.json";
+import {
+  defaultDestination,
+  deliveryCountries,
+  type DeliveryCountry,
+  type Destination,
+} from "./destination.js";
 import shippingSource from "../../mock/shipping.json";
+
+/*
+ * The country list and its `euMember` flag moved to `./destination.js` when the
+ * destination selector arrived. The same list now answers two questions — which
+ * shipping zone a confirmed delivery address falls in, and which figure a
+ * visitor is quoted before they have entered one — and there may be exactly one
+ * of it, for the reason `backend/src/commerce/tax-model.ts` gives for there
+ * being one list of member states: an order zoned by one list and taxed by
+ * another is an order priced twice.
+ *
+ * Re-exported rather than repointed in every caller, because the callers here
+ * are asking the *shipping* question and this is the module that answers it.
+ */
+export { deliveryCountries, type DeliveryCountry } from "./destination.js";
 
 /**
  * The most of one line a single order may carry. A limit, never a stock count.
@@ -97,6 +135,19 @@ export interface CartLine {
   readonly productName: string;
   /** Minor units, as the catalogue holds them. */
   readonly unitAmount: number;
+  /**
+   * The tax contained in {@link unitAmount}, per unit — `0` where none is,
+   * and **absent** where nobody has answered.
+   *
+   * The distinction is the one this module draws everywhere: `0` is "this
+   * destination attracts no VAT", which is true of every export, and absent is
+   * "no authority has been asked". A line built from the catalogue knows,
+   * because the catalogue holds the amount with tax and the amount without and
+   * the difference between two declared figures is not a computation of tax. A
+   * line from Medusa does not carry it, because on that path every figure the
+   * checkout renders comes from `./store-checkout.js` instead.
+   */
+  readonly taxAmount?: number;
   readonly currency: string;
   readonly quantity: number;
   readonly availability: CatalogueAvailability;
@@ -117,8 +168,20 @@ export interface ShippingMethod {
   readonly id: string;
   readonly name: string;
   readonly currency: string;
-  /** Minor units, one per zone. Both are operator-supplied — see the JSON's `$comment`. */
+  /**
+   * Minor units, one per zone, **before tax**. Both are operator-supplied —
+   * see the JSON's `$comment`.
+   */
   readonly rates: Readonly<Record<ShippingZone, number>>;
+  /**
+   * The same two rates with the tax the zone attracts, in minor units — the
+   * figures a buyer is actually charged.
+   *
+   * Data, never derived: this workspace has no rate and computes no tax. The
+   * two tables are identical for `restOfWorld`, because no EU VAT arises on an
+   * export, and that identity is a statement rather than a gap.
+   */
+  readonly ratesWithTax: Readonly<Record<ShippingZone, number>>;
 }
 
 interface ShippingFile {
@@ -126,27 +189,14 @@ interface ShippingFile {
 }
 
 /**
- * One country a parcel can be sent to, as `storefront/mock/countries.json`
- * holds it.
+ * Refuses a shipping file that cannot price an order.
  *
- * `name` is what the form submits and what the Article 8(2) delivery-address
- * disclosure shows; `code` is ISO 3166-1 alpha-2, carried for Task 5's Medusa
- * regions. **`euMember` means "one of the 27 EU member states"**, and nothing
- * wider — not the VAT territory and not the customs territory. See
- * {@link zoneForCountryName}.
- */
-export interface DeliveryCountry {
-  readonly code: string;
-  readonly name: string;
-  readonly euMember: boolean;
-}
-
-interface CountriesFile {
-  readonly countries: readonly DeliveryCountry[];
-}
-
-/**
- * Refuses a shipping file that cannot price an order, at import.
+ * Exported for one reason: it is called at **import** over a committed file, so
+ * every branch in it is unreachable from a test that only imports the module —
+ * and a refusal nothing can reach is decoration wearing a guard's clothes. The
+ * neighbours in this file have the same shape and the same problem; this one is
+ * exported because it grew a new branch with the tax-inclusive table, and a new
+ * unreachable branch is worse than an inherited one.
  *
  * A missing or non-integer rate would otherwise reach a total as `NaN` or
  * `undefined` and be formatted onto the one screen Article 8(2) CRD requires
@@ -154,14 +204,25 @@ interface CountriesFile {
  * earlier: the file is edited by hand, and by an operator rather than by
  * whoever wrote this.
  */
-function assertPriceable(method: ShippingMethod): ShippingMethod {
+export function assertPriceable(method: ShippingMethod): ShippingMethod {
   for (const zone of SHIPPING_ZONES) {
-    const amount = method.rates[zone];
-    if (!Number.isInteger(amount) || amount <= 0) {
+    for (const [label, table] of [
+      ["rate", method.rates],
+      ["tax-inclusive rate", method.ratesWithTax],
+    ] as const) {
+      const amount = table[zone];
+      if (!Number.isInteger(amount) || amount <= 0) {
+        throw new Error(
+          `storefront/mock/shipping.json declares no usable "${zone}" ${label} (got ${String(amount)}). ` +
+            "Every zone needs a positive whole number of minor units, or the checkout would put a " +
+            "meaningless shipping charge and total on the screen Article 8(2) CRD requires to be correct.",
+        );
+      }
+    }
+    if (method.ratesWithTax[zone] < method.rates[zone]) {
       throw new Error(
-        `storefront/mock/shipping.json declares no usable "${zone}" rate (got ${String(amount)}). ` +
-          "Every zone needs a positive whole number of minor units, or the checkout would put a " +
-          "meaningless shipping charge and total on the screen Article 8(2) CRD requires to be correct.",
+        `storefront/mock/shipping.json prices the "${zone}" zone lower with tax than without it, ` +
+          "so one of the two tables is wrong and the checkout cannot tell which.",
       );
     }
   }
@@ -172,17 +233,6 @@ function assertPriceable(method: ShippingMethod): ShippingMethod {
 export const declaredShippingMethod: ShippingMethod = assertPriceable(
   (shippingSource as ShippingFile).method,
 );
-
-/**
- * Every country the delivery-address field offers, in the order it offers
- * them — see `storefront/mock/countries.json`.
- *
- * All of them, because `content/legal/shipping.ts` says "We ship to every
- * country" and narrowing that is a commercial decision the operator has not
- * made.
- */
-export const deliveryCountries: readonly DeliveryCountry[] = (countriesSource as CountriesFile)
-  .countries;
 
 const COUNTRIES_BY_NAME: ReadonlyMap<string, DeliveryCountry> = new Map(
   deliveryCountries.map((country) => [country.name, country]),
@@ -222,6 +272,31 @@ export interface CartTotals {
   readonly shippingAmount: number | null;
   /** `null` whenever {@link goodsAmount} or {@link shippingAmount} is. */
   readonly orderAmount: number | null;
+  /**
+   * The VAT contained in {@link orderAmount}, or `null` when nobody has
+   * answered.
+   *
+   * **`null` and `0` mean different things and the screen says so.** `null` is
+   * "no authority has been asked yet" — this module never computes tax and has
+   * no rate to compute it with, so every total it builds itself carries `null`
+   * here. `0` is Medusa's answer for a destination outside the EU, where no EU
+   * VAT arises at all. Neither renders a VAT row: there is nothing to break
+   * down, and a row stating a formatted zero claims a zero-rating this shop
+   * does not apply. The row appears only for a positive figure Medusa supplied.
+   *
+   * It is **inside** {@link goodsAmount} and {@link shippingAmount}, never
+   * added to them — see `./store-checkout.js`, which refuses a set of figures
+   * where that is not arithmetically true.
+   */
+  readonly taxAmount: number | null;
+  /**
+   * The part of {@link taxAmount} that sits inside {@link shippingAmount}.
+   *
+   * Carried so a delivery method's quoted figure can be checked against what
+   * Medusa charged for it even when the quote was a net one — see
+   * `shippingOptionFigure` in `./store-checkout.js`.
+   */
+  readonly shippingTaxAmount: number | null;
 }
 
 /** True when this line can actually be supplied today. */
@@ -238,20 +313,64 @@ export function lineAmount(line: CartLine): number {
   return line.unitAmount * line.quantity;
 }
 
-/** Builds the single-product line the mock catalogue describes. */
+/**
+ * Builds the single-product line the mock catalogue describes, **for a
+ * destination**.
+ *
+ * `unitAmount` is the figure that destination is charged — the catalogue's
+ * gross amount inside the EU and its net amount everywhere else. It is a
+ * *choice between two amounts the catalogue holds*, exactly as
+ * `./catalogue.js` makes it, and no tax is computed here either.
+ *
+ * A real basket line never comes from here: it comes from Medusa, through
+ * `cartLinesFromStore` in `./cart-store.js`. This exists so the mock layer
+ * states the same commercial model the live one does — a mock that priced an
+ * Estonian basket net would paint a screen no buyer can ever be shown, and the
+ * qualification beside it would be the one thing on the page that was false.
+ */
 export function catalogueLine(
   quantity = 1,
   product: CatalogueProduct = mockCatalogue,
   id = "lunar-base",
+  destination: Destination = defaultDestination,
 ): CartLine {
   return {
     id,
     productName: product.name,
-    unitAmount: product.price.amount,
+    unitAmount: destination.euMember ? product.price.amountWithTax : product.price.amount,
+    // The difference between two amounts the catalogue holds. No rate.
+    taxAmount: destination.euMember ? product.price.amountWithTax - product.price.amount : 0,
     currency: product.price.currency,
     quantity,
     availability: product.availability,
   };
+}
+
+/**
+ * Re-prices the mock basket's lines for a destination. **Mock layer only.**
+ *
+ * A mock basket is built when the provider mounts, for the destination set on
+ * the site. The checkout then asks for a delivery address, and that address may
+ * be somewhere else — so the goods figure and the shipping figure would be
+ * quoted for two different places, and the qualification beside them could only
+ * agree with one.
+ *
+ * In production this does not arise: once the address is complete and a method
+ * is chosen, Medusa returns **every** figure priced against that address, goods
+ * included. This is the mock layer doing the same thing with the one product it
+ * has — a choice between the two amounts the catalogue holds, not a
+ * computation.
+ */
+export function catalogueLinesForDestination(
+  lines: readonly CartLine[],
+  destination: Destination,
+  product: CatalogueProduct = mockCatalogue,
+): readonly CartLine[] {
+  return lines.map((line) => ({
+    ...line,
+    unitAmount: destination.euMember ? product.price.amountWithTax : product.price.amount,
+    taxAmount: destination.euMember ? product.price.amountWithTax - product.price.amount : 0,
+  }));
 }
 
 export interface TotalsOptions {
@@ -314,8 +433,42 @@ export function cartTotals(
     ? lines.reduce((sum, line) => sum + lineAmount(line), 0)
     : null;
 
+  /*
+   * The **charged** figure, not the quoted-before-tax one. `rates` is what the
+   * operator froze and what the legal page describes as a rate; `ratesWithTax`
+   * is what a buyer pays, and this screen is the one Article 8(2) CRD requires
+   * to state what a buyer pays.
+   */
   const shippingAmount =
-    deliveryZone !== null && lines.length > 0 ? shipping.rates[deliveryZone] : null;
+    deliveryZone !== null && lines.length > 0 ? shipping.ratesWithTax[deliveryZone] : null;
+  const shippingTaxAmount =
+    deliveryZone !== null && lines.length > 0
+      ? shipping.ratesWithTax[deliveryZone] - shipping.rates[deliveryZone]
+      : null;
+
+  /*
+   * The seventh value, where this module can honestly state one.
+   *
+   * `content/legal/shipping.ts` promises the VAT amount "is shown separately
+   * at checkout", so a screen that charges an EU buyer a tax-inclusive total
+   * and shows no VAT row is a screen that does not keep the page's own
+   * promise. Every part of it here is the **difference between two declared
+   * figures** — the catalogue's two amounts, and the shipping file's two rate
+   * tables — never a rate applied to anything.
+   *
+   * `null` where nobody has answered, and it stays `null` for a basket built
+   * from Medusa lines (which carry no per-line tax) and for any state without
+   * a delivery zone. That is the same distinction the rest of this module
+   * draws: "nothing has been asked" is not "nothing".
+   */
+  const goodsTaxAmount =
+    goodsAmount !== null && lines.every((line) => line.taxAmount !== undefined)
+      ? lines.reduce((sum, line) => sum + (line.taxAmount ?? 0) * line.quantity, 0)
+      : null;
+  const taxAmount =
+    goodsTaxAmount === null || shippingTaxAmount === null
+      ? null
+      : goodsTaxAmount + shippingTaxAmount;
 
   return {
     currency: lines[0]?.currency ?? shipping.currency,
@@ -323,6 +476,8 @@ export function cartTotals(
     shippingAmount,
     orderAmount:
       goodsAmount === null || shippingAmount === null ? null : goodsAmount + shippingAmount,
+    taxAmount,
+    shippingTaxAmount,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   MOCK_SCENARIO_PARAM,
   parseMockScenario,
 } from "../../../lib/mock-cart-actions.js";
+import { getRequestDestination } from "../../../lib/destination-request.js";
 import { makeMetadata } from "../../../lib/page-shell.js";
 import { getRequestHost } from "../../../lib/request-host.js";
 
@@ -29,14 +30,18 @@ export default async function CartPage({
 }: {
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [params, host] = await Promise.all([searchParams, getRequestHost()]);
+  const [params, host, destination] = await Promise.all([
+    searchParams,
+    getRequestHost(),
+    getRequestDestination(),
+  ]);
   const scenario = isMockLayerEnabled(host, loadSiteHostConfig().testHostnames)
     ? parseMockScenario(params[MOCK_SCENARIO_PARAM])
     : null;
 
   return (
     <ShopPageShell>
-      <CartProvider scenario={scenario}>
+      <CartProvider scenario={scenario} destinationCode={destination.code}>
         <BasketPageContent />
       </CartProvider>
     </ShopPageShell>

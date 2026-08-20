@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 
 import type { CatalogueProduct } from "./catalogue.js";
+import { VAT_PRICING_COUNTRY_CODE } from "./destination.js";
 import { assertBrowserMediaOnly, browserMediaUrls } from "./store-media.js";
 import { medusaMajorToMinor } from "./store-money.js";
 
@@ -38,6 +39,33 @@ function text(value: unknown, label: string): string {
  * Converts the one Store API product response into the long-lived presentational
  * catalogue shape. Product facts come from Medusa; game specification facts
  * remain editorial facts owned by the page composition.
+ *
+ * ## Both amounts come from Medusa, and neither is computed here
+ *
+ * `taxIncluded` used to be copied straight out of `presentation` — the mock —
+ * which made `storefront/mock/catalogue.json` a **second writer of a fact
+ * Medusa owns**. Under a net-priced catalogue that is not a tidiness problem:
+ * whether the advertised figure contains the tax is the difference between
+ * the net figure and the gross one, and the mock is a hand-edited file in
+ * another workspace.
+ *
+ * All three tax facts are now read off `calculated_price`:
+ * `calculated_amount_without_tax`, `calculated_amount_with_tax` and
+ * `is_calculated_price_tax_inclusive`. The first two are the pair
+ * `src/lib/catalogue.ts` chooses between on the destination, so the storefront
+ * displays one of two figures **Medusa** computed rather than applying a rate
+ * to one figure it was handed. There is no rate in this workspace.
+ *
+ * **A response with no with-tax amount is refused.** Medusa omits those two
+ * fields entirely when it has no tax context to compute them in — no
+ * `country_code` on the request, no tax region for that country, or
+ * `automatic_taxes` off on the region
+ * (`@medusajs/medusa/dist/api/store/products/helpers.js`,
+ * `wrapProductsWithTaxPrices`, which returns early in each of those cases).
+ * Falling back to `calculated_amount` there would advertise the net figure as
+ * the price a European buyer pays, silently, and the misconfiguration that
+ * caused it would look exactly like a correctly configured shop. So it is a
+ * `ConfigError` and the page fails rather than lies.
  */
 export function catalogueProductFromStore(
   response: StoreProductResponse,
@@ -58,13 +86,48 @@ export function catalogueProductFromStore(
     const canBackorder = variant.allow_backorder === true;
     const stock = variant.inventory_quantity;
     const available = !manageInventory || canBackorder || (Number.isInteger(stock) && (stock as number) > 0);
+    if (calculated.calculated_amount_with_tax === undefined || calculated.calculated_amount_with_tax === null) {
+      throw new ConfigError(
+        "Medusa Store product carries no tax-inclusive price. The catalogue request must name a " +
+          "VAT country, and that country must have a tax region with automatic taxes enabled.",
+      );
+    }
+    if (typeof calculated.is_calculated_price_tax_inclusive !== "boolean") {
+      throw new ConfigError("Medusa Store product does not say whether its price contains the tax");
+    }
+    const taxIncluded = calculated.is_calculated_price_tax_inclusive;
+    const amount = medusaMajorToMinor(calculated.calculated_amount_without_tax, currency);
+    const amountWithTax = medusaMajorToMinor(calculated.calculated_amount_with_tax, currency);
+    /*
+     * The stored price is one of the two, and `is_calculated_price_tax_inclusive`
+     * says which. Checking it costs nothing and catches the one thing the two
+     * reads above cannot: three tax fields that do not describe the same price.
+     */
+    if (medusaMajorToMinor(calculated.calculated_amount, currency) !== (taxIncluded ? amountWithTax : amount)) {
+      throw new ConfigError("Medusa Store product's tax-inclusivity flag disagrees with its amounts");
+    }
+    if (amountWithTax < amount) {
+      throw new ConfigError("Medusa Store product costs less with tax than without it");
+    }
     return {
       ...presentation,
       name: text(product.title, "product title"),
       price: {
-        amount: medusaMajorToMinor(calculated.calculated_amount, currency),
+        amount,
+        amountWithTax,
         currency,
-        taxIncluded: presentation.price.taxIncluded,
+        taxIncluded,
+        /*
+         * The rate stays presentation, and it is the one tax fact that does.
+         * `GET /store/products` returns the two amounts and no rate — there is
+         * no field on `calculated_price` that carries one — so a page that has
+         * to *quote* a rate cannot get it from this response.
+         * It comes from `mock/catalogue.json`, which
+         * `backend/tests/commerce-product-seed.test.ts` pins to
+         * `ESTONIAN_STANDARD_VAT_PERCENT`. Deriving it from the two amounts
+         * instead would be rate arithmetic, which this workspace does not do.
+         */
+        vatRatePercent: presentation.price.vatRatePercent,
       },
       availability: available ? "InStock" : "OutOfStock",
     };
@@ -162,6 +225,20 @@ async function fetchStoreCatalogue(backendUrl: string, publishableKey: string): 
   url.searchParams.set("limit", "1");
   url.searchParams.set("fields", STORE_PRODUCT_FIELDS);
   url.searchParams.set("region_id", regionId);
+  /*
+   * `region_id` is what lets Medusa compute a price at all; `country_code` is
+   * what lets it compute the **tax** on that price. Without it
+   * `setTaxContext`'s `getTaxLinesContext` returns nothing, `req.taxContext` is
+   * never set, and `wrapProductsWithTaxPrices` returns before writing
+   * `calculated_amount_with_tax` — leaving a response
+   * `catalogueProductFromStore` refuses.
+   *
+   * It is a **fixed** country rather than the visitor's, and
+   * `VAT_PRICING_COUNTRY_CODE` carries the argument for that at length: this
+   * site needs the net figure and the EU gross figure for every visitor and
+   * for a crawler, so the request cannot be the one that varies.
+   */
+  url.searchParams.set("country_code", VAT_PRICING_COUNTRY_CODE.toLowerCase());
   const response = await fetch(url, {
     cache: "no-store",
     headers: { "x-publishable-api-key": publishableKey },

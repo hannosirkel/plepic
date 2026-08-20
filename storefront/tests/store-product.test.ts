@@ -7,12 +7,35 @@ import {
   claimAddAttempt,
 } from "../src/components/shop/AddToCartButton.js";
 import { mockCatalogue } from "../src/lib/catalogue.js";
+import { VAT_PRICING_COUNTRY_CODE } from "../src/lib/destination.js";
 import { assertBrowserMediaOnly } from "../src/lib/store-media.js";
 import {
   catalogueProductFromStore,
   loadStoreCatalogueProduct,
   loadStoreProduct,
 } from "../src/lib/store-product.js";
+
+/**
+ * A Store response as Medusa builds one for a **net**-priced catalogue asked
+ * for in a tax context.
+ *
+ * `calculated_amount` is the stored price, which is the net one;
+ * `calculated_amount_with_tax` and `calculated_amount_without_tax` are what
+ * `wrapProductsWithTaxPrices` adds once the request names a country with a tax
+ * region. Every figure is derived from `NET` and `GROSS` here rather than
+ * repeated, so a fixture cannot quietly describe a price nobody sells.
+ */
+const NET = 25;
+const GROSS = 31;
+
+const calculatedPrice = (overrides: Record<string, unknown> = {}) => ({
+  currency_code: "eur",
+  calculated_amount: NET,
+  calculated_amount_without_tax: NET,
+  calculated_amount_with_tax: GROSS,
+  is_calculated_price_tax_inclusive: false,
+  ...overrides,
+});
 
 const response = (inventoryQuantity: number) => ({
   products: [{
@@ -23,7 +46,7 @@ const response = (inventoryQuantity: number) => ({
       manage_inventory: true,
       allow_backorder: false,
       inventory_quantity: inventoryQuantity,
-      calculated_price: { currency_code: "eur", calculated_amount: 25 },
+      calculated_price: calculatedPrice(),
     }],
   }],
 });
@@ -75,6 +98,105 @@ describe("Store catalogue boundary", () => {
       price: { amount: 2500, currency: "EUR" },
       availability: "InStock",
     });
+  });
+
+  /**
+   * **Both amounts come from Medusa, and `taxIncluded` no longer comes from the
+   * mock.** It used to be copied out of `presentation`, which made
+   * `storefront/mock/catalogue.json` a second writer of a fact Medusa owns —
+   * and under net pricing that fact is the difference between the two figures
+   * this shop quotes.
+   */
+  it("carries Medusa's two amounts and its own tax-inclusivity flag, not the mock's", () => {
+    const resolved = catalogueProductFromStore(response(3), mockCatalogue);
+
+    expect(resolved.price.amount).toBe(NET * 100);
+    expect(resolved.price.amountWithTax).toBe(GROSS * 100);
+    expect(resolved.price.taxIncluded).toBe(false);
+
+    const inclusive = catalogueProductFromStore(
+      {
+        products: [{
+          id: "prod",
+          title: "Lunar Base",
+          variants: [{
+            id: "variant",
+            manage_inventory: false,
+            calculated_price: calculatedPrice({
+              calculated_amount: GROSS,
+              is_calculated_price_tax_inclusive: true,
+            }),
+          }],
+        }],
+      },
+      mockCatalogue,
+    );
+    expect(
+      inclusive.price.taxIncluded,
+      "the flag followed the presentation rather than the response",
+    ).toBe(true);
+  });
+
+  /**
+   * **A response with no with-tax amount is refused, never quietly downgraded
+   * to the net figure.**
+   *
+   * Medusa omits both tax amounts when it has no tax context — no
+   * `country_code`, no tax region for it, or `automatic_taxes` off. Falling
+   * back to `calculated_amount` would advertise the price before tax as the
+   * price a European buyer pays, on every surface, with nothing failing and
+   * nothing warning. The misconfiguration would look exactly like a working
+   * shop, which is why this is a refusal and not a default.
+   */
+  it("refuses a response that carries no tax-inclusive price rather than falling back to the net one", () => {
+    const untaxed = {
+      products: [{
+        id: "prod",
+        title: "Lunar Base",
+        variants: [{
+          id: "variant",
+          manage_inventory: false,
+          calculated_price: { currency_code: "eur", calculated_amount: NET },
+        }],
+      }],
+    };
+
+    expect(() => catalogueProductFromStore(untaxed, mockCatalogue)).toThrow(/tax-inclusive price/);
+  });
+
+  it("refuses a response whose tax-inclusivity flag disagrees with its amounts", () => {
+    const inconsistent = {
+      products: [{
+        id: "prod",
+        title: "Lunar Base",
+        variants: [{
+          id: "variant",
+          manage_inventory: false,
+          // Says the stored price contains the tax, then gives the net one as
+          // the stored price. One of the three statements is wrong and there is
+          // no way to tell which.
+          calculated_price: calculatedPrice({ is_calculated_price_tax_inclusive: true }),
+        }],
+      }],
+    };
+
+    expect(() => catalogueProductFromStore(inconsistent, mockCatalogue)).toThrow(/disagrees/);
+  });
+
+  it("refuses a response with no tax-inclusivity flag at all", () => {
+    const unflagged = {
+      products: [{
+        id: "prod",
+        title: "Lunar Base",
+        variants: [{
+          id: "variant",
+          manage_inventory: false,
+          calculated_price: calculatedPrice({ is_calculated_price_tax_inclusive: undefined }),
+        }],
+      }],
+    };
+
+    expect(() => catalogueProductFromStore(unflagged, mockCatalogue)).toThrow(/contains the tax/);
   });
 
   it("marks an exhausted managed variant unavailable instead of leaving an addable product", () => {
@@ -147,7 +269,7 @@ describe("Store catalogue boundary", () => {
         variants: [{
           id: "variant_lunar_base",
           manage_inventory: false,
-          calculated_price: { currency_code: "eur", calculated_amount: 25 },
+          calculated_price: calculatedPrice(),
         }],
       }],
     };
@@ -266,6 +388,38 @@ describe("Store catalogue boundary", () => {
         "+variants.inventory_quantity",
       ]),
     );
+  });
+
+  /**
+   * **The tax context, which is what makes the with-tax amount exist at all.**
+   *
+   * `region_id` lets Medusa compute a price; `country_code` lets it compute the
+   * tax on that price. Without the second, `setTaxContext` never populates
+   * `req.taxContext`, `wrapProductsWithTaxPrices` returns before writing
+   * `calculated_amount_with_tax`, and `catalogueProductFromStore` refuses the
+   * whole response.
+   *
+   * It is asserted as a **fixed** country rather than the visitor's, and that
+   * is the point: `/legal/shipping` states the EU gross figure to a reader in
+   * Tokyo and `product-jsonld.ts` publishes it to a crawler with no destination
+   * at all, so both amounts have to exist for every requester. A request keyed
+   * to the visitor would collapse the pair outside the EU. See
+   * `VAT_PRICING_COUNTRY_CODE`.
+   */
+  it("asks for the price in a fixed VAT country, so both amounts exist for every visitor", async () => {
+    const store = stubStore();
+    try {
+      await loadStoreProduct(storeInput);
+      await loadStoreCatalogueProduct(storeInput);
+    } finally {
+      store.restore();
+    }
+
+    const asked = productRequests(store.requests).map((url) => url.searchParams.get("country_code"));
+    expect(asked).toEqual([
+      VAT_PRICING_COUNTRY_CODE.toLowerCase(),
+      VAT_PRICING_COUNTRY_CODE.toLowerCase(),
+    ]);
   });
 
   /**

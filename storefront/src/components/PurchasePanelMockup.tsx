@@ -40,9 +40,20 @@
  * **The tax wording here has to be the wording `/legal/shipping` carries.** It
  * read a flat "VAT included", which is untrue of an export and is the claim the
  * second qualified read struck off the legal page (Minor 2). Leaving it here
- * would only have moved the contradiction to the more prominent page. Both now
- * read "VAT included where applicable", from the one resolver in
- * `src/lib/catalogue.ts` — so does the hero, which renders the same fields.
+ * would only have moved the contradiction to the more prominent page. Both read
+ * the one resolver in `src/lib/catalogue.ts` — so does the hero, which renders
+ * the same fields.
+ *
+ * **Since 2026-08-18 that wording names a destination, and this panel renders
+ * it for that reason.** The advertised figure is net and VAT is added for a
+ * delivery address in the EU, so `catalogue.price` is one destination's answer
+ * rather than "the price": the net figure with no VAT for the United States,
+ * the gross one for Estonia. `catalogue.priceTaxQualifier` carries
+ * which destination and which tax state, and `.breakdown` carries what the
+ * figure is made of. **Rendering `catalogue.price` without the qualifier beside
+ * it is the defect**, not a simplification: it would state one visitor's price
+ * as everybody's, which is exactly what the operator's United States default
+ * makes possible and what the qualification exists to prevent.
  *
  * `availability` is likewise never a resolved placeholder in
  * `content/lunar-base.ts` (it is the literal string "In stock") — this
@@ -92,6 +103,7 @@ export function PurchasePanelMockup({
         <span className={styles.priceFigure}>{catalogue.price}</span>
         {`${PRICE_HEADLINE_SEPARATOR}${catalogue.priceTaxQualifier}`}
       </p>
+      <p className={styles.breakdown}>{catalogue.priceTaxBreakdown}</p>
       <p className={styles.note}>{catalogue.priceShippingNote}</p>
       <p className={styles.availability}>{catalogue.availabilityLabel}</p>
 

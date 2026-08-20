@@ -130,6 +130,8 @@ const SURFACES: readonly {
   readonly headline: string;
   readonly figure: string;
   readonly note: string;
+  /** The net/VAT split — the fourth part, under the figure it explains. */
+  readonly breakdown: string;
 }[] = [
   {
     name: "the purchase panel",
@@ -139,6 +141,7 @@ const SURFACES: readonly {
     headline: "priceHeadline",
     figure: "priceFigure",
     note: "note",
+    breakdown: "breakdown",
   },
   {
     name: "the product hero",
@@ -148,6 +151,7 @@ const SURFACES: readonly {
     headline: "heroPriceHeadline",
     figure: "heroPriceFigure",
     note: "heroPriceNote",
+    breakdown: "heroPriceBreakdown",
   },
 ];
 
@@ -164,10 +168,46 @@ describe("every headline price presents the operator's two lines", () => {
         expect(textOfElementWithClass(surface.html, surface.figure)).toBe(catalogue.price);
       });
 
-      it("puts the shipping and duties sentence, and nothing about tax, in the plain line", () => {
+      /**
+       * The plain line is the shipping and duties sentence and nothing else.
+       *
+       * It used to be asserted as "contains no mention of VAT at all", and that
+       * stopped being the right test when the price became net: the operator's
+       * own second line now says VAT is added to *shipping* inside the EU,
+       * which is a fact about shipping and belongs exactly here. What must not
+       * be here is the **qualification of the figure** — the destination and
+       * whether tax is in the price — because demoting that into the small
+       * print is the defect this file was written for, and it is a worse one
+       * now that the qualification is what stops the figure reading as
+       * everybody's.
+       */
+      it("puts the shipping and duties sentence, and no qualification of the figure, in the plain line", () => {
         const note = textOfElementWithClass(surface.html, surface.note);
         expect(note).toBe(catalogue.priceShippingNote);
-        expect(note, "the tax qualification is back in the small print").not.toContain("VAT");
+        expect(
+          note,
+          "the tax qualification is back in the small print",
+        ).not.toContain(catalogue.priceTaxQualifier);
+      });
+
+      /**
+       * **The figure never appears without its destination.** This is the
+       * condition the operator's United States default rests on: EUR 25.00 is
+       * one destination's answer, and a surface that paints it alone has told a
+       * European visitor something true of somebody else.
+       */
+      it("names the destination in the emphasised line, beside the figure", () => {
+        const headline = textOfElementWithClass(surface.html, surface.headline);
+        expect(headline).toContain(catalogue.price);
+        expect(headline).toContain(catalogue.destinationName);
+        expect(headline).toContain(catalogue.priceTaxQualifier);
+      });
+
+      /** And the split states what the figure is made of, as its own element. */
+      it("states the net and VAT split as a separate line", () => {
+        expect(textOfElementWithClass(surface.html, surface.breakdown)).toBe(
+          catalogue.priceTaxBreakdown,
+        );
       });
 
       /*

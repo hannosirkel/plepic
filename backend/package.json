@@ -12,9 +12,10 @@
     "start": "npm run redis:preflight && medusa start",
     "start:worker": "npm run redis:preflight && MEDUSA_WORKER_MODE=worker medusa start",
     "//predeploy": "--execute-safe-links keeps db:migrate's internal link sync from prompting; the predeploy Job requests no stdin and cannot answer one. The flag DISCARDS delete and notify link actions rather than converting them, so removed links leave orphaned tables until someone reviews them on a terminal with a bare `medusa db:sync-links`. See README, 'The predeploy Job cannot answer a prompt'.",
-    "predeploy": "npm run redis:preflight && medusa db:migrate --execute-safe-links && npm run seed:administrator && npm run configure:commerce",
+    "predeploy": "npm run redis:preflight && medusa db:migrate --execute-safe-links && npm run seed:administrator && npm run configure:commerce && npm run seed:product",
     "seed:administrator": "medusa exec \"$(test -f ./src/scripts/seed-administrator.js && echo ./src/scripts/seed-administrator.js || echo ./src/scripts/seed-administrator.ts)\"",
     "configure:commerce": "medusa exec \"$(test -f ./src/scripts/configure-commerce.js && echo ./src/scripts/configure-commerce.js || echo ./src/scripts/configure-commerce.ts)\"",
+    "seed:product": "medusa exec \"$(test -f ./src/scripts/seed-product.js && echo ./src/scripts/seed-product.js || echo ./src/scripts/seed-product.ts)\"",
     "catalogue:import": "npm run redis:preflight && medusa exec \"$(test -f ./src/scripts/catalogue-import.js && echo ./src/scripts/catalogue-import.js || echo ./src/scripts/catalogue-import.ts)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test:unit": "vitest run"

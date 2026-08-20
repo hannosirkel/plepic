@@ -275,7 +275,7 @@ export const productFaq: readonly FaqEntry[] = [
   {
     question: "How much is shipping?",
     answer: [
-      "It is calculated at checkout from your delivery address. The price of the game is the same everywhere: {priceLine}",
+      "It is calculated at checkout from your delivery address, and so is the tax. The price of the game before tax is the same everywhere; what changes is what is added to it: {priceLine}",
     ],
     source: "shipping-charge",
   },

@@ -1,5 +1,6 @@
 import { ConfigError } from "../config/env.js";
 import type { createMedusaStoreClient } from "./medusa-client.js";
+import { assertedCartTotals } from "./store-checkout.js";
 import { medusaMajorToMinor, minorToMedusaMajor } from "./store-money.js";
 import type { AnalyticsItem } from "./analytics.js";
 
@@ -112,6 +113,27 @@ export interface ReturnOrderDisclosure {
   readonly goodsAmount: number;
   readonly shippingAmount: number;
   readonly orderAmount: number;
+  /**
+   * The VAT contained in {@link orderAmount} — Medusa's `cart.tax_total`,
+   * **after the same three refusals the checkout applies**.
+   *
+   * Zero for an order going outside the EU, where no EU VAT arises, and the
+   * return page renders **no row** in that state rather than a row of zero:
+   * the same argument `src/lib/cart.ts` makes about formatted zeros, on the
+   * last screen a buyer sees before being charged.
+   */
+  readonly taxAmount: number;
+  /**
+   * The delivery country, lower-case ISO 3166-1 alpha-2, taken from the
+   * confirmed shipping address.
+   *
+   * It is what the price qualification on this page is derived from. Reading
+   * the destination cookie instead put "No VAT added, delivering to United
+   * States" under a summary Medusa had priced for an Estonian address — the
+   * same defect as on the checkout, one screen later, after the contract
+   * exists.
+   */
+  readonly countryCode: string;
   readonly address: string;
   readonly analyticsItems: readonly AnalyticsItem[] | null;
 }
@@ -148,7 +170,8 @@ export function returnOrderDisclosure(value: unknown, cartId: string): ReturnOrd
   if (
     cart?.id !== cartId || typeof cart.currency_code !== "string" ||
     typeof cart.item_total !== "number" || typeof cart.shipping_total !== "number" ||
-    typeof cart.total !== "number" || !Array.isArray(items) || items.length === 0 ||
+    typeof cart.total !== "number" || typeof cart.tax_total !== "number" ||
+    !Array.isArray(items) || items.length === 0 ||
     !Array.isArray(methods) || methods.length !== 1 || address === undefined
   ) throw new ConfigError("Medusa returned no complete checkout disclosure");
   const goods = items.map((item) => {
@@ -163,11 +186,38 @@ export function returnOrderDisclosure(value: unknown, cartId: string): ReturnOrd
     throw new ConfigError("Medusa returned no complete checkout disclosure");
   }
   const currency = cart.currency_code as string;
+  /*
+   * The same refusals the checkout makes, on the same figures — see
+   * `assertedCartTotals`. This page renders goods, shipping, a VAT row and a
+   * total, and a set that does not add up, or whose stated tax does not
+   * account for the tax on the two figures above it, is exactly as false here
+   * as it is one screen earlier. It is checked *before* the disclosure is
+   * built, so a bad set produces no page rather than a page with a wrong
+   * column.
+   */
+  const totals = assertedCartTotals(cart);
+  /*
+   * `CartTotals` types these nullable because the *mock* path has states with
+   * no answer. A cart that came back from Medusa and passed the refusals above
+   * has an answer for all four, so a `null` here is a contradiction rather
+   * than a state — refused, not defaulted, because the alternative is a
+   * fallback that quietly reintroduces the unchecked figure this replaced.
+   */
+  if (
+    totals.goodsAmount === null ||
+    totals.shippingAmount === null ||
+    totals.orderAmount === null ||
+    totals.taxAmount === null
+  ) {
+    throw new ConfigError("Medusa returned no complete checkout disclosure");
+  }
   return {
     currency: currency.toUpperCase(), goods,
-    goodsAmount: medusaMajorToMinor(cart.item_total, currency),
-    shippingAmount: medusaMajorToMinor(cart.shipping_total, currency),
-    orderAmount: medusaMajorToMinor(cart.total, currency),
+    goodsAmount: totals.goodsAmount,
+    shippingAmount: totals.shippingAmount,
+    orderAmount: totals.orderAmount,
+    taxAmount: totals.taxAmount,
+    countryCode: String(address.country_code),
     address: addressParts.map((part) => String(part).toUpperCase() === String(address.country_code).toUpperCase() ? String(part).toUpperCase() : String(part)).join(", "),
     analyticsItems: returnAnalyticsItems(items, currency),
   };

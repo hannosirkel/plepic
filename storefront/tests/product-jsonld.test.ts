@@ -21,6 +21,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
+import { destinationForCode } from "../src/lib/destination.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { serializeInlineJson } from "../src/lib/inline-json.js";
 
@@ -29,6 +30,18 @@ const DESCRIPTION = "A 2-6 player strategy card game.";
 
 const jsonLd = buildProductJsonLd({ url: URL, description: DESCRIPTION });
 const offer = jsonLd.offers as Record<string, unknown>;
+
+/**
+ * The destination this block claims to speak for.
+ *
+ * Not the default one, and that is the change of 2026-08-18. The page's figure
+ * moves with the visitor's destination; a published `Offer.price` may not,
+ * because a crawler has no destination and because varying an advertised price
+ * by requester is cloaking-adjacent. So the block publishes **one** figure —
+ * the gross EU price — and the pin below is against `resolveCatalogue` for an
+ * EU destination rather than against the page's own.
+ */
+const EU_DESTINATION = destinationForCode("EE");
 
 describe("buildProductJsonLd", () => {
   it("carries a Product type with an Offer, in the default state and every other", () => {
@@ -48,7 +61,36 @@ describe("buildProductJsonLd", () => {
    * dividing by 100 or stops padding to two decimal places.
    */
   it("converts minor units to a decimal price string", () => {
-    expect(offer.price).toBe((mockCatalogue.price.amount / 100).toFixed(2));
+    expect(offer.price).toBe((mockCatalogue.price.amountWithTax / 100).toFixed(2));
+  });
+
+  /**
+   * **The published price is destination-independent, and says so in the
+   * markup.**
+   *
+   * `Offer.price` alone states a number; under net pricing a consumer-facing
+   * offer that does not say which of two numbers it is has told a crawler
+   * nothing useful. `priceSpecification` carries the same figure with
+   * `valueAddedTaxIncluded: true` beside it.
+   */
+  it("publishes one figure for every requester, marked as including VAT", () => {
+    const specification = offer.priceSpecification as Record<string, unknown>;
+    expect(specification["@type"]).toBe("UnitPriceSpecification");
+    expect(specification.valueAddedTaxIncluded).toBe(true);
+    expect(specification.price).toBe(offer.price);
+    expect(specification.priceCurrency).toBe(offer.priceCurrency);
+  });
+
+  /**
+   * The same product resolved for two destinations gives two different pages
+   * and **one** block. That is the property; asserting it here is what stops a
+   * later edit reintroducing a per-visitor figure.
+   */
+  it("publishes the same figure whatever destination the page is being rendered for", () => {
+    const eu = resolveCatalogue(mockCatalogue, destinationForCode("EE"));
+    const nonEu = resolveCatalogue(mockCatalogue, destinationForCode("US"));
+    expect(eu.price).not.toBe(nonEu.price);
+    expect(offer.price).toBe((mockCatalogue.price.amountWithTax / 100).toFixed(2));
   });
 
   it("prefixes availability with the schema.org URI", () => {
@@ -79,13 +121,14 @@ describe("buildProductJsonLd", () => {
  * broke it is annotated where it sits.
  */
 describe("the structured data and the rendered page cannot disagree", () => {
-  const rendered = resolveCatalogue();
+  // The EU resolution of the same catalogue product — see EU_DESTINATION.
+  const rendered = resolveCatalogue(mockCatalogue, EU_DESTINATION);
 
   it("publishes the same product name the page shows", () => {
     expect(jsonLd.name).toBe(rendered.productName);
   });
 
-  it("publishes a price that formats back to the price the page shows", () => {
+  it("publishes a price that formats back to the EU resolution of the same product", () => {
     const amount = offer.price as string;
     const currency = offer.priceCurrency as string;
     const formatted = new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(

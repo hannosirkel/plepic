@@ -30,8 +30,15 @@ import {
   PRICE_HEADLINE_SEPARATOR,
   resolveCatalogue,
   resolveCataloguePlaceholders,
+  type ResolvedCatalogue,
 } from "../src/lib/catalogue.js";
-import { contentFor, PLACEHOLDER_TABLE } from "../../content/schema.js";
+import { destinationForCode } from "../src/lib/destination.js";
+import {
+  contentFor,
+  placeholderTokensIn,
+  PLACEHOLDER_TABLE,
+  type PlaceholderToken,
+} from "../../content/schema.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { ProductSafetyBlock } from "../src/components/ProductSafetyBlock.js";
 import {
@@ -92,9 +99,22 @@ function render(
   values: ConfigurationPlaceholderValues,
   externalTargets: ExternalTargetUrls = CONFIGURED_TARGETS,
   locale: Locale = DEFAULT_LOCALE,
+  /*
+   * The destination the page is being rendered for, as a resolved catalogue.
+   * It is a parameter because `{price}` moves with the destination now: a
+   * helper that always resolved the default would let the VAT section be
+   * asserted for one destination and shipped for two.
+   */
+  catalogue: ResolvedCatalogue = resolveCatalogue(),
 ): string {
   return renderToStaticMarkup(
-    <LegalPageContent page={page} locale={locale} values={values} externalTargets={externalTargets} />,
+    <LegalPageContent
+      page={page}
+      locale={locale}
+      values={values}
+      externalTargets={externalTargets}
+      catalogue={catalogue}
+    />,
   );
 }
 
@@ -579,115 +599,226 @@ describe("the dispute-resolution section names the body, and the link only enhan
 /**
  * The VAT section says one thing about tax, and it is the operator's.
  *
- * Minor 2 of the second read exists because *"that figure is inclusive of value
- * added tax"* is untrue of an export. The operator supplied the replacement on
- * 2026-08-10, as two lines with the first emphasised, and it is applied here
- * **and** in `src/lib/catalogue.ts` so the product page cannot contradict it.
+ * It was rewritten on 2026-08-18 with the commercial model. The advertised
+ * figure is **net**: Estonian VAT is added for a delivery address in the
+ * European Union and added nowhere else, so the previous section's two central
+ * claims — that the tax is "contained within that figure rather than added to
+ * it", and that it "is the same figure for every visitor, in every country" —
+ * are now false in opposite directions.
  *
- * The euro figure is `{price}` and never a literal, which is the whole reason
- * the placeholder mechanism exists — `tests/no-hardcoded-price.test.ts` and
+ * The euro figures are placeholders and never literals, which is the whole
+ * reason the mechanism exists — `tests/no-hardcoded-price.test.ts` and
  * `content/content.test.ts` hold up the other two corners of that.
  */
+
 /**
- * The words each edition's VAT callout must be made of, per tax treatment.
+ * The words each edition's VAT callout must be made of, **per destination**.
  *
- * This table is what binds the **Estonian** callout to data. The English one
- * was pinned character-for-character to `catalogue.priceHeadline` from the
- * start; the Estonian one could be edited into a flat "sisaldab käibemaksu" —
- * the exact unqualified claim the English page is forbidden from making, and
- * false for a non-EU buyer — with every test green, because the edition
- * boundary hid it from the pin rather than containing the hazard: an Estonian
- * reader buys from the same English product page, so a legal/product
- * contradiction crosses editions freely.
+ * The axis moved with the model. It used to be keyed on `taxIncluded`, a
+ * boolean about the catalogue; the qualification now depends on where the
+ * parcel is going, so it is keyed on whether the destination is an EU member
+ * state.
  *
- * Total over `Locale` and selected on `product.price.taxIncluded`, so a
- * third edition does not compile until its wording for **both** tax states is
- * written down, and flipping the catalogue's tax treatment goes red in every
- * language at once. The English column is itself pinned to
- * `src/lib/catalogue.ts`'s own composition below, so this table cannot drift
- * from the operator's wording either.
+ * **It stays total over `Locale`, and that totality is the point.** The English
+ * callout is pinned character-for-character to `catalogue.priceHeadline`; the
+ * Estonian one could be edited into a flat "sisaldab käibemaksu" — the exact
+ * unqualified claim the English page is forbidden from making, and false for a
+ * non-EU buyer — with every test green, because the edition boundary would hide
+ * it from that pin rather than containing the hazard. An Estonian reader buys
+ * from the same English product page, so a legal/product contradiction crosses
+ * editions freely.
+ *
+ * Both editions' callout leads interpolate the same `{priceTaxQualifier}`
+ * token, because the qualification names the reader's destination and a
+ * destination cannot be a fixed phrase in a content file. The **language** of
+ * what that token resolves to is the resolver's, not the content file's — so
+ * this table's Estonian column is pinned against
+ * `resolveCatalogue(…, "et")` below, in both tax states, exactly as the
+ * English column is.
+ *
+ * A first revision of this table held the *English* strings in the `et`
+ * column, because the resolver was monolingual and the Estonian page really
+ * did render an English sentence. That pinned the edition-language guarantee
+ * to the wrong value rather than merely failing to enforce it, which is worse
+ * than having no column at all: it made the defect look deliberate.
  */
 const VAT_CALLOUT_LANGUAGE: Readonly<
   Record<
     Locale,
     {
-      readonly taxIncluded: string;
-      readonly taxExcluded: string;
+      /** What the callout says for a delivery address in an EU member state. */
+      readonly vatAdded: string;
+      /** What it says for a destination anywhere else. */
+      readonly noVatAdded: string;
+      /** The unemphasised second line, which is the same for every destination. */
       readonly shippingNote: string;
     }
   >
 > = {
   en: {
-    taxIncluded: "VAT included where applicable",
-    taxExcluded: "VAT calculated at checkout",
-    shippingNote: "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.",
+    vatAdded: "VAT added, delivering to Estonia",
+    noVatAdded: "No VAT added, delivering to United States",
+    shippingNote:
+      "Shipping is calculated at checkout, and VAT is added to it for delivery inside the " +
+      "European Union. Non-EU taxes and duties, if any, are not included.",
   },
   et: {
-    taxIncluded: "sisaldab käibemaksu, kui see kuulub tasumisele",
-    taxExcluded: "käibemaks arvutatakse tellimuse vormistamisel",
+    vatAdded: "käibemaks lisatud, kättetoimetamisel sihtkohta Eesti",
+    noVatAdded: "käibemaksu ei lisata, kättetoimetamisel sihtkohta Ameerika Ühendriigid",
     shippingNote:
-      "Saatekulu arvutatakse tellimuse vormistamisel. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, kui neid on, hinnas ei sisaldu.",
+      "Saatekulu arvutatakse tellimuse vormistamisel ja Euroopa Liidu sisese kättetoimetamise " +
+      "puhul lisandub sellele käibemaks. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, " +
+      "kui neid on, hinnas ei sisaldu.",
   },
 };
+
+/**
+ * The catalogue tokens a **localised** page is allowed to use.
+ *
+ * Figures — `Intl` formats them the same for both editions — plus the one
+ * piece of prose the resolver translates. Anything else on this list would be
+ * an English string on an Estonian legal page, which is the defect this whole
+ * block exists to prevent, so the list is asserted against what the pages
+ * actually use rather than trusted.
+ */
+const LOCALE_SAFE_CATALOGUE_TOKENS: readonly string[] = [
+  "price",
+  "priceGross",
+  "priceNet",
+  "priceTaxQualifier",
+  "priceVat",
+  "vatRate",
+];
+
+/** The two destinations the table is keyed on. */
+const EU_DESTINATION = destinationForCode("EE");
+const NON_EU_DESTINATION = destinationForCode("US");
 
 describe("the VAT section makes one statement about tax", () => {
   const shipping = legalPages.find((page) => page.route === "legalShipping");
   const vat = shipping?.body.find((candidate) => candidate.anchor === "vat");
 
   /**
-   * The language table's English column is the catalogue's own words, in both
-   * tax states — so the per-edition binding below and the catalogue cannot
-   * disagree about what either state says, and the `taxExcluded` variant is
-   * proved against the resolver rather than trusted.
+   * The language table's English column is the catalogue's own composition, for
+   * both destinations — so the per-edition binding below and the catalogue
+   * cannot disagree about what either destination is told, and neither variant
+   * is trusted rather than proved.
    */
-  it("keeps the language table's English column identical to the catalogue's composition", () => {
-    const included = resolveCatalogue({
-      ...mockCatalogue,
-      price: { ...mockCatalogue.price, taxIncluded: true },
-    });
-    const excluded = resolveCatalogue({
-      ...mockCatalogue,
-      price: { ...mockCatalogue.price, taxIncluded: false },
-    });
+  it("keeps every edition's column identical to the catalogue's composition in that edition", () => {
+    for (const locale of LOCALES) {
+      const language = VAT_CALLOUT_LANGUAGE[locale];
+      const eu = resolveCatalogue(mockCatalogue, EU_DESTINATION, locale);
+      const nonEu = resolveCatalogue(mockCatalogue, NON_EU_DESTINATION, locale);
 
-    expect(included.priceTaxQualifier).toBe(VAT_CALLOUT_LANGUAGE.en.taxIncluded);
-    expect(excluded.priceTaxQualifier).toBe(VAT_CALLOUT_LANGUAGE.en.taxExcluded);
-    expect(included.priceShippingNote).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
-    expect(excluded.priceShippingNote).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
+      expect(eu.priceTaxQualifier, locale).toBe(language.vatAdded);
+      expect(nonEu.priceTaxQualifier, locale).toBe(language.noVatAdded);
+      expect(eu.priceShippingNote, locale).toBe(language.shippingNote);
+      expect(nonEu.priceShippingNote, locale).toBe(language.shippingNote);
+    }
   });
 
   /**
-   * Every edition's callout states the catalogue's **current** tax treatment,
-   * in its own language. Removing the conditional from the Estonian lead, or
-   * flipping `taxIncluded` in the catalogue while any edition's callout still
-   * asserts the old treatment, goes red here.
+   * **Each edition's qualification is in that edition's language.**
+   *
+   * Pinning the Estonian strings above says what they are; this says they are
+   * not the English ones. The two are different assertions and the second is
+   * the one that would have caught the defect: a table whose `et` column had
+   * been filled in with English passed the first perfectly.
+   */
+  it("resolves each edition's qualification in that edition's own language", () => {
+    for (const destination of [EU_DESTINATION, NON_EU_DESTINATION]) {
+      const english = resolveCatalogue(mockCatalogue, destination, "en");
+      const estonian = resolveCatalogue(mockCatalogue, destination, "et");
+
+      expect(estonian.priceTaxQualifier).not.toBe(english.priceTaxQualifier);
+      expect(estonian.priceShippingNote).not.toBe(english.priceShippingNote);
+      expect(estonian.priceTaxQualifier).toContain("käibemaks");
+      expect(
+        estonian.priceTaxQualifier,
+        "an English sentence is rendered on the Estonian legal page",
+      ).not.toMatch(/VAT|delivering to/);
+      // The destination itself is translated too, not left in English.
+      expect(estonian.destinationName).not.toBe(english.destinationName);
+    }
+  });
+
+  /**
+   * And nothing else a localised page renders is English-only prose.
+   *
+   * The resolver translates the qualification and the shipping note; it does
+   * not translate the stock statement or the player count, because no
+   * localised route renders them. That is a defensible line only while it is
+   * *true*, so the tokens each edition's pages actually use are compared
+   * against the ones the resolver can serve in that edition — a translator who
+   * writes `{productName}` into an Estonian page gets a red test rather than
+   * an English word in a legal notice.
+   */
+  it("uses only catalogue tokens the resolver can serve in every edition", () => {
+    for (const locale of LOCALES) {
+      const used = new Set<string>();
+      for (const page of contentFor(legalPagesByLocale, locale)) {
+        for (const section of page.body) {
+          const strings = [
+            ...section.body,
+            section.callout?.lead ?? "",
+            section.callout?.detail ?? "",
+            ...(section.items ?? []).flatMap((item) => [item.term, item.detail]),
+          ];
+          for (const text of strings) {
+            for (const token of placeholderTokensIn(text)) {
+              if (PLACEHOLDER_TABLE[token as PlaceholderToken]?.source === "catalogue") {
+                used.add(token);
+              }
+            }
+          }
+        }
+      }
+
+      expect(used.size, `${locale} quotes no catalogue figure at all`).toBeGreaterThan(0);
+      for (const token of used) {
+        expect(
+          LOCALE_SAFE_CATALOGUE_TOKENS,
+          `${locale}'s legal pages use {${token}}, which the catalogue resolver does not translate`,
+        ).toContain(token);
+      }
+    }
+  });
+
+  /**
+   * Every edition's callout states the catalogue's qualification for the
+   * destination it is being rendered for, in its own language. Removing the
+   * conditional from the Estonian lead, or a resolver that stopped naming the
+   * destination, goes red here — in both editions at once.
    */
   for (const locale of LOCALES) {
-    it(`${locale}: states the catalogue's tax treatment, and no other`, () => {
-      const language = VAT_CALLOUT_LANGUAGE[locale];
-      const page = contentFor(legalPagesByLocale, locale).find(
-        (candidate) => candidate.route === "legalShipping",
-      );
-      const callout = page?.body.find((candidate) => candidate.anchor === "vat")?.callout;
-      const qualifier = mockCatalogue.price.taxIncluded
-        ? language.taxIncluded
-        : language.taxExcluded;
+    for (const [label, destination, expected] of [
+      ["an EU member state", EU_DESTINATION, "vatAdded"],
+      ["a destination outside the EU", NON_EU_DESTINATION, "noVatAdded"],
+    ] as const) {
+      it(`${locale}: states the catalogue's tax treatment for ${label}, and no other`, () => {
+        const language = VAT_CALLOUT_LANGUAGE[locale];
+        const page = contentFor(legalPagesByLocale, locale).find(
+          (candidate) => candidate.route === "legalShipping",
+        );
+        const callout = page?.body.find((candidate) => candidate.anchor === "vat")?.callout;
+        const catalogue = resolveCatalogue(mockCatalogue, destination, locale);
 
-      expect(callout, `${locale}'s VAT callout is gone`).toBeDefined();
-      expect(callout?.lead).toBe(`{price}${PRICE_HEADLINE_SEPARATOR}${qualifier}`);
-      expect(callout?.detail).toBe(language.shippingNote);
-    });
+        expect(callout, `${locale}'s VAT callout is gone`).toBeDefined();
+        expect(resolveCataloguePlaceholders(callout?.lead ?? "", catalogue)).toBe(
+          `${catalogue.price}${PRICE_HEADLINE_SEPARATOR}${language[expected]}`,
+        );
+        expect(callout?.detail).toBe(language.shippingNote);
+      });
+    }
   }
 
   it("carries the operator's price presentation as an emphasised line and a plain one", () => {
     expect(vat?.callout, "the VAT section's price presentation is gone").toBeDefined();
-    expect(vat?.callout?.lead).toBe("{price} · VAT included where applicable");
-    expect(vat?.callout?.detail).toBe(
-      "Shipping calculated at checkout. Non-EU taxes and duties, if any, are not included.",
-    );
+    expect(vat?.callout?.lead).toBe("{price} · {priceTaxQualifier}");
+    expect(vat?.callout?.detail).toBe(VAT_CALLOUT_LANGUAGE.en.shippingNote);
   });
 
-  it("binds the figure to the catalogue and never writes it down", () => {
+  it("binds every figure to the catalogue and never writes one down", () => {
     const strings = [
       ...(vat?.body ?? []),
       vat?.callout?.lead ?? "",
@@ -696,6 +827,10 @@ describe("the VAT section makes one statement about tax", () => {
 
     expect(strings, "the VAT section is gone").not.toBe("");
     expect(strings, "the section states no price at all").toContain("{price}");
+    expect(strings, "the section no longer states the price before tax").toContain("{priceNet}");
+    expect(strings, "the section no longer states the price with VAT").toContain("{priceGross}");
+    expect(strings, "the section no longer states the VAT itself").toContain("{priceVat}");
+    expect(strings, "the section no longer states the rate").toContain("{vatRate}");
     expect(strings, "a price literal reached a legal page").not.toMatch(/[€$£]|\d+[.,]\d{2}/);
     expect(
       strings,
@@ -704,13 +839,16 @@ describe("the VAT section makes one statement about tax", () => {
   });
 
   it("serves the resolved figure, emphasised, with the qualification beside it", () => {
-    const html = render(shipping!, CONFIGURED);
+    const catalogue = resolveCatalogue(mockCatalogue, EU_DESTINATION);
+    const html = render(shipping!, CONFIGURED, undefined, DEFAULT_LOCALE, catalogue);
     const text = visibleText(html);
 
-    expect(text).toContain(`${resolveCatalogue().price} · VAT included where applicable`);
+    expect(text).toContain(catalogue.priceHeadline);
     expect(text).toContain("Non-EU taxes and duties, if any, are not included.");
     // The emphasis is the operator's formatting, not the renderer's taste.
-    expect(html).toMatch(/<strong[^>]*>[^<]*VAT included where applicable<\/strong>/);
+    expect(html).toMatch(
+      new RegExp(`<strong[^>]*>[^<]*${catalogue.priceTaxQualifier}</strong>`),
+    );
   });
 
   it("serves no unqualified VAT claim anywhere on the page", () => {
@@ -718,72 +856,181 @@ describe("the VAT section makes one statement about tax", () => {
     expect(
       text,
       "the page asserts VAT is included, unqualified",
-    ).not.toMatch(/VAT included(?! where applicable)/);
+    ).not.toMatch(/VAT included/);
   });
 
   /**
-   * **Unify was not delete — this is the assertion that says so.**
+   * **The two claims that now matter, replacing the two the previous model
+   * pinned.**
    *
-   * The operator answered "unify to my wording" on 2026-08-10 to a callout and
-   * a Minor 2 replacement sentence that qualified VAT in different words one
-   * line apart. The *phrasing* that went is the reader's; the *substance* is
-   * not the operator's to have dropped, because they were not asked about it.
-   * Two things had to survive, and this fails if either goes:
+   * What was pinned before was *"contained within that figure rather than added
+   * to it"* and *"it does not change … including where no VAT is due at all"*.
+   * Both were true statements about a gross price and both are false about this
+   * one, so they are not weakened here — they are replaced by the pair that
+   * carries the same weight under the model that actually applies:
    *
-   * 1. **How the tax sits in the figure** — contained within it, not added to
-   *    it. "Included" alone does not say that; a net price with tax still to
-   *    come is also, loosely, a price with tax "included" in what is owed.
-   * 2. **That the figure is identical where no tax is due** — the export case
-   *    Minor 2 was written for.
+   * 1. **VAT is added for a delivery address in the European Union**, and the
+   *    page says what the price of the goods then is; and
+   * 2. **it is not added anywhere else**, and the page says what the price of
+   *    the goods is then.
+   *
+   * Both are asserted against the *rendered* page rather than the source, so a
+   * placeholder that stopped resolving would show up as a missing figure rather
+   * than as a passing string match.
    */
-  it("still says how the tax sits in the figure, and that the figure is the same where none is due", () => {
+  it("says VAT is added for an EU delivery address, and states the resulting price", () => {
+    const catalogue = resolveCatalogue(mockCatalogue, EU_DESTINATION);
+    const text = visibleText(render(shipping!, CONFIGURED, undefined, DEFAULT_LOCALE, catalogue)).replaceAll(/\s+/g, " ");
+
+    expect(
+      text,
+      "the page no longer says VAT is added for a delivery address in the EU",
+    ).toMatch(/For delivery to an address in the European Union we add Estonian value added tax/);
+    expect(text).toContain(
+      `The price of the goods is then ${catalogue.priceGross} — ${catalogue.priceNet} plus ${catalogue.priceVat} of VAT — and that is the figure you pay.`,
+    );
+    expect(text, "the rate is no longer stated").toContain(catalogue.vatRate);
+  });
+
+  it("says no VAT is added anywhere else, and states the resulting price", () => {
+    const catalogue = resolveCatalogue(mockCatalogue, NON_EU_DESTINATION);
+    const text = visibleText(render(shipping!, CONFIGURED, undefined, DEFAULT_LOCALE, catalogue)).replaceAll(/\s+/g, " ");
+
+    expect(
+      text,
+      "the page no longer says that no EU VAT is due anywhere else",
+    ).toMatch(/For delivery anywhere else no EU VAT is due and none is added/);
+    expect(text).toContain(`The price of the goods is ${catalogue.priceNet}, and that is the figure you pay.`);
+  });
+
+  /**
+   * **No sentence in the body may point at the callout.**
+   *
+   * The body used to say, of the gross figure, *"That is the figure shown
+   * above, and it is the figure you pay."* The figure shown above is the
+   * callout lead, and the callout lead is **destination-dependent** — so in the
+   * default state the page stated the goods were the gross figure "shown
+   * above", directly under a line showing the net one. A deictic reference from
+   * a destination-independent sentence to a destination-dependent line cannot
+   * be true for every reader, and there is no wording of it that can.
+   *
+   * So the ban is on the construction rather than on the one phrase: a body
+   * that points at the callout at all is refused, in every edition. The
+   * conditional form (*"For delivery to an address in the European Union … and
+   * that is the figure you pay"*) says the same thing and is true for every
+   * reader, because it carries its own condition instead of borrowing one from
+   * whatever the callout happens to be showing.
+   */
+  it("makes no sentence in the body depend on what the callout happens to show", () => {
+    for (const locale of LOCALES) {
+      const page = contentFor(legalPagesByLocale, locale).find(
+        (candidate) => candidate.route === "legalShipping",
+      );
+      const prose = (page?.body.find((s) => s.anchor === "vat")?.body ?? []).join(" ");
+
+      expect(prose, `${locale} has no VAT body`).not.toBe("");
+      expect(
+        prose,
+        `${locale}'s VAT body points at the callout, which shows a different figure to different readers`,
+      ).not.toMatch(/shown above|näidatud summa|ülal näidatud/i);
+    }
+  });
+
+  /**
+   * **Every statement of the gross figure carries its condition.**
+   *
+   * The complement of the ban above, and the assertion that would catch the
+   * same defect written a different way. The gross figure is what an EU
+   * delivery address pays and nobody else; a sentence that states it without
+   * saying so is false for the majority of readers, and it is false most
+   * loudly in the default state, where the page beside it is quoting the net
+   * one.
+   *
+   * The unit is the **paragraph**, because that is the unit the copy scopes
+   * with: the condition is stated once and carried forward by "then" / "siis",
+   * which is ordinary legal prose. A sentence-level rule would demand a run-on
+   * sentence and would be a stylistic opinion wearing a guard's clothes. What
+   * it still catches is the edit that matters — a statement of the gross figure
+   * moved into, or newly written in, a paragraph that does not carry the
+   * condition.
+   *
+   * Driven over the **resolved** paragraphs for both destinations, so a
+   * paragraph that only became unconditional once its placeholders resolved is
+   * caught too.
+   */
+  it("scopes every statement of the gross figure to the European Union, in every edition", () => {
+    const euWords: Readonly<Record<Locale, RegExp>> = {
+      en: /European Union/,
+      et: /Euroopa Liidu/,
+    };
+
+    for (const locale of LOCALES) {
+      const page = contentFor(legalPagesByLocale, locale).find(
+        (candidate) => candidate.route === "legalShipping",
+      );
+      for (const destination of [EU_DESTINATION, NON_EU_DESTINATION]) {
+        const catalogue = resolveCatalogue(mockCatalogue, destination, locale);
+        const paragraphs = (page?.body.find((s) => s.anchor === "vat")?.body ?? []).map((text) =>
+          resolveCataloguePlaceholders(text, catalogue),
+        );
+        const stating = paragraphs.filter((paragraph) =>
+          paragraph.includes(catalogue.priceGross),
+        );
+
+        expect(
+          stating.length,
+          `${locale}/${destination.code}: the section never states the gross figure at all`,
+        ).toBeGreaterThan(0);
+        for (const paragraph of stating) {
+          expect(
+            paragraph,
+            `${locale}/${destination.code}: states the gross figure without saying it is the EU one`,
+          ).toMatch(euWords[locale]);
+        }
+      }
+    }
+  });
+
+  /**
+   * **The sentence the operator's United States default depends on.**
+   *
+   * The selector defaults to a destination that attracts no VAT, so a European
+   * reader who has not touched it is shown the lower figure. The condition the
+   * operator attached is that the page says plainly that the setting decides
+   * which price is *shown* and never what is *charged* — and that the charge
+   * follows the confirmed delivery address. Losing this paragraph is losing
+   * half of what makes the default honest.
+   */
+  it("says the destination setting never decides what anybody is charged", () => {
     const text = visibleText(render(shipping!, CONFIGURED)).replaceAll(/\s+/g, " ");
 
-    expect(
-      text,
-      "the page no longer says the tax is contained within the figure rather than added to it",
-    ).toMatch(/contained within that figure rather than added to it/);
-    expect(
-      text,
-      "the page no longer says the figure is unchanged where no VAT is due",
-    ).toMatch(/does not change[^.]*including where no VAT is due at all/);
-  });
-
-  /**
-   * And the duplication itself: the qualification is stated **once**. The
-   * callout's "where applicable" is the operator's conditional; the body must
-   * not restate it in a second vocabulary, which is exactly what "Where VAT is
-   * due on your order … where it is not due" did one line below it.
-   */
-  it("states the conditional once, in the operator's words", () => {
-    const vatText = [
-      vat?.callout?.lead ?? "",
-      vat?.callout?.detail ?? "",
-      ...(vat?.body ?? []),
-    ].join(" ");
-
-    expect(vatText).toContain("VAT included where applicable");
-    expect(
-      vatText,
-      "the body restates the callout's conditional in its own words, one line below it",
-    ).not.toMatch(/[Ww]here VAT is due/);
+    expect(text).toMatch(
+      /worked out from the delivery address you confirm at checkout/,
+    );
+    expect(text).toMatch(/the destination set on this site, which you can change/);
+    expect(text).toMatch(/it never decides what you are charged/);
   });
 
   /**
    * The legal page and the product surfaces carry the operator's emphasised
    * line **character for character**, from two different places —
    * `content/legal/shipping.ts`'s `callout.lead` and `src/lib/catalogue.ts`'s
-   * `priceHeadline`. Nothing but this pin stops one of them being edited
-   * alone, and the operator's own recorded reasoning is that a legal page
-   * saying "where applicable" over a product page saying something else moves
-   * the contradiction up one level, to the more prominent page.
+   * `priceHeadline`. Nothing but this pin stops one of them being edited alone,
+   * and the operator's own recorded reasoning is that a legal page saying one
+   * thing over a product page saying another moves the contradiction up one
+   * level, to the more prominent page.
+   *
+   * Checked for **both** destinations, because the line moves with the
+   * destination now and a pin against one of them would let the other drift.
    */
   it("carries the identical emphasised line and second line to the ones the product surfaces render", () => {
-    const catalogue = resolveCatalogue();
-    expect(resolveCataloguePlaceholders(vat?.callout?.lead ?? "", catalogue)).toBe(
-      catalogue.priceHeadline,
-    );
-    expect(vat?.callout?.detail).toBe(catalogue.priceShippingNote);
+    for (const destination of [EU_DESTINATION, NON_EU_DESTINATION]) {
+      const catalogue = resolveCatalogue(mockCatalogue, destination);
+      expect(resolveCataloguePlaceholders(vat?.callout?.lead ?? "", catalogue)).toBe(
+        catalogue.priceHeadline,
+      );
+      expect(vat?.callout?.detail).toBe(catalogue.priceShippingNote);
+    }
   });
 });
 

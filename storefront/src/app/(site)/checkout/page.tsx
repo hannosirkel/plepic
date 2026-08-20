@@ -12,6 +12,7 @@ import {
   MOCK_SCENARIO_PARAM,
   parseMockScenario,
 } from "../../../lib/mock-cart-actions.js";
+import { getRequestDestination } from "../../../lib/destination-request.js";
 import { getRequestNonce } from "../../../lib/nonce.js";
 import { makeMetadata } from "../../../lib/page-shell.js";
 import { getRequestHost } from "../../../lib/request-host.js";
@@ -41,10 +42,11 @@ export default async function CheckoutPage({
 }: {
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [params, nonce, host] = await Promise.all([
+  const [params, nonce, host, destination] = await Promise.all([
     searchParams,
     getRequestNonce(),
     getRequestHost(),
+    getRequestDestination(),
   ]);
   const runtimeConfig = getRuntimeConfig();
   const scenario = isMockLayerEnabled(host, loadSiteHostConfig().testHostnames)
@@ -53,7 +55,7 @@ export default async function CheckoutPage({
 
   return (
     <ShopPageShell>
-      <CartProvider scenario={scenario}>
+      <CartProvider scenario={scenario} destinationCode={destination.code}>
         <CheckoutPageContent
           turnstileSiteKey={runtimeConfig.turnstile.siteKey}
           nonce={nonce}

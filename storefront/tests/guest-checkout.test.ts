@@ -49,7 +49,7 @@ function respond(path: string): string | null {
       cart: {
         id: CART_ID,
         currency_code: "eur",
-        total: 32,
+        total: 39.68,
         items: [
           {
             variant_id: "variant_lunar_base",
@@ -64,7 +64,7 @@ function respond(path: string): string | null {
             {
               id: "payses_example",
               provider_id: "pp_stripe_stripe",
-              amount: 32,
+              amount: 39.68,
               currency_code: "eur",
               data: { client_secret: "pi_example_secret" },
             },
@@ -75,7 +75,14 @@ function respond(path: string): string | null {
   }
   if (path === `/store-api/store/shipping-options?cart_id=${CART_ID}`) {
     return JSON.stringify({
-      shipping_options: [{ id: "so_eu", name: "EU flat delivery", amount: 7 }],
+      shipping_options: [{
+        id: "so_eu",
+        name: "EU flat delivery",
+        amount: 7,
+        // A flat-rate option carries the tax-inclusivity flag and no with-tax
+        // amount — see `tests/store-checkout.test.ts` for the verification.
+        calculated_price: { calculated_amount: 7, is_calculated_price_tax_inclusive: false },
+      }],
     });
   }
   if (path === `/store-api/store/carts/${CART_ID}/shipping-methods`) {
@@ -83,9 +90,12 @@ function respond(path: string): string | null {
       cart: {
         id: CART_ID,
         currency_code: "eur",
-        item_total: 25,
-        shipping_total: 7,
-        total: 32,
+        item_total: 31,
+        item_tax_total: 6,
+        shipping_total: 8.68,
+        shipping_tax_total: 1.68,
+        tax_total: 7.68,
+        total: 39.68,
       },
     });
   }
@@ -96,13 +106,13 @@ function respond(path: string): string | null {
     return JSON.stringify({
       payment_collection: {
         id: "paycol_example",
-        amount: 32,
+        amount: 39.68,
         currency_code: "eur",
         payment_sessions: [
           {
             id: "payses_example",
             provider_id: "pp_stripe_stripe",
-            amount: 32,
+            amount: 39.68,
             currency_code: "eur",
             data: { client_secret: "pi_example_secret" },
           },
@@ -172,8 +182,13 @@ describe("a buyer with no account can complete an order", () => {
     const options = await prepareGuestShipping(client, CART_ID, address);
     expect(options.map((option) => option.id)).toEqual(["so_eu"]);
 
-    await addGuestShippingMethod(client, CART_ID, "so_eu");
-    const session = await initiateStripePayment(client, CART_ID, { amount: 3200, currency: "EUR" });
+    await addGuestShippingMethod(
+      client,
+      CART_ID,
+      { id: "so_eu", name: "EU flat delivery", amount: 700, amountWithTax: null, taxInclusive: false },
+      true,
+    );
+    const session = await initiateStripePayment(client, CART_ID, { amount: 3968, currency: "EUR" });
     expect(session.clientSecret).toBe("pi_example_secret");
 
     const order = await completeStripeOrder(client, CART_ID, "a-turnstile-token");
