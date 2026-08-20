@@ -10,6 +10,7 @@ import { mockCatalogue } from "../src/lib/catalogue.js";
 import { assertBrowserMediaOnly } from "../src/lib/store-media.js";
 import {
   catalogueProductFromStore,
+  loadStoreCatalogueProduct,
   loadStoreProduct,
 } from "../src/lib/store-product.js";
 
@@ -27,6 +28,46 @@ const response = (inventoryQuantity: number) => ({
   }],
 });
 
+const regions = (...ids: readonly string[]) => ({ regions: ids.map((id) => ({ id })) });
+
+const storeInput = {
+  backendUrl: "https://store.example.test",
+  publishableKey: "pk_example_product",
+  presentation: mockCatalogue,
+};
+
+/**
+ * The Store backend as the loaders see it: two routes, not one.
+ *
+ * A stub that answered every URL with a product body was what let the missing
+ * pricing context through — the live backend answers such a request with
+ * `400 invalid_data: Missing required pricing context to calculate prices -
+ * region_id`, and no test could see that because no test looked at the request.
+ * Routing by path here is what makes the region lookup, and the query the
+ * catalogue request is built from, visible to assertions.
+ */
+function stubStore(options: {
+  readonly product?: unknown;
+  readonly regionsBody?: unknown;
+} = {}): { readonly requests: URL[]; readonly restore: () => void } {
+  const originalFetch = globalThis.fetch;
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    const body = url.pathname === "/store/regions"
+      ? options.regionsBody ?? regions("region_eu")
+      : options.product ?? response(3);
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  return { requests, restore: () => { globalThis.fetch = originalFetch; } };
+}
+
+const productRequests = (requests: readonly URL[]) => requests.filter((url) => url.pathname === "/store/products");
+
 describe("Store catalogue boundary", () => {
   it("uses Store-calculated EUR price and managed inventory for the live page", () => {
     expect(catalogueProductFromStore(response(3), mockCatalogue)).toMatchObject({
@@ -41,19 +82,14 @@ describe("Store catalogue boundary", () => {
   });
 
   it("retains stable variant identity for an exhausted product while disabling purchase", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response(JSON.stringify(response(0)), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    const store = stubStore({ product: response(0) });
     try {
-      await expect(loadStoreProduct({
-        backendUrl: "https://store.example.test",
-        publishableKey: "pk_example_product",
-        presentation: mockCatalogue,
-      })).resolves.toMatchObject({ variantId: null, analyticsVariantId: "variant_lunar_base" });
+      await expect(loadStoreProduct(storeInput)).resolves.toMatchObject({
+        variantId: null,
+        analyticsVariantId: "variant_lunar_base",
+      });
     } finally {
-      globalThis.fetch = originalFetch;
+      store.restore();
     }
   });
 
@@ -117,19 +153,11 @@ describe("Store catalogue boundary", () => {
     };
 
     async function loadWith(body: unknown): Promise<Awaited<ReturnType<typeof loadStoreProduct>>> {
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = async () => new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      const store = stubStore({ product: body });
       try {
-        return await loadStoreProduct({
-          backendUrl: "https://store.example.test",
-          publishableKey: "pk_example_product",
-          presentation: mockCatalogue,
-        });
+        return await loadStoreProduct(storeInput);
       } finally {
-        globalThis.fetch = originalFetch;
+        store.restore();
       }
     }
 
@@ -225,31 +253,98 @@ describe("Store catalogue boundary", () => {
   });
 
   it("explicitly requests Medusa's computed price and inventory fields", async () => {
-    const originalFetch = globalThis.fetch;
-    const requested = { fields: null as string | null };
-    globalThis.fetch = async (input) => {
-      requested.fields = new URL(String(input)).searchParams.get("fields");
-      return new Response(JSON.stringify(response(3)), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    };
-
+    const store = stubStore();
     try {
-      await loadStoreProduct({
-        backendUrl: "https://store.example.test",
-        publishableKey: "pk_example_product",
-        presentation: mockCatalogue,
-      });
+      await loadStoreProduct(storeInput);
     } finally {
-      globalThis.fetch = originalFetch;
+      store.restore();
     }
 
-    expect(requested.fields?.split(",")).toEqual(
+    expect(productRequests(store.requests)[0]?.searchParams.get("fields")?.split(",")).toEqual(
       expect.arrayContaining([
         "+variants.calculated_price",
         "+variants.inventory_quantity",
       ]),
     );
+  });
+
+  /**
+   * The pricing context `+variants.calculated_price` is meaningless without.
+   *
+   * Asking Medusa v2 to compute a price without saying whose price it is, is
+   * not a request that returns an unpriced product — it is a 400:
+   * `{"type":"invalid_data","message":"Missing required pricing context to
+   * calculate prices - region_id"}`. Every catalogue load made exactly that
+   * request, so the storefront's readiness probe answered 500 and the
+   * deployment sat in `CrashLoopBackOff` from its first replica.
+   *
+   * These assert the **request**, because the response is not where the defect
+   * lived: a stub that answered 200 to anything, which is what this file used
+   * to install, reproduced none of it.
+   */
+  describe("the pricing context a catalogue request must carry", () => {
+    it("prices the product page's catalogue in the store's one region", async () => {
+      const store = stubStore({ regionsBody: regions("region_eu_only") });
+      try {
+        await loadStoreProduct(storeInput);
+      } finally {
+        store.restore();
+      }
+
+      expect(productRequests(store.requests)[0]?.searchParams.get("region_id")).toBe("region_eu_only");
+    });
+
+    it("prices the home page's catalogue in the store's one region", async () => {
+      const store = stubStore({ regionsBody: regions("region_eu_only") });
+      try {
+        await loadStoreCatalogueProduct(storeInput);
+      } finally {
+        store.restore();
+      }
+
+      expect(productRequests(store.requests)[0]?.searchParams.get("region_id")).toBe("region_eu_only");
+    });
+
+    it("authenticates the region lookup with the Store publishable key", async () => {
+      const seen: (string | null)[] = [];
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (input, init) => {
+        const url = new URL(String(input));
+        const headers = new Headers(init?.headers);
+        if (url.pathname === "/store/regions") seen.push(headers.get("x-publishable-api-key"));
+        return new Response(
+          JSON.stringify(url.pathname === "/store/regions" ? regions("region_eu") : response(3)),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      };
+      try {
+        await loadStoreProduct(storeInput);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+
+      expect(seen).toEqual(["pk_example_product"]);
+    });
+
+    /**
+     * The same refusal `AddToCartButton` already makes before creating a cart.
+     * A storefront that guessed a region here would show a price computed in
+     * one region and charge the price of whichever region the cart picked.
+     */
+    it("refuses to guess a region rather than price the catalogue in an arbitrary one", async () => {
+      for (const [label, body] of [
+        ["no region", regions()],
+        ["two regions", regions("region_eu", "region_us")],
+      ] as const) {
+        const store = stubStore({ regionsBody: body });
+        try {
+          await expect(loadStoreProduct(storeInput), label).rejects.toThrow("exactly one region");
+          await expect(loadStoreCatalogueProduct(storeInput), label).rejects.toThrow("exactly one region");
+        } finally {
+          store.restore();
+        }
+        expect(productRequests(store.requests), label).toEqual([]);
+      }
+    });
   });
 });

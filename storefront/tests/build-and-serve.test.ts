@@ -447,6 +447,15 @@ async function startBackendServer(): Promise<string> {
         headers: request.headers,
         bodyBase64,
       });
+      // The pricing context that same loader must supply before it may ask for
+      // a calculated price. A backend answering this with the transparent 202
+      // below would carry no region, and the loader would refuse to price the
+      // catalogue at all -- which is the intended behaviour, not a fixture gap.
+      if (request.url === "/store/regions?limit=2" && request.method === "GET") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ regions: [{ id: "region_build_fixture" }] }));
+        return;
+      }
       // The request-time page loader asks for one product with the fields it
       // needs. Other Store requests must remain transparent transport tests.
       if ((request.url ?? "").startsWith("/store/products?limit=1&fields=")) {
