@@ -25,6 +25,7 @@ export default async function HomePage() {
       catalogue={resolveCatalogue(catalogueProduct, destination)}
       turnstileSiteKey={runtimeConfig.turnstile.siteKey}
       nonce={nonce}
+      externalTargets={runtimeConfig.externalTargets}
     />
   );
 }

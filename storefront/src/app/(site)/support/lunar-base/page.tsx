@@ -14,6 +14,7 @@ export default async function SupportPage() {
       turnstileSiteKey={runtimeConfig.turnstile.siteKey}
       nonce={nonce}
       merchantContactAddress={runtimeConfig.merchant.contactAddress}
+      externalTargets={runtimeConfig.externalTargets}
     />
   );
 }

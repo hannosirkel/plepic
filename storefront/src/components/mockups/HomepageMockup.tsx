@@ -39,6 +39,7 @@ import { ProofStripSection } from "../ProofStripSection.js";
 import { TeamPhotoSection } from "../TeamPhotoSection.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { SiteFooter } from "../SiteFooter.js";
+import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import styles from "../../styles/mockups/homepage.module.css";
 
 export interface HomepageMockupProps {
@@ -48,12 +49,20 @@ export interface HomepageMockupProps {
   readonly turnstileSiteKey?: string | null;
   /** This request's CSP nonce (`getRequestNonce()`). */
   readonly nonce?: string | undefined;
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
+   * to the proof strip and the footer. Absent keeps both in their inert-text
+   * form, which is what a static mockup wants and what the served page got by
+   * accident until 2026-08-20.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
 }
 
 export function HomepageMockup({
   catalogue = resolveCatalogue(),
   turnstileSiteKey = null,
   nonce = undefined,
+  externalTargets = {},
 }: HomepageMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
@@ -91,7 +100,7 @@ export function HomepageMockup({
         </section>
 
         <section id="proof" className={styles.section} aria-label="Proof">
-          <ProofStripSection />
+          <ProofStripSection externalTargets={externalTargets} />
         </section>
 
         <section id="featured-game" data-layer="lunar" className={styles.featured} aria-labelledby="featured-game-heading">
@@ -145,7 +154,7 @@ export function HomepageMockup({
         </section>
       </main>
 
-      <SiteFooter />
+      <SiteFooter externalTargets={externalTargets} />
     </div>
   );
 }

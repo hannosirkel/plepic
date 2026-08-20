@@ -352,6 +352,12 @@ const SHAPED: Partial<Record<RuntimeEnvVar, string>> = {
   // opaque token — a canary that cannot be a destination proves nothing about
   // whether the destination was baked in.
   EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: `https://build-canary-${uuid}.example.org/committee`,
+  // The campaign, the two social profiles and the origin story are rendered
+  // into `href`s for the same reason, so they need the same URL shape.
+  EXTERNAL_URL_KICKSTARTER_CAMPAIGN: `https://build-canary-${uuid}.example.org/campaign`,
+  EXTERNAL_URL_INSTAGRAM: `https://build-canary-${uuid}.example.org/instagram`,
+  EXTERNAL_URL_FACEBOOK: `https://build-canary-${uuid}.example.org/facebook`,
+  EXTERNAL_URL_ORIGIN_STORY: `https://build-canary-${uuid}.example.org/origin-story`,
 };
 
 const BUILD_TIME_ENV = Object.fromEntries(
@@ -398,6 +404,10 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   MERCHANT_REGISTERED_ADDRESS: "1 Runtime Value Street, Runtime Value Town",
   MERCHANT_REGISTRATION_NUMBER: "RUNTIMEVALUE-REG",
   MERCHANT_RETURN_ADDRESS: "2 Runtime Value Street, Runtime Value Town",
+  EXTERNAL_URL_KICKSTARTER_CAMPAIGN: "https://runtime-value.example.org/campaign",
+  EXTERNAL_URL_INSTAGRAM: "https://runtime-value.example.org/instagram",
+  EXTERNAL_URL_FACEBOOK: "https://runtime-value.example.org/facebook",
+  EXTERNAL_URL_ORIGIN_STORY: "https://runtime-value.example.org/origin-story",
   MERCHANT_VAT_NUMBER: "RUNTIMEVALUE-VAT",
   EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: "https://runtime-value.example.org/committee",
   REDIRECT_MAP_PATH: runtimeRedirectMapPath,

@@ -72,6 +72,27 @@ export const RUNTIME_ENV_VARS = [
    */
   "EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE",
   /**
+   * The Lunar Base Kickstarter campaign, the two social profiles, and the
+   * published origin story.
+   *
+   * These are configuration for the same reason
+   * `EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE` is — `content/` may carry no
+   * absolute URL, so the copy holds only the external-target id — and *not*
+   * because they differ between environments. They do not: live and test point
+   * at the same campaign and the same profiles.
+   *
+   * All four are optional and all four degrade quietly, per
+   * `src/components/mockups/link-target.ts`'s class 2. That degradation was not
+   * hypothetical. With no variable behind them at all, the proof strip's "See
+   * the campaign" and the footer's two social names rendered as inert grey text
+   * on the served site until 2026-08-20, which is what the operator reported.
+   * Supplying these is what makes the link a link.
+   */
+  "EXTERNAL_URL_FACEBOOK",
+  "EXTERNAL_URL_INSTAGRAM",
+  "EXTERNAL_URL_KICKSTARTER_CAMPAIGN",
+  "EXTERNAL_URL_ORIGIN_STORY",
+  /**
    * Customer contact address — the trader's electronic address. On the Support
    * page, absent means the copy that quotes it is suppressed; on a legal page
    * and in the product page's manufacturer block, absent means a named gap and

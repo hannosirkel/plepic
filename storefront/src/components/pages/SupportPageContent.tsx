@@ -29,11 +29,17 @@ import { NO_CONFIGURATION_VALUES, resolvedParagraphs } from "../../lib/configura
 import { ContactForm } from "../forms/ContactForm.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { SiteFooter } from "../SiteFooter.js";
+import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { VideoEmbed } from "../video/VideoEmbed.js";
 import styles from "../../styles/pages/support.module.css";
 
 export interface SupportPageContentProps {
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
+   * to the footer's social row. Absent keeps it inert text.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
   /** From runtime configuration (`getRuntimeConfig().merchant`). `null` suppresses the copy that quotes it. */
@@ -44,6 +50,7 @@ export function SupportPageContent({
   turnstileSiteKey,
   nonce,
   merchantContactAddress,
+  externalTargets = {},
 }: SupportPageContentProps) {
   const contactBody = resolvedParagraphs(contact.body, {
     ...NO_CONFIGURATION_VALUES,
@@ -138,7 +145,7 @@ export function SupportPageContent({
         </section>
       </main>
 
-      <SiteFooter />
+      <SiteFooter externalTargets={externalTargets} />
     </div>
   );
 }

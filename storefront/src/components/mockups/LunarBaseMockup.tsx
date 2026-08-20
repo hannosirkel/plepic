@@ -87,6 +87,7 @@ import { SectionDivider } from "../decor/SectionDivider.js";
 import { PurchasePanelMockup } from "../PurchasePanelMockup.js";
 import type { ReactNode } from "react";
 import { SiteFooter } from "../SiteFooter.js";
+import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { VideoEmbed } from "../video/VideoEmbed.js";
 import { CallToActionLink } from "./CallToActionLink.js";
@@ -115,6 +116,11 @@ export interface LunarBaseMockupProps {
    * import because it is a client island and this component is not.
    */
   readonly destinationSelector?: ReactNode;
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
+   * to the footer's social row. Absent keeps it inert text.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
 }
 
 /**
@@ -146,6 +152,7 @@ export function LunarBaseMockup({
   merchant = NO_CONFIGURATION_VALUES,
   primaryPurchaseAction,
   destinationSelector,
+  externalTargets = {},
 }: LunarBaseMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
@@ -363,7 +370,7 @@ export function LunarBaseMockup({
         </section>
       </main>
 
-      <SiteFooter />
+      <SiteFooter externalTargets={externalTargets} />
     </div>
   );
 }

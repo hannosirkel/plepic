@@ -50,6 +50,14 @@ export interface ChromeStrings {
   readonly legalLinkLabels: Readonly<Record<LegalRouteId, string>>;
   /** `aria-label` of the language-switcher `<nav>`. */
   readonly languageNavLabel: string;
+  /**
+   * `aria-label` of the footer's social `<nav>`.
+   *
+   * Only rendered when every advertised social destination resolves to a URL;
+   * see `src/components/SiteFooter.tsx` for why a partly-resolved row stays
+   * plain text outside a landmark.
+   */
+  readonly socialNavLabel: string;
   /** The visible note on a page whose `reviewStatus` is still a draft. */
   readonly draftNote: string;
   /** The incompleteness notice's heading. */
@@ -81,6 +89,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
       legalPrivacy: "Privacy",
     },
     languageNavLabel: "Language",
+    socialNavLabel: "Social",
     draftNote: "Draft, pending the operator’s approval.",
     noticeHeading: "This notice is incomplete.",
     noticeBody: (missing) =>
@@ -120,6 +129,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
       legalPrivacy: "Privaatsus",
     },
     languageNavLabel: "Keel",
+    socialNavLabel: "Sotsiaalmeedia",
     draftNote: "Mustand, ootab haldaja heakskiitu.",
     noticeHeading: "See teade on puudulik.",
     noticeBody: (missing) =>

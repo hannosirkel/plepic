@@ -1,6 +1,7 @@
 import { BasketPageContent } from "../../../components/shop/BasketPageContent.js";
 import { ShopPageShell } from "../../../components/shop/ShopPageShell.js";
 import { loadSiteHostConfig } from "../../../config/hosts.js";
+import { getRuntimeConfig } from "../../../config/runtime-config.js";
 import { CartProvider } from "../../../lib/cart-store.js";
 import {
   isMockLayerEnabled,
@@ -40,7 +41,7 @@ export default async function CartPage({
     : null;
 
   return (
-    <ShopPageShell>
+    <ShopPageShell externalTargets={getRuntimeConfig().externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
         <BasketPageContent />
       </CartProvider>

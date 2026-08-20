@@ -185,6 +185,7 @@ export const EXTERNAL_TARGETS = [
   "video-tutorial",
   "instagram",
   "facebook",
+  "origin-story",
   "consumer-disputes-committee",
 ] as const;
 

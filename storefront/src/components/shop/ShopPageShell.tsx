@@ -14,19 +14,25 @@
 import type { ReactNode } from "react";
 
 import { SiteFooter } from "../SiteFooter.js";
+import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
 import styles from "../../styles/pages/shop.module.css";
 
 export interface ShopPageShellProps {
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
+   * to the footer's social row. Absent keeps it inert text.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
   readonly children: ReactNode;
 }
 
-export function ShopPageShell({ children }: ShopPageShellProps) {
+export function ShopPageShell({ children, externalTargets = {} }: ShopPageShellProps) {
   return (
     <div data-layer="publisher" className={styles.page}>
       <SiteHeader wordmark="primary" />
       <main className={styles.main}>{children}</main>
-      <SiteFooter />
+      <SiteFooter externalTargets={externalTargets} />
     </div>
   );
 }
