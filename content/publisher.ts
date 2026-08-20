@@ -7,7 +7,6 @@
 
 import type {
   CallToAction,
-  ListItem,
   Prose,
   Section,
   Statement,
@@ -87,53 +86,17 @@ export const publisherStorySources: readonly Statement[] = [
 ];
 
 /**
- * The compact timeline for /about.
- *
- * Every entry is a completed, dated-or-orderable past event. No entry implies
- * anything is still under way. There is deliberately no year against the
- * Kickstarter row: the campaign year is not in the evidence manifest, and an
- * approximately-right year is still an invented one.
- */
-export const timeline: readonly ListItem[] = [
-  {
-    term: "2017",
-    detail: "Six of us start work on a card game about colonising the Moon.",
-    source: "E8",
-  },
-  {
-    term: "Three years of playtesting",
-    detail:
-      "Most of it spent removing things. The version that survived is the one people kept asking to play again.",
-    source: "E8",
-  },
-  {
-    term: "Kickstarter",
-    detail: "Funded by over two thousand backers, then printed, boxed and posted.",
-    source: "E5",
-  },
-  {
-    term: "Into shops",
-    detail:
-      "Retail chains in Finland and Estonia sold around a hundred copies each over twelve months.",
-    source: "E7",
-  },
-  {
-    term: "Brætspilscaféen, Denmark",
-    detail:
-      "Around fifty copies sold, a talk about how the game was made, and a Lunar Base tournament hosted by the café.",
-    source: "E6",
-  },
-];
-
-/**
  * The team section.
  *
  * Names and roles are **not written here**, because they are not in the
  * evidence manifest and this repository is public. The manifest records one
- * genuine group photograph of six people and no roster. The plan asks /about to
- * carry names and roles in HTML; supplying them is an operator input, tracked
- * in the content document's open-inputs list. Until they arrive the section
- * ships with the photograph and the headcount, both of which are evidenced.
+ * genuine group photograph of six people and no roster. The plan asked /about
+ * to carry names and roles in HTML; /about is retired, the photograph now sits
+ * only on the homepage, and no roster ever arrived.
+ *
+ * The body is the caption the operator supplied on 2026-08-20. It replaces a
+ * sentence that restated the headcount the heading already gives and the
+ * photograph already shows.
  */
 export const team: Section = {
   anchor: "team",

@@ -42,6 +42,7 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  RETIRED_ROUTES,
   ROUTE_PATHS,
 } from "./routes.js";
 import {
@@ -973,10 +974,48 @@ describe("edition parity", () => {
 });
 
 describe("the page registry", () => {
-  it("has exactly one page per declared route", () => {
+  /*
+   * "Declared" now means declared and not retired. A retired route keeps its
+   * path so links and bookmarks resolve, and publishes no page because it
+   * answers a redirect — so requiring a page for it would require the page
+   * the retirement exists to remove. The pairing is still exhaustive in both
+   * directions; the retired set is simply subtracted from one side, and
+   * asserted non-empty so this does not quietly become a no-op if the set is
+   * ever emptied.
+   */
+  it("has exactly one page per declared route that is not retired", () => {
     const routes = pages.map((page) => page.route).toSorted();
-    const declared = Object.keys(ROUTE_PATHS).toSorted();
+    const declared = Object.keys(ROUTE_PATHS)
+      .filter((route) => !Object.hasOwn(RETIRED_ROUTES, route))
+      .toSorted();
     expect(routes).toEqual(declared);
+  });
+
+  it("publishes no page for a retired route, in any edition", () => {
+    expect(Object.keys(RETIRED_ROUTES).length).toBeGreaterThan(0);
+    for (const locale of LOCALES) {
+      for (const page of contentFor(pagesByLocale, locale)) {
+        expect(
+          Object.hasOwn(RETIRED_ROUTES, page.route),
+          `${locale} publishes ${page.route}, which is retired`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  /*
+   * The two properties that make a redirect chain unrepresentable. The plan
+   * forbids emitting a chain or a loop; this is where that becomes structural
+   * rather than a thing the proxy has to be careful about.
+   */
+  it("lets no retired route name itself or another retired route", () => {
+    for (const [retired, target] of Object.entries(RETIRED_ROUTES)) {
+      expect(target, `${retired} redirects to itself`).not.toBe(retired);
+      expect(
+        Object.hasOwn(RETIRED_ROUTES, target),
+        `${retired} redirects to ${target}, which is itself retired -- that is a chain`,
+      ).toBe(false);
+    }
   });
 
   it("gives every page a unique title", () => {
@@ -1103,11 +1142,15 @@ describe("the locale dimension", () => {
    * does not publish has no URL without a prefix — which would be a route
    * this site declares and cannot serve.
    */
-  it("publishes every declared route in the default edition", () => {
+  it("publishes every declared route in the default edition, retirements aside", () => {
     const routes = contentFor(pagesByLocale, DEFAULT_LOCALE)
       .map((page) => page.route)
       .toSorted();
-    expect(routes).toEqual(Object.keys(ROUTE_PATHS).toSorted());
+    expect(routes).toEqual(
+      Object.keys(ROUTE_PATHS)
+        .filter((route) => !Object.hasOwn(RETIRED_ROUTES, route))
+        .toSorted(),
+    );
   });
 
   for (const locale of LOCALES) {

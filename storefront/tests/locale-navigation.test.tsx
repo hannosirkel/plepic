@@ -49,7 +49,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../content/routes.js";
-import { contentFor } from "../../content/schema.js";
+import { contentFor, finalRouteFor } from "../../content/schema.js";
 import { resolveLocalizedRoute } from "../src/app/localized-routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
 import { localizedHrefFor, localizedLinkFor, pagesIn } from "../src/lib/seo.js";
@@ -120,20 +120,27 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
     expect(fallback, "no pair exercised the fallback branch").toBeGreaterThan(0);
   });
 
+  /*
+   * The annotation is about *crossing*, not about publication, and a retired
+   * route is where those two stop coinciding: no edition publishes `/about`,
+   * yet the default edition is the one that answers its redirect. So the
+   * expectation is derived from which edition actually serves the link — the
+   * requested one when it publishes the route, the default one otherwise —
+   * and an annotation is required exactly when that differs from the locale
+   * being asked. Keying it on `published` alone made `en:about` expect an
+   * `hreflang="en"` on a link from an English page to an English URL.
+   */
   it("annotates exactly the links that cross editions, with the target's tag", () => {
     for (const locale of LOCALES) {
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
+        const servedBy = published.has(routeId) ? locale : DEFAULT_LOCALE;
         const { hrefLang } = localizedLinkFor(locale, routeId);
         expect(
           hrefLang,
-          `${locale}:${routeId} ${published.has(routeId) ? "stays home and needs no tag" : "crosses editions and must say so"}`,
-        ).toBe(
-          published.has(routeId)
-            ? undefined
-            : LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag,
-        );
+          `${locale}:${routeId} ${servedBy === locale ? "stays home and needs no tag" : "crosses editions and must say so"}`,
+        ).toBe(servedBy === locale ? undefined : LOCALE_DEFINITIONS[servedBy].languageTag);
       }
     }
   });
@@ -172,6 +179,13 @@ describe("every edition's pages link within the edition", () => {
        * href must resolve to a page its target edition publishes and can
        * serve — asked of the router, which is the thing that will actually
        * answer the request, not of the function that produced the href.
+       *
+       * A retired route answers too, with one 301 to the route that replaced
+       * it, so the property is checked against `finalRouteFor` rather than
+       * against the href's own route id. Checking the id itself would call a
+       * working link broken; dropping the check for retired routes would stop
+       * asking the question. The chain-free guarantee that makes one step
+       * sufficient is asserted in `content/content.test.ts`.
        */
       it(`${locale}:${page.route} renders no href its target edition cannot serve`, () => {
         for (const { href } of internalAnchorsIn(renderedPage(locale, page.route))) {
@@ -180,9 +194,10 @@ describe("every edition's pages link within the edition", () => {
           expect(routeId, `${href} is no declared route's URL`).toBeDefined();
 
           if (parsed.locale === DEFAULT_LOCALE) {
+            const served = finalRouteFor(routeId!);
             expect(
-              pagesIn(DEFAULT_LOCALE).some((candidate) => candidate.route === routeId),
-              `${href} names a route the default edition does not publish`,
+              pagesIn(DEFAULT_LOCALE).some((candidate) => candidate.route === served),
+              `${href} resolves to ${served}, which the default edition does not publish`,
             ).toBe(true);
           } else {
             const prefix = LOCALE_DEFINITIONS[parsed.locale].pathPrefix.slice(1);

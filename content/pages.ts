@@ -39,14 +39,6 @@ export const marketingPages: readonly Page[] = [
     ],
   },
   {
-    route: "about",
-    title: "About Plepic Games",
-    description:
-      "Six of us started a card game about the Moon in 2017 and spent three years taking things out of it. This is what happened next.",
-    indexable: true,
-    sections: ["story", "team", "timeline"],
-  },
-  {
     route: "support",
     title: "Lunar Base support and rules",
     description:

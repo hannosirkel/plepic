@@ -32,7 +32,8 @@
  * a content file is either impossible or a red build.
  */
 
-import type { AnchorId, ExternalTargetId, RouteId } from "./routes.js";
+import type { AnchorId, ExternalTargetId, RetiredRouteId, RouteId } from "./routes.js";
+import { RETIRED_ROUTES } from "./routes.js";
 import { LOCALES, type Locale } from "./routes.js";
 
 /* ------------------------------------------------------------------------
@@ -673,4 +674,28 @@ export interface LegalPage extends Page {
   readonly covers: readonly LegalElement[];
   readonly reviewStatus: LegalReviewStatus;
   readonly body: readonly LegalSection[];
+}
+
+/**
+ * Whether `routeId` publishes no page and answers a redirect instead.
+ *
+ * The data is `content/routes.ts`'s {@link RETIRED_ROUTES}; the two helpers
+ * live here because a content module exports data and this package's own test
+ * enforces that — `schema.ts` is the model, and the model is where a helper
+ * over the model belongs.
+ */
+export function isRetiredRoute(routeId: RouteId): routeId is RetiredRouteId {
+  return Object.hasOwn(RETIRED_ROUTES, routeId);
+}
+
+/**
+ * The route a request for `routeId` should actually be served, following
+ * retirement at most one step.
+ *
+ * One step is the design, not a limitation. A retired route may not name
+ * another — asserted in `content.test.ts` — so following further would mean a
+ * chain exists, and a chain is the thing the plan forbids outright.
+ */
+export function finalRouteFor(routeId: RouteId): RouteId {
+  return isRetiredRoute(routeId) ? RETIRED_ROUTES[routeId] : routeId;
 }

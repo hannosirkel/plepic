@@ -8,6 +8,7 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  RETIRED_ROUTES,
   ROUTE_PATHS,
 } from "../../content/routes.js";
 import {
@@ -199,9 +200,19 @@ describe("exactly one canonical per page per locale", () => {
     }
   });
 
-  it("registers every route in the default edition, so nothing is unreachable without a prefix", () => {
+  /*
+   * A retired route is reachable without a prefix — it answers a 301 — but it
+   * registers no page, so it is subtracted here rather than counted as a hole
+   * in the default edition. `storefront/tests/retired-routes.test.ts` is where
+   * "reachable" is proved for those, against the proxy that answers them.
+   */
+  it("registers every unretired route in the default edition, so nothing is unreachable without a prefix", () => {
     const routes = pagesIn(DEFAULT_LOCALE).map((page) => page.route).toSorted();
-    expect(routes).toEqual(Object.keys(ROUTE_PATHS).toSorted());
+    expect(routes).toEqual(
+      Object.keys(ROUTE_PATHS)
+        .filter((route) => !Object.hasOwn(RETIRED_ROUTES, route))
+        .toSorted(),
+    );
   });
 
   it("keeps every other edition's registry a subset of the route table", () => {
