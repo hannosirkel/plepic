@@ -76,6 +76,7 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  RETIRED_ROUTES,
   ROUTE_PATHS,
 } from "../../content/routes.js";
 import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
@@ -352,6 +353,12 @@ const SHAPED: Partial<Record<RuntimeEnvVar, string>> = {
   // opaque token — a canary that cannot be a destination proves nothing about
   // whether the destination was baked in.
   EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: `https://build-canary-${uuid}.example.org/committee`,
+  // The campaign, the two social profiles and the origin story are rendered
+  // into `href`s for the same reason, so they need the same URL shape.
+  EXTERNAL_URL_KICKSTARTER_CAMPAIGN: `https://build-canary-${uuid}.example.org/campaign`,
+  EXTERNAL_URL_INSTAGRAM: `https://build-canary-${uuid}.example.org/instagram`,
+  EXTERNAL_URL_FACEBOOK: `https://build-canary-${uuid}.example.org/facebook`,
+  EXTERNAL_URL_ORIGIN_STORY: `https://build-canary-${uuid}.example.org/origin-story`,
 };
 
 const BUILD_TIME_ENV = Object.fromEntries(
@@ -398,6 +405,10 @@ const RUNTIME_ENV: Record<RuntimeEnvVar, string> = {
   MERCHANT_REGISTERED_ADDRESS: "1 Runtime Value Street, Runtime Value Town",
   MERCHANT_REGISTRATION_NUMBER: "RUNTIMEVALUE-REG",
   MERCHANT_RETURN_ADDRESS: "2 Runtime Value Street, Runtime Value Town",
+  EXTERNAL_URL_KICKSTARTER_CAMPAIGN: "https://runtime-value.example.org/campaign",
+  EXTERNAL_URL_INSTAGRAM: "https://runtime-value.example.org/instagram",
+  EXTERNAL_URL_FACEBOOK: "https://runtime-value.example.org/facebook",
+  EXTERNAL_URL_ORIGIN_STORY: "https://runtime-value.example.org/origin-story",
   MERCHANT_VAT_NUMBER: "RUNTIMEVALUE-VAT",
   EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: "https://runtime-value.example.org/committee",
   REDIRECT_MAP_PATH: runtimeRedirectMapPath,
@@ -418,7 +429,10 @@ async function startServer(env: Record<string, string>): Promise<RunningServer> 
   // `/` intentionally fails closed without Store configuration. Readiness is
   // a site-process check, so use a non-commerce route that every deployment
   // can serve even when a focused test starts an unconfigured Store seam.
-  await waitForServer(`http://127.0.0.1:${port}/about`, 60_000);
+  //
+  // Not `/about`: it is retired and answers a 301, and a redirect is not
+  // evidence that the site process can render anything.
+  await waitForServer(`http://127.0.0.1:${port}/legal/imprint`, 60_000);
   return { process: process_, port };
 }
 
@@ -2864,7 +2878,8 @@ describe("the served SEO surface", () => {
    * The walk is not the sitemap's entry list, deliberately: that omits `cart`
    * and `checkout` as never-indexed, and both are pages a visitor can paste
    * into a chat window. So it is the whole default route table plus every URL
-   * a further edition publishes.
+   * a further edition publishes — minus the retired routes, which serve no
+   * document to carry a card and are covered in `tests/retired-routes.test.ts`.
    */
   it("gives every URL any edition serves an absolute share card, built from the runtime base URL", async () => {
     const localized = LOCALES.filter((locale) => locale !== DEFAULT_LOCALE).flatMap((locale) =>
@@ -2875,7 +2890,11 @@ describe("the served SEO surface", () => {
       "no localized URL in the walk — this is the default-edition-only loop again",
     ).toBeGreaterThan(0);
 
-    for (const path of [...Object.values(ROUTE_PATHS), ...localized]) {
+    const served = Object.entries(ROUTE_PATHS)
+      .filter(([routeId]) => !Object.hasOwn(RETIRED_ROUTES, routeId))
+      .map(([, path]) => path);
+
+    for (const path of [...served, ...localized]) {
       const response = await requestWithHost(server.port, path, "runtime.example.com");
       expect(response.status, path).toBe(200);
 
@@ -3078,7 +3097,16 @@ describe("the publisher site renders without a backend at all", () => {
     ROUTE_PATHS.checkout,
   ]);
 
-  const editorial = Object.values(ROUTE_PATHS).filter((path) => !commercial.has(path));
+  /*
+   * Retired routes are excluded because they render nothing at all — they
+   * answer a 301 — so "renders without a backend" is not a question that can
+   * be asked of them. Their behaviour is asserted in
+   * `tests/retired-routes.test.ts` instead.
+   */
+  const editorial = Object.entries(ROUTE_PATHS)
+    .filter(([routeId]) => !Object.hasOwn(RETIRED_ROUTES, routeId))
+    .map(([, path]) => path)
+    .filter((path) => !commercial.has(path));
 
   it("serves every non-commercial route with no Store configuration and no backend traffic", async () => {
     expect(editorial.length).toBeGreaterThan(3);
@@ -3133,7 +3161,10 @@ describe("every hostname this deployment serves answers 200, not a 301", () => {
       RUNTIME_ENV.SITE_CANONICAL_HOST,
       ...RUNTIME_ENV.SITE_TEST_HOSTNAMES.split(",").map((value) => value.trim()),
     ]) {
-      const response = await requestWithHost(server.port, ROUTE_PATHS.about, host);
+      // A route this deployment actually serves. Not `about`: it is retired
+      // and 301s on every host, which would make this pass or fail for a
+      // reason that has nothing to do with the host.
+      const response = await requestWithHost(server.port, ROUTE_PATHS.legalImprint, host);
       expect(response.status, `${host} redirected its own visitors`).toBe(200);
       expect(response.headers.location, host).toBeUndefined();
     }

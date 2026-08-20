@@ -61,6 +61,7 @@ export default async function LunarBasePage() {
   return (
     <>
       <LunarBaseMockup
+        externalTargets={runtime.externalTargets}
         catalogue={catalogue}
         merchant={placeholderValuesFrom(runtime.merchant)}
         destinationSelector={<DestinationSelector destinationCode={destination.code} />}

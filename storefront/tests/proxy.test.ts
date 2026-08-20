@@ -63,7 +63,7 @@ describe("proxy(): the canonical-host redirect guard", () => {
       mapPath,
       JSON.stringify({
         hosts: {
-          "canonical.example.net": [{ path: "*", target: "about" }],
+          "canonical.example.net": [{ path: "*", target: "support" }],
         },
       }),
       "utf8",
@@ -92,7 +92,7 @@ describe("proxy(): the canonical-host redirect guard", () => {
       mapPath,
       JSON.stringify({
         hosts: {
-          "www.canonical.example.net": [{ path: "*", target: "about" }],
+          "www.canonical.example.net": [{ path: "*", target: "support" }],
         },
       }),
       "utf8",
@@ -111,7 +111,7 @@ describe("proxy(): the canonical-host redirect guard", () => {
         const response = proxy(request);
 
         expect(response.status).toBe(301);
-        expect(response.headers.get("location")).toBe("https://canonical.example.net/about");
+        expect(response.headers.get("location")).toBe("https://canonical.example.net/support/lunar-base");
       },
     );
   });
@@ -152,7 +152,7 @@ describe("proxy(): the redirect guard covers the canonical host and nothing else
     writeFileSync(
       mapPath,
       JSON.stringify({
-        hosts: { "test.canonical.example.net": [{ path: "*", target: "about" }] },
+        hosts: { "test.canonical.example.net": [{ path: "*", target: "support" }] },
       }),
       "utf8",
     );
@@ -178,7 +178,7 @@ describe("proxy(): the redirect guard covers the canonical host and nothing else
         const response = proxy(request);
 
         expect(response.status).toBe(301);
-        expect(response.headers.get("location")).toBe("https://canonical.example.net/about");
+        expect(response.headers.get("location")).toBe("https://canonical.example.net/support/lunar-base");
 
         // And it leaves before the noindex branch: the 301 off a test hostname
         // carries no `X-Robots-Tag` either, because `proxy()` returns at the
@@ -272,7 +272,7 @@ describe("proxy(): a redirect preserves the inbound query string", () => {
   it("redirects a path with no query string to a location with none either", () => {
     writeFileSync(
       mapPath,
-      JSON.stringify({ hosts: { "alt.example.org": [{ path: "*", target: "about" }] } }),
+      JSON.stringify({ hosts: { "alt.example.org": [{ path: "*", target: "support" }] } }),
       "utf8",
     );
 
@@ -288,7 +288,7 @@ describe("proxy(): a redirect preserves the inbound query string", () => {
     try {
       const request = new NextRequest("https://alt.example.org/", { headers: { host: "alt.example.org" } });
       const response = proxy(request);
-      expect(response.headers.get("location")).toBe("https://canonical.example.net/about");
+      expect(response.headers.get("location")).toBe("https://canonical.example.net/support/lunar-base");
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key as keyof typeof process.env];

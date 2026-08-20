@@ -408,7 +408,7 @@ export function LegalPageContent({
         ))}
       </main>
 
-      <SiteFooter locale={locale} route={page.route} />
+      <SiteFooter locale={locale} route={page.route} externalTargets={externalTargets} />
     </div>
   );
 }

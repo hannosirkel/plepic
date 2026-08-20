@@ -137,7 +137,6 @@ export const ANCHORS = [
   "proof",
   "story",
   "team",
-  "timeline",
   "newsletter",
   "rules-faq",
   "components",
@@ -155,6 +154,36 @@ export const ANCHORS = [
 ] as const;
 
 export type AnchorId = (typeof ANCHORS)[number];
+
+/**
+ * Routes that still have a path and still receive traffic, but publish no
+ * page — each mapped to the route its traffic is sent to instead.
+ *
+ * `about` is retired by the operator's decision of 2026-08-20. Everything the
+ * page carried apart from the timeline was already on the homepage, so it was
+ * very nearly a duplicate of the homepage's middle third competing with it for
+ * the same queries; the timeline was dropped rather than moved.
+ *
+ * **A retired route keeps its path on purpose.** The navigation still links to
+ * `/about` — that is the operator's instruction — and the path has been public
+ * long enough to be bookmarked and linked from elsewhere, so it has to answer
+ * something better than a 404. It is declared here rather than deleted from
+ * {@link ROUTE_PATHS} so that every link to it is still a typed route id
+ * resolved from one table, instead of a bare string somebody has to keep in
+ * step by hand.
+ *
+ * Two properties make a chain impossible, and both are asserted rather than
+ * assumed (`content.test.ts`, `storefront/tests/retired-routes.test.ts`):
+ * no retired route names itself, and no retired route names another retired
+ * route. The storefront resolves retirement **after** the host redirect map
+ * has turned its route id into a path, so a request for
+ * `www.<canonical>/about` is answered with one 301 to `/`, not two.
+ */
+export const RETIRED_ROUTES = {
+  about: "home",
+} as const satisfies Readonly<Partial<Record<RouteId, RouteId>>>;
+
+export type RetiredRouteId = keyof typeof RETIRED_ROUTES;
 
 /**
  * Named external destinations.
@@ -185,6 +214,7 @@ export const EXTERNAL_TARGETS = [
   "video-tutorial",
   "instagram",
   "facebook",
+  "origin-story",
   "consumer-disputes-committee",
 ] as const;
 

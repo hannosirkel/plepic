@@ -34,6 +34,16 @@ describe("getRuntimeConfig", () => {
      * goes somewhere nobody chose.
      */
     expect(config.externalTargets["consumer-disputes-committee"]).toBeNull();
+
+    /*
+     * And the four destinations the site's own copy links to. A default here
+     * would be a guess at somebody's social profile; `null` renders the label
+     * as inert text, which is what an unconfigured deployment should show.
+     */
+    expect(config.externalTargets["kickstarter-campaign"]).toBeNull();
+    expect(config.externalTargets.instagram).toBeNull();
+    expect(config.externalTargets.facebook).toBeNull();
+    expect(config.externalTargets["origin-story"]).toBeNull();
   });
 
   it("reads every field from the environment given to it, not from process.env of the test runner", () => {
@@ -53,6 +63,10 @@ describe("getRuntimeConfig", () => {
       MERCHANT_RETURN_ADDRESS: "2 Example Street, Example Town",
       MERCHANT_VAT_NUMBER: "EXAMPLE-VAT-1",
       EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE: "https://disputes.example.org/committee",
+      EXTERNAL_URL_KICKSTARTER_CAMPAIGN: "https://campaign.example.org/lunar-base",
+      EXTERNAL_URL_INSTAGRAM: "https://social.example.org/instagram",
+      EXTERNAL_URL_FACEBOOK: "https://social.example.org/facebook",
+      EXTERNAL_URL_ORIGIN_STORY: "https://stories.example.org/origin",
     });
 
     expect(config).toEqual({
@@ -76,6 +90,10 @@ describe("getRuntimeConfig", () => {
       },
       externalTargets: {
         "consumer-disputes-committee": "https://disputes.example.org/committee",
+        "kickstarter-campaign": "https://campaign.example.org/lunar-base",
+        instagram: "https://social.example.org/instagram",
+        facebook: "https://social.example.org/facebook",
+        "origin-story": "https://stories.example.org/origin",
       },
     });
   });

@@ -21,9 +21,16 @@
  *    styling that could be mistaken for one — a test certificate presented as
  *    an accolade is a fabricated award, which the plan forbids outright.
  * 3. **The age marking is not restated.** `FeatureSpecStrip` already renders
- *    "Age 10+ — a safety marking for this product, not a play recommendation."
- *    higher up the same page, from `mock/catalogue.json`. This block says what
- *    stands behind that marking rather than repeating it.
+ *    it higher up the same page, as the second line of the Player info column
+ *    ("Age 10 +"), from `content/lunar-base.ts`. This block says what stands
+ *    behind that marking rather than repeating it.
+ *
+ *    The strip used to state it as a sentence of its own — "a safety marking
+ *    for this product, not a play recommendation" — read from
+ *    `mock/catalogue.json`, because content carried no age entry at all.
+ *    Content carries it now, and the sentence went with the operator's
+ *    2026-08-20 rework. The framing it supplied is not lost: it is this
+ *    block's whole subject, one section further down the same page.
  *
  * The identity comes from configuration through the same resolver the legal
  * pages use, and for the same reason: an unconfigured manufacturer address is

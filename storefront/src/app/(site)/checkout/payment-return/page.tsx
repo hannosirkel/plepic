@@ -9,7 +9,7 @@ export const generateMetadata = makeMetadata("checkout");
 export default async function StripePaymentReturnPage() {
   const [runtimeConfig, nonce] = await Promise.all([getRuntimeConfig(), getRequestNonce()]);
   return (
-    <ShopPageShell>
+    <ShopPageShell externalTargets={runtimeConfig.externalTargets}>
       <StripePaymentReturn turnstileSiteKey={runtimeConfig.turnstile.siteKey} nonce={nonce} />
     </ShopPageShell>
   );

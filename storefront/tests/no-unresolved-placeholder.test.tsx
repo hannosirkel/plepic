@@ -39,7 +39,6 @@ import { CartProvider } from "../src/lib/cart-store.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
 import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
-import { AboutPageContent } from "../src/components/pages/AboutPageContent.js";
 import { RulebookPageContent } from "../src/components/pages/RulebookPageContent.js";
 import { SupportPageContent } from "../src/components/pages/SupportPageContent.js";
 import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
@@ -86,7 +85,6 @@ function unresolvedTokensIn(html: string): readonly string[] {
 const ROUTES: readonly { readonly path: string; readonly html: string }[] = [
   { path: "/", html: renderToStaticMarkup(<HomepageMockup />) },
   { path: "/games/lunar-base", html: renderToStaticMarkup(<LunarBaseMockup />) },
-  { path: "/about", html: renderToStaticMarkup(<AboutPageContent />) },
   {
     path: "/support/lunar-base",
     html: renderToStaticMarkup(

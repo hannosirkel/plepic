@@ -11,6 +11,21 @@
 import type { ProofStrip, Quotation } from "./schema.js";
 
 /**
+ * Paul Grogan on the card design — one string, two presentations.
+ *
+ * It is quoted on the product page as a {@link Quotation} and, since the
+ * operator's decision of 2026-08-20, heads the homepage proof strip as well.
+ * Those two renderings differ (the strip wraps it in typographic quotation
+ * marks; the quotation list does not), which is exactly how the same sentence
+ * would end up pasted twice and then drift by a word. It is declared once.
+ *
+ * "an artwork" is a correction the operator approved on 2026-08-20; the source
+ * transcript reads "a artwork". Nothing else about the wording is changed.
+ */
+export const cardDesignQuote =
+  "The look of the cards from an artwork and graphic design point of view – it’s very clear, very functional while also looking pretty. Which is a fine balance to get in games.";
+
+/**
  * Three items, each doing a different job.
  *
  * A visitor arrives with three objections, in this order: is this publisher
@@ -41,10 +56,16 @@ export const proofStrip: ProofStrip = {
       },
     },
     {
-      source: "E6",
-      headline: "On the shelf at Brætspilscaféen",
-      detail:
-        "The Danish board game café has sold around 50 copies, had us in to talk about how the game was made, and run its own Lunar Base tournament.",
+      source: "E3",
+      // Concatenated rather than interpolated, on purpose. `content.test.ts`
+      // reads these files as text, comments included: a template
+      // interpolation looks exactly like a substitution placeholder it must
+      // find a declaration for, and its leading sigil is also the
+      // currency-symbol guard's needle. Both guards fired on the first
+      // revision of this line, and again on the comment that explained why —
+      // which is the guards working, not overreaching.
+      headline: "“" + cardDesignQuote + "”",
+      detail: "Paul Grogan, Gaming Rules!",
     },
     {
       source: "E2",
@@ -56,7 +77,7 @@ export const proofStrip: ProofStrip = {
     {
       source: "E7",
       reason:
-        "Around 100 copies each through retail chains in Finland and Estonia. Verified, and it does the same job as the Brætspilscaféen item — third-party retail sell-through — with less of it: the chains cannot be named, so the visitor is asked to take an unnamed number on trust. Two retail figures in a three-item strip reads as padding. It stays on /about, in the timeline, where a run of dates earns it.",
+        "Around 100 copies each through retail chains in Finland and Estonia. Verified, but the chains cannot be named, so the visitor is asked to take an unnamed number on trust — weaker than the Brætspilscaféen item doing the same job. It used to survive on /about, in the timeline, where a run of dates earned it; the operator retired that page and dropped the timeline on 2026-08-20, so E7 now appears nowhere on the site. It is kept in the manifest rather than deleted because the figure is verified and a later section may earn it, but nothing renders it today and no reader should infer otherwise from this list.",
     },
     {
       source: "E1",
@@ -64,9 +85,9 @@ export const proofStrip: ProofStrip = {
         "Rodney Smith's top-10 pick at AireCon is the biggest name in the set, and it is the one item a cold visitor cannot check: the video has been removed and cannot be linked, so it stands on our word. A headline figure has to be checkable. It is also the item a designer is most likely to reach for a badge graphic to decorate, which the manifest forbids. It runs as a quotation on the game page, worded as what it is — a pick in a top-10 video.",
     },
     {
-      source: "E3",
+      source: "E6",
       reason:
-        "Paul Grogan's quotations are warm but inward-facing; the evidence manifest itself records them as weak proof to a visitor who has never heard of the game. Secondary position on the game page.",
+        "Around 50 copies through a Danish board game café, which also hosted a making-of talk and its own tournament. Verified, and it headed this strip until 2026-08-20, when the operator replaced it with E3. Third-party retail sell-through is the strongest *kind* of proof here, but the café cannot be introduced to a cold visitor in a headline — the item spent its detail line explaining who Brætspilscaféen is before the number meant anything. It survives in the publisher story's per-paragraph sourcing.",
     },
     {
       source: "E4",
@@ -108,7 +129,7 @@ export const quotations: readonly Quotation[] = [
   {
     source: "E3",
     attribution: "Paul Grogan, Gaming Rules!",
-    text: "The look of the cards from a artwork and graphic design point of view – it's very clear, very functional while also looking pretty. Which is a fine balance to get in games.",
+    text: cardDesignQuote,
   },
   {
     source: "E2",

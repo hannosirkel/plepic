@@ -17,22 +17,31 @@
  * marks (Facebook, Instagram, Twitter, YouTube, Kickstarter) in
  * `~/lunarfiles/Web/Elements/Icons/` are the operator's asset manifest's own
  * flag — "adapt — confirm current platform brand-mark guidelines before
- * reuse" — and this unit does not commit them. The two social destinations
- * `content/routes.ts` declares (`instagram`, `facebook`) are external targets
- * with no URL resolvable in a static mockup (see `mockups/link-target.ts`),
- * so they render as plain text and *not* inside a `<nav>`: a navigation
- * landmark containing nothing navigable is a landmark that lies to a screen
- * reader user who jumps to it. When the targets resolve, the text becomes
- * anchors and the `<nav>` comes back with them.
+ * reuse" — and this unit does not commit them. So the row is text, not marks,
+ * and that part is unchanged.
+ *
+ * **What changed on 2026-08-20 is that the destinations now resolve.** The two
+ * social ids `content/routes.ts` declares had no configuration behind them in
+ * any deployment, so every page rendered them as plain text; the operator
+ * reported them as broken links, and they were. The rule this file already
+ * stated is what governs both states: plain text stays *outside* a `<nav>`,
+ * because a navigation landmark containing nothing navigable lies to a screen
+ * reader user who jumps to it, and when the targets resolve the text becomes
+ * anchors and the `<nav>` comes back with them. Both halves are now reachable
+ * and both are exercised — a footer given no `externalTargets`, which is every
+ * static mockup, still renders the text-only form.
  */
 import {
   DEFAULT_LOCALE,
   LOCALE_DEFINITIONS,
   ROUTE_PATHS,
+  type ExternalTargetId,
   type Locale,
   type RouteId,
 } from "../../../content/routes.js";
 import { publisherShort } from "../../../content/publisher.js";
+import { resolveLinkHref } from "./mockups/link-target.js";
+import type { ExternalTargetUrls } from "../config/runtime-config.js";
 import {
   CHROME_STRINGS,
   LANGUAGE_SWITCHER_LABELS,
@@ -79,10 +88,32 @@ export interface SiteFooterProps {
    * internal inbound link at all and no way back out but the browser bar.
    */
   readonly route?: RouteId;
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`). Absent
+   * — every static mockup — keeps the inert text row described above.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
 }
 
-export function SiteFooter({ locale = DEFAULT_LOCALE, route }: SiteFooterProps) {
+/** The social row, in the order the old site listed them. */
+const SOCIAL_LINK_ORDER = [
+  { target: "instagram", label: "Instagram" },
+  { target: "facebook", label: "Facebook" },
+] as const satisfies readonly { target: ExternalTargetId; label: string }[];
+
+export function SiteFooter({
+  locale = DEFAULT_LOCALE,
+  route,
+  externalTargets = {},
+}: SiteFooterProps) {
   const strings = CHROME_STRINGS[locale];
+  const social = SOCIAL_LINK_ORDER.map((entry) => ({
+    ...entry,
+    href: resolveLinkHref({ kind: "external", to: entry.target }, externalTargets),
+  }));
+  const navigableSocial = social.filter(
+    (entry): entry is (typeof social)[number] & { href: string } => entry.href !== undefined,
+  );
   const alternates =
     route === undefined
       ? []
@@ -125,11 +156,26 @@ export function SiteFooter({ locale = DEFAULT_LOCALE, route }: SiteFooterProps) 
         </nav>
       ) : null}
 
-      {/* Plain text, deliberately outside a <nav> — see the file comment above. */}
-      <p className={styles.social}>
-        <span className={styles.socialLink}>Instagram</span>
-        <span className={styles.socialLink}>Facebook</span>
-      </p>
+      {navigableSocial.length === social.length ? (
+        <nav className={styles.social} aria-label={strings.socialNavLabel}>
+          {navigableSocial.map((entry) => (
+            <a key={entry.target} className={styles.socialLink} href={entry.href}>
+              {entry.label}
+            </a>
+          ))}
+        </nav>
+      ) : (
+        /* Mixed or unresolved: plain text, deliberately outside a <nav> — see
+           the file comment. A <nav> holding one of two advertised destinations
+           is the same lie in a smaller size. */
+        <p className={styles.social}>
+          {social.map((entry) => (
+            <span key={entry.target} className={styles.socialLink}>
+              {entry.label}
+            </span>
+          ))}
+        </p>
+      )}
     </footer>
   );
 }

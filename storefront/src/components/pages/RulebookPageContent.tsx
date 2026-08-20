@@ -28,6 +28,7 @@
  * this page is token-coloured.
  */
 import { SiteFooter } from "../SiteFooter.js";
+import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
 import ctaStyles from "../../styles/mockups/call-to-action.module.css";
 import styles from "../../styles/pages/rulebook.module.css";
@@ -44,7 +45,15 @@ const RULEBOOK_PATH = "/documents/lunar-base-rulebook.pdf";
  */
 const RULEBOOK_MEGABYTES = "8.9";
 
-export function RulebookPageContent() {
+export interface RulebookPageContentProps {
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
+   * to the footer's social row. Absent keeps it inert text.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
+}
+
+export function RulebookPageContent({ externalTargets = {} }: RulebookPageContentProps = {}) {
   return (
     <div data-layer="lunar" className={styles.page}>
       <SiteHeader wordmark="dark" />
@@ -67,7 +76,7 @@ export function RulebookPageContent() {
         </div>
       </main>
 
-      <SiteFooter />
+      <SiteFooter externalTargets={externalTargets} />
     </div>
   );
 }

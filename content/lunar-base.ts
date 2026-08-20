@@ -9,9 +9,11 @@
  */
 
 import type {
+  Attribution,
   CallToAction,
   FaqEntry,
   ListItem,
+  Prose,
   Section,
   Statement,
 } from "./schema.js";
@@ -55,6 +57,31 @@ export const heroFacts: readonly Statement[] = [
   { text: "About 30 minutes to play.", source: "E10" },
 ];
 
+/**
+ * The homepage's featured-game description, supplied by the operator on
+ * 2026-08-20.
+ *
+ * This is the section a visitor meets before they have decided to click
+ * through, so the operator asked for the whole shape of the game in one
+ * panel rather than two quotations about it.
+ *
+ * **It reinstates wording {@link pitch}'s comment above argues against**, and
+ * that is a decision rather than an oversight: "medium-light weight" is jargon
+ * a general buyer cannot parse, and the reasoning for dropping it still holds
+ * for the *product page's hero*, where a visitor is three lines from a
+ * purchase. Here the adjectives sit beside the figures that ground them —
+ * "about 30 minutes" is in the same sentence — and the audience is a reader
+ * still working out what the game is. Both placements are the operator's call;
+ * the hero's line 2 is unchanged.
+ *
+ * {@link replayability} and {@link gameNightUse} remain the recorded official
+ * wording and keep their manifest sourcing, but no page renders them now.
+ */
+export const featuredDescription: Prose = [
+  "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base. It’s fast-paced (plays in about 30 minutes), medium-light weight, easy to learn, and quick to set up.",
+  "Lunar Base brings a lot to the table for its compact size. It has high-quality print production and artwork, great replayability, portability, flexible scaling of difficulty, and a satisfying amount of depth through different strategies to victory.",
+];
+
 /** Official wording, verbatim. Replayability. */
 export const replayability: Statement = {
   text: "The game offers replayability and complexity through 4 unique win conditions, different strategies, card combinations, and the add-on Influence cards that change up the dynamics of the gameplay.",
@@ -67,13 +94,56 @@ export const gameNightUse: Statement = {
   source: "official-wording",
 };
 
-/** The specification strip beside the box. Every figure keys to the manifest. */
-export const specifications: readonly ListItem[] = [
-  { term: "Players", detail: "2–6", source: "E9" },
-  { term: "Playing time", detail: "About 30 minutes", source: "E10" },
-  { term: "Setup", detail: "About a minute", source: "E11" },
-  { term: "Weight", detail: "Medium-light", source: "official-wording" },
-  { term: "Cards", detail: "90", source: "components" },
+/**
+ * The five-column feature strip beside the box, in the retail box back's own
+ * captions and wording, on the operator's instruction of 2026-08-20.
+ *
+ * It replaces five bare specifications — Players, Playing time, Setup, Weight,
+ * Cards — that read as a data sheet. The box a buyer is holding groups the same
+ * facts as five *features* with a sentence each, and it is also what the icons
+ * were drawn for: `storefront/src/components/FeatureSpecStrip.tsx` had already
+ * derived the icon-to-column pairing from the printed box, and this brings the
+ * captions into line with the pairing rather than the other way round.
+ *
+ * `detail` is {@link Prose} rather than a string because Player info carries
+ * two lines, exactly as the box prints them.
+ *
+ * The card count is the one fact that leaves the strip. It is not lost: it is
+ * in {@link inTheBoxSummary} and {@link featuredDescription}, where a
+ * component list is what a reader is actually looking for.
+ */
+export interface FeatureSpec {
+  readonly term: string;
+  readonly detail: Prose;
+  readonly source: Attribution;
+}
+
+export const specifications: readonly FeatureSpec[] = [
+  {
+    term: "Fast-paced",
+    detail: ["Games take on average 30 min. Enjoy it on a break!"],
+    source: "E10",
+  },
+  {
+    term: "Replayable",
+    detail: ["Each game is unique. Add additional cards or alternate rules."],
+    source: "official-wording",
+  },
+  {
+    term: "Quick Start",
+    detail: ["Learn it in 20 min. Setup in 1 min."],
+    source: "E11",
+  },
+  {
+    term: "Portable",
+    detail: ["Travel sized to fit in your pocket. Take it anywhere!"],
+    source: "E12",
+  },
+  {
+    term: "Player info",
+    detail: ["2 - 6 players", "Age 10 +"],
+    source: "E9",
+  },
 ];
 
 /**
@@ -93,6 +163,25 @@ export const howItPlays: Section = {
   ],
   source: "rulebook",
 };
+
+/**
+ * The four teaser videos, added on the operator's instruction of 2026-08-20.
+ *
+ * A YouTube id is not a URL and not a hostname, which is why these may sit in
+ * a content file at all while the campaign link next to them may not: the id
+ * names a video, and `VideoEmbed` is the single place that knows which host
+ * turns an id into an embed. `content.test.ts`'s hostname guard would refuse
+ * the URL form outright, and it would be right to.
+ *
+ * They are a supplement to the trailer, not a second thing to watch first, so
+ * the Watch section renders them smaller and in one row beneath it.
+ */
+export const teaserVideos: readonly { heading: string; title: string; youTubeId: string }[] = [
+  { heading: "Teaser 1", title: "Lunar Base Teaser - Part 1", youTubeId: "QZ_Pqf3eY4o" },
+  { heading: "Teaser 2", title: "Lunar Base Teaser - Part 2", youTubeId: "KSuIqu5qzTM" },
+  { heading: "Teaser 3", title: "Lunar Base Teaser - Part 3", youTubeId: "JjlDpS2ByXY" },
+  { heading: "Teaser 4", title: "Lunar Base Teaser - Part 4", youTubeId: "v0lS1aenCXU" },
+];
 
 /**
  * The four victory paths.

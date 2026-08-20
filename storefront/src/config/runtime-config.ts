@@ -118,12 +118,19 @@ export interface MerchantConfig {
  * not configured it", and what a page does with a `null` is again a question
  * of what that page owes the reader, not of taste.
  *
- * Only the ids a deployment can actually configure appear here. The other
- * seven external targets (the campaign, the two video links, the retailer, the
- * two social profiles, the listing sites) have no variable behind them yet and
- * are still rendered as inert text by `src/components/mockups/link-target.ts`;
- * this type is `Partial` so that stays a visible fact rather than seven
- * permanently-null fields pretending to be configurable.
+ * Only the ids a deployment can actually configure appear here, and this type
+ * is `Partial` so an id with no variable behind it stays a visible fact rather
+ * than a permanently-null field pretending to be configurable.
+ *
+ * **The campaign, the two social profiles and the origin story sat in that
+ * unconfigurable class until 2026-08-20, and the effect was a served site
+ * whose footer and proof strip rendered "Instagram", "Facebook" and "See the
+ * campaign" as grey text nobody could click.** The seam was never at fault —
+ * `resolveLinkHref` has always returned a real `href` for a configured id —
+ * the URLs simply had nowhere to come from. Four variables close that. The
+ * remaining four ids (the two video links, the retailer, the listing sites)
+ * stay inert on purpose: no copy links to them, so a variable for them would
+ * be configuration nothing reads.
  */
 export type ExternalTargetUrls = Readonly<Partial<Record<ExternalTargetId, string | null>>>;
 
@@ -174,6 +181,10 @@ export function getRuntimeConfig(env: EnvRecord = process.env): RuntimeConfig {
     externalTargets: {
       "consumer-disputes-committee":
         readEnv("EXTERNAL_URL_CONSUMER_DISPUTES_COMMITTEE", env) ?? null,
+      "kickstarter-campaign": readEnv("EXTERNAL_URL_KICKSTARTER_CAMPAIGN", env) ?? null,
+      instagram: readEnv("EXTERNAL_URL_INSTAGRAM", env) ?? null,
+      facebook: readEnv("EXTERNAL_URL_FACEBOOK", env) ?? null,
+      "origin-story": readEnv("EXTERNAL_URL_ORIGIN_STORY", env) ?? null,
     },
   };
 }

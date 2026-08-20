@@ -26,7 +26,7 @@
  *
  * The legal pages are projections of `content/legal/*` through one component,
  * so pointing that component at another locale's content is the whole change.
- * The marketing pages are not: `AboutPageContent`, `SupportPageContent`,
+ * The marketing pages are not: `SupportPageContent`,
  * `HomepageMockup` and `LunarBaseMockup` import `content/publisher.ts`,
  * `content/lunar-base.ts` and `content/support.ts` directly, and no amount of
  * routing makes those read a locale. Making them locale-aware is a change to

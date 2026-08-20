@@ -43,7 +43,7 @@ export const SOURCES: Readonly<Record<SourceId, Source>> = {
       "Quoted passages on repeat plays and on the clarity of the card design.",
     presentation: ["quotation"],
     caution:
-      "Strong voice, weak proof to a visitor who has never heard of the game. Secondary position only, never the proof strip.",
+      "Strong voice, weak proof to a visitor who has never heard of the game. This manifest's own reading was 'secondary position only, never the proof strip'. The operator overrode it on 2026-08-20 and put the card-design quotation at the head of the strip in place of E6. Recorded rather than deleted: the caution is still the honest assessment of what this source proves to a stranger, and a writer reaching for E3 later should meet the argument and the override together, rather than a manifest that has quietly agreed with whatever the site happens to do.",
   },
   E4: {
     id: "E4",

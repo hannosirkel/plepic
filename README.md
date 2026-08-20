@@ -2107,8 +2107,13 @@ where they arrive as variables and stay data.
 
 ### Browser screenshots
 
-The browser suite covers real Chromium interaction and the eight committed
-screenshots (home, Lunar Base, basket, and checkout at desktop and mobile).
+The browser suite covers real Chromium interaction and the 32 committed
+screenshots: every route in the suite's own `visualRoutes` table at desktop and
+mobile, plus the below-fold captures of the homepage story, the Lunar Base
+table photograph and the Watch section. It was eight when this paragraph was
+written -- home, Lunar Base, basket and checkout -- and the count is not worth
+maintaining by hand a third time, so treat `storefront/tests/screenshots/` as
+the list and this sentence as the reason it is that long.
 CI runs it in this exact immutable image:
 
 ```text

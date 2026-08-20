@@ -25,7 +25,7 @@
  *   mounts `TurnstileWidget` and `HoneypotField` — both built and mounted
  *   nowhere until this unit.
  */
-import { pitch, differentiator, gameNightUse, replayability } from "../../../../content/lunar-base.js";
+import { pitch, differentiator, featuredDescription } from "../../../../content/lunar-base.js";
 import {
   homepageCallsToAction,
   publisherSentence,
@@ -39,6 +39,8 @@ import { ProofStripSection } from "../ProofStripSection.js";
 import { TeamPhotoSection } from "../TeamPhotoSection.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { SiteFooter } from "../SiteFooter.js";
+import { resolveLinkHref } from "./link-target.js";
+import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import styles from "../../styles/mockups/homepage.module.css";
 
 export interface HomepageMockupProps {
@@ -48,12 +50,20 @@ export interface HomepageMockupProps {
   readonly turnstileSiteKey?: string | null;
   /** This request's CSP nonce (`getRequestNonce()`). */
   readonly nonce?: string | undefined;
+  /**
+   * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
+   * to the proof strip and the footer. Absent keeps both in their inert-text
+   * form, which is what a static mockup wants and what the served page got by
+   * accident until 2026-08-20.
+   */
+  readonly externalTargets?: ExternalTargetUrls;
 }
 
 export function HomepageMockup({
   catalogue = resolveCatalogue(),
   turnstileSiteKey = null,
   nonce = undefined,
+  externalTargets = {},
 }: HomepageMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
@@ -91,7 +101,7 @@ export function HomepageMockup({
         </section>
 
         <section id="proof" className={styles.section} aria-label="Proof">
-          <ProofStripSection />
+          <ProofStripSection externalTargets={externalTargets} />
         </section>
 
         <section id="featured-game" data-layer="lunar" className={styles.featured} aria-labelledby="featured-game-heading">
@@ -99,8 +109,11 @@ export function HomepageMockup({
             <h2 id="featured-game-heading" className={styles.featuredHeading}>
               {resolve("{productName}")}
             </h2>
-            <p className={styles.featuredBody}>{replayability.text}</p>
-            <p className={styles.featuredBody}>{gameNightUse.text}</p>
+            {featuredDescription.map((paragraph) => (
+              <p key={paragraph} className={styles.featuredBody}>
+                {paragraph}
+              </p>
+            ))}
             <CallToActionLink
               action={{ label: "Explore Lunar Base", emphasis: "primary", target: { kind: "route", to: "lunarBase" } }}
             />
@@ -128,6 +141,20 @@ export function HomepageMockup({
                 {paragraph}
               </p>
             ))}
+            {/* The published origin story lives off-site, so an unconfigured
+                deployment renders no link rather than a dead one — the class-2
+                degradation `mockups/link-target.ts` describes. */}
+            {(publisherStory.links ?? []).map((link) => {
+              const href = resolveLinkHref(link.target, externalTargets);
+              if (href === undefined) return null;
+              return (
+                <p key={link.label} className={styles.body}>
+                  <a href={href} aria-label={link.accessibleLabel} rel="noopener">
+                    {link.label}
+                  </a>
+                </p>
+              );
+            })}
           </div>
           <TeamPhotoSection />
         </section>
@@ -145,7 +172,7 @@ export function HomepageMockup({
         </section>
       </main>
 
-      <SiteFooter />
+      <SiteFooter externalTargets={externalTargets} />
     </div>
   );
 }

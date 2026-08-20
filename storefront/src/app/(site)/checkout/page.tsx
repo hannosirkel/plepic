@@ -54,7 +54,7 @@ export default async function CheckoutPage({
     : null;
 
   return (
-    <ShopPageShell>
+    <ShopPageShell externalTargets={runtimeConfig.externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
         <CheckoutPageContent
           turnstileSiteKey={runtimeConfig.turnstile.siteKey}

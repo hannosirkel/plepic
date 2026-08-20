@@ -25,36 +25,31 @@
  * | `mission-control`      | QUICK START   | Learn it in 20 min. Setup in 1 |
  * | `galaxy`               | REPLAYABLE    | Add cards or alternate rules   |
  *
- * The old order put the rocket on Players and the galaxy on Playing time,
- * contradicting the box a buyer is holding. `PAIRING` below follows the box
- * for the three facts the box states (Players, Playing time, Setup). Weight
- * and Cards have no printed counterpart, so they take the two remaining
- * icons on the nearest reading the box supports — PORTABLE for a
- * medium-light game, REPLAYABLE for the card count that supplies the
- * replay — and that residue, not the box-stated three, is the only judgement
- * call in this file.
+ * **The pairing is now trivial, and that is the point.** An earlier revision
+ * of this file paired five icons against five bare specifications — Players,
+ * Playing time, Setup, Weight, Cards — which meant matching a box caption to a
+ * data-sheet row and reasoning about the two that had no printed counterpart.
+ * On 2026-08-20 the operator replaced those specifications with the box's own
+ * five captions, so every column now pairs with the icon drawn for it by name.
+ * There is no judgement call left in this file.
  *
  * ## The age marking
  *
- * The five columns come from `content/`, which this unit may not edit, and
- * `content/lunar-base.ts`'s `specifications` carries no age entry — so `10+`
- * appeared nowhere on the served product page at all. It is not invented
- * here either: `storefront/mock/catalogue.json` already carries
- * `"ageRange": "10+"`, and the retail box back photographed in
- * `public/images/box/box-hero-*.webp` prints "PLAYER INFO / 2–6 players, age
- * 10+". So it is rendered from the catalogue, beneath the strip rather than
- * as a sixth column: the strip is a five-icon composite rebuilt from a
- * printed graphic, and a sixth cell would need a sixth icon nothing pairs
- * with.
+ * `10+` used to be rendered here, from `storefront/mock/catalogue.json`, as a
+ * sentence beneath the strip: the specifications carried no age entry, so the
+ * marking appeared nowhere on the product page otherwise, and it was worded as
+ * a safety marking rather than a play recommendation.
  *
- * It is worded as a **safety marking, not a play recommendation** — an age
- * grade on a toy is a conformity statement about the product, and reading it
- * as "children under ten will not enjoy this" is a different claim. The
- * CE / EN71-1 / EN71-2 / EN71-3 certification copy that states *why* is
- * `content/`'s, and belongs to the unit that owns `content/`; it is
- * deliberately absent here rather than paraphrased into a component.
+ * Both the sentence and the catalogue read are gone. The box's own PLAYER INFO
+ * column states "2 - 6 players / Age 10 +", so the marking is on the page as
+ * content, from `content/`, where the rest of the copy lives — and a component
+ * reaching into the mock catalogue to supply a fact that content did not have
+ * was always a workaround for that gap rather than a design.
+ *
+ * The safety-marking *framing* is not lost with the sentence: the CE / EN71
+ * certification copy on the same page states what the age grade is and why,
+ * and it belongs to `content/`, which owns it.
  */
-import { mockCatalogue } from "../lib/catalogue.js";
 import { specifications } from "../../../content/lunar-base.js";
 import {
   AlienAbductionIcon,
@@ -73,11 +68,11 @@ import styles from "../styles/feature-spec-strip.module.css";
  * icons — which is exactly how the previous mispairing survived review.
  */
 const PAIRING: Readonly<Record<string, FC<FeatureIconProps>>> = {
-  Players: AstronautHelmetIcon,
-  "Playing time": ShuttleLaunchIcon,
-  Setup: MissionControlIcon,
-  Weight: AlienAbductionIcon,
-  Cards: GalaxyIcon,
+  "Fast-paced": ShuttleLaunchIcon,
+  Replayable: GalaxyIcon,
+  "Quick Start": MissionControlIcon,
+  Portable: AlienAbductionIcon,
+  "Player info": AstronautHelmetIcon,
 };
 
 /**
@@ -97,12 +92,7 @@ if (unpaired.length > 0 || specifications.length !== Object.keys(PAIRING).length
   );
 }
 
-export interface FeatureSpecStripProps {
-  /** The age marking, e.g. `"10+"`. Defaults to `mock/catalogue.json`'s own `ageRange`. */
-  readonly ageRange?: string;
-}
-
-export function FeatureSpecStrip({ ageRange = mockCatalogue.ageRange }: FeatureSpecStripProps = {}) {
+export function FeatureSpecStrip() {
   return (
     <div className={styles.stripGroup}>
       <ul className={styles.strip}>
@@ -112,15 +102,15 @@ export function FeatureSpecStrip({ ageRange = mockCatalogue.ageRange }: FeatureS
             <li key={spec.term} className={styles.column}>
               <Icon title="" className={styles.icon} />
               <span className={styles.term}>{spec.term}</span>
-              <span className={styles.detail}>{spec.detail}</span>
+              {spec.detail.map((line) => (
+                <span key={line} className={styles.detail}>
+                  {line}
+                </span>
+              ))}
             </li>
           );
         })}
       </ul>
-      <p className={styles.ageNote}>
-        <strong className={styles.ageValue}>Age {ageRange}</strong> — a safety marking for this product, not a
-        play recommendation.
-      </p>
     </div>
   );
 }
