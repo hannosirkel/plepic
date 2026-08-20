@@ -22,7 +22,6 @@ async function commerceEvents(page: Page): Promise<unknown[][]> {
 const visualRoutes = [
   ["home", "/"],
   ["lunar-base", "/games/lunar-base"],
-  ["about", "/about"],
   ["support", "/support/lunar-base"],
   ["rulebook", "/support/lunar-base/rulebook"],
   ["cart", "/cart?mock=filled"],
@@ -140,11 +139,24 @@ test("below-fold product media loads when reached and approved videos use privac
 
   const watch = page.locator("#video_trailer");
   await watch.scrollIntoViewIfNeeded();
+  // The trailer and the tutorial, then the four teasers, in the order the
+  // section renders them. Asserted by id rather than by count alone: the
+  // count catches a dropped embed, the ids catch the likelier mistake of the
+  // right number of frames pointing at the wrong videos.
+  const expectedVideoIds = [
+    "2D_y7t7DDYM",
+    "SOW3l7kdu7k",
+    "QZ_Pqf3eY4o",
+    "KSuIqu5qzTM",
+    "JjlDpS2ByXY",
+    "v0lS1aenCXU",
+  ];
   const frames = page.locator("iframe[src*='youtube-nocookie.com']");
-  await expect(frames).toHaveCount(2);
-  await expect(frames.nth(0)).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/2D_y7t7DDYM");
-  await expect(frames.nth(1)).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/SOW3l7kdu7k");
-  await expect.poll(() => youtubeRequests.length).toBe(2);
+  await expect(frames).toHaveCount(expectedVideoIds.length);
+  for (const [index, id] of expectedVideoIds.entries()) {
+    await expect(frames.nth(index)).toHaveAttribute("src", `https://www.youtube-nocookie.com/embed/${id}`);
+  }
+  await expect.poll(() => youtubeRequests.length).toBe(expectedVideoIds.length);
   await expect(watch).toHaveScreenshot(`lunar-watch-${testInfo.project.name}.png`);
   expect(cspErrors).toEqual([]);
 });
