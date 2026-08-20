@@ -63,7 +63,7 @@ export const publisherStory: Section = {
   source: "E8",
   links: [
     {
-      label: "Origin story",
+      label: "Origin Story",
       target: { kind: "external", to: "origin-story" },
       accessibleLabel: "Read the Lunar Base origin story",
     },

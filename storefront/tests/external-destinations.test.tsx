@@ -24,6 +24,7 @@ import { describe, expect, it } from "vitest";
 import { EXTERNAL_TARGETS } from "../../content/routes.js";
 import { getRuntimeConfig } from "../src/config/runtime-config.js";
 import { RUNTIME_ENV_VARS } from "../src/config/runtime-env.js";
+import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
 import { ProofStripSection } from "../src/components/ProofStripSection.js";
 import { SiteFooter } from "../src/components/SiteFooter.js";
 
@@ -123,5 +124,35 @@ describe("the footer's social row", () => {
 
     expect(html).not.toContain('aria-label="Social"');
     expect(hrefs(html)).not.toContain(CONFIGURED.EXTERNAL_URL_INSTAGRAM);
+  });
+});
+
+describe("the homepage story heading", () => {
+  /*
+   * The operator's note of 2026-08-20 was that the origin-story link was
+   * "unformatted" — a bare anchor in body type under the last paragraph. It is
+   * now the section's heading. Both states are pinned because the interesting
+   * one is the unconfigured deployment: a heading that vanishes with its
+   * destination would take the section's accessible name with it, since
+   * `aria-labelledby` points at it.
+   */
+  function storyHeading(html: string): string {
+    return /<h2[^>]*id="story-heading"[^>]*>([\s\S]*?)<\/h2>/.exec(html)?.[1] ?? "";
+  }
+
+  it("is a link to the origin story when one is configured", () => {
+    const config = getRuntimeConfig(CONFIGURED);
+    const heading = storyHeading(renderToStaticMarkup(<HomepageMockup externalTargets={config.externalTargets} />));
+
+    expect(heading).toContain(CONFIGURED.EXTERNAL_URL_ORIGIN_STORY);
+    expect(heading).toContain("Origin Story");
+  });
+
+  it("is still a heading, with its text, when nothing configures the destination", () => {
+    const heading = storyHeading(renderToStaticMarkup(<HomepageMockup />));
+
+    expect(heading, "the section would lose its accessible name").not.toBe("");
+    expect(heading).toContain("Origin Story");
+    expect(heading, "a heading must not become a dead anchor").not.toContain("<a");
   });
 });

@@ -66,6 +66,15 @@ export function HomepageMockup({
   externalTargets = {},
 }: HomepageMockupProps = {}) {
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
+  /*
+   * One link in the story section, and it is the heading. `content` still
+   * declares it as a link on the section, so the label and the destination stay
+   * where every other label and destination live.
+   */
+  const originStory = (publisherStory.links ?? [])[0];
+  const originStoryHref =
+    originStory === undefined ? undefined : resolveLinkHref(originStory.target, externalTargets);
+  const storyHeading = originStory?.label ?? publisherStory.heading;
 
   return (
     <div data-layer="publisher" className={styles.page}>
@@ -132,31 +141,37 @@ export function HomepageMockup({
         </section>
 
         <section id="story" className={styles.section} aria-labelledby="story-heading">
+          {/*
+            * The heading is the link to the published origin story, on the
+            * operator's instruction of 2026-08-20. It replaces both the old
+            * heading and the plain-text link that used to sit under the last
+            * paragraph, unformatted and easy to miss.
+            *
+            * When no deployment configures the destination the heading is still
+            * a heading — text, not a dead anchor. That is `link-target.ts`'s
+            * class-2 degradation applied to a heading rather than a link: the
+            * section must keep its accessible name either way, because
+            * `aria-labelledby` points at it.
+            */}
           <h2 id="story-heading" className={styles.heading}>
-            {publisherStory.heading}
+            {originStoryHref === undefined ? (
+              storyHeading
+            ) : (
+              <a className={styles.headingLink} href={originStoryHref} rel="noopener">
+                {storyHeading}
+              </a>
+            )}
           </h2>
-          <div className={styles.storyBody}>
-            {publisherStory.body.map((paragraph) => (
-              <p key={paragraph} className={styles.body}>
-                {paragraph}
-              </p>
-            ))}
-            {/* The published origin story lives off-site, so an unconfigured
-                deployment renders no link rather than a dead one — the class-2
-                degradation `mockups/link-target.ts` describes. */}
-            {(publisherStory.links ?? []).map((link) => {
-              const href = resolveLinkHref(link.target, externalTargets);
-              if (href === undefined) return null;
-              return (
-                <p key={link.label} className={styles.body}>
-                  <a href={href} aria-label={link.accessibleLabel} rel="noopener">
-                    {link.label}
-                  </a>
+          <div className={styles.storyLayout}>
+            <TeamPhotoSection />
+            <div className={styles.storyBody}>
+              {publisherStory.body.map((paragraph) => (
+                <p key={paragraph} className={styles.body}>
+                  {paragraph}
                 </p>
-              );
-            })}
+              ))}
+            </div>
           </div>
-          <TeamPhotoSection />
         </section>
 
         <section id="newsletter" className={styles.newsletter} aria-labelledby="newsletter-heading">

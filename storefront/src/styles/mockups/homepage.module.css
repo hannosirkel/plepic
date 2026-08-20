@@ -103,11 +103,53 @@
   letter-spacing: var(--letter-spacing-heading);
 }
 
-.storyBody {
+/*
+ * The heading of the story section is a link to the published origin story.
+ *
+ * It has to read as the heading it is *and* be visibly a link — the operator's
+ * note was that the previous link, a bare anchor in body type under the last
+ * paragraph, was unformatted and easy to miss. So it inherits the heading's
+ * size, weight and colour from `.heading` and adds only what marks a link:
+ * an underline offset far enough not to collide with the descenders at this
+ * size, and the accent on hover and focus.
+ *
+ * Colour is not the only signal (WCAG 1.4.1), because the underline is always
+ * present rather than appearing on hover.
+ */
+.headingLink {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.12em;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.headingLink:hover,
+.headingLink:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The story: the photograph beside the prose, one section, since the operator
+ * merged the team section into it on 2026-08-20.
+ *
+ * The image column is the narrower of the two and is capped, so the prose keeps
+ * a readable measure on a wide viewport rather than stretching to fill whatever
+ * is left over.
+ */
+.storyLayout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-md) var(--space-2xl);
-  max-width: 68rem;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(var(--space-xl), 5vw, var(--space-3xl));
+  align-items: center;
+  max-width: 76rem;
+}
+
+.storyBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 44rem;
 }
 
 .body {
@@ -231,7 +273,7 @@
     align-items: stretch;
   }
 
-  .storyBody,
+  .storyLayout,
   .newsletter {
     grid-template-columns: 1fr;
   }
