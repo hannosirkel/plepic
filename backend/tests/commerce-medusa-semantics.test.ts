@@ -17,6 +17,7 @@ import {
   SHIPPING_ZONES,
   shippingAmountMinorForCountry,
 } from "../src/commerce/shipping-model.js";
+import { TAX_PROVIDER_ID } from "../src/commerce/tax-model.js";
 
 /**
  * What **Medusa** does with the configuration this repository declares.
@@ -25,10 +26,12 @@ import {
  * and `commerce-medusa-target.test.ts` checks that each record reaches the right
  * workflow — but both replace every core-flow with a recorder, so neither can
  * see a defect that lives in Medusa's reaction to the records rather than in the
- * records themselves. Two such defects reached review on this branch: a shipping
- * option Medusa refuses to create because the fulfillment provider is not
- * enabled at the stock location, and a "tax-inclusive" region whose prices
- * Medusa nonetheless adds VAT on top of.
+ * records themselves. Three such defects have now reached review or live: a
+ * shipping option Medusa refuses to create because the fulfillment provider is
+ * not enabled at the stock location, a "tax-inclusive" region whose prices
+ * Medusa nonetheless adds VAT on top of, and — this one reached **live** — a
+ * tax region carrying no `provider_id`, which turns every catalogue request
+ * naming a country into an HTTP 500.
  *
  * A real Medusa would catch both, and this repository cannot run one:
  * `scripts/validate` has no PostgreSQL and no Redis, and standing either up
@@ -117,6 +120,15 @@ function fakeMedusa(): FakeMedusa {
       },
     ],
     fulfillment_provider: [{ id: FULFILLMENT_PROVIDER_ID, is_enabled: true }],
+    /**
+     * The tax provider `@medusajs/tax`'s own loader registers and enables on
+     * every boot, before it reads any `providers` option: `providers/system.js`
+     * under the key `tp_${identifier}`, upserted into `tax_provider` with
+     * `is_enabled: true`. It is present here for the same reason
+     * `fulfillment_provider` is — because the configuration must reference it
+     * and never creates it.
+     */
+    tax_provider: [{ id: TAX_PROVIDER_ID, is_enabled: true }],
   };
 
   const writes: string[] = [];
@@ -291,9 +303,19 @@ function fakeMedusa(): FakeMedusa {
 
     createTaxRegionsWorkflow: (input: { country_code: string }[]) =>
       input.map((region) => {
-        const row = { id: id("txreg"), ...region };
+        // `parent_id` and `provider_id` are whatever the caller passed and
+        // `null` when it passed nothing — the module applies no default, which
+        // is the entire defect this models.
+        const row = { id: id("txreg"), parent_id: null, provider_id: null, ...region };
         table("tax_region").push(row);
         return row;
+      }),
+    updateTaxRegionsWorkflow: (input: { id: string; provider_id?: string | null }[]) =>
+      input.map((update) => {
+        const region = table("tax_region").find((row) => row.id === update.id);
+        if (region === undefined) throw new Error("no such tax region");
+        Object.assign(region, update);
+        return region;
       }),
     createTaxRatesWorkflow: (
       input: { tax_region_id: string; name: string; code: string; rate: number }[],
@@ -371,6 +393,7 @@ vi.mock("@medusajs/medusa/core-flows", () => ({
   ),
   updateRegionsWorkflow: workflowStub("updateRegionsWorkflow"),
   updateTaxRatesWorkflow: workflowStub("updateTaxRatesWorkflow"),
+  updateTaxRegionsWorkflow: workflowStub("updateTaxRegionsWorkflow"),
   updateServiceZonesWorkflow: workflowStub("updateServiceZonesWorkflow"),
   updateShippingOptionsWorkflow: workflowStub("updateShippingOptionsWorkflow"),
   updateStoresWorkflow: workflowStub("updateStoresWorkflow"),
@@ -464,6 +487,158 @@ describe("the graph the configuration leaves behind", () => {
       ]),
     );
     expect(preferences.filter((row) => row.is_tax_inclusive === true)).toEqual([]);
+  });
+
+  /**
+   * **The tax provider, which is what turned a priced catalogue into a 500.**
+   *
+   * `wrapProductsWithTaxPrices` calls `TaxModuleService.getTaxLines` for any
+   * `/store/products` request that carries a tax context, and that method ends
+   * at `getTaxLinesFromProvider(parentRegion.provider_id, …)`, which resolves
+   * the string out of the Awilix container. A region row carrying `NULL` is
+   * therefore not an untaxed price — it is `Could not resolve 'null'` and an
+   * HTTP 500 on every catalogue load the storefront makes.
+   *
+   * {@link taxLinesForCountry} is that path, run over the rows
+   * `configureCommerce` actually wrote rather than over the records it declared.
+   * The distinction is the whole point: `presentedTotals` further down derives
+   * its VAT from the *declaration*, so it was green throughout — a configuration
+   * can declare 24 % correctly and still write a row Medusa cannot serve.
+   */
+  const RESOLUTION_FAILURE = /Could not resolve 'null'/;
+
+  /**
+   * `TaxModuleService.getTaxLines`, reproduced over the fake's graph.
+   *
+   * The three branches are Medusa's own, in its order: no parent region means
+   * no tax line and no error (`if (!parentRegion) return []`), a parent region
+   * means its `provider_id` is resolved out of the container, and only then are
+   * the region's default rates returned.
+   */
+  function taxLinesForCountry(medusa: FakeMedusa, countryCode: string): { rate: number }[] {
+    const parentRegion = (medusa.rows.tax_region ?? []).find(
+      (row) => row.country_code === countryCode && (row.province_code ?? null) === null,
+    );
+    if (parentRegion === undefined) return [];
+
+    const providerId = parentRegion.provider_id as string | null;
+    const provider = (medusa.rows.tax_provider ?? []).find((row) => row.id === providerId);
+    if (provider === undefined) throw new Error(`Could not resolve '${String(providerId)}'`);
+
+    return (medusa.rows.tax_rate ?? [])
+      .filter((row) => row.tax_region_id === parentRegion.id && row.is_default === true)
+      .map((row) => ({ rate: row.rate as number }));
+  }
+
+  it("walks the path Medusa's tax module walks, and raises its message", () => {
+    const service = medusaSource("@medusajs/tax", "services", "tax-module-service.js");
+    // The provider is read off the *parent region row*, not off configuration.
+    expect(service).toContain("this.getTaxLinesFromProvider(parentRegion.provider_id");
+    // A destination with no region is `[]`, which is why "no VAT outside the EU"
+    // is an answer rather than this same failure.
+    expect(service).toContain("if (!parentRegion) {");
+
+    const providerService = medusaSource("@medusajs/tax", "services", "tax-provider.js");
+    expect(providerService).toContain("return this.__container__[providerId];");
+    expect(providerService).toContain("Unable to retrieve the tax provider with id: ${providerId}");
+
+    // And the key the loader registers, which is where `tp_system` comes from.
+    const loader = medusaSource("@medusajs/tax", "loaders", "providers.js");
+    expect(loader).toContain("const key = `tp_${klass.identifier}");
+    expect(medusaSource("@medusajs/tax", "providers", "system.js")).toContain(
+      'SystemTaxService.identifier = "system"',
+    );
+    expect(TAX_PROVIDER_ID).toBe("tp_system");
+  });
+
+  /**
+   * Two statements from Medusa's own source that together say the omission is a
+   * defect and not a preference: its Admin route refuses a top-level region
+   * without a provider, and it ships a data migration that backfills exactly
+   * this value onto regions that have none.
+   *
+   * That migration is also why the repair has to live in the predeploy Job.
+   * `medusa db:migrate` records it in `script_migrations` and never re-runs it,
+   * and in this deployment it ran before `configure:commerce` had created a
+   * single region.
+   */
+  it("names the provider Medusa itself requires and backfills", () => {
+    const validators = medusaSource("@medusajs/medusa", "api", "admin", "tax-regions", "validators.js");
+    expect(validators).toContain("Provider is required when creating a non-province tax region.");
+
+    const backfill = medusaSource(
+      "@medusajs/medusa",
+      "migration-scripts",
+      "migrate-tax-region-provider.js",
+    );
+    expect(backfill).toContain(`provider_id: "${TAX_PROVIDER_ID}"`);
+  });
+
+  it("resolves a tax line through the system provider for every EU destination", async () => {
+    const medusa = fakeMedusa();
+    await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
+
+    for (const code of EU_MEMBER_STATE_CODES) {
+      expect(taxLinesForCountry(medusa, code.toLowerCase()), code).toEqual([{ rate: 24 }]);
+    }
+
+    // Non-vacuity in the other direction: the twenty-seven rows all name the
+    // provider, rather than the loop above passing because some other branch
+    // returned early.
+    expect(medusa.rows.tax_region).toHaveLength(EU_MEMBER_STATE_CODES.length);
+    expect(
+      (medusa.rows.tax_region ?? []).every((row) => row.provider_id === TAX_PROVIDER_ID),
+    ).toBe(true);
+  });
+
+  /**
+   * The state live is in, reproduced by putting exactly one row back the way
+   * the shipped release wrote it. Without this case the test above proves only
+   * that the fake agrees with itself.
+   */
+  it("raises Medusa's resolution failure for a region left without a provider", async () => {
+    const medusa = fakeMedusa();
+    await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
+
+    const estonia = (medusa.rows.tax_region ?? []).find((row) => row.country_code === "ee");
+    expect(estonia).toBeDefined();
+    estonia!.provider_id = null;
+
+    expect(() => taxLinesForCountry(medusa, "ee")).toThrow(RESOLUTION_FAILURE);
+  });
+
+  /**
+   * A second run over the graph the *shipped* release left behind: twenty-seven
+   * regions with a rate each and no provider. This is the promotion path the
+   * operator will run, and it has to end with every row repaired.
+   */
+  it("repairs regions a previous release created without a provider", async () => {
+    const medusa = fakeMedusa();
+    await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
+    for (const row of medusa.rows.tax_region ?? []) row.provider_id = null;
+    expect(() => taxLinesForCountry(medusa, "ee")).toThrow(RESOLUTION_FAILURE);
+
+    medusa.writes.length = 0;
+    await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
+
+    expect(
+      medusa.writes.filter((write) => write === "updateTaxRegionsWorkflow"),
+    ).toHaveLength(EU_MEMBER_STATE_CODES.length);
+    for (const code of EU_MEMBER_STATE_CODES) {
+      expect(taxLinesForCountry(medusa, code.toLowerCase()), code).toEqual([{ rate: 24 }]);
+    }
+  });
+
+  /**
+   * A destination outside the EU is the one case where a missing tax region is
+   * the right answer rather than this defect: `getTaxLines` returns `[]` before
+   * it ever reads a provider, so no tax line arises and none is expected.
+   */
+  it("returns no tax line, and no failure, for a destination outside the EU", async () => {
+    const medusa = fakeMedusa();
+    await configureCommerce(new MedusaCommerceConfigurationTarget(medusa.container));
+
+    expect(taxLinesForCountry(medusa, "us")).toEqual([]);
   });
 
   /**

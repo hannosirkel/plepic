@@ -45,6 +45,7 @@ vi.mock("@medusajs/medusa/core-flows", () => ({
   linkSalesChannelsToStockLocationWorkflow: recorder("linkSalesChannelsToStockLocation"),
   updateRegionsWorkflow: recorder("updateRegions"),
   updateTaxRatesWorkflow: recorder("updateTaxRates"),
+  updateTaxRegionsWorkflow: recorder("updateTaxRegions"),
   updateServiceZonesWorkflow: recorder("updateServiceZones"),
   updateShippingOptionsWorkflow: recorder("updateShippingOptions"),
 }));
@@ -228,15 +229,23 @@ describe("applying the region", () => {
  * region, present region with no rate, present region with a rate. The middle
  * one is the state a run interrupted between the two workflows leaves behind,
  * and the whole reason the two lookups are separate rather than one.
+ *
+ * The provider is a fourth case the import never had. A region row carrying no
+ * `provider_id` is not a region without tax — it is an HTTP 500 on every
+ * catalogue request that names a country, so the create names the provider and
+ * an existing row that disagrees is converged onto it.
  */
 describe("applying a tax region", () => {
   const estonia = () => record("tax-region", EU_MEMBER_STATE_CODES.indexOf("EE"));
+
+  /** The row Medusa's own tax-provider loader registers and enables. */
+  const SYSTEM_PROVIDER = "tp_system";
 
   it("creates the region and its default rate when neither exists", async () => {
     await targetOver({}).apply(estonia());
 
     expect(calls.map((call) => call.workflow)).toEqual(["createTaxRegions", "createTaxRates"]);
-    expect(calls[0]?.input).toEqual([{ country_code: "ee" }]);
+    expect(calls[0]?.input).toEqual([{ country_code: "ee", provider_id: SYSTEM_PROVIDER }]);
     expect(calls[1]?.input).toEqual([
       {
         // The identifier the create handed back, not one this test invented.
@@ -252,10 +261,46 @@ describe("applying a tax region", () => {
   });
 
   it("adds the rate to a region something else already created", async () => {
-    await targetOver({ tax_region: [{ id: "txreg_ee", country_code: "ee" }] }).apply(estonia());
+    await targetOver({
+      tax_region: [{ id: "txreg_ee", country_code: "ee", provider_id: SYSTEM_PROVIDER }],
+    }).apply(estonia());
 
     expect(calls.map((call) => call.workflow)).toEqual(["createTaxRates"]);
     expect(calls[0]?.input).toMatchObject([{ tax_region_id: "txreg_ee", rate: 24 }]);
+  });
+
+  /**
+   * **The defect this file was extended for.** The twenty-seven regions the
+   * previous release created carry `provider_id NULL`, because the workflow
+   * takes whatever it is handed and it was handed a country code alone.
+   * `TaxModuleService.getTaxLines` resolves that `null` out of the container and
+   * raises `Could not resolve 'null'`, so the catalogue answers 500 rather than
+   * an untaxed price — and Medusa's own `migrate-tax-region-provider.js`
+   * backfill is already recorded in `script_migrations` and will not run again.
+   * The predeploy Job is what reaches those rows, so it is what repairs them.
+   */
+  it("repairs a region an earlier release left with no provider", async () => {
+    await targetOver({
+      tax_region: [{ id: "txreg_ee", country_code: "ee", provider_id: null }],
+    }).apply(estonia());
+
+    expect(calls.map((call) => call.workflow)).toEqual(["updateTaxRegions", "createTaxRates"]);
+    expect(calls[0]?.input).toEqual([{ id: "txreg_ee", provider_id: SYSTEM_PROVIDER }]);
+  });
+
+  /**
+   * And repairs it *once*. The predeploy Job is an Argo CD sync hook on every
+   * promoted digest; a provider re-issued unconditionally would be twenty-seven
+   * further writes on every deploy, which is the cost this record kind already
+   * pays for its rate and does not need to pay twice.
+   */
+  it("leaves a region that already names the provider alone", async () => {
+    await targetOver({
+      tax_region: [{ id: "txreg_ee", country_code: "ee", provider_id: SYSTEM_PROVIDER }],
+      tax_rate: [{ id: "txrate_ee", tax_region_id: "txreg_ee", code: "EE-VAT", rate: 24 }],
+    }).apply(estonia());
+
+    expect(calls.map((call) => call.workflow)).toEqual(["updateTaxRates"]);
   });
 
   /**
@@ -266,7 +311,7 @@ describe("applying a tax region", () => {
    */
   it("converges a rate that no longer matches rather than adding a second", async () => {
     await targetOver({
-      tax_region: [{ id: "txreg_ee", country_code: "ee" }],
+      tax_region: [{ id: "txreg_ee", country_code: "ee", provider_id: SYSTEM_PROVIDER }],
       tax_rate: [{ id: "txrate_ee", tax_region_id: "txreg_ee", code: "EE-VAT", rate: 22 }],
     }).apply(estonia());
 
@@ -278,9 +323,9 @@ describe("applying a tax region", () => {
   });
 
   it("addresses the country in lower case, the way Medusa stores it", async () => {
-    await targetOver({ tax_region: [{ id: "txreg_de", country_code: "de" }] }).apply(
-      record("tax-region", EU_MEMBER_STATE_CODES.indexOf("DE")),
-    );
+    await targetOver({
+      tax_region: [{ id: "txreg_de", country_code: "de", provider_id: SYSTEM_PROVIDER }],
+    }).apply(record("tax-region", EU_MEMBER_STATE_CODES.indexOf("DE")));
 
     expect(calls.map((call) => call.workflow)).toEqual(["createTaxRates"]);
   });
