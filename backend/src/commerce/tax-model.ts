@@ -79,6 +79,57 @@ export const VAT_RATE_NAME = "Estonian VAT";
 export const VAT_RATE_CODE = "EE-VAT";
 
 /**
+ * The tax provider every one of these regions is served by, and why a region
+ * that does not carry it is a 500 rather than an untaxed price.
+ *
+ * ## `tp_system` exists in this image whatever `medusa-config.ts` says
+ *
+ * `backend/medusa-config.ts` mentions tax nowhere, and that is correct rather
+ * than the omission it looks like. `defineConfig` installs `Modules.TAX` among
+ * its own `sharedModules` (`@medusajs/utils/dist/common/define-config.js`,
+ * `resolveModules`), and `@medusajs/tax`'s provider loader registers everything
+ * in `dist/providers` **before** it reads any `providers` option, under the key
+ * `tp_${identifier}${options.id ? `_${options.id}` : ""}`. The only local
+ * provider is `SystemTaxService`, whose `identifier` is `"system"`, so the key
+ * is `tp_system` — and the loader then upserts that id into `tax_provider` with
+ * `is_enabled: true`. Medusa's documentation for 2.18 states the same: *"Medusa
+ * includes a default system tax provider, identified as tp_system, which
+ * performs basic tax calculations. This provider is installed automatically and
+ * can be utilized immediately with configured tax regions."*
+ * <https://docs.medusajs.com/resources/commerce-modules/tax/tax-provider>
+ * A `modules` entry would be needed only to add a *third-party* provider.
+ *
+ * ## The region has to name it, and no Medusa code path defaults it
+ *
+ * `TaxModuleService.getTaxLines` finishes at
+ * `getTaxLinesFromProvider(parentRegion.provider_id, …)`, and that string is
+ * resolved straight out of the Awilix container. A `null` is looked up as the
+ * literal key `null`, which raises `AwilixResolutionError: Could not resolve
+ * 'null'` — so a `GET /store/products?…&country_code=ee` answers **HTTP 500**
+ * rather than an untaxed price. Nothing supplies a default: `TaxRegion.provider`
+ * is `.nullable()` with no default, `prepareTaxRegionInputForCreate` copies the
+ * input through, and `createTaxRegionsWorkflow` forwards it untouched — its own
+ * documented example is `{ country_code: "us" }` and produces exactly this row.
+ *
+ * The one place Medusa refuses the omission is the Admin HTTP validator:
+ * `AdminCreateTaxRegion` refines with *"Provider is required when creating a
+ * non-province tax region."* A region created through the workflow, as
+ * `src/commerce/medusa-target.ts` creates these twenty-seven, meets no such
+ * refusal — which is why this constant is declared here and applied there.
+ *
+ * ## Why the repair is ours to make
+ *
+ * `@medusajs/medusa/dist/migration-scripts/migrate-tax-region-provider.js` sets
+ * `provider_id: "tp_system"` on every parent region that has none — this exact
+ * value, from Medusa itself — but `medusa db:migrate` records it in
+ * `script_migrations` and never runs it again. In this deployment it ran on the
+ * first migration, before `npm run configure:commerce` had created any region,
+ * so it repaired nothing and cannot be re-run. The convergence in
+ * `applyTaxRegion` is what repairs the rows that already exist.
+ */
+export const TAX_PROVIDER_ID = "tp_system";
+
+/**
  * The countries this deployment charges VAT in: the 27 EU member states.
  *
  * Re-exported from the shipping model rather than declared again. See this

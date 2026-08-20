@@ -16,6 +16,7 @@ import {
   updateShippingOptionsWorkflow,
   updateStoresWorkflow,
   updateTaxRatesWorkflow,
+  updateTaxRegionsWorkflow,
 } from "@medusajs/medusa/core-flows";
 
 import type { CommerceConfigurationTarget, CommerceRecord } from "./configuration.js";
@@ -209,6 +210,24 @@ export class MedusaCommerceConfigurationTarget implements CommerceConfigurationT
    * region's default rate is the one applied to a line with no matching rate
    * rule, and every line here is such a line.
    *
+   * **The region also has to name its tax provider, and that is the one thing
+   * the catalogue import's version did not do.** `TaxModuleService.getTaxLines`
+   * ends at `getTaxLinesFromProvider(parentRegion.provider_id, …)` and resolves
+   * that string out of the Awilix container, so a `null` there is an
+   * `AwilixResolutionError` and an HTTP 500 on every catalogue request carrying
+   * a `country_code` — not an untaxed price. Nothing in Medusa defaults it for
+   * a region created through the workflow; only the Admin's own HTTP validator
+   * refuses the omission. {@link ./tax-model.js}'s `TAX_PROVIDER_ID` carries the
+   * citations.
+   *
+   * The provider is therefore **converged, not merely set on create**: the
+   * twenty-seven rows a previous release already wrote carry `NULL`, Medusa's
+   * own `migrate-tax-region-provider.js` backfill is recorded in
+   * `script_migrations` and will not run a second time, and the predeploy Job
+   * is the only thing that reaches them on every promoted digest. It compares
+   * before it writes, so the repair costs twenty-seven `updateTaxRegionsWorkflow`
+   * calls exactly once and nothing on every run after it.
+   *
    * It re-issues its update whenever the rate exists rather than comparing
    * first, which is a knowing cost — twenty-seven `updateTaxRatesWorkflow` calls
    * on every promoted digest. The configuration's header names it and
@@ -219,15 +238,21 @@ export class MedusaCommerceConfigurationTarget implements CommerceConfigurationT
     record: Extract<CommerceRecord, { kind: "tax-region" }>,
   ): Promise<void> {
     const countryCode = record.countryCode.toLowerCase();
-    let region = await this.one<{ id: string }>("tax_region", ["id"], {
-      country_code: countryCode,
-    });
+    let region = await this.one<{ id: string; provider_id: string | null }>(
+      "tax_region",
+      ["id", "provider_id"],
+      { country_code: countryCode },
+    );
 
     if (region === undefined) {
       const { result } = await createTaxRegionsWorkflow(this.container).run({
-        input: [{ country_code: countryCode }],
+        input: [{ country_code: countryCode, provider_id: record.providerId }],
       });
-      region = { id: result[0]!.id };
+      region = { id: result[0]!.id, provider_id: record.providerId };
+    } else if (region.provider_id !== record.providerId) {
+      await updateTaxRegionsWorkflow(this.container).run({
+        input: [{ id: region.id, provider_id: record.providerId }],
+      });
     }
 
     const rate = await this.one<{ id: string }>("tax_rate", ["id"], {

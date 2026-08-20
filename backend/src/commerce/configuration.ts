@@ -75,6 +75,7 @@ import {
 } from "./shipping-model.js";
 import {
   ESTONIAN_STANDARD_VAT_PERCENT,
+  TAX_PROVIDER_ID,
   VAT_COUNTRY_CODES,
   VAT_RATE_CODE,
   VAT_RATE_NAME,
@@ -211,6 +212,17 @@ export type CommerceRecord =
       readonly ratePercent: number;
       /** The natural key the rate is addressed by within its region. */
       readonly code: string;
+      /**
+       * The tax provider the region resolves its lines through: `tp_system`.
+       *
+       * Declared per record rather than read from the model inside the target,
+       * because it is part of what the region *is* — a region without one is a
+       * row `TaxModuleService.getTaxLines` answers with `Could not resolve
+       * 'null'`, which is an HTTP 500 on every catalogue request carrying a
+       * `country_code`. {@link ./tax-model.js} has the whole reasoning and the
+       * citations.
+       */
+      readonly providerId: string;
     }
   | { readonly kind: "stock-location"; readonly key: string; readonly name: string }
   | {
@@ -323,6 +335,7 @@ export function commerceRecords(): readonly CommerceRecord[] {
       name: VAT_RATE_NAME,
       ratePercent: ESTONIAN_STANDARD_VAT_PERCENT,
       code: VAT_RATE_CODE,
+      providerId: TAX_PROVIDER_ID,
     })),
     { kind: "stock-location", key: STOCK_LOCATION_NAME, name: STOCK_LOCATION_NAME },
     {
