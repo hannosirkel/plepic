@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+#
+# One request against a running Medusa, before merge.
+#
+# ## What this is for
+#
+# The shop's price model changed from tax-inclusive to net-plus-VAT. It went
+# through three review passes and 2,967 unit tests and merged with a defect that
+# answered every catalogue request with HTTP 500:
+#
+#     Unable to retrieve the tax provider with id: null
+#       TaxProviderService.retrieveProvider -> getTaxLines -> wrapProductsWithTaxPrices
+#
+# `configure:commerce` created twenty-seven tax regions with `provider_id = NULL`,
+# because Medusa's own backfill migration runs during the first `db:migrate` --
+# before any region exists -- and is then recorded and never runs again. No unit
+# test could have caught it: they assert that the right workflow received the
+# right input, and the input was wrong in a way only Medusa's runtime knows.
+# `backend/src/commerce/tax-model.ts` has the mechanism in full.
+#
+# So this stands up the real thing: the PostgreSQL and Redis `compose.yaml`
+# pins, the server `medusa build` produces, the four predeploy commands in their
+# real order, and then `backend/tests/smoke/store-api.test.ts` asking the Store
+# API the question the storefront asks it.
+#
+# ## Reusing compose.yaml rather than declaring a second stack
+#
+# `compose.yaml` already pins PostgreSQL and Redis to the digests the cluster
+# runs, and `scripts/images.test.ts` holds those digests to CI's service
+# containers. Bringing the same two services up here is what keeps that one
+# agreement rather than adding a fourth place to edit. It also buys something CI
+# service containers cannot express: `--requirepass`. GitHub Actions cannot
+# override a container's command, so the `validate` job's Redis is
+# unauthenticated -- and `npm run predeploy` begins with `redis:preflight`, whose
+# entire job is to refuse a Redis it cannot name. Against compose's Redis that
+# check is exercised; against an unauthenticated one it is not.
+#
+# ## What it deliberately does not do
+#
+# It does not build the container image. `release.yml` does that, `backend/
+# Dockerfile` carries its own assertions, and the defect this exists for lives in
+# the data `configure:commerce` writes, not in how the tree is packaged. It does
+# not create a cart, complete a checkout, or reach Stripe. It touches nothing
+# outside 127.0.0.1.
+#
+# ## Running it locally
+#
+# `bash scripts/store-smoke`, with Docker available. It uses its own database
+# (`plepic_store_smoke`) and its own port (9010), so a `docker compose up` stack
+# already running on 9000 is left alone. It is deliberately *not* part of
+# `bash scripts/validate`: see README, "The store smoke check".
+
+set -euo pipefail
+
+repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${repository_root}"
+
+# The port is the one thing here that differs from what the cluster runs, and it
+# differs so that this can be run beside a local `docker compose up` without
+# either killing the other. `medusa start` reads no `PORT`, so it is a flag.
+port="${STORE_SMOKE_PORT:-9010}"
+database="${STORE_SMOKE_DATABASE:-plepic_store_smoke}"
+# The same default `compose.yaml` gives the Redis container, spelled the same
+# way, so overriding one overrides both.
+redis_password="${PLEPIC_LOCAL_REDIS_PASSWORD:-plepic}"
+
+server_directory="${repository_root}/backend/.medusa/server"
+work_directory="$(mktemp -d "${TMPDIR:-/tmp}/plepic-store-smoke.XXXXXX")"
+server_log="${work_directory}/medusa.log"
+server_pid=""
+
+cleanup() {
+  local status=$?
+  # The **process group**, not the process. `npm run start` is a shell running
+  # `npm run redis:preflight && medusa start`, so the node process that holds
+  # the port and the database connections is npm's grandchild: killing the pid
+  # in `$!` leaves it running, and the next run of this script then fails on
+  # `database "plepic_store_smoke" is being accessed by other users` -- which is
+  # how this was found. `start_server` puts the job in its own process group so
+  # that there is a group to name here.
+  if [ -n "${server_pid}" ] && kill -0 "${server_pid}" 2>/dev/null; then
+    kill -TERM -- "-${server_pid}" 2>/dev/null || kill -TERM "${server_pid}" 2>/dev/null || true
+    wait "${server_pid}" 2>/dev/null || true
+  fi
+  # The server's own log is where the 500 explains itself -- the Awilix
+  # resolution failure and the `Unable to retrieve the tax provider with id:
+  # null` beneath it are logged there and not in the HTTP body, which is a bare
+  # `{"code":"unknown_error"}`. A failure that did not print it would send a
+  # reader back to reproduce what CI had already seen.
+  if [ "${status}" -ne 0 ] && [ -s "${server_log}" ]; then
+    echo "--- last 80 lines of the Medusa server log ---" >&2
+    tail -n 80 "${server_log}" >&2
+    echo "--- end of the Medusa server log ---" >&2
+  fi
+  rm -rf -- "${work_directory}"
+  # The data services are left running. Locally they are the developer's own
+  # stack and stopping them would be a surprise; in CI the runner is discarded.
+  exit "${status}"
+}
+trap cleanup EXIT
+
+# Every value below is synthetic and none of it is read by anything deployed.
+# The list is `scripts/validate`'s, plus the two administrator variables the
+# predeploy Job projects from its Secret -- `seed:administrator` refuses without
+# them, and the smoke suite signs in with them to mint the Store key it needs.
+export NODE_ENV=production
+export DATABASE_URL="postgres://plepic@127.0.0.1:5432/${database}"
+export REDIS_HOST=127.0.0.1
+export REDIS_PORT=6379
+export REDIS_PASSWORD="${redis_password}"
+export JWT_SECRET=store-smoke-jwt-secret
+export COOKIE_SECRET=store-smoke-cookie-secret
+export STORE_CORS=http://127.0.0.1:3000
+export ADMIN_CORS="http://127.0.0.1:${port}"
+export AUTH_CORS=http://127.0.0.1:3000
+export STRIPE_SECRET_KEY=synthetic_store_smoke
+export STRIPE_WEBHOOK_SECRET=whsec_store_smoke
+export STRIPE_PAYMENT_METHOD_CONFIGURATION_ID=pmc_store_smoke
+export SMTP_HOST=127.0.0.1
+export SMTP_PORT=587
+export SMTP_USERNAME=store-smoke
+export SMTP_PASSWORD=store-smoke
+export SMTP_ENVELOPE_FROM=orders@example.test
+export CONTACT_MAIL_RECIPIENT=contact@example.test
+export TURNSTILE_SECRET_KEY=store-smoke-turnstile
+export MERCHANT_LEGAL_NAME='Example Games OÜ'
+export MERCHANT_REGISTERED_ADDRESS='Example Street 1, Tallinn'
+export MERCHANT_CONTACT_ADDRESS=legal@example.test
+export MERCHANT_RETURN_ADDRESS='Return Street 2, Tallinn'
+export MEDUSA_ADMIN_EMAIL=store-smoke@example.test
+export MEDUSA_ADMIN_PASSWORD=store-smoke-administrator-password
+export MEDUSA_DISABLE_TELEMETRY=true
+export XDG_CONFIG_HOME="${work_directory}/config"
+export STORE_SMOKE_BACKEND_URL="http://127.0.0.1:${port}"
+# The two-level `node_modules` layout `backend/Dockerfile` reproduces as
+# `/node_modules` and `/app/node_modules`, and for the same reason: `@medusajs/
+# utils` hoists to the workspace root and does a runtime require of `@medusajs/
+# medusa/link-modules`, which nests under `backend/`. Ordinary resolution covers
+# one direction only.
+export NODE_PATH="${repository_root}/backend/node_modules"
+
+step() {
+  echo
+  echo "==> $*"
+}
+
+step "PostgreSQL and Redis from compose.yaml"
+docker compose up --detach --wait postgresql redis
+
+# Redis carries Medusa's event bus, workflow engine and locking provider. It is
+# never a restorable source of business data -- `compose.yaml` says so at length
+# -- so clearing it is how this run starts from a known state rather than from
+# whatever a previous run or a local stack left behind.
+step "Clearing Redis"
+docker compose exec -T redis \
+  redis-cli --no-auth-warning -a "${redis_password}" flushall
+
+# A database of this run's own, dropped and recreated, because `predeploy` is
+# being asked what it does to an *empty* database -- which is the case the tax
+# provider defect lives in. A developer's `plepic` database is untouched.
+step "Recreating the ${database} database"
+docker compose exec -T postgresql psql -U plepic -d postgres -v ON_ERROR_STOP=1 \
+  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${database}'" \
+  -c "DROP DATABASE IF EXISTS ${database}" \
+  -c "CREATE DATABASE ${database} OWNER plepic"
+
+step "Building the backend"
+npm run build --workspace backend
+
+# From the built server, not from the source tree: the four `medusa exec`
+# scripts each prefer a compiled `.js` beside them and fall back to the `.ts`,
+# and the cluster only ever takes the first branch. Running the branch nobody
+# deploys would be a fourth environment.
+step "Running the predeploy chain"
+(cd "${server_directory}" && npm run predeploy)
+
+start_server() {
+  # `set -m` for the length of the launch, so bash gives this job a process
+  # group of its own and `cleanup` has something to kill that includes the
+  # `medusa start` under `npm run start`. Restored immediately: job control is
+  # not wanted for anything else here.
+  set -m
+  (cd "${server_directory}" && exec npm run start -- --port "${port}") >"${server_log}" 2>&1 &
+  server_pid=$!
+  set +m
+  local waited=0
+  until curl --silent --fail --output /dev/null "${STORE_SMOKE_BACKEND_URL}/health"; do
+    if ! kill -0 "${server_pid}" 2>/dev/null; then
+      echo "the Medusa server exited before it became ready" >&2
+      return 1
+    fi
+    if [ "${waited}" -ge 120 ]; then
+      echo "the Medusa server was not ready after ${waited}s" >&2
+      return 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "ready after ${waited}s"
+}
+
+step "Starting Medusa on port ${port}"
+start_server
+
+step "Asking the Store API"
+npm run test:smoke --workspace backend
+
+# The convergence half of the tax-provider fix, which nothing else exercises.
+#
+# `applyTaxRegion` has two branches: it *sets* `provider_id` on a region it
+# creates, and it *updates* one whose provider disagrees. Only the first runs
+# against an empty database -- and the second is the one that mattered in
+# production, where twenty-seven rows already existed with a null provider and no
+# migration would ever repair them. So the rows are put back into exactly that
+# state and the chain is run again, which also happens to be the only place this
+# repository asserts that `predeploy` is idempotent at all: it is an Argo CD sync
+# hook and it runs again on every promoted digest.
+step "Reverting the tax regions to the state production was in, and converging"
+docker compose exec -T postgresql psql -U plepic -d "${database}" -v ON_ERROR_STOP=1 \
+  -c "UPDATE tax_region SET provider_id = NULL"
+(cd "${server_directory}" && npm run predeploy)
+
+step "Asking the Store API again, after a second predeploy"
+npm run test:smoke --workspace backend
+
+echo
+echo "store smoke: the catalogue answers correctly on a live Medusa"
