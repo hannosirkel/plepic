@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setAnalyticsEnabled } from "../src/lib/analytics.js";
-import { addStoreCatalogueLine, cartLinesFromStore } from "../src/lib/cart-store.js";
+import { addStoreCatalogueLine } from "../src/lib/cart-store.js";
+import { STORE_CART_FIELDS, cartLinesFromStore } from "../src/lib/store-cart.js";
 
 afterEach(() => {
   setAnalyticsEnabled(false);
@@ -130,7 +131,19 @@ describe("real empty-basket analytics", () => {
       cartId: expectedCartId,
       lines: [{ variantId: "variant_example" }],
     });
-    expect(createLineItem).toHaveBeenCalledWith(expectedCartId, { variant_id: "variant_example", quantity: 1 });
+    /*
+     * The third argument is the whole reason this path ever worked. Medusa v2
+     * omits per-line totals unless the request asks for them, and `cartLines-
+     * FromStore` reads each line's `total` — so an add that forgets the query
+     * throws, and the buyer is told the action failed. Asserted here as an
+     * exact call rather than "called with the right cart and body", because
+     * tolerating a missing third argument is precisely the regression.
+     */
+    expect(createLineItem).toHaveBeenCalledWith(
+      expectedCartId,
+      { variant_id: "variant_example", quantity: 1 },
+      { fields: STORE_CART_FIELDS },
+    );
     // The measured value is the tax-inclusive one, because that is what the
     // buyer is charged and what every other surface now states.
     expect(Array.from(dataLayer[0] as ArrayLike<unknown>)).toEqual(["event", "add_to_cart", {
