@@ -9,6 +9,16 @@ export default defineConfig({
   test: {
     name: "storefront",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    /*
+     * `tests/smoke/` needs a Medusa answering on a socket, so it is not part of
+     * the unit suite and must not be: `bash scripts/validate` and the
+     * `validate` CI job have to pass on a bare checkout. `scripts/store-smoke`
+     * runs it through `vitest.smoke.config.mts`, which includes exactly this
+     * directory. Excluded rather than named around, because the include above
+     * is a glob and a new smoke file would otherwise join the unit run the day
+     * it was written.
+     */
+    exclude: ["tests/smoke/**"],
     environment: "node",
     server: {
       // Its published source maps point at source files absent from the npm

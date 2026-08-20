@@ -167,6 +167,9 @@ function stripXmlNamespaceUris(text: string): string {
  */
 const TEXT_EXTENSIONS: readonly string[] = [
   ".ts",
+  // A Vitest config that must be ESM regardless of the workspace's own module
+  // setting — `vitest.smoke.config.mts`. Text, and scanned like any other.
+  ".mts",
   ".tsx",
   ".json",
   ".svg",
