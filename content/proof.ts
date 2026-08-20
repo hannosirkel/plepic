@@ -11,6 +11,21 @@
 import type { ProofStrip, Quotation } from "./schema.js";
 
 /**
+ * Paul Grogan on the card design — one string, two presentations.
+ *
+ * It is quoted on the product page as a {@link Quotation} and, since the
+ * operator's decision of 2026-08-20, heads the homepage proof strip as well.
+ * Those two renderings differ (the strip wraps it in typographic quotation
+ * marks; the quotation list does not), which is exactly how the same sentence
+ * would end up pasted twice and then drift by a word. It is declared once.
+ *
+ * "an artwork" is a correction the operator approved on 2026-08-20; the source
+ * transcript reads "a artwork". Nothing else about the wording is changed.
+ */
+export const cardDesignQuote =
+  "The look of the cards from an artwork and graphic design point of view – it’s very clear, very functional while also looking pretty. Which is a fine balance to get in games.";
+
+/**
  * Three items, each doing a different job.
  *
  * A visitor arrives with three objections, in this order: is this publisher
@@ -26,21 +41,6 @@ import type { ProofStrip, Quotation } from "./schema.js";
  * and the model refuses to let it not: E14 and E15 are `supportingOnly`, and a
  * source with `checkableAt` obliges the item that cites it to link there.
  */
-/**
- * Paul Grogan on the card design — one string, two presentations.
- *
- * It is quoted on the product page as a {@link Quotation} and, since the
- * operator's decision of 2026-08-20, heads the homepage proof strip as well.
- * Those two renderings differ (the strip wraps it in typographic quotation
- * marks; the quotation list does not), which is exactly how the same sentence
- * would end up pasted twice and then drift by a word. It is declared once.
- *
- * "an artwork" is a correction the operator approved on 2026-08-20; the source
- * transcript reads "a artwork". Nothing else about the wording is changed.
- */
-export const cardDesignQuote =
-  "The look of the cards from an artwork and graphic design point of view – it’s very clear, very functional while also looking pretty. Which is a fine balance to get in games.";
-
 export const proofStrip: ProofStrip = {
   items: [
     {
@@ -77,7 +77,7 @@ export const proofStrip: ProofStrip = {
     {
       source: "E7",
       reason:
-        "Around 100 copies each through retail chains in Finland and Estonia. Verified, and it does the same job as the Brætspilscaféen item — third-party retail sell-through — with less of it: the chains cannot be named, so the visitor is asked to take an unnamed number on trust. Two retail figures in a three-item strip reads as padding. It stays on /about, in the timeline, where a run of dates earns it.",
+        "Around 100 copies each through retail chains in Finland and Estonia. Verified, but the chains cannot be named, so the visitor is asked to take an unnamed number on trust — weaker than the Brætspilscaféen item doing the same job. It used to survive on /about, in the timeline, where a run of dates earned it; the operator retired that page and dropped the timeline on 2026-08-20, so E7 now appears nowhere on the site. It is kept in the manifest rather than deleted because the figure is verified and a later section may earn it, but nothing renders it today and no reader should infer otherwise from this list.",
     },
     {
       source: "E1",

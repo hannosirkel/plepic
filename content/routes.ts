@@ -137,7 +137,6 @@ export const ANCHORS = [
   "proof",
   "story",
   "team",
-  "timeline",
   "newsletter",
   "rules-faq",
   "components",
