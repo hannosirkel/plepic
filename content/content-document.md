@@ -471,9 +471,19 @@ Both sit in the half of that map which is recorded but not wired into the
 storefront. The source hostnames stay in the operator manifest, which is where
 the two null targets can now be filled in.
 
-All five pages are `draft-pending-operator-input`. They stay drafts until the
-merchant identity arrives, and a test refuses to let a page be marked approved
-while its prose still contains an unresolved placeholder.
+All ten pages — the five English and the five Estonian — are
+`operator-approved`. They were `draft-pending-operator-input` until the merchant
+identity actually arrived, and "arrived" meant a deployment rather than an
+answer: the operator supplied the values on 2026-08-09, but a legal page is
+approved **as served**, so the flag stayed until `hannosirkel/deploys` declared
+all seven `MERCHANT_*` values in `plepic/base/storefront.yaml` for both
+environments. The test that refuses `operator-approved` on a page whose prose
+still quotes an unresolved placeholder is unchanged and still in force; it
+passes because its premise changed, not because it was relaxed.
+
+That status records the operator's approval of the pages as served and nothing
+else. The Estonian edition's separate qualified-reader acceptance remains an
+operator act recorded outside this repository, with no field here.
 
 ---
 

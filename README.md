@@ -350,9 +350,12 @@ The Plepic Games storefront and Medusa backend monorepo.
   whether the disclosure is open or closed.
 
   **The merchant contact address is configuration, and is suppressed when it
-  is absent.** `content/schema.ts` marks the merchant identity placeholders
-  `unresolved` — the values do not exist yet, and inventing one is not an
-  option. `MERCHANT_CONTACT_ADDRESS` supplies it at runtime;
+  is absent.** `content/schema.ts` used to mark the merchant identity
+  placeholders `unresolved`, because no deployment supplied them. All seven now
+  arrive from `hannosirkel/deploys`, so the flag is gone and the ten legal
+  pages are `operator-approved`. Suppression is unchanged and still matters,
+  for the reason that made it right in the first place: an environment can
+  always be misconfigured. `MERCHANT_CONTACT_ADDRESS` supplies it at runtime;
   `src/lib/configuration-placeholders.ts` resolves it and **drops the
   paragraph that quotes it** when no address is configured, per paragraph, so
   an unresolvable sentence never takes a resolvable one with it. The contact

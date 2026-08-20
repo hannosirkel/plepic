@@ -54,9 +54,19 @@
  *
  * ## Review status is visible, because it is a fact about the page
  *
- * All five are `draft-pending-operator-input`. That is a real property of what
- * is being served and the page says so; flipping it to `operator-approved` is
- * the operator's act, not this unit's and not this component's.
+ * All ten are `operator-approved`, so this component renders no draft note at
+ * all today. The branch stays, because the status is a real property of what
+ * is being served and a page that *is* a draft has to say so; what it renders
+ * follows `content/`, and flipping the status is the operator's act, not this
+ * unit's and not this component's.
+ *
+ * The draft note and the incompleteness notice above it are independent, and
+ * the ordering here is not the coupling it looks like. One is about whether
+ * this deployment supplied the merchant identity; the other is about whether
+ * the operator has approved the words. A page can legitimately be approved and
+ * incompletely configured — that is precisely the environment this component
+ * is defensive about — and the two states are asserted separately in
+ * `tests/legal-pages.test.tsx`.
  */
 import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../../content/routes.js";
 import type { LegalPage } from "../../../../content/schema.js";

@@ -8,7 +8,10 @@
  * Constraints put account addresses in configuration rather than in content
  * files. The operator supplied the whole set on 2026-08-09; it reaches this
  * page through the `MERCHANT_*` environment variables, and until a deployment
- * sets them this page cannot be approved — see `reviewStatus`.
+ * set them this page could not be approved — see `reviewStatus`. Both
+ * deployments now set all seven, from `hannosirkel/deploys`,
+ * `plepic/base/storefront.yaml`, with no per-environment override, so this
+ * page is `operator-approved` on the only terms that mean anything: as served.
  *
  * **An unconfigured value here is not dropped.** `content/schema.ts` marks
  * every token below `legallyRequired`, and
@@ -36,7 +39,7 @@ export const imprint: LegalPage = {
   indexable: true,
   sections: ["contact"],
   covers: ["merchant-identity", "registered-address"],
-  reviewStatus: "draft-pending-operator-input",
+  reviewStatus: "operator-approved",
   body: [
     {
       anchor: "contact",

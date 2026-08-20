@@ -216,13 +216,22 @@ export interface Placeholder {
    * True when no deployment has supplied the value yet. A legal page that
    * still depends on one of these may not be marked `operator-approved`.
    *
-   * The operator supplied the merchant identity set on 2026-08-09, but the
-   * values are deployment configuration and reach a page through
+   * **No placeholder carries this flag today, and that is a fact rather than a
+   * tidy-up.** The operator supplied the merchant identity set on 2026-08-09,
+   * but the values are deployment configuration and reach a page through
    * `MERCHANT_*` environment variables — see
-   * `storefront/src/config/runtime-env.ts`. Until a deployment sets them, they
-   * are still unresolved here, and that is deliberately the same flag that
-   * blocks approval: approving a legal page is approving the page **as
-   * served**, not the template.
+   * `storefront/src/config/runtime-env.ts` — so the operator having the answer
+   * was never enough. All seven now reach both environments from
+   * `hannosirkel/deploys`, `plepic/base/storefront.yaml`, with no overlay
+   * override: the four the backend also reads, and the register code, VAT
+   * number and telephone number that no manifest declared at all until then.
+   * That deployment change is what makes clearing this flag true, and it is
+   * deliberately the same flag that blocks approval, because approving a legal
+   * page is approving the page **as served**, not the template.
+   *
+   * The flag stays in the model. A future placeholder for a value no
+   * deployment supplies is exactly what it is for, and deleting it would mean
+   * the next such placeholder ships approved by default.
    */
   readonly unresolved?: boolean;
   /**
@@ -291,31 +300,26 @@ export const PLACEHOLDERS = {
   merchantLegalName: {
     source: "configuration",
     description: "Registered legal name of the merchant.",
-    unresolved: true,
     legallyRequired: true,
   },
   merchantRegisteredAddress: {
     source: "configuration",
     description: "Registered address of the merchant, as filed.",
-    unresolved: true,
     legallyRequired: true,
   },
   merchantRegistrationNumber: {
     source: "configuration",
     description: "Company registration number.",
-    unresolved: true,
     legallyRequired: true,
   },
   merchantVatNumber: {
     source: "configuration",
     description: "VAT identification number, or the absence of one.",
-    unresolved: true,
     legallyRequired: true,
   },
   merchantContactAddress: {
     source: "configuration",
     description: "Contact email address for customers.",
-    unresolved: true,
     legallyRequired: true,
   },
   /**
@@ -327,13 +331,11 @@ export const PLACEHOLDERS = {
   merchantPhoneNumber: {
     source: "configuration",
     description: "Telephone number customers can reach the merchant on.",
-    unresolved: true,
     legallyRequired: true,
   },
   returnAddress: {
     source: "configuration",
     description: "Postal address returns are sent to.",
-    unresolved: true,
     legallyRequired: true,
   },
 } as const satisfies Record<string, Placeholder>;
