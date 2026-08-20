@@ -26,6 +26,21 @@ import type { ProofStrip, Quotation } from "./schema.js";
  * and the model refuses to let it not: E14 and E15 are `supportingOnly`, and a
  * source with `checkableAt` obliges the item that cites it to link there.
  */
+/**
+ * Paul Grogan on the card design — one string, two presentations.
+ *
+ * It is quoted on the product page as a {@link Quotation} and, since the
+ * operator's decision of 2026-08-20, heads the homepage proof strip as well.
+ * Those two renderings differ (the strip wraps it in typographic quotation
+ * marks; the quotation list does not), which is exactly how the same sentence
+ * would end up pasted twice and then drift by a word. It is declared once.
+ *
+ * "an artwork" is a correction the operator approved on 2026-08-20; the source
+ * transcript reads "a artwork". Nothing else about the wording is changed.
+ */
+export const cardDesignQuote =
+  "The look of the cards from an artwork and graphic design point of view – it’s very clear, very functional while also looking pretty. Which is a fine balance to get in games.";
+
 export const proofStrip: ProofStrip = {
   items: [
     {
@@ -41,10 +56,16 @@ export const proofStrip: ProofStrip = {
       },
     },
     {
-      source: "E6",
-      headline: "On the shelf at Brætspilscaféen",
-      detail:
-        "The Danish board game café has sold around 50 copies, had us in to talk about how the game was made, and run its own Lunar Base tournament.",
+      source: "E3",
+      // Concatenated rather than interpolated, on purpose. `content.test.ts`
+      // reads these files as text, comments included: a template
+      // interpolation looks exactly like a substitution placeholder it must
+      // find a declaration for, and its leading sigil is also the
+      // currency-symbol guard's needle. Both guards fired on the first
+      // revision of this line, and again on the comment that explained why —
+      // which is the guards working, not overreaching.
+      headline: "“" + cardDesignQuote + "”",
+      detail: "Paul Grogan, Gaming Rules!",
     },
     {
       source: "E2",
@@ -64,9 +85,9 @@ export const proofStrip: ProofStrip = {
         "Rodney Smith's top-10 pick at AireCon is the biggest name in the set, and it is the one item a cold visitor cannot check: the video has been removed and cannot be linked, so it stands on our word. A headline figure has to be checkable. It is also the item a designer is most likely to reach for a badge graphic to decorate, which the manifest forbids. It runs as a quotation on the game page, worded as what it is — a pick in a top-10 video.",
     },
     {
-      source: "E3",
+      source: "E6",
       reason:
-        "Paul Grogan's quotations are warm but inward-facing; the evidence manifest itself records them as weak proof to a visitor who has never heard of the game. Secondary position on the game page.",
+        "Around 50 copies through a Danish board game café, which also hosted a making-of talk and its own tournament. Verified, and it headed this strip until 2026-08-20, when the operator replaced it with E3. Third-party retail sell-through is the strongest *kind* of proof here, but the café cannot be introduced to a cold visitor in a headline — the item spent its detail line explaining who Brætspilscaféen is before the number meant anything. It survives in the publisher story's per-paragraph sourcing.",
     },
     {
       source: "E4",
@@ -108,7 +129,7 @@ export const quotations: readonly Quotation[] = [
   {
     source: "E3",
     attribution: "Paul Grogan, Gaming Rules!",
-    text: "The look of the cards from a artwork and graphic design point of view – it's very clear, very functional while also looking pretty. Which is a fine balance to get in games.",
+    text: cardDesignQuote,
   },
   {
     source: "E2",

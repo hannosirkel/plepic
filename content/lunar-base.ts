@@ -12,6 +12,7 @@ import type {
   CallToAction,
   FaqEntry,
   ListItem,
+  Prose,
   Section,
   Statement,
 } from "./schema.js";
@@ -53,6 +54,31 @@ export const differentiator: Statement = {
 export const heroFacts: readonly Statement[] = [
   { text: "About a minute to set up.", source: "E11" },
   { text: "About 30 minutes to play.", source: "E10" },
+];
+
+/**
+ * The homepage's featured-game description, supplied by the operator on
+ * 2026-08-20.
+ *
+ * This is the section a visitor meets before they have decided to click
+ * through, so the operator asked for the whole shape of the game in one
+ * panel rather than two quotations about it.
+ *
+ * **It reinstates wording {@link pitch}'s comment above argues against**, and
+ * that is a decision rather than an oversight: "medium-light weight" is jargon
+ * a general buyer cannot parse, and the reasoning for dropping it still holds
+ * for the *product page's hero*, where a visitor is three lines from a
+ * purchase. Here the adjectives sit beside the figures that ground them —
+ * "about 30 minutes" is in the same sentence — and the audience is a reader
+ * still working out what the game is. Both placements are the operator's call;
+ * the hero's line 2 is unchanged.
+ *
+ * {@link replayability} and {@link gameNightUse} remain the recorded official
+ * wording and keep their manifest sourcing, but no page renders them now.
+ */
+export const featuredDescription: Prose = [
+  "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base. It’s fast-paced (plays in about 30 minutes), medium-light weight, easy to learn, and quick to set up.",
+  "Lunar Base brings a lot to the table for its compact size. It has high-quality print production and artwork, great replayability, portability, flexible scaling of difficulty, and a satisfying amount of depth through different strategies to victory.",
 ];
 
 /** Official wording, verbatim. Replayability. */

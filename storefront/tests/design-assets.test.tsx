@@ -160,11 +160,23 @@ describe("FeatureSpecStrip", () => {
 describe("TeamPhotoSection", () => {
   const html = renderToStaticMarkup(<TeamPhotoSection />);
 
-  it("renders the content model's heading and body verbatim", () => {
+  /*
+   * "Verbatim" now means every word, in order, with the operator's emphasis
+   * honoured — not the string byte for byte. The caption supplied on
+   * 2026-08-20 carries one emphasised word, and the whole point of
+   * `withEmphasis` is that its markers become an `<em>` rather than reaching
+   * the page as punctuation, so asserting the raw string would be asserting
+   * the bug. What must still be impossible is a component substituting a
+   * caption of its own, so the assertion stays against the content model's
+   * own text.
+   */
+  it("renders the content model's heading and body, as emphasis markup rather than markers", () => {
     expect(html).toContain(team.heading);
     for (const paragraph of team.body) {
-      expect(html).toContain(paragraph);
+      const expected = paragraph.replaceAll(/\*([^*]+)\*/g, "<em>$1</em>");
+      expect(html).toContain(expected);
     }
+    expect(html).not.toContain("*");
   });
 
   it("carries real alt text on the photograph", () => {

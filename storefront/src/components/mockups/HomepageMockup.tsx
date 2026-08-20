@@ -25,7 +25,7 @@
  *   mounts `TurnstileWidget` and `HoneypotField` — both built and mounted
  *   nowhere until this unit.
  */
-import { pitch, differentiator, gameNightUse, replayability } from "../../../../content/lunar-base.js";
+import { pitch, differentiator, featuredDescription } from "../../../../content/lunar-base.js";
 import {
   homepageCallsToAction,
   publisherSentence,
@@ -39,6 +39,7 @@ import { ProofStripSection } from "../ProofStripSection.js";
 import { TeamPhotoSection } from "../TeamPhotoSection.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { SiteFooter } from "../SiteFooter.js";
+import { resolveLinkHref } from "./link-target.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import styles from "../../styles/mockups/homepage.module.css";
 
@@ -108,8 +109,11 @@ export function HomepageMockup({
             <h2 id="featured-game-heading" className={styles.featuredHeading}>
               {resolve("{productName}")}
             </h2>
-            <p className={styles.featuredBody}>{replayability.text}</p>
-            <p className={styles.featuredBody}>{gameNightUse.text}</p>
+            {featuredDescription.map((paragraph) => (
+              <p key={paragraph} className={styles.featuredBody}>
+                {paragraph}
+              </p>
+            ))}
             <CallToActionLink
               action={{ label: "Explore Lunar Base", emphasis: "primary", target: { kind: "route", to: "lunarBase" } }}
             />
@@ -137,6 +141,20 @@ export function HomepageMockup({
                 {paragraph}
               </p>
             ))}
+            {/* The published origin story lives off-site, so an unconfigured
+                deployment renders no link rather than a dead one — the class-2
+                degradation `mockups/link-target.ts` describes. */}
+            {(publisherStory.links ?? []).map((link) => {
+              const href = resolveLinkHref(link.target, externalTargets);
+              if (href === undefined) return null;
+              return (
+                <p key={link.label} className={styles.body}>
+                  <a href={href} aria-label={link.accessibleLabel} rel="noopener">
+                    {link.label}
+                  </a>
+                </p>
+              );
+            })}
           </div>
           <TeamPhotoSection />
         </section>

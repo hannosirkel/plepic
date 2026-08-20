@@ -15,6 +15,7 @@
  *    "finish" it by inventing names into a layout that expects them.
  */
 import { team } from "../../../content/publisher.js";
+import { withEmphasis } from "../lib/emphasis.js";
 import styles from "../styles/team-photo-section.module.css";
 
 export function TeamPhotoSection() {
@@ -37,7 +38,7 @@ export function TeamPhotoSection() {
         </h2>
         {team.body.map((paragraph) => (
           <p key={paragraph} className={styles.paragraph}>
-            {paragraph}
+            {withEmphasis(paragraph)}
           </p>
         ))}
       </div>

@@ -14,13 +14,19 @@ import type {
 } from "./schema.js";
 
 /**
- * The homepage hero sentence. One sentence, confident, past tense, no request.
+ * The homepage hero sentence, supplied by the operator on 2026-08-20.
  *
- * "Six people" and "three years" are E8. "Near Tallinn" is E8. "One game" is
- * the frozen Task 1 catalogue: there is exactly one product.
+ * "Three years" and the six-person group are E8; the Kickstarter is E5. "Across
+ * continents" is the operator's own account of how the group worked and is not
+ * in the evidence manifest — it is a claim about ourselves, which is the one
+ * class of statement we are the primary source for, so it stands on the
+ * operator's word rather than on a manifest entry.
+ *
+ * It keeps the register the previous sentence set: past tense, no request to
+ * buy, small on purpose rather than provisional.
  */
 export const publisherSentence: Statement = {
-  text: "Plepic Games is a small independent publisher near Tallinn. We have published one game, and we took three years over it.",
+  text: "Plepic Games is a group of board game enthusiasts who created Lunar Base — a Kickstarted card game perfected for over three years and across continents.",
   source: "E8",
 };
 
@@ -31,24 +37,38 @@ export const publisherShort: Statement = {
 };
 
 /**
- * The publisher story. Homepage story section and the spine of /about.
+ * The publisher story, replaced with the operator's own text on 2026-08-20.
  *
- * Paragraph by paragraph: origin (E8), what the three years were actually
- * spent on (E8), what happened next (E5, E6), and why the company stays this
- * size. The last paragraph is the one doing the real work — it is the
- * difference between "small because we have not grown yet" and "small on
- * purpose".
+ * The heading is unchanged and is doing real work: the operator supplied one
+ * paragraph and named the section by its heading, so the heading is the
+ * locator rather than part of the replacement. It also still states the fact
+ * the paragraph opens with, which keeps a reader who skims headings on the
+ * same story as one who reads them.
+ *
+ * The four sourced paragraphs it replaces are still sourced line by line in
+ * {@link publisherStorySources} — which now over-covers rather than under-
+ * covers, because the retail sell-through sentence (E6) is no longer in the
+ * body. That is deliberate. The manifest entry is what makes the claim
+ * re-usable, and losing the sentence from one section is not a reason to
+ * unrecord the evidence behind it.
+ *
+ * `origin-story` is an external target, not a URL: this file may carry no
+ * absolute address, and the published account lives off-site.
  */
 export const publisherStory: Section = {
   anchor: "story",
   heading: "Six people, one game, three years",
   body: [
-    "Lunar Base started in 2017. Six of us, near Tallinn, with a setting we liked — the Moon, carved up between organisations that each wanted it for a completely different reason — and no idea yet what the game actually was.",
-    "It took three years to find out, and most of that work was subtraction. Rules that were clever but slowed the table down came out. Features that read well on paper and were no fun in play came out and stayed out. What survived is ninety cards that set up in about a minute and finish in about thirty.",
-    "Then it went to Kickstarter, was funded by over two thousand backers, and was printed, boxed and posted. Since then it has been on shop shelves. A board game café in Denmark has sold around fifty copies, had us in to talk about how the game was made, and run a Lunar Base tournament of its own.",
-    "We are still six people. That is not a stage we are passing through on the way to something larger — being this small is exactly what let us throw away three years of work, a piece at a time, until the game was good.",
+    "Lunar Base began in 2017 when six friends in Estonia set themselves a simple challenge: create a portable card game they would genuinely want to play together. What started as a rough homemade prototype grew through years of experimentation, playtesting, balancing, artwork and world-building into a fast, compact strategy game about humanity’s race to colonize the Moon. Along the way the team grew, ideas were tested and discarded, and countless small improvements shaped the game into its final form—culminating in a successful Kickstarter campaign that transformed a project between friends into a published board game played around the world.",
   ],
   source: "E8",
+  links: [
+    {
+      label: "Origin story",
+      target: { kind: "external", to: "origin-story" },
+      accessibleLabel: "Read the Lunar Base origin story",
+    },
+  ],
 };
 
 /**
@@ -118,9 +138,7 @@ export const timeline: readonly ListItem[] = [
 export const team: Section = {
   anchor: "team",
   heading: "The six",
-  body: [
-    "That is all of us. We are not a studio with a roster — we are six people who kept turning up to the same table for three years.",
-  ],
+  body: ["*Finally*, enjoying the perfume of fresh print"],
   source: "E8",
 };
 
@@ -137,7 +155,7 @@ export const team: Section = {
 export const newsletter = {
   heading: "Hear from us rarely",
   body: [
-    "We send an email when there is genuinely something worth an email: a new game, a reprint, or somewhere new to play Lunar Base. No countdowns, no diaries, no monthly filler.",
+    "We send an email when there is genuinely something worth an email: a new game, a reprint, or Lunar Base played on the Moon.",
     "One click to leave, and your address goes nowhere else.",
   ] satisfies Prose,
   fieldLabel: "Email address",
