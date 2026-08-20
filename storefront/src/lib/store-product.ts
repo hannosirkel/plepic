@@ -8,6 +8,10 @@ interface StoreProductResponse {
   readonly products?: readonly unknown[];
 }
 
+interface StoreRegionResponse {
+  readonly regions?: readonly unknown[];
+}
+
 const STORE_PRODUCT_FIELDS = [
   "id",
   "title",
@@ -100,6 +104,72 @@ function variantIdentityFromStore(response: StoreProductResponse): { readonly id
   throw new ConfigError("Medusa Store product has no EUR variant");
 }
 
+/**
+ * The store's one region, which is the pricing context every catalogue request
+ * must carry.
+ *
+ * `+variants.calculated_price` asks Medusa v2 to *compute* a price, and a
+ * computation needs to know whose price it is. Without a context the Store API
+ * refuses the whole request — `400 {"type":"invalid_data","message":"Missing
+ * required pricing context to calculate prices - region_id"}` — so a catalogue
+ * load that omitted it did not return an unpriced product, it took the page
+ * down. Medusa accepts `currency_code` instead, and it would cost no request at
+ * all, but price lists and tax settings are **region**-scoped: a price computed
+ * from a bare currency is not promised to be the price the region-scoped cart
+ * then charges. `AddToCartButton` creates that cart with `region_id`, so this
+ * asks in the same terms, and a shopper is quoted the price they are charged.
+ *
+ * Requiring exactly one region — the refusal `AddToCartButton` already makes
+ * before creating a cart — is the whole of the region selection. A second
+ * region is a store this storefront has no way to choose within, and guessing
+ * would show one region's price and charge another's.
+ */
+async function storePricingRegionId(backendUrl: string, publishableKey: string): Promise<string> {
+  const url = new URL("/store/regions", backendUrl);
+  // Two is all it takes to tell "exactly one" from "more than one".
+  url.searchParams.set("limit", "2");
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { "x-publishable-api-key": publishableKey },
+  });
+  if (!response.ok) throw new ConfigError(`Medusa Store region request failed (${String(response.status)})`);
+  const body = (await response.json()) as StoreRegionResponse;
+  if (!Array.isArray(body.regions) || body.regions.length !== 1) {
+    throw new ConfigError("Medusa Store must expose exactly one region to price the catalogue in");
+  }
+  return text(record(body.regions[0], "region").id, "region id");
+}
+
+/**
+ * The one Store catalogue request, priced in the store's region.
+ *
+ * Both loaders go through here rather than each building the URL, so neither
+ * can be given a pricing context the other lacks — which is exactly how the
+ * two call sites came to be broken in identical ways.
+ *
+ * Neither the region nor the product is cached. `cache: "no-store"` on the
+ * product read is deliberate and stated below; the region read is the same
+ * request's pricing context and is given the same treatment. A region id is
+ * stable enough to memoise for a process lifetime, and doing so was rejected:
+ * it would hold a value across a store reconfiguration, and it would let a
+ * store that grew a second region keep serving prices computed in the first
+ * one instead of failing loudly. The cost is one extra request per catalogue
+ * load, paid on the home page and the product page.
+ */
+async function fetchStoreCatalogue(backendUrl: string, publishableKey: string): Promise<StoreProductResponse> {
+  const regionId = await storePricingRegionId(backendUrl, publishableKey);
+  const url = new URL("/store/products", backendUrl);
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("fields", STORE_PRODUCT_FIELDS);
+  url.searchParams.set("region_id", regionId);
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { "x-publishable-api-key": publishableKey },
+  });
+  if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
+  return (await response.json()) as StoreProductResponse;
+}
+
 /** Reads the Store product on each request. No build-time value or cache is used. */
 export async function loadStoreCatalogueProduct({
   backendUrl,
@@ -113,16 +183,8 @@ export async function loadStoreCatalogueProduct({
   if (backendUrl === null || publishableKey === null) {
     throw new ConfigError("MEDUSA_BACKEND_URL and MEDUSA_PUBLISHABLE_API_KEY are required for the Store catalogue");
   }
-  const url = new URL("/store/products", backendUrl);
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("fields", STORE_PRODUCT_FIELDS);
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { "x-publishable-api-key": publishableKey },
-  });
-  if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
   return assertBrowserMediaOnly(
-    catalogueProductFromStore((await response.json()) as StoreProductResponse, presentation),
+    catalogueProductFromStore(await fetchStoreCatalogue(backendUrl, publishableKey), presentation),
   );
 }
 
@@ -140,12 +202,7 @@ export async function loadStoreProduct(input: {
   if (backendUrl === null || publishableKey === null) {
     throw new ConfigError("MEDUSA_BACKEND_URL and MEDUSA_PUBLISHABLE_API_KEY are required for the Store catalogue");
   }
-  const url = new URL("/store/products", backendUrl);
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("fields", STORE_PRODUCT_FIELDS);
-  const response = await fetch(url, { cache: "no-store", headers: { "x-publishable-api-key": publishableKey } });
-  if (!response.ok) throw new ConfigError(`Medusa Store catalogue request failed (${String(response.status)})`);
-  const body = (await response.json()) as StoreProductResponse;
+  const body = await fetchStoreCatalogue(backendUrl, publishableKey);
   const variant = variantIdentityFromStore(body);
   // The raw Store response does not leave this function, and what does leave it
   // is checked: `assertBrowserMediaOnly` is what makes "every product image URL
