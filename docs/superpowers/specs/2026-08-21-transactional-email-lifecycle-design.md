@@ -207,4 +207,3 @@ merged by the coding agent without explicit operator authorization.
 - create or explicitly replay controlled test lifecycle events with
   notifications enabled, then confirm successful Medusa notification records
   and mail-host acceptance without printing customer data.
-
