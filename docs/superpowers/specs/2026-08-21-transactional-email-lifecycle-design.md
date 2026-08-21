@@ -130,10 +130,10 @@ structured visible sender and an explicit SMTP envelope:
 The values remain runtime configuration and are never baked into the public
 application image:
 
-| Environment | `SMTP_FROM_NAME` | Existing envelope address | Visible sender |
+| Environment | `SMTP_FROM_NAME` | Envelope address | Visible sender |
 | --- | --- | --- | --- |
-| Live | `Plepic Games` | `shop@plepicgames.com` | `Plepic Games <shop@plepicgames.com>` |
-| Test | `Plepic Games Test` | `test@plepicgames.com` | `Plepic Games Test <test@plepicgames.com>` |
+| Live | `Plepic Games` | Runtime `SMTP_ENVELOPE_FROM` | Structured name/address pair |
+| Test | `Plepic Games Test` | Runtime `SMTP_ENVELOPE_FROM` | Structured name/address pair |
 
 The application validates the display name as a non-empty, single-line value
 to prevent header injection. The separate `hannosirkel/deploys` repository
