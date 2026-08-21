@@ -69,7 +69,7 @@ export function renderTransactionalEmail(input: {
           </tr>
           <tr>
             <td style="padding:32px 28px 12px;">
-              <div style="font-size:13px;line-height:20px;text-transform:uppercase;letter-spacing:.08em;color:#62677f;">${orderNumberHtml}</div>
+              <div style="font-size:13px;line-height:20px;text-transform:uppercase;letter-spacing:.08em;color:#151b46;">${orderNumberHtml}</div>
               <h1 style="margin:4px 0 0;font-size:28px;line-height:36px;color:#151b46;">${statusHtml}</h1>
             </td>
           </tr>

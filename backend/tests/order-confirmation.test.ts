@@ -134,6 +134,19 @@ describe("shared transactional email shell", () => {
 });
 
 describe("order confirmation templates", () => {
+  it("uses only the approved publisher palette", () => {
+    const rendered = renderOrderConfirmation(invoiceOrder);
+    const approvedColors = new Set(["#151b46", "#f7f4ec", "#ffffff", "#d9d4c6"]);
+    const renderedColors = [...rendered.html.matchAll(/style="([^"]*)"/g)].flatMap(
+      ([, style]) => style?.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [],
+    );
+    const unapprovedColors = [
+      ...new Set(renderedColors.map((color) => color.toLowerCase())),
+    ].filter((color) => !approvedColors.has(color));
+
+    expect(unapprovedColors).toEqual([]);
+  });
+
   it("renders an escaped invoice from authoritative order totals", () => {
     const rendered = renderOrderConfirmation(invoiceOrder);
 
