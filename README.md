@@ -719,12 +719,22 @@ The Plepic Games storefront and Medusa backend monorepo.
   credential-rotation event rather than a restart.
   It carries one maintained Stripe provider and a custom email notification
   provider.
-  Order confirmations use Medusa's idempotent persisted notification lifecycle;
-  each message is a concise invoice confirmation. Shipment and delivery events
-  use the same lifecycle for their status notifications. Withdrawal conditions
-  and the model withdrawal form remain available on the website rather than
-  being repeated in transactional email.
-  contact messages use the same strict STARTTLS sender directly, after
+  Order confirmations, shipment notices and delivery notices are three
+  renderings of one shell — a dependency-free adaptation of ActiveCampaign's
+  MIT-licensed Postmark receipt template, whose upstream licence is kept beside
+  it in `backend/src/notifications/LICENSE.postmark-templates`. No template
+  engine, hosted template store or new runtime dependency came with it.
+  All three go out through Medusa's idempotent persisted notification
+  lifecycle, keyed per event and resource, so a replayed `order.placed`,
+  `shipment.created` or `delivery.created` cannot send the same message twice —
+  and an administrator who clears **Send notification** on a shipment or
+  delivery is honoured before the fulfillment is ever queried. Each
+  confirmation is a concise invoice whose item and shipping amounts are
+  Medusa's own tax-exclusive totals rather than a recomputation, with VAT shown
+  only when it is positive. Withdrawal conditions and the model withdrawal form
+  remain available on the website rather than being repeated in transactional
+  email.
+  Contact messages use the same strict STARTTLS sender directly, after
   Turnstile verification, so their contents are never stored by Medusa.
   Newsletter submissions follow the same bounded, Turnstile-first Store API
   boundary and upsert only the deployment-configured Brevo list. A fail-closed,
@@ -733,7 +743,9 @@ The Plepic Games storefront and Medusa backend monorepo.
   errors are neither persisted nor logged locally.
   SMTP submission is fixed to port 587 with certificate verification; sender
   and contact recipient are deployment configuration, and visitor addresses
-  are Reply-To only. API/webhook secrets and the environment's Payment Method
+  are Reply-To only. See "The visible sender is a name, the envelope is an
+  address" for the one piece of mail identity that is deliberately not a
+  secret. API/webhook secrets and the environment's Payment Method
   Configuration stay backend-only; only Stripe's publishable key
   is projected to the browser at request time.
 
@@ -1479,6 +1491,39 @@ anyone meant. Accepting it would absorb a templating slip into a backend that
 starts, looks healthy, and quietly denies an origin somebody meant to allow —
 found at checkout, if ever. An empty **secret** is still an absent secret: a
 `JWT_SECRET` of `""` refuses exactly as it did.
+
+### The visible sender is a name, the envelope is an address
+
+`SMTP_FROM_NAME` is required runtime configuration and the only piece of mail
+identity here that is deliberately **not** a secret: `Plepic Games` live and
+`Plepic Games Test` test are display labels a recipient is meant to read, so
+they are delivered as plain manifest values rather than through a Secret that
+would imply there is something in them to protect. Making the test environment
+unmistakable in an inbox is the whole reason the variable exists.
+
+It does not change who may send. `SMTP_ENVELOPE_FROM` remains the authenticated
+address, and the two are handed to Nodemailer separately — `from: { name,
+address }` for the header a recipient sees, and an explicit
+`envelope: { from, to }` so the address the mail host authorised is exactly the
+address it is asked to accept. A display name is a header, not an
+authorisation.
+
+Which is also why it is validated as a single non-empty line. A header is
+terminated by a newline, so a value carrying `\r` or `\n` would not be a name
+with a mistake in it — it would be a second header the manifest never wrote.
+The variable is in the required list, so an empty value fails as absent and a
+multiline value fails as malformed, both at start rather than at the first
+order.
+
+That made the first deployment of this image an ordering problem across both
+repositories. The backend refuses to start without the variable, so
+`hannosirkel/deploys` had to carry it to all four roles that run the backend
+image — backend, worker, predeploy and catalogue-import — and Argo had to apply
+it **before** the image that requires it was deployed. The reverse order is not
+a degraded email, it is a crash-loop in every one of those four. That
+repository's `plepic/tests/manifests.sh` now asserts the exact per-environment
+value on every backend-image workload, which is what stops a fifth role being
+added later without one.
 
 ### The database connection
 
