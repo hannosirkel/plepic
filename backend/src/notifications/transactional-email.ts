@@ -74,7 +74,7 @@ export function renderTransactionalEmail(input: {
             </td>
           </tr>
           <tr>
-            <td style="padding:12px 28px 32px;">${input.bodyHtml}</td>
+            <td style="padding:12px 20px 32px;">${input.bodyHtml}</td>
           </tr>
         </table>
       </td>

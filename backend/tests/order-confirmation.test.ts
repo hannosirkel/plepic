@@ -131,6 +131,19 @@ describe("shared transactional email shell", () => {
       "<table><tr><td>Typed renderer markup</td></tr></table>",
     );
   });
+
+  it("reserves enough narrow-viewport width for typed renderer tables", () => {
+    const rendered = renderTransactionalEmail({
+      subject: "Order #1042 confirmed",
+      preheader: "Order #1042 confirmed.",
+      status: "Confirmed",
+      orderNumber: "#1042",
+      bodyHtml: "<table><tr><td>Invoice table</td></tr></table>",
+      bodyText: "Invoice table",
+    });
+
+    expect(rendered.html).toContain('<td style="padding:12px 20px 32px;">');
+  });
 });
 
 describe("order confirmation templates", () => {
