@@ -74,6 +74,7 @@ const clusterEnvironment: Record<string, string> = {
   SMTP_PORT: "587",
   SMTP_USERNAME: "validation-smtp-user",
   SMTP_PASSWORD: "validation-smtp-password",
+  SMTP_FROM_NAME: "Plepic Games Test",
   SMTP_ENVELOPE_FROM: "orders@example.test",
   CONTACT_MAIL_RECIPIENT: "contact@example.test",
   TURNSTILE_SECRET_KEY: "validation-turnstile-secret",

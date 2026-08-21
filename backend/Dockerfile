@@ -76,6 +76,7 @@ RUN NODE_ENV=production \
   SMTP_PORT=587 \
   SMTP_USERNAME=build \
   SMTP_PASSWORD=build \
+  SMTP_FROM_NAME='Plepic Games Test' \
   SMTP_ENVELOPE_FROM=orders@example.test \
   CONTACT_MAIL_RECIPIENT=contact@example.test \
   TURNSTILE_SECRET_KEY=build \

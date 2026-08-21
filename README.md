@@ -154,6 +154,17 @@ The Plepic Games storefront and Medusa backend monorepo.
   loading and error layouts can be inspected on a real device; it belongs to
   the mock data layer and leaves with it.
 
+  Payment-method availability stays in the Stripe Payment Method Configuration
+  selected at runtime by `STRIPE_PAYMENT_METHOD_CONFIGURATION_ID`. The test and
+  live configurations must expose the same set: Card and PayPal are enabled;
+  Bancontact, EPS, MB WAY and Satispay are disabled. Link remains enabled for
+  Card, and Apple Pay and Google Pay remain automatic wallet choices for an
+  eligible device, browser and location. The Payment Element presents eligible
+  wallets first, then Card and PayPal; all of them confirm the same
+  Medusa-owned Stripe PaymentIntent. Enabling PayPal or registering wallet
+  domains is an operator action in both Stripe modes, not an application secret
+  or a second payment provider.
+
   **`?mock=` is inert in production, and that is enforced rather than
   promised.** Requesting a scenario writes the requested basket into
   `sessionStorage` — deliberately, so `/cart?mock=filled` and the `/checkout`
@@ -709,11 +720,10 @@ The Plepic Games storefront and Medusa backend monorepo.
   It carries one maintained Stripe provider and a custom email notification
   provider.
   Order confirmations use Medusa's idempotent persisted notification lifecycle;
-  each confirmation reproduces the approved withdrawal conditions and complete
-  model withdrawal form in the durable email, with legal name, registered
-  address, legal contact address, and return address supplied through the same
-  `MERCHANT_*` deployment configuration used by the storefront. A root contract
-  test keeps that email wording equal to `content/legal/returns.ts`.
+  each message is a concise invoice confirmation. Shipment and delivery events
+  use the same lifecycle for their status notifications. Withdrawal conditions
+  and the model withdrawal form remain available on the website rather than
+  being repeated in transactional email.
   contact messages use the same strict STARTTLS sender directly, after
   Turnstile verification, so their contents are never stored by Medusa.
   Newsletter submissions follow the same bounded, Turnstile-first Store API

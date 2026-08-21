@@ -1,112 +1,154 @@
+import {
+  escapeHtml,
+  formatMoney,
+  renderTransactionalEmail,
+  type EmailContent,
+} from "./transactional-email.js";
+
 export const ORDER_CONFIRMATION_TEMPLATE = "order-confirmation";
 
-import type { OrderConfirmationLegalConfig } from "../config/runtime.js";
-
-interface OrderConfirmationItem {
-  readonly title: string;
-  readonly quantity: number;
-}
-
-interface OrderConfirmationOrder {
-  readonly display_id: number | string;
-  readonly currency_code: string;
+export interface OrderConfirmationOrder {
+  readonly displayId: number | string;
+  readonly currencyCode: string;
+  readonly itemSubtotal: number;
+  readonly shippingSubtotal: number;
+  readonly taxTotal: number;
   readonly total: number;
-  readonly items: readonly OrderConfirmationItem[];
+  readonly items: readonly {
+    readonly title: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly subtotal: number;
+  }[];
+  readonly shippingAddress: readonly string[];
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function requireMoney(value: number, field: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Order confirmation requires a non-negative finite ${field}`);
+  }
 }
 
-function formatTotal(total: number, currencyCode: string): string {
-  const currency = currencyCode.toUpperCase();
-  const amount = new Intl.NumberFormat("en-IE", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(total);
+function validateOrder(order: OrderConfirmationOrder): void {
+  if (String(order.displayId).trim().length === 0) {
+    throw new Error("Order confirmation requires an order number");
+  }
+  if (order.currencyCode.trim().length === 0) {
+    throw new Error("Order confirmation requires a currency code");
+  }
 
-  return `${amount.replace(/\u00a0/g, "")} ${currency}`;
+  requireMoney(order.itemSubtotal, "item subtotal");
+  requireMoney(order.shippingSubtotal, "shipping subtotal");
+  requireMoney(order.taxTotal, "tax total");
+  requireMoney(order.total, "total");
+
+  if (order.items.length === 0) {
+    throw new Error("Order confirmation requires at least one item");
+  }
+  for (const item of order.items) {
+    if (item.title.trim().length === 0) {
+      throw new Error("Order confirmation requires non-blank item titles");
+    }
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+      throw new Error("Order confirmation requires positive finite item quantities");
+    }
+    requireMoney(item.unitPrice, "item unit price");
+    requireMoney(item.subtotal, "item subtotal");
+  }
+
+  if (
+    order.shippingAddress.length === 0 ||
+    order.shippingAddress.some((line) => line.trim().length === 0)
+  ) {
+    throw new Error("Order confirmation requires a non-empty shipping address");
+  }
 }
 
-/*
- * Canonical wording is content/legal/returns.ts. The backend image cannot import
- * across its package root, so the exact-paragraph test compares these sections
- * with that source and makes any future wording drift fail closed.
- */
-export const ORDER_CONFIRMATION_LEGAL_SECTIONS = [
-  {
-    heading: "You have 14 days to change your mind",
-    paragraphs: [
-      "If you are buying as a consumer, you may withdraw from the contract without giving any reason.",
-      "The withdrawal period is 14 days from the day you, or somebody you nominated other than the carrier, take physical possession of the goods.",
-      "To withdraw, tell us so before the 14 days are up. Email {merchantContactAddress} with your order number and a sentence saying you are withdrawing — that is enough. You may use the model withdrawal form below if you prefer, but you are not obliged to. Simply sending the parcel back without telling us also works, but a message is faster and lets us watch for the return.",
-      "The statutory 14 days for the refund run from the day you tell us; if the parcel is your only message, the refund clock starts when it, or your proof of postage, reaches us.",
-    ],
-  },
-  {
-    heading: "Model withdrawal form",
-    paragraphs: [
-      "Model withdrawal form (use only if you wish):",
-      "To {merchantLegalName}, {merchantRegisteredAddress}, {merchantContactAddress}: I hereby give notice that I withdraw from my contract of sale of the following goods: …",
-      "Ordered on / received on: …",
-      "Name and address of consumer: …",
-      "Signature (only if on paper), date.",
-    ],
-  },
-  {
-    heading: "Sending it back, and getting your money",
-    paragraphs: [
-      "Send the goods back within 14 days of telling us you are withdrawing. The return address is {returnAddress}.",
-      "You pay the cost of returning the parcel. Please use a tracked service and keep your proof of postage — once you show it to us, your refund is due even if the parcel is still travelling — and choose the cheapest service that offers tracking; we do not ask for anything more than that.",
-      "We refund what you paid for the goods, plus the standard outbound delivery charge, within 14 days of being told you are withdrawing. If you chose a faster or more expensive delivery option than our standard one, we refund the standard cost rather than the premium. We may hold the refund until the goods reach us, or until you show us proof of postage, whichever happens first.",
-      "The refund goes back by the same means you paid, and costs you nothing.",
-      "You may unwrap the game and look at it — that is what you would do in a shop. If the components come back damaged or incomplete because of handling beyond checking what the game is, we may reduce the refund by the loss in value.",
-      "None of this affects your separate legal rights if the goods arrive faulty, damaged or not as described. If a card is missing or the box arrived crushed, write to {merchantContactAddress} and we will put it right; do not use the withdrawal process for that.",
-    ],
-  },
-] as const;
-
-function resolveLegalParagraph(
-  paragraph: string,
-  legal: OrderConfirmationLegalConfig,
-): string {
-  return paragraph
-    .replaceAll("{merchantLegalName}", legal.merchantLegalName)
-    .replaceAll("{merchantRegisteredAddress}", legal.merchantRegisteredAddress)
-    .replaceAll("{merchantContactAddress}", legal.merchantContactAddress)
-    .replaceAll("{returnAddress}", legal.returnAddress);
+function amountCell(value: string): string {
+  return `<td align="right" style="padding:10px 0 10px 12px;border-bottom:1px solid #d9d4c6;font-size:14px;line-height:20px;white-space:nowrap;">${escapeHtml(value)}</td>`;
 }
 
-export function renderOrderConfirmation(
-  order: OrderConfirmationOrder,
-  legal: OrderConfirmationLegalConfig,
-) {
-  const heading = `Order #${order.display_id} confirmed`;
-  const lines = order.items.map((item) => `${item.quantity} × ${item.title}`);
-  const htmlItems = order.items
-    .map((item) => `<li>${item.quantity} × ${escapeHtml(item.title)}</li>`)
-    .join("");
-  const total = formatTotal(order.total, order.currency_code);
-  const legalText = ORDER_CONFIRMATION_LEGAL_SECTIONS.map((section) => [
-    section.heading,
-    ...section.paragraphs.map((paragraph) => resolveLegalParagraph(paragraph, legal)),
-  ].join("\n\n")).join("\n\n");
-  const legalHtml = ORDER_CONFIRMATION_LEGAL_SECTIONS.map((section) =>
-    `<h2>${escapeHtml(section.heading)}</h2>${section.paragraphs
-      .map((paragraph) => `<p>${escapeHtml(resolveLegalParagraph(paragraph, legal))}</p>`)
-      .join("")}`,
-  ).join("");
+export function renderOrderConfirmation(order: OrderConfirmationOrder): EmailContent {
+  validateOrder(order);
 
-  return {
-    subject: heading,
-    text: `${heading}\n\n${lines.join("\n")}\n\nTotal: ${total}\n\n${legalText}`,
-    html: `<h1>${heading}</h1><ul>${htmlItems}</ul><p>Total: ${total}</p>${legalHtml}`,
-  };
+  const displayId = String(order.displayId);
+  const orderNumber = `#${displayId}`;
+  const subject = `Order ${orderNumber} confirmed`;
+  const itemRows = order.items.map((item) => {
+    const unitPrice = formatMoney(item.unitPrice, order.currencyCode);
+    const subtotal = formatMoney(item.subtotal, order.currencyCode);
+    return `<tr>
+  <td style="padding:10px 12px 10px 0;border-bottom:1px solid #d9d4c6;font-size:14px;line-height:20px;">${escapeHtml(item.title)}</td>
+  <td align="right" style="padding:10px 0 10px 12px;border-bottom:1px solid #d9d4c6;font-size:14px;line-height:20px;">${escapeHtml(String(item.quantity))}</td>
+  ${amountCell(unitPrice)}
+  ${amountCell(subtotal)}
+</tr>`;
+  }).join("");
+  const itemText = order.items.map((item) => [
+    item.title,
+    String(item.quantity),
+    formatMoney(item.unitPrice, order.currencyCode),
+    formatMoney(item.subtotal, order.currencyCode),
+  ].join("\t")).join("\n");
+  const products = formatMoney(order.itemSubtotal, order.currencyCode);
+  const shipping = formatMoney(order.shippingSubtotal, order.currencyCode);
+  const tax = formatMoney(order.taxTotal, order.currencyCode);
+  const total = formatMoney(order.total, order.currencyCode);
+  const vatHtml = order.taxTotal === 0 ? "" : `<tr>
+  <td style="padding:7px 12px 7px 0;font-size:14px;line-height:20px;">VAT</td>
+  <td align="right" style="padding:7px 0;font-size:14px;line-height:20px;">${escapeHtml(tax)}</td>
+</tr>`;
+  const vatText = order.taxTotal === 0 ? "" : `\nVAT\t${tax}`;
+  const addressHtml = order.shippingAddress.map(escapeHtml).join("<br>");
+  const addressText = order.shippingAddress.join("\n");
+  const bodyHtml = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+  <tr>
+    <th align="left" style="padding:10px 12px 10px 0;border-bottom:2px solid #151b46;font-size:12px;line-height:18px;text-transform:uppercase;">Product</th>
+    <th align="right" style="padding:10px 0 10px 12px;border-bottom:2px solid #151b46;font-size:12px;line-height:18px;text-transform:uppercase;">Qty</th>
+    <th align="right" style="padding:10px 0 10px 12px;border-bottom:2px solid #151b46;font-size:12px;line-height:18px;text-transform:uppercase;">Unit price</th>
+    <th align="right" style="padding:10px 0 10px 12px;border-bottom:2px solid #151b46;font-size:12px;line-height:18px;text-transform:uppercase;">Amount</th>
+  </tr>
+  ${itemRows}
+</table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin-top:16px;border-collapse:collapse;">
+  <tr>
+    <td style="padding:7px 12px 7px 0;font-size:14px;line-height:20px;">Products</td>
+    <td align="right" style="padding:7px 0;font-size:14px;line-height:20px;">${escapeHtml(products)}</td>
+  </tr>
+  <tr>
+    <td style="padding:7px 12px 7px 0;font-size:14px;line-height:20px;">Shipping</td>
+    <td align="right" style="padding:7px 0;font-size:14px;line-height:20px;">${escapeHtml(shipping)}</td>
+  </tr>
+  ${vatHtml}
+  <tr>
+    <td style="padding:12px 12px 0 0;border-top:2px solid #151b46;font-size:16px;line-height:22px;font-weight:700;">Total</td>
+    <td align="right" style="padding:12px 0 0;border-top:2px solid #151b46;font-size:16px;line-height:22px;font-weight:700;">${escapeHtml(total)}</td>
+  </tr>
+</table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin-top:28px;border-collapse:collapse;">
+  <tr>
+    <td style="padding:16px;background:#f7f4ec;border:1px solid #d9d4c6;font-size:14px;line-height:22px;">
+      <strong style="display:block;margin-bottom:6px;">Shipping address</strong>
+      ${addressHtml}
+    </td>
+  </tr>
+</table>`;
+  const bodyText = `Product\tQty\tUnit price\tAmount
+${itemText}
+
+Products\t${products}
+Shipping\t${shipping}${vatText}
+Total\t${total}
+
+Shipping address
+${addressText}`;
+
+  return renderTransactionalEmail({
+    subject,
+    preheader: `${subject}.`,
+    status: "Confirmed",
+    orderNumber,
+    bodyHtml,
+    bodyText,
+  });
 }

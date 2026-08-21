@@ -7,8 +7,10 @@ export const SMTP_NOTIFICATION_PROVIDER_ID = "plepic-smtp";
 export interface SmtpOptions {
   readonly host: string;
   readonly port: 587;
+  readonly tlsServername?: string;
   readonly username: string;
   readonly password: string;
+  readonly fromName: string;
   readonly envelopeFrom: string;
 }
 
@@ -25,6 +27,7 @@ type TransportFactory = (options: SmtpSender["transportOptions"]) => Pick<Transp
 export class SmtpSender {
   readonly transportOptions;
   readonly #transport: Pick<Transporter, "sendMail">;
+  readonly #fromName: string;
   readonly #envelopeFrom: string;
 
   constructor(options: SmtpOptions, transportFactory: TransportFactory = nodemailer.createTransport) {
@@ -34,16 +37,22 @@ export class SmtpSender {
       secure: false,
       requireTLS: true,
       auth: { user: options.username, pass: options.password },
-      tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
+      tls: {
+        rejectUnauthorized: true,
+        minVersion: "TLSv1.2",
+        ...(options.tlsServername ? { servername: options.tlsServername } : {}),
+      },
     } as const;
     this.#transport = transportFactory(this.transportOptions);
+    this.#fromName = options.fromName;
     this.#envelopeFrom = options.envelopeFrom;
   }
 
   async send(message: MailMessage): Promise<{ id?: string }> {
     try {
       const result = await this.#transport.sendMail({
-        from: this.#envelopeFrom,
+        from: { name: this.#fromName, address: this.#envelopeFrom },
+        envelope: { from: this.#envelopeFrom, to: message.to },
         ...message,
       });
       return { id: typeof result.messageId === "string" ? result.messageId : undefined };

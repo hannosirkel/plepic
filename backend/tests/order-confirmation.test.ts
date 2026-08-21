@@ -1,15 +1,18 @@
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BigNumber, ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import SmtpNotificationProvider, {
   SMTP_NOTIFICATION_PROVIDER_ID,
   SmtpSender,
 } from "../src/notifications/smtp.js";
 import {
-  ORDER_CONFIRMATION_LEGAL_SECTIONS,
   ORDER_CONFIRMATION_TEMPLATE,
   renderOrderConfirmation,
 } from "../src/notifications/order-confirmation.js";
+import {
+  formatMoney,
+  renderTransactionalEmail,
+} from "../src/notifications/transactional-email.js";
 import orderPlaced, { config } from "../src/subscribers/order-placed.js";
 import { notificationModule } from "../src/config/notification.js";
 
@@ -18,87 +21,216 @@ const smtpOptions = {
   port: 587 as const,
   username: "smtp-user",
   password: "smtp-password",
+  fromName: "Plepic Games Test",
   envelopeFrom: "orders@example.test",
 };
 
 const order = {
   id: "order_123",
-  display_id: 1042,
   email: "customer@example.test",
-  currency_code: "eur",
-  total: 25.99,
+};
+
+const invoiceOrder = {
+  displayId: 1042,
+  currencyCode: "eur",
+  itemSubtotal: 20,
+  shippingSubtotal: 5,
+  taxTotal: 5.5,
+  total: 30.5,
   items: [
-    { id: "item_1", title: "Moonrock & <Ore>", quantity: 2, unit_price: 1299 },
+    { title: "Moonrock & <Ore>", quantity: 2, unitPrice: 10, subtotal: 20 },
+    { title: "Mission patch", quantity: 1, unitPrice: 0, subtotal: 0 },
+  ],
+  shippingAddress: [
+    "Ada Lovelace",
+    "Plepic Games OÜ",
+    "Pihlaka tn 2",
+    "75301 Jüri",
+    "EE",
   ],
 };
 
-const legal = {
-  merchantLegalName: "Lunar <Base> OÜ",
-  merchantRegisteredAddress: "Moon & Crater 1, Tallinn",
-  merchantContactAddress: "orders@example.test",
-  returnAddress: "Return Depot, Moon > Earth",
+const queriedOrder = {
+  id: order.id,
+  display_id: invoiceOrder.displayId,
+  email: order.email,
+  currency_code: invoiceOrder.currencyCode,
+  item_total: new BigNumber(24.4),
+  item_tax_total: new BigNumber(4.4),
+  shipping_total: new BigNumber(6.1),
+  shipping_tax_total: new BigNumber(1.1),
+  tax_total: new BigNumber(invoiceOrder.taxTotal),
+  total: new BigNumber(invoiceOrder.total),
+  items: [
+    {
+      id: "item_1",
+      title: invoiceOrder.items[0].title,
+      unit_price: new BigNumber(invoiceOrder.items[0].unitPrice),
+      total: new BigNumber(24.4),
+      tax_total: new BigNumber(4.4),
+      detail: { quantity: new BigNumber(invoiceOrder.items[0].quantity) },
+    },
+    {
+      id: "item_2",
+      title: invoiceOrder.items[1].title,
+      unit_price: new BigNumber(invoiceOrder.items[1].unitPrice),
+      total: new BigNumber(0),
+      tax_total: new BigNumber(0),
+      detail: { quantity: new BigNumber(invoiceOrder.items[1].quantity) },
+    },
+  ],
+  shipping_address: {
+    first_name: " Ada ",
+    last_name: " Lovelace ",
+    company: "Plepic Games OÜ",
+    address_1: "Pihlaka tn 2",
+    address_2: "Suite 4",
+    postal_code: "75301",
+    city: "Jüri",
+    province: "Harjumaa",
+    country_code: "ee",
+  },
 };
 
-function legalParagraphs(anchor: string): readonly string[] {
-  const sectionIndex = ["withdrawal", "withdrawal-form", "returns-process"].indexOf(anchor);
-  const section = ORDER_CONFIRMATION_LEGAL_SECTIONS[sectionIndex];
-  if (section === undefined) throw new Error(`Missing email legal section: ${anchor}`);
-  return section.paragraphs.map((paragraph) =>
-    paragraph
-      .replaceAll("{merchantLegalName}", legal.merchantLegalName)
-      .replaceAll("{merchantRegisteredAddress}", legal.merchantRegisteredAddress)
-      .replaceAll("{merchantContactAddress}", legal.merchantContactAddress)
-      .replaceAll("{returnAddress}", legal.returnAddress),
-  );
-}
-
-beforeEach(() => {
-  vi.stubEnv("MERCHANT_LEGAL_NAME", legal.merchantLegalName);
-  vi.stubEnv("MERCHANT_REGISTERED_ADDRESS", legal.merchantRegisteredAddress);
-  vi.stubEnv("MERCHANT_CONTACT_ADDRESS", legal.merchantContactAddress);
-  vi.stubEnv("MERCHANT_RETURN_ADDRESS", legal.returnAddress);
-});
+const normalizedQueriedOrder = {
+  ...invoiceOrder,
+  shippingAddress: [
+    "Ada Lovelace",
+    "Plepic Games OÜ",
+    "Pihlaka tn 2",
+    "Suite 4",
+    "75301 Jüri",
+    "Harjumaa",
+    "EE",
+  ],
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
+});
+
+describe("shared transactional email shell", () => {
+  it("formats upper-case currency and rejects non-finite money", () => {
+    expect(formatMoney(10, "eur")).toBe("€10.00 EUR");
+    expect(() => formatMoney(Number.NaN, "eur")).toThrow("finite");
+    expect(() => formatMoney(Number.POSITIVE_INFINITY, "eur")).toThrow("finite");
+  });
+
+  it("escapes shell-owned headings while preserving typed renderer markup", () => {
+    const rendered = renderTransactionalEmail({
+      subject: "Order <unsafe>",
+      preheader: "Preheader & <unsafe>",
+      status: "<Confirmed>",
+      orderNumber: "#<1042>",
+      bodyHtml: "<table><tr><td>Typed renderer markup</td></tr></table>",
+      bodyText: "Typed renderer text",
+    });
+
+    expect(rendered.subject).toBe("Order <unsafe>");
+    expect(rendered.html).toContain("Order &lt;unsafe&gt;");
+    expect(rendered.html).toContain("Preheader &amp; &lt;unsafe&gt;");
+    expect(rendered.html).toContain("&lt;Confirmed&gt;");
+    expect(rendered.html).toContain("#&lt;1042&gt;");
+    expect(rendered.html).toContain(
+      "<table><tr><td>Typed renderer markup</td></tr></table>",
+    );
+  });
+
+  it("reserves enough narrow-viewport width for typed renderer tables", () => {
+    const rendered = renderTransactionalEmail({
+      subject: "Order #1042 confirmed",
+      preheader: "Order #1042 confirmed.",
+      status: "Confirmed",
+      orderNumber: "#1042",
+      bodyHtml: "<table><tr><td>Invoice table</td></tr></table>",
+      bodyText: "Invoice table",
+    });
+
+    expect(rendered.html).toContain('<td style="padding:12px 20px 32px;">');
+  });
 });
 
 describe("order confirmation templates", () => {
-  it("renders a deterministic escaped summary with an authoritative EUR total", () => {
-    const rendered = renderOrderConfirmation(order, legal);
-    const requiredParagraphs = [
-      ...legalParagraphs("withdrawal"),
-      ...legalParagraphs("withdrawal-form"),
-      ...legalParagraphs("returns-process"),
-    ];
+  it("uses only the approved publisher palette", () => {
+    const rendered = renderOrderConfirmation(invoiceOrder);
+    const approvedColors = new Set(["#151b46", "#f7f4ec", "#ffffff", "#d9d4c6"]);
+    const renderedColors = [...rendered.html.matchAll(/style="([^"]*)"/g)].flatMap(
+      ([, style]) => style?.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [],
+    );
+    const unapprovedColors = [
+      ...new Set(renderedColors.map((color) => color.toLowerCase())),
+    ].filter((color) => !approvedColors.has(color));
+
+    expect(unapprovedColors).toEqual([]);
+  });
+
+  it("renders an escaped invoice from authoritative order totals", () => {
+    const rendered = renderOrderConfirmation(invoiceOrder);
 
     expect(rendered.subject).toBe("Order #1042 confirmed");
-    expect(rendered.text).toBe(
-      `Order #1042 confirmed\n\n2 × Moonrock & <Ore>\n\nTotal: €25.99 EUR\n\n` +
-        [
-          "You have 14 days to change your mind",
-          ...legalParagraphs("withdrawal"),
-          "Model withdrawal form",
-          ...legalParagraphs("withdrawal-form"),
-          "Sending it back, and getting your money",
-          ...legalParagraphs("returns-process"),
-        ].join("\n\n"),
+    expect(rendered.text).toContain("Product\tQty\tUnit price\tAmount");
+    expect(rendered.text).toContain("Moonrock & <Ore>\t2\t€10.00 EUR\t€20.00 EUR");
+    expect(rendered.text).toContain("Products\t€20.00 EUR");
+    expect(rendered.text).toContain("Shipping\t€5.00 EUR");
+    expect(rendered.text).toContain("VAT\t€5.50 EUR");
+    expect(rendered.text).toContain("Total\t€30.50 EUR");
+    expect(rendered.text).toContain(
+      "Ada Lovelace\nPlepic Games OÜ\nPihlaka tn 2\n75301 Jüri\nEE",
     );
-    expect(rendered.html).toContain(
-      "<h1>Order #1042 confirmed</h1><ul><li>2 × Moonrock &amp; &lt;Ore&gt;</li></ul><p>Total: €25.99 EUR</p>",
-    );
-    expect(rendered.html).toContain("Lunar &lt;Base&gt; OÜ");
-    expect(rendered.html).toContain("Moon &amp; Crater 1, Tallinn");
-    expect(rendered.html).toContain("Return Depot, Moon &gt; Earth");
-    for (const paragraph of requiredParagraphs) {
-      expect(rendered.text).toContain(paragraph);
-    }
-    expect(rendered.html).not.toContain("{merchant");
-    expect(rendered.html).not.toContain("{returnAddress}");
-    expect(rendered).toMatchObject({
-      subject: "Order #1042 confirmed",
+    expect(rendered.text).not.toContain("withdraw");
+    expect(rendered.html).toContain("Order #1042");
+    expect(rendered.html).toContain("Moonrock &amp; &lt;Ore&gt;");
+  });
+
+  it("omits the VAT row when the authoritative tax total is zero", () => {
+    const rendered = renderOrderConfirmation({
+      ...invoiceOrder,
+      taxTotal: 0,
+      total: 25,
     });
+
+    expect(rendered.text).not.toContain("\nVAT\t");
+    expect(rendered.html).not.toContain(">VAT<");
+  });
+
+  it("escapes hostile dynamic values without creating HTML tags", () => {
+    const rendered = renderOrderConfirmation({
+      ...invoiceOrder,
+      displayId: "</td><script>alert(1)</script>",
+      items: [{
+        title: "</td><img src=x onerror=alert(1)>",
+        quantity: 1,
+        unitPrice: 20,
+        subtotal: 20,
+      }],
+      shippingAddress: ["<script>alert(2)</script>", "Crater & <Base>"],
+    });
+
+    expect(rendered.html).toContain("&lt;/td&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(rendered.html).toContain("&lt;/td&gt;&lt;img src=x onerror=alert(1)&gt;");
+    expect(rendered.html).toContain("&lt;script&gt;alert(2)&lt;/script&gt;");
+    expect(rendered.html).toContain("Crater &amp; &lt;Base&gt;");
+    expect(rendered.html).not.toContain("<script>");
+    expect(rendered.html).not.toContain("<img src=x");
+  });
+
+  it.each([
+    ["negative item subtotal", { itemSubtotal: -1 }],
+    ["non-finite shipping subtotal", { shippingSubtotal: Number.POSITIVE_INFINITY }],
+    ["negative tax total", { taxTotal: -1 }],
+    ["non-finite total", { total: Number.NaN }],
+    ["empty items", { items: [] }],
+    ["empty address", { shippingAddress: [] }],
+    ["blank title", { items: [{ ...invoiceOrder.items[0], title: "  " }] }],
+    ["non-positive quantity", { items: [{ ...invoiceOrder.items[0], quantity: 0 }] }],
+    ["negative unit price", { items: [{ ...invoiceOrder.items[0], unitPrice: -1 }] }],
+    ["non-finite line subtotal", {
+      items: [{ ...invoiceOrder.items[0], subtotal: Number.NEGATIVE_INFINITY }],
+    }],
+  ])("rejects an order with a %s", (_case, override) => {
+    expect(() => renderOrderConfirmation({ ...invoiceOrder, ...override })).toThrow(
+      "Order confirmation requires",
+    );
   });
 });
 
@@ -140,7 +272,8 @@ describe("SMTP notification provider", () => {
       tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
     });
     expect(sendMail).toHaveBeenCalledWith({
-      from: "orders@example.test",
+      from: { name: "Plepic Games Test", address: "orders@example.test" },
+      envelope: { from: "orders@example.test", to: "customer@example.test" },
       to: "customer@example.test",
       subject: "Order #1042 confirmed",
       text: "Plain",
@@ -168,7 +301,7 @@ describe("SMTP notification provider", () => {
 
 describe("order.placed subscriber", () => {
   it("queries the order fields needed for confirmation and persists one idempotent email", async () => {
-    const graph = vi.fn().mockResolvedValue({ data: [order] });
+    const graph = vi.fn().mockResolvedValue({ data: [queriedOrder] });
     const createNotifications = vi.fn().mockResolvedValue({ id: "noti_123" });
     const container = {
       resolve: vi.fn((key: string) => {
@@ -187,7 +320,33 @@ describe("order.placed subscriber", () => {
     expect(config).toEqual({ event: "order.placed" });
     expect(graph).toHaveBeenCalledWith({
       entity: "order",
-      fields: ["id", "display_id", "email", "currency_code", "total", "items.id", "items.title", "items.quantity", "items.unit_price"],
+      fields: [
+        "id",
+        "display_id",
+        "email",
+        "currency_code",
+        "item_total",
+        "item_tax_total",
+        "shipping_total",
+        "shipping_tax_total",
+        "tax_total",
+        "total",
+        "items.id",
+        "items.title",
+        "items.unit_price",
+        "items.total",
+        "items.tax_total",
+        "items.detail.quantity",
+        "shipping_address.first_name",
+        "shipping_address.last_name",
+        "shipping_address.company",
+        "shipping_address.address_1",
+        "shipping_address.address_2",
+        "shipping_address.postal_code",
+        "shipping_address.city",
+        "shipping_address.province",
+        "shipping_address.country_code",
+      ],
       filters: { id: "order_123" },
     });
     expect(createNotifications).toHaveBeenCalledTimes(1);
@@ -195,12 +354,230 @@ describe("order.placed subscriber", () => {
       to: "customer@example.test",
       channel: "email",
       template: ORDER_CONFIRMATION_TEMPLATE,
-      content: renderOrderConfirmation(order, legal),
+      content: renderOrderConfirmation(normalizedQueriedOrder),
       trigger_type: "order.placed",
       resource_id: "order_123",
       resource_type: "order",
       idempotency_key: "order-confirmation:order_123",
     });
+  });
+
+  it("uses post-discount total/tax pairs for discounted invoice amounts", async () => {
+    const discountedOrder = {
+      ...queriedOrder,
+      item_total: new BigNumber(18),
+      item_tax_total: new BigNumber(3),
+      shipping_total: new BigNumber(6),
+      shipping_tax_total: new BigNumber(1),
+      tax_total: new BigNumber(4),
+      total: new BigNumber(24),
+      items: [{
+        ...queriedOrder.items[0],
+        total: new BigNumber(18),
+        tax_total: new BigNumber(3),
+      }],
+    };
+    const graph = vi.fn().mockResolvedValue({ data: [discountedOrder] });
+    const createNotifications = vi.fn().mockResolvedValue({ id: "noti_123" });
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never);
+
+    expect(createNotifications).toHaveBeenCalledWith({
+      to: "customer@example.test",
+      channel: "email",
+      template: ORDER_CONFIRMATION_TEMPLATE,
+      content: expect.objectContaining({
+        text: expect.stringContaining(
+          "Moonrock & <Ore>\t2\t€10.00 EUR\t€15.00 EUR",
+        ),
+      }),
+      trigger_type: "order.placed",
+      resource_id: "order_123",
+      resource_type: "order",
+      idempotency_key: "order-confirmation:order_123",
+    });
+    const content = createNotifications.mock.calls[0]?.[0]?.content;
+    expect(content.text).toContain("Products\t€15.00 EUR");
+    expect(content.text).toContain("Shipping\t€5.00 EUR");
+    expect(content.text).toContain("VAT\t€4.00 EUR");
+    expect(content.text).toContain("Total\t€24.00 EUR");
+  });
+
+  it("omits blank optional address fields without emitting blank lines", async () => {
+    const partialAddressOrder = {
+      ...queriedOrder,
+      shipping_address: {
+        first_name: "Ada",
+        last_name: " ",
+        company: null,
+        address_1: "Pihlaka tn 2",
+        address_2: "",
+        postal_code: "75301",
+        city: "Jüri",
+        province: undefined,
+        country_code: "ee",
+      },
+    };
+    const graph = vi.fn().mockResolvedValue({ data: [partialAddressOrder] });
+    const createNotifications = vi.fn().mockResolvedValue({ id: "noti_123" });
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never);
+
+    expect(createNotifications).toHaveBeenCalledWith(expect.objectContaining({
+      content: renderOrderConfirmation({
+        ...invoiceOrder,
+        shippingAddress: ["Ada", "Pihlaka tn 2", "75301 Jüri", "EE"],
+      }),
+    }));
+  });
+
+  it.each([
+    ["null total", {
+      ...queriedOrder,
+      total: null,
+    }],
+    ["non-finite total", {
+      ...queriedOrder,
+      total: new BigNumber("Infinity"),
+    }],
+    ["null item total", {
+      ...queriedOrder,
+      item_total: null,
+    }],
+    ["null item tax total", {
+      ...queriedOrder,
+      item_tax_total: null,
+    }],
+    ["null shipping total", {
+      ...queriedOrder,
+      shipping_total: null,
+    }],
+    ["null shipping tax total", {
+      ...queriedOrder,
+      shipping_tax_total: null,
+    }],
+    ["null line total", {
+      ...queriedOrder,
+      items: [{ ...queriedOrder.items[0], total: null }, queriedOrder.items[1]],
+    }],
+    ["null line tax total", {
+      ...queriedOrder,
+      items: [{ ...queriedOrder.items[0], tax_total: null }, queriedOrder.items[1]],
+    }],
+    ["null item unit price", {
+      ...queriedOrder,
+      items: [{ ...queriedOrder.items[0], unit_price: null }, queriedOrder.items[1]],
+    }],
+    ["null item quantity", {
+      ...queriedOrder,
+      items: [
+        { ...queriedOrder.items[0], detail: { quantity: null } },
+        queriedOrder.items[1],
+      ],
+    }],
+    ["empty items", {
+      ...queriedOrder,
+      items: [],
+    }],
+    ["absent shipping address", {
+      ...queriedOrder,
+      shipping_address: null,
+    }],
+    ["address with no printable line", {
+      ...queriedOrder,
+      shipping_address: {
+        first_name: " ",
+        last_name: null,
+        company: "",
+        address_1: undefined,
+        address_2: "\t",
+        postal_code: "",
+        city: " ",
+        province: null,
+        country_code: "",
+      },
+    }],
+  ])("rejects a Query Graph %s", async (_field, queriedOrder) => {
+    const graph = vi.fn().mockResolvedValue({ data: [queriedOrder] });
+    const createNotifications = vi.fn();
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await expect(orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never)).rejects.toThrow("Placed order is missing confirmation");
+    expect(createNotifications).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["line gross totals", {
+      ...queriedOrder,
+      items: [
+        { ...queriedOrder.items[0], total: new BigNumber(24.39) },
+        queriedOrder.items[1],
+      ],
+    }],
+    ["line tax totals", {
+      ...queriedOrder,
+      items: [
+        { ...queriedOrder.items[0], tax_total: new BigNumber(4.39) },
+        queriedOrder.items[1],
+      ],
+    }],
+    ["order component totals", {
+      ...queriedOrder,
+      total: new BigNumber(30.49),
+    }],
+    ["order component tax totals", {
+      ...queriedOrder,
+      tax_total: new BigNumber(5.49),
+    }],
+  ])("rejects %s that do not reconcile at currency precision", async (_case, data) => {
+    const graph = vi.fn().mockResolvedValue({ data: [data] });
+    const createNotifications = vi.fn();
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await expect(orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never)).rejects.toThrow("Placed order confirmation totals do not reconcile");
+    expect(createNotifications).not.toHaveBeenCalled();
   });
 
   it("uses the documented provider id", () => {

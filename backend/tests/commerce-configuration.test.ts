@@ -209,7 +209,7 @@ describe("the declared commerce configuration", () => {
     );
   });
 
-  /** Stripe only. No PayPal provider, at launch or by accident. */
+  /** Stripe only. PayPal is a method inside Stripe, never a second provider. */
   it("enables the one Stripe provider in the region and no other", () => {
     const [region] = only("region");
     expect(region!.paymentProviderIds).toEqual([STRIPE_PAYMENT_PROVIDER_ID]);

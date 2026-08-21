@@ -99,10 +99,7 @@ function respond(path: string): string | null {
       },
     });
   }
-  if (path === `/store-api/store/payment-collections`) {
-    return JSON.stringify({ payment_collection: { id: "paycol_example" } });
-  }
-  if (path === `/store-api/store/payment-collections/paycol_example/payment-sessions`) {
+  if (path === `/store-api/store/carts/${CART_ID}/stripe-payment-session`) {
     return JSON.stringify({
       payment_collection: {
         id: "paycol_example",
