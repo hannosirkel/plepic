@@ -118,6 +118,7 @@ export STRIPE_WEBHOOK_SECRET=whsec_store_smoke
 export STRIPE_PAYMENT_METHOD_CONFIGURATION_ID=pmc_store_smoke
 export SMTP_HOST=127.0.0.1
 export SMTP_PORT=587
+export SMTP_TLS_SERVERNAME=smtp.example.test
 export SMTP_USERNAME=store-smoke
 export SMTP_PASSWORD=store-smoke
 export SMTP_ENVELOPE_FROM=orders@example.test
