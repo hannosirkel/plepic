@@ -29,6 +29,6 @@ export function createMedusaStoreClient(
   return new Medusa({
     baseUrl,
     publishableKey: config.publishableKey,
-    auth: { fetchCredentials: "same-origin" },
+    auth: { type: "session", fetchCredentials: "same-origin" },
   });
 }

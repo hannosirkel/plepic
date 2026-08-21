@@ -68,8 +68,17 @@ import type { ReactNode } from "react";
 import type { CartLine } from "./cart.js";
 import { DEFAULT_DESTINATION_CODE, destinationForCode } from "./destination.js";
 import { createMedusaStoreClient } from "./medusa-client.js";
+import { reportCartFailure, type CartOperation } from "./cart-diagnostics.js";
+import {
+  addStoreLine,
+  applyDestinationToCart,
+  cartLinesFromStore,
+  createStoreCart,
+  removeStoreLine,
+  retrieveStoreCart,
+  updateStoreLineQuantity,
+} from "./store-cart.js";
 import type { ClientRuntimeConfig } from "./client-runtime-config.js";
-import { medusaMajorToMinor } from "./store-money.js";
 import { emitAddToCart } from "./analytics.js";
 import {
   addCatalogueLineAction,
@@ -94,78 +103,15 @@ function runtimeConfig(): ClientRuntimeConfig {
 }
 
 /**
- * The basket's lines, priced the way the buyer will be charged.
+ * Adds the sole Store product to a new or existing cart and measures only the
+ * accepted line.
  *
- * **`item_total` and each line's `total`, never `unit_price`.** `unit_price` is
- * the stored price, and the stored price is now **net**: a basket built from it
- * stated the net figure for goods Medusa charges the gross one for, on the
- * screen whose figures feed the Article 8(2) disclosure block on
- * `/checkout`. Medusa's
- * `cart.item_total` is line items after discounts **including** tax, which is
- * what `./store-checkout.js` argues for at length on the checkout path and what
- * `./store-payment.js` already read on the confirmation path. This is the
- * basket agreeing with both.
- *
- * The per-unit figure the basket's price column shows is each line's own
- * `total` divided by its quantity, and a division that is not exact is
- * **refused** rather than rounded. A rounded unit price beside an unrounded
- * line total is two answers to "what does one cost?", and this shop's one
- * product divides exactly at every quantity a basket may hold. If a future
- * catalogue does not, that is a presentation decision somebody has to make on
- * purpose — a column showing "from" pricing, or no unit column — rather than a
- * cent this function invented.
- *
- * The line totals are then checked to sum to `item_total`, for the same reason
- * `cartTotals` in `./store-checkout.js` refuses three figures that do not add
- * up: the two are computed by different parts of Medusa, and a basket whose
- * lines do not account for its own goods figure has told a buyer something
- * untrue about at least one of them.
+ * The Store calls themselves live in `./store-cart.js`, which is the one place
+ * that knows a cart request must ask for per-line totals. See that file for
+ * what went wrong when they were spread across this one.
  */
-export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
-  const value = cart as { items?: readonly { id?: string; title?: string; total?: number; quantity?: number; variant?: { id?: string; manage_inventory?: boolean; allow_backorder?: boolean; inventory_quantity?: number } }[]; currency_code?: string; item_total?: number };
-  if (!Array.isArray(value.items) || typeof value.currency_code !== "string") throw new Error("Medusa Store cart response is malformed");
-  const currency = value.currency_code;
-  const lines = value.items.map((line) => {
-    if (typeof line.id !== "string" || typeof line.title !== "string" || !Number.isInteger(line.quantity) || (line.quantity as number) <= 0) throw new Error("Medusa Store cart line is malformed");
-    const quantity = line.quantity as number;
-    const lineTotal = medusaMajorToMinor(line.total, currency);
-    if (lineTotal % quantity !== 0) throw new Error("Medusa Store cart line does not divide into a whole unit price");
-    const variant = line.variant;
-    const available = variant?.manage_inventory !== true || variant.allow_backorder === true || (Number.isInteger(variant.inventory_quantity) && variant.inventory_quantity! > 0);
-    return { id: line.id, ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}), productName: line.title, unitAmount: lineTotal / quantity, currency: currency.toUpperCase(), quantity, availability: available ? "InStock" : "OutOfStock" } satisfies CartLine;
-  });
-  if (lines.reduce((sum, line) => sum + line.unitAmount * line.quantity, 0) !== medusaMajorToMinor(value.item_total, currency)) {
-    throw new Error("Medusa Store cart lines do not add up to the cart's own goods figure");
-  }
-  return lines;
-}
-
 type StoreClient = ReturnType<typeof createMedusaStoreClient>;
 
-/**
- * Tells Medusa where the parcel is going, so it can answer for a real
- * destination.
- *
- * Without a `shipping_address.country_code` a cart has no tax region, so
- * `item_total` comes back equal to the net subtotal and a European buyer's
- * basket states the export price. The destination the visitor set on this site
- * is written on as soon as a basket exists, and **the checkout overwrites it
- * the moment a real address is entered** (`prepareGuestShipping` in
- * `./store-checkout.js` sends the whole postal address). So this is a
- * provisional answer that a confirmed one replaces — never the thing a buyer is
- * charged on.
- */
-export async function applyDestinationToCart(
-  sdk: StoreClient,
-  cartId: string,
-  countryCode: string,
-): Promise<void> {
-  await sdk.store.cart.update(cartId, {
-    shipping_address: { country_code: countryCode.toLowerCase() },
-  });
-}
-
-/** Adds the sole Store product to a new or existing cart and measures only the accepted line. */
 export async function addStoreCatalogueLine(
   sdk: StoreClient,
   existingCartId: string | null,
@@ -181,16 +127,13 @@ export async function addStoreCatalogueLine(
   if (cartId === null) {
     const { regions } = await sdk.store.region.list({ limit: 2 });
     if (regions.length !== 1) throw new Error("Medusa Store catalogue is not ready");
-    const createdId = (await sdk.store.cart.create({ region_id: regions[0]!.id })).cart.id;
-    if (typeof createdId !== "string" || createdId.length === 0) throw new Error("Medusa Store cart is not ready");
-    cartId = createdId;
+    cartId = await createStoreCart(sdk, regions[0]!.id);
   }
   // Before the line, not after: the line's tax is computed against whatever
   // address the cart holds when it is created.
   await applyDestinationToCart(sdk, cartId, countryCode);
 
-  const updated = await sdk.store.cart.createLineItem(cartId, { variant_id: variantId, quantity: 1 });
-  const lines = cartLinesFromStore(updated.cart);
+  const lines = await addStoreLine(sdk, cartId, variantId);
   const acceptedLine = lines.find((line) => line.variantId === variantId);
   if (acceptedLine !== undefined) {
     emitAddToCart({
@@ -324,9 +267,13 @@ export function CartProvider({
          * the basket page and the figure beside the price cannot disagree.
          */
         await applyDestinationToCart(sdk, stored, destinationCode);
-        const { cart } = await sdk.store.cart.retrieve(stored);
-        setLines(cartLinesFromStore(cart));
-      } catch { forgetMedusaCartId(); cartId.current = null; setFailure("action"); }
+        setLines(cartLinesFromStore(await retrieveStoreCart(sdk, stored)));
+      } catch (error) {
+        reportCartFailure("restore", error);
+        forgetMedusaCartId();
+        cartId.current = null;
+        setFailure("action");
+      }
     })();
   }, [scenario, initial.lines, destinationCode]);
 
@@ -335,13 +282,15 @@ export function CartProvider({
       id: string,
       state: LinePending,
       action: (current: readonly CartLine[]) => Promise<CartActionOutcome>,
+      operation: CartOperation,
     ) => {
       setFailure(null);
       setPending((current) => ({ ...current, [id]: state }));
       let outcome: CartActionOutcome;
       try {
         outcome = await action(linesRef.current);
-      } catch {
+      } catch (error) {
+        reportCartFailure(operation, error);
         if (scenario === null) { forgetMedusaCartId(); cartId.current = null; }
         outcome = { ok: false, reason: "action-failed" };
       }
@@ -363,7 +312,7 @@ export function CartProvider({
     // of an empty basket is created, and the status line says what is
     // happening rather than what is usually happening.
     if (scenario !== null) {
-      void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options));
+      void run("lunar-base", "adding", (current) => addCatalogueLineAction(current, options), "add");
       return;
     }
     void run("lunar-base", "adding", async () => {
@@ -374,23 +323,23 @@ export function CartProvider({
         rememberMedusaCartId(added.cartId);
       }
       return { ok: true, lines: added.lines };
-    });
+    }, "add");
   }, [run, options, scenario, destinationCode]);
 
   const updateQuantity = useCallback(
     (id: string, quantity: number) => {
-      if (scenario !== null) { void run(id, "updating", (current) => updateLineQuantityAction(current, id, quantity, options)); return; }
+      if (scenario !== null) { void run(id, "updating", (current) => updateLineQuantityAction(current, id, quantity, options), "update-quantity"); return; }
       if (cartId.current === null) { setFailure("action"); return; }
-      void run(id, "updating", async () => ({ ok: true, lines: cartLinesFromStore((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.updateLineItem(cartId.current!, id, { quantity })).cart) }));
+      void run(id, "updating", async () => ({ ok: true, lines: await updateStoreLineQuantity(createMedusaStoreClient(runtimeConfig().medusa), cartId.current!, id, quantity) }), "update-quantity");
     },
     [run, options, scenario],
   );
 
   const remove = useCallback(
     (id: string) => {
-      if (scenario !== null) { void run(id, "removing", (current) => removeLineAction(current, id, options)); return; }
+      if (scenario !== null) { void run(id, "removing", (current) => removeLineAction(current, id, options), "remove"); return; }
       if (cartId.current === null) { setFailure("action"); return; }
-      void run(id, "removing", async () => ({ ok: true, lines: cartLinesFromStore((await createMedusaStoreClient(runtimeConfig().medusa).store.cart.deleteLineItem(cartId.current!, id)).parent) }));
+      void run(id, "removing", async () => ({ ok: true, lines: await removeStoreLine(createMedusaStoreClient(runtimeConfig().medusa), cartId.current!, id) }), "remove");
     },
     [run, options, scenario],
   );

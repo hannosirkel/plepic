@@ -205,6 +205,16 @@ start_server
 step "Asking the Store API"
 npm run test:smoke --workspace backend
 
+# The storefront's own Store readers, against the same server. Separate from
+# the suite above because the two workspaces do not share a module system --
+# backend is CommonJS, storefront is ESM -- so a backend test cannot import
+# `src/lib/store-cart.ts` at all. It has to be here rather than nowhere: the
+# basket was broken in every environment while both this file's catalogue
+# assertions and 47 browser tests passed, because nothing built a cart with the
+# code that ships.
+step "Asking it again as the storefront does, through the storefront's own readers"
+npm run test:smoke --workspace storefront
+
 # The convergence half of the tax-provider fix, which nothing else exercises.
 #
 # `applyTaxRegion` has two branches: it *sets* `provider_id` on a region it
@@ -222,6 +232,7 @@ docker compose exec -T postgresql psql -U plepic -d "${database}" -v ON_ERROR_ST
 
 step "Asking the Store API again, after a second predeploy"
 npm run test:smoke --workspace backend
+npm run test:smoke --workspace storefront
 
 echo
 echo "store smoke: the catalogue answers correctly on a live Medusa"

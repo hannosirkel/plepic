@@ -204,13 +204,31 @@ describe("TeamPhotoSection", () => {
    * caption of its own, so the assertion stays against the content model's
    * own text.
    */
-  it("renders the content model's heading and body, as emphasis markup rather than markers", () => {
-    expect(html).toContain(team.heading);
+  it("renders the content model's caption, as emphasis markup rather than markers", () => {
     for (const paragraph of team.body) {
       const expected = paragraph.replaceAll(/\*([^*]+)\*/g, "<em>$1</em>");
       expect(html).toContain(expected);
     }
     expect(html).not.toContain("*");
+  });
+
+  /*
+   * The heading is *gone*, and asserting its absence is not pedantry — the
+   * assertion that used to stand here, `toContain(team.heading)`, still passed
+   * after the heading was removed, because `team.heading` is "The six" and the
+   * photograph's alt text opens "The six people who make up Plepic Games". A
+   * substring assertion over whole-page markup is satisfied by any sentence
+   * that happens to contain the words.
+   *
+   * So this checks the structure instead: the figure carries no heading element
+   * at all. The operator merged this into the story section on 2026-08-20 and
+   * the story's own `<h2>` is the section's accessible name; a second heading
+   * here would put a rung back in the outline that the merge removed.
+   */
+  it("renders no heading of its own, since the story section supplies one", () => {
+    expect(html).not.toMatch(/<h[1-6][\s>]/);
+    expect(html).toContain("<figure");
+    expect(html).toContain("<figcaption");
   });
 
   it("carries real alt text on the photograph", () => {

@@ -201,7 +201,7 @@ function cartState(id: string): FixtureCart {
  * separately; the storefront refuses a set of them that does not add up, so
  * they are computed here from the declared pairs rather than typed out.
  */
-function cartBody(id: string) {
+function cartBody(id: string, withLineTotals: boolean) {
   const state = cartState(id);
   const country = state.address?.country_code ?? null;
   const vat = euMember(country);
@@ -231,7 +231,16 @@ function cartBody(id: string) {
             // what the buyer is charged for it, and it is the figure the basket
             // reads.
             unit_price: GOODS.beforeTax,
-            total: goods,
+            /*
+             * **Only when the request asked for it**, exactly as Medusa v2
+             * behaves — see `requestsLineTotals`. This fixture used to return
+             * `total` on every line unconditionally, which made it strictly
+             * more generous than the server it stands in for, and that is why
+             * 47 browser tests passed while the buy button was broken in every
+             * real environment: the storefront read a figure the real Medusa
+             * was never asked for and never sent.
+             */
+            ...(withLineTotals ? { total: goods } : {}),
             quantity: 1,
           },
         ]
@@ -288,6 +297,20 @@ function updatedAddress(body: string): Record<string, string> | null {
  * remembers the token it carried — but it touches no socket, which is what lets
  * the unit suite drive the storefront's own Store readers against it.
  */
+/**
+ * Whether this request asked for per-line computed totals.
+ *
+ * Medusa v2 leaves `items[].total` out of every cart response unless `fields`
+ * names it — a `+`-prefixed selection adding to the default set. The storefront
+ * asks on every cart call (`STORE_CART_FIELDS` in `src/lib/store-cart.ts`); a
+ * caller that forgets gets a cart whose lines carry no figure to price them by,
+ * which is what this fixture must reproduce rather than paper over.
+ */
+function requestsLineTotals(url: string): boolean {
+  const fields = new URL(url, "http://127.0.0.1").searchParams.get("fields");
+  return fields !== null && fields.includes("items.total");
+}
+
 export function fixtureResponse({ method, url, body, turnstileToken = "" }: FixtureRequest): FixtureReply {
   if (url === "/health") {
     return { status: 200, contentType: "text/plain", body: "ok" };
@@ -297,17 +320,17 @@ export function fixtureResponse({ method, url, body, turnstileToken = "" }: Fixt
     return json({ regions: [{ id: "region_fixture" }] });
   }
 
-  if (url === "/store/carts" && method === "POST") {
+  if (/^\/store\/carts(?:\?.*)?$/.test(url) && method === "POST") {
     // A new cart, so whatever the last one was quoted for is forgotten.
     carts.delete("cart_add_fixture");
     return json({ cart: { id: "cart_add_fixture" } });
   }
 
-  const lineItems = /^\/store\/carts\/([\w-]+)\/line-items$/.exec(url);
+  const lineItems = /^\/store\/carts\/([\w-]+)\/line-items(?:\?.*)?$/.exec(url);
   if (lineItems !== null && method === "POST") {
     const id = lineItems[1]!;
     cartState(id).lined = true;
-    return json({ cart: cartBody(id) });
+    return json({ cart: cartBody(id, requestsLineTotals(url)) });
   }
 
   /*
@@ -338,7 +361,7 @@ export function fixtureResponse({ method, url, body, turnstileToken = "" }: Fixt
       // destination write leaves a cart carrying a country and nothing else.
       if (address !== null) cartState(id).address = address;
     }
-    return json({ cart: cartBody(id) });
+    return json({ cart: cartBody(id, requestsLineTotals(url)) });
   }
 
   const inspect = /^\/inspect\/([\w-]+)$/.exec(url);

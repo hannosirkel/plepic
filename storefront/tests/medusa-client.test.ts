@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientRuntimeConfig } from "../src/lib/client-runtime-config.js";
 import { createMedusaStoreClient } from "../src/lib/medusa-client.js";
@@ -37,6 +37,7 @@ describe("createMedusaStoreClient", () => {
   const servers: Server[] = [];
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await Promise.all(servers.map(close));
   });
 
@@ -84,5 +85,21 @@ describe("createMedusaStoreClient", () => {
         publishableKey: "pk_example_browser_runtime",
       },
     ]);
+  });
+
+  it("sends the browser's same-origin credentials through the Store API proxy", async () => {
+    const credentials: RequestCredentials[] = [];
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      credentials.push(init?.credentials ?? "same-origin");
+      return new Response('{"products":[],"count":0,"offset":0,"limit":100}', {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const client = createMedusaStoreClient(configured, "https://storefront.example");
+
+    await client.store.product.list({ limit: 1 });
+
+    expect(credentials).toEqual(["same-origin"]);
   });
 });

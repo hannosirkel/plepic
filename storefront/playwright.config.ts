@@ -60,6 +60,16 @@ export default defineConfig({
         MEDUSA_BACKEND_URL: "http://127.0.0.1:3199",
         MEDUSA_PUBLISHABLE_API_KEY: "pk_playwright_fixture",
         TURNSTILE_SITE_KEY: "synthetic-playwright-turnstile-site-key",
+        /*
+         * The homepage story heading is a link to the published origin story,
+         * and its whole point is that it looks like one — the operator's report
+         * was that the previous link was unformatted and easy to miss. Without
+         * a destination the heading degrades to plain text, so the screenshot
+         * would photograph the fallback and the styling would have no visual
+         * coverage at all. A reserved example host, per this repository's
+         * no-live-hostname rule.
+         */
+        EXTERNAL_URL_ORIGIN_STORY: "https://stories.example.org/origin",
       },
       timeout: 120_000,
     },

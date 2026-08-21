@@ -33,7 +33,7 @@ import { describe, expect, it } from "vitest";
 
 import { mockCatalogue } from "../src/lib/catalogue.js";
 import { declaredShippingMethod } from "../src/lib/cart.js";
-import { cartLinesFromStore } from "../src/lib/cart-store.js";
+import { STORE_CART_FIELDS, cartLinesFromStore } from "../src/lib/store-cart.js";
 import { loadStoreCatalogueProduct } from "../src/lib/store-product.js";
 import { returnOrderDisclosure } from "../src/lib/store-payment.js";
 import { fixtureResponse } from "./playwright/medusa-fixture.js";
@@ -45,6 +45,9 @@ function ask(method: string, url: string, body = ""): unknown {
   expect(reply.status).toBe(200);
   return JSON.parse(reply.body);
 }
+
+/** The query every cart request the storefront makes carries. */
+const FIELDS = `?fields=${encodeURIComponent(STORE_CART_FIELDS)}`;
 
 /**
  * The catalogue as the storefront loads it: its own request builder, its own
@@ -123,14 +126,14 @@ describe("the browser suite's Medusa fixture", () => {
     // The order `addStoreCatalogueLine` uses: the destination is written onto
     // the cart *before* the line, because the line's tax is computed against
     // whatever address the cart holds when it is added.
-    ask("POST", "/store/carts", JSON.stringify({ region_id: "region_fixture" }));
+    ask("POST", `/store/carts${FIELDS}`, JSON.stringify({ region_id: "region_fixture" }));
     ask(
       "POST",
-      "/store/carts/cart_add_fixture",
+      `/store/carts/cart_add_fixture${FIELDS}`,
       JSON.stringify({ shipping_address: { country_code: "us" } }),
     );
 
-    const line = ask("POST", "/store/carts/cart_add_fixture/line-items", "{}") as { cart: unknown };
+    const line = ask("POST", `/store/carts/cart_add_fixture/line-items${FIELDS}`, "{}") as { cart: unknown };
     expect(cartLinesFromStore(line.cart)).toEqual([
       {
         id: "line_fixture",
@@ -145,10 +148,31 @@ describe("the browser suite's Medusa fixture", () => {
 
     const insideTheUnion = ask(
       "POST",
-      "/store/carts/cart_add_fixture",
+      `/store/carts/cart_add_fixture${FIELDS}`,
       JSON.stringify({ shipping_address: { country_code: "ee" } }),
     ) as { cart: unknown };
     expect(cartLinesFromStore(insideTheUnion.cart)[0]?.unitAmount).toBe(mockCatalogue.price.amountWithTax);
+  });
+
+  /**
+   * The fidelity that matters most, and the one this fixture did not have.
+   *
+   * Medusa v2 omits `items[].total` unless `fields` asks for it. This fixture
+   * used to return it unconditionally, so it was strictly more generous than
+   * the server it stands in for — and that is why the browser suite stayed
+   * green while adding to the basket failed in every real environment. A
+   * fixture may be smaller than the real thing; it may not be *kinder*, because
+   * then the suite proves nothing about the code that meets the real thing.
+   */
+  it("withholds per-line totals from a request that did not ask for them, as Medusa does", () => {
+    ask("POST", `/store/carts${FIELDS}`, JSON.stringify({ region_id: "region_fixture" }));
+    const line = ask("POST", "/store/carts/cart_add_fixture/line-items", "{}") as {
+      cart: { items: readonly Record<string, unknown>[] };
+    };
+
+    expect(line.cart.items[0]).toBeDefined();
+    expect(line.cart.items[0]!["total"]).toBeUndefined();
+    expect(() => cartLinesFromStore(line.cart)).toThrow(/carries no total/);
   });
 
   /**

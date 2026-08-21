@@ -391,7 +391,17 @@
   gap: var(--space-xl);
 }
 
-.section[id="video_trailer"] > .heading {
+.section[id="video_trailer"] > .heading,
+/*
+ * The teaser row spans both columns, exactly as the heading does.
+ *
+ * Without this it is a single grid *item*, so it took one of the two cells and
+ * the four teasers divided that cell between them: a row ending halfway across
+ * the page, with players about 85px wide. YouTube's embedded player cannot
+ * render its controls at that size, so the teasers did not merely look like
+ * icons — they could not be played. One rule, both symptoms.
+ */
+.section[id="video_trailer"] > .teaserRow {
   grid-column: 1 / -1;
 }
 
@@ -497,7 +507,8 @@
     border-block-start: 0;
   }
 
-  .section[id="video_trailer"] > .heading {
+  .section[id="video_trailer"] > .heading,
+  .section[id="video_trailer"] > .teaserRow {
     grid-column: 1;
   }
 

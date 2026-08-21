@@ -1,15 +1,16 @@
-.section {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
-  gap: clamp(var(--space-xl), 7vw, var(--space-4xl));
-  align-items: center;
-}
-
-@media (max-width: 720px) {
-  .section {
-    grid-template-columns: 1fr;
-    gap: var(--space-md);
-  }
+/*
+ * The team photograph as a figure inside the story section.
+ *
+ * It used to be a two-column grid of its own — photograph beside a heading and
+ * a paragraph — sitting below the story. The operator merged the two on
+ * 2026-08-20, so the columns now belong to `.storyLayout` in
+ * `mockups/homepage.module.css` and this file styles only the figure itself.
+ */
+.figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
 .photo {
@@ -19,24 +20,15 @@
   object-fit: cover;
 }
 
-.copy {
+.caption {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.heading {
-  font-size: var(--step-5);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-heading);
-  letter-spacing: var(--letter-spacing-heading);
-  color: var(--text);
-  margin: 0;
-}
-
-.paragraph {
-  font-size: var(--step-1);
+  gap: var(--space-2xs);
+  font-size: var(--step-0);
   line-height: var(--line-height-body);
   color: var(--text-muted);
-  margin: 0;
+}
+
+.captionLine {
+  display: block;
 }
