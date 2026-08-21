@@ -154,6 +154,17 @@ The Plepic Games storefront and Medusa backend monorepo.
   loading and error layouts can be inspected on a real device; it belongs to
   the mock data layer and leaves with it.
 
+  Payment-method availability stays in the Stripe Payment Method Configuration
+  selected at runtime by `STRIPE_PAYMENT_METHOD_CONFIGURATION_ID`. The test and
+  live configurations expose the same set: Card and PayPal are enabled;
+  Bancontact, EPS, MB WAY and Satispay are disabled. Link remains enabled for
+  Card, and Apple Pay and Google Pay remain automatic wallet choices for an
+  eligible device, browser and location. The Payment Element presents eligible
+  wallets first, then Card and PayPal; all of them confirm the same
+  Medusa-owned Stripe PaymentIntent. Enabling PayPal or registering wallet
+  domains is an operator action in both Stripe modes, not an application secret
+  or a second payment provider.
+
   **`?mock=` is inert in production, and that is enforced rather than
   promised.** Requesting a scenario writes the requested basket into
   `sessionStorage` — deliberately, so `/cart?mock=filled` and the `/checkout`

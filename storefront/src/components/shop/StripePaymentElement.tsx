@@ -47,7 +47,15 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
       [elements, returnUrl, stripe],
     );
 
-    return <PaymentElement options={{ layout: "tabs" }} />;
+    return (
+      <PaymentElement
+        options={{
+          layout: "tabs",
+          paymentMethodOrder: ["apple_pay", "google_pay", "card", "paypal"],
+          wallets: { applePay: "auto", googlePay: "auto", link: "auto" },
+        }}
+      />
+    );
   },
 );
 

@@ -1,7 +1,21 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createRef } from "react";
-import { describe, expect, it } from "vitest";
+import { createRef, type ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const renderedPaymentElement = vi.hoisted(() => ({ options: [] as unknown[] }));
+
+vi.mock("@stripe/react-stripe-js", () => ({
+  Elements: ({ children }: { readonly children: ReactNode }) => children,
+  PaymentElement: ({ options }: { readonly options?: unknown }) => {
+    renderedPaymentElement.options.push(options);
+    return null;
+  },
+  useElements: () => null,
+  useStripe: () => null,
+}));
+
+vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => ({}) }));
 
 import {
   StripePaymentElement,
@@ -12,6 +26,11 @@ import { PostPurchaseNewsletterForm } from "../src/components/shop/PostPurchaseN
 import { checkout } from "../../content/shop.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
 import { destinationForCode } from "../src/lib/destination.js";
+
+afterEach(() => {
+  renderedPaymentElement.options.length = 0;
+  vi.unstubAllGlobals();
+});
 
 describe("Stripe Payment Element fail-closed states", () => {
   it("does not mount a payment instrument without the request-time Stripe key", () => {
@@ -40,6 +59,33 @@ describe("Stripe Payment Element fail-closed states", () => {
     expect(html).toContain('role="status"');
     expect(html).toContain("Choose a delivery method to load payment options");
     expect(html).not.toContain("iframe");
+  });
+});
+
+describe("Stripe Payment Element method presentation", () => {
+  it("offers eligible wallets before Card and PayPal while preserving Link", () => {
+    vi.stubGlobal("window", {
+      location: {
+        assign: () => undefined,
+        origin: "https://shop.example.test",
+      },
+    });
+
+    renderToStaticMarkup(
+      <StripePaymentElement
+        ref={createRef<StripePaymentElementHandle>()}
+        publishableKey="pk_test_example"
+        clientSecret="pi_example_secret_example"
+      />,
+    );
+
+    expect(renderedPaymentElement.options).toEqual([
+      {
+        layout: "tabs",
+        paymentMethodOrder: ["apple_pay", "google_pay", "card", "paypal"],
+        wallets: { applePay: "auto", googlePay: "auto", link: "auto" },
+      },
+    ]);
   });
 });
 
