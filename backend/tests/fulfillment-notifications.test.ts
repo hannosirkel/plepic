@@ -60,6 +60,45 @@ function subscriberArgs(
 }
 
 describe("fulfillment status templates", () => {
+  it("uses only approved explicit colors and styles tracking links in navy", () => {
+    const rendered = renderShipmentNotification({
+      displayId: 1042,
+      tracking: [{
+        number: "TRACK-ONE",
+        url: "https://carrier.example.test/track/one",
+      }],
+    });
+    const approvedColors = new Set(["#151b46", "#f7f4ec", "#ffffff", "#d9d4c6"]);
+    const renderedColors = [...rendered.html.matchAll(/style="([^"]*)"/g)].flatMap(
+      ([, style]) => style?.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [],
+    );
+    const unapprovedColors = [
+      ...new Set(renderedColors.map((color) => color.toLowerCase())),
+    ].filter((color) => !approvedColors.has(color));
+
+    expect(unapprovedColors).toEqual([]);
+    expect(rendered.html).toContain(
+      '<a href="https://carrier.example.test/track/one" style="color:#151b46;text-decoration:underline;">',
+    );
+  });
+
+  it("breaks long tracking tokens inside fixed-width value cells", () => {
+    const longNumber = `TRACK-${"A".repeat(180)}`;
+    const longUrl = `https://carrier.example.test/track/${"b".repeat(180)}`;
+    const rendered = renderShipmentNotification({
+      displayId: 1042,
+      tracking: [{ number: longNumber, url: longUrl }],
+    });
+
+    expect(rendered.html).toContain("table-layout:fixed;");
+    expect(rendered.html).toContain(
+      `overflow-wrap:anywhere;word-break:break-word;">${longNumber}</td>`,
+    );
+    expect(rendered.html).toContain(
+      `overflow-wrap:anywhere;word-break:break-word;"><a href="${longUrl}"`,
+    );
+  });
+
   it("renders shipment status with multiple numbers and only HTTP(S) tracking links", () => {
     const rendered = renderShipmentNotification({
       displayId: 1042,

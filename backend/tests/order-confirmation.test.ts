@@ -55,8 +55,10 @@ const queriedOrder = {
   display_id: invoiceOrder.displayId,
   email: order.email,
   currency_code: invoiceOrder.currencyCode,
-  item_subtotal: new BigNumber(invoiceOrder.itemSubtotal),
-  shipping_subtotal: new BigNumber(invoiceOrder.shippingSubtotal),
+  item_total: new BigNumber(24.4),
+  item_tax_total: new BigNumber(4.4),
+  shipping_total: new BigNumber(6.1),
+  shipping_tax_total: new BigNumber(1.1),
   tax_total: new BigNumber(invoiceOrder.taxTotal),
   total: new BigNumber(invoiceOrder.total),
   items: [
@@ -64,14 +66,16 @@ const queriedOrder = {
       id: "item_1",
       title: invoiceOrder.items[0].title,
       unit_price: new BigNumber(invoiceOrder.items[0].unitPrice),
-      subtotal: new BigNumber(invoiceOrder.items[0].subtotal),
+      total: new BigNumber(24.4),
+      tax_total: new BigNumber(4.4),
       detail: { quantity: new BigNumber(invoiceOrder.items[0].quantity) },
     },
     {
       id: "item_2",
       title: invoiceOrder.items[1].title,
       unit_price: new BigNumber(invoiceOrder.items[1].unitPrice),
-      subtotal: new BigNumber(invoiceOrder.items[1].subtotal),
+      total: new BigNumber(0),
+      tax_total: new BigNumber(0),
       detail: { quantity: new BigNumber(invoiceOrder.items[1].quantity) },
     },
   ],
@@ -321,14 +325,17 @@ describe("order.placed subscriber", () => {
         "display_id",
         "email",
         "currency_code",
-        "item_subtotal",
-        "shipping_subtotal",
+        "item_total",
+        "item_tax_total",
+        "shipping_total",
+        "shipping_tax_total",
         "tax_total",
         "total",
         "items.id",
         "items.title",
         "items.unit_price",
-        "items.subtotal",
+        "items.total",
+        "items.tax_total",
         "items.detail.quantity",
         "shipping_address.first_name",
         "shipping_address.last_name",
@@ -353,6 +360,58 @@ describe("order.placed subscriber", () => {
       resource_type: "order",
       idempotency_key: "order-confirmation:order_123",
     });
+  });
+
+  it("uses post-discount total/tax pairs for discounted invoice amounts", async () => {
+    const discountedOrder = {
+      ...queriedOrder,
+      item_total: new BigNumber(18),
+      item_tax_total: new BigNumber(3),
+      shipping_total: new BigNumber(6),
+      shipping_tax_total: new BigNumber(1),
+      tax_total: new BigNumber(4),
+      total: new BigNumber(24),
+      items: [{
+        ...queriedOrder.items[0],
+        total: new BigNumber(18),
+        tax_total: new BigNumber(3),
+      }],
+    };
+    const graph = vi.fn().mockResolvedValue({ data: [discountedOrder] });
+    const createNotifications = vi.fn().mockResolvedValue({ id: "noti_123" });
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never);
+
+    expect(createNotifications).toHaveBeenCalledWith({
+      to: "customer@example.test",
+      channel: "email",
+      template: ORDER_CONFIRMATION_TEMPLATE,
+      content: expect.objectContaining({
+        text: expect.stringContaining(
+          "Moonrock & <Ore>\t2\t€10.00 EUR\t€15.00 EUR",
+        ),
+      }),
+      trigger_type: "order.placed",
+      resource_id: "order_123",
+      resource_type: "order",
+      idempotency_key: "order-confirmation:order_123",
+    });
+    const content = createNotifications.mock.calls[0]?.[0]?.content;
+    expect(content.text).toContain("Products\t€15.00 EUR");
+    expect(content.text).toContain("Shipping\t€5.00 EUR");
+    expect(content.text).toContain("VAT\t€4.00 EUR");
+    expect(content.text).toContain("Total\t€24.00 EUR");
   });
 
   it("omits blank optional address fields without emitting blank lines", async () => {
@@ -403,13 +462,29 @@ describe("order.placed subscriber", () => {
       ...queriedOrder,
       total: new BigNumber("Infinity"),
     }],
-    ["null products subtotal", {
+    ["null item total", {
       ...queriedOrder,
-      item_subtotal: null,
+      item_total: null,
     }],
-    ["null item subtotal", {
+    ["null item tax total", {
       ...queriedOrder,
-      items: [{ ...queriedOrder.items[0], subtotal: null }, queriedOrder.items[1]],
+      item_tax_total: null,
+    }],
+    ["null shipping total", {
+      ...queriedOrder,
+      shipping_total: null,
+    }],
+    ["null shipping tax total", {
+      ...queriedOrder,
+      shipping_tax_total: null,
+    }],
+    ["null line total", {
+      ...queriedOrder,
+      items: [{ ...queriedOrder.items[0], total: null }, queriedOrder.items[1]],
+    }],
+    ["null line tax total", {
+      ...queriedOrder,
+      items: [{ ...queriedOrder.items[0], tax_total: null }, queriedOrder.items[1]],
     }],
     ["null item unit price", {
       ...queriedOrder,
@@ -460,6 +535,48 @@ describe("order.placed subscriber", () => {
       container,
       pluginOptions: {},
     } as never)).rejects.toThrow("Placed order is missing confirmation");
+    expect(createNotifications).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["line gross totals", {
+      ...queriedOrder,
+      items: [
+        { ...queriedOrder.items[0], total: new BigNumber(24.39) },
+        queriedOrder.items[1],
+      ],
+    }],
+    ["line tax totals", {
+      ...queriedOrder,
+      items: [
+        { ...queriedOrder.items[0], tax_total: new BigNumber(4.39) },
+        queriedOrder.items[1],
+      ],
+    }],
+    ["order component totals", {
+      ...queriedOrder,
+      total: new BigNumber(30.49),
+    }],
+    ["order component tax totals", {
+      ...queriedOrder,
+      tax_total: new BigNumber(5.49),
+    }],
+  ])("rejects %s that do not reconcile at currency precision", async (_case, data) => {
+    const graph = vi.fn().mockResolvedValue({ data: [data] });
+    const createNotifications = vi.fn();
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await expect(orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never)).rejects.toThrow("Placed order confirmation totals do not reconcile");
     expect(createNotifications).not.toHaveBeenCalled();
   });
 

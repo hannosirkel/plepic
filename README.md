@@ -720,11 +720,10 @@ The Plepic Games storefront and Medusa backend monorepo.
   It carries one maintained Stripe provider and a custom email notification
   provider.
   Order confirmations use Medusa's idempotent persisted notification lifecycle;
-  each confirmation reproduces the approved withdrawal conditions and complete
-  model withdrawal form in the durable email, with legal name, registered
-  address, legal contact address, and return address supplied through the same
-  `MERCHANT_*` deployment configuration used by the storefront. A root contract
-  test keeps that email wording equal to `content/legal/returns.ts`.
+  each message is a concise invoice confirmation. Shipment and delivery events
+  use the same lifecycle for their status notifications. Withdrawal conditions
+  and the model withdrawal form remain available on the website rather than
+  being repeated in transactional email.
   contact messages use the same strict STARTTLS sender directly, after
   Turnstile verification, so their contents are never stored by Medusa.
   Newsletter submissions follow the same bounded, Turnstile-first Store API
