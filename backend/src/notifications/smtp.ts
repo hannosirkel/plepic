@@ -10,6 +10,7 @@ export interface SmtpOptions {
   readonly tlsServername?: string;
   readonly username: string;
   readonly password: string;
+  readonly fromName: string;
   readonly envelopeFrom: string;
 }
 
@@ -26,6 +27,7 @@ type TransportFactory = (options: SmtpSender["transportOptions"]) => Pick<Transp
 export class SmtpSender {
   readonly transportOptions;
   readonly #transport: Pick<Transporter, "sendMail">;
+  readonly #fromName: string;
   readonly #envelopeFrom: string;
 
   constructor(options: SmtpOptions, transportFactory: TransportFactory = nodemailer.createTransport) {
@@ -42,13 +44,15 @@ export class SmtpSender {
       },
     } as const;
     this.#transport = transportFactory(this.transportOptions);
+    this.#fromName = options.fromName;
     this.#envelopeFrom = options.envelopeFrom;
   }
 
   async send(message: MailMessage): Promise<{ id?: string }> {
     try {
       const result = await this.#transport.sendMail({
-        from: this.#envelopeFrom,
+        from: { name: this.#fromName, address: this.#envelopeFrom },
+        envelope: { from: this.#envelopeFrom, to: message.to },
         ...message,
       });
       return { id: typeof result.messageId === "string" ? result.messageId : undefined };

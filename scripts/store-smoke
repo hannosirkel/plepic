@@ -121,6 +121,7 @@ export SMTP_PORT=587
 export SMTP_TLS_SERVERNAME=smtp.example.test
 export SMTP_USERNAME=store-smoke
 export SMTP_PASSWORD=store-smoke
+export SMTP_FROM_NAME='Plepic Games Test'
 export SMTP_ENVELOPE_FROM=orders@example.test
 export CONTACT_MAIL_RECIPIENT=contact@example.test
 export TURNSTILE_SECRET_KEY=store-smoke-turnstile

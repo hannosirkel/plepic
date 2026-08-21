@@ -50,6 +50,7 @@ const smtpOptions: SmtpOptions = {
   tlsServername: "mail.example.test",
   username: "smtp-user",
   password: "smtp-password",
+  fromName: "Plepic Games Test",
   envelopeFrom: "orders@example.test",
 };
 
@@ -182,6 +183,7 @@ describe("port 25 cannot be configured, by any spelling of it", () => {
     SMTP_TLS_SERVERNAME: "mail.example.test",
     SMTP_USERNAME: "smtp-user",
     SMTP_PASSWORD: "smtp-password",
+    SMTP_FROM_NAME: "Plepic Games Test",
     SMTP_ENVELOPE_FROM: "orders@example.test",
     CONTACT_MAIL_RECIPIENT: "contact@example.test",
     TURNSTILE_SECRET_KEY: "turnstile",

@@ -47,6 +47,7 @@ export interface BackendRuntimeConfig {
     readonly tlsServername?: string;
     readonly username: string;
     readonly password: string;
+    readonly fromName: string;
     readonly envelopeFrom: string;
   };
   readonly contactMailRecipient: string;
@@ -120,6 +121,7 @@ const requiredEnvironmentVariables = [
   "SMTP_PORT",
   "SMTP_USERNAME",
   "SMTP_PASSWORD",
+  "SMTP_FROM_NAME",
   "SMTP_ENVELOPE_FROM",
   "CONTACT_MAIL_RECIPIENT",
   "TURNSTILE_SECRET_KEY",
@@ -520,6 +522,7 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
       tlsServername: smtpTlsServername,
       username: requireEnvironmentValue(environment, "SMTP_USERNAME"),
       password: requireEnvironmentValue(environment, "SMTP_PASSWORD"),
+      fromName: requireSingleLineValue(environment, "SMTP_FROM_NAME"),
       envelopeFrom: requireEmailAddress(environment, "SMTP_ENVELOPE_FROM"),
     },
     contactMailRecipient: requireEmailAddress(environment, "CONTACT_MAIL_RECIPIENT"),

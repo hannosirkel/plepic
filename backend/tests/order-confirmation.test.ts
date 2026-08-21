@@ -18,6 +18,7 @@ const smtpOptions = {
   port: 587 as const,
   username: "smtp-user",
   password: "smtp-password",
+  fromName: "Plepic Games Test",
   envelopeFrom: "orders@example.test",
 };
 
@@ -140,7 +141,8 @@ describe("SMTP notification provider", () => {
       tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
     });
     expect(sendMail).toHaveBeenCalledWith({
-      from: "orders@example.test",
+      from: { name: "Plepic Games Test", address: "orders@example.test" },
+      envelope: { from: "orders@example.test", to: "customer@example.test" },
       to: "customer@example.test",
       subject: "Order #1042 confirmed",
       text: "Plain",

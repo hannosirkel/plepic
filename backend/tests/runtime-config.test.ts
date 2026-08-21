@@ -74,6 +74,7 @@ describe("readBackendRuntimeConfig", () => {
       SMTP_PORT: "587",
       SMTP_USERNAME: "smtp-user",
       SMTP_PASSWORD: "smtp-password",
+      SMTP_FROM_NAME: "Plepic Games Test",
       SMTP_ENVELOPE_FROM: "orders@example.test",
       CONTACT_MAIL_RECIPIENT: "contact@example.test",
       TURNSTILE_SECRET_KEY: "turnstile-secret",
@@ -129,6 +130,7 @@ describe("readBackendRuntimeConfig", () => {
         SMTP_PORT: "587",
         SMTP_USERNAME: "smtp-user",
         SMTP_PASSWORD: "smtp-password",
+        SMTP_FROM_NAME: "Plepic Games Test",
         SMTP_ENVELOPE_FROM: "orders@example.test",
         CONTACT_MAIL_RECIPIENT: "contact@example.test",
         TURNSTILE_SECRET_KEY: "turnstile-secret",
@@ -164,6 +166,7 @@ describe("readBackendRuntimeConfig", () => {
         port: 587,
         username: "smtp-user",
         password: "smtp-password",
+        fromName: "Plepic Games Test",
         envelopeFrom: "orders@example.test",
       },
       contactMailRecipient: "contact@example.test",
@@ -208,6 +211,7 @@ describe("readBackendRuntimeConfig", () => {
       SMTP_PORT: "587",
       SMTP_USERNAME: "smtp-user",
       SMTP_PASSWORD: "smtp-password",
+      SMTP_FROM_NAME: "Plepic Games Test",
       SMTP_ENVELOPE_FROM: "orders@example.test",
       CONTACT_MAIL_RECIPIENT: "contact@example.test",
       TURNSTILE_SECRET_KEY: "turnstile-secret",
@@ -252,6 +256,7 @@ describe("readBackendRuntimeConfig", () => {
     SMTP_PORT: "587",
     SMTP_USERNAME: "smtp-user",
     SMTP_PASSWORD: "smtp-password",
+    SMTP_FROM_NAME: "Plepic Games Test",
     SMTP_ENVELOPE_FROM: "orders@example.test",
     CONTACT_MAIL_RECIPIENT: "contact@example.test",
     TURNSTILE_SECRET_KEY: "turnstile-secret",
@@ -263,12 +268,27 @@ describe("readBackendRuntimeConfig", () => {
 
   const corsVariables = ["STORE_CORS", "ADMIN_CORS", "AUTH_CORS"] as const;
 
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["whitespace-only", "   "],
+    ["multiline", "Plepic Games\nBcc"],
+  ])("refuses a %s SMTP_FROM_NAME", (_description, value) => {
+    expect(() => readBackendRuntimeConfig({ ...manifestEnvironment, SMTP_FROM_NAME: value })).toThrow(
+      /SMTP_FROM_NAME/,
+    );
+  });
+
   it("accepts the CORS origins declared empty, and passes the empty list through", () => {
     const config = readBackendRuntimeConfig(manifestEnvironment);
 
     expect(config.http.storeCors).toBe("");
     expect(config.http.adminCors).toBe("");
     expect(config.http.authCors).toBe("");
+    expect(config.smtp).toMatchObject({
+      fromName: "Plepic Games Test",
+      envelopeFrom: "orders@example.test",
+    });
   });
 
   /**
