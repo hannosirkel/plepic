@@ -7,6 +7,7 @@ export const SMTP_NOTIFICATION_PROVIDER_ID = "plepic-smtp";
 export interface SmtpOptions {
   readonly host: string;
   readonly port: 587;
+  readonly tlsServername?: string;
   readonly username: string;
   readonly password: string;
   readonly envelopeFrom: string;
@@ -34,7 +35,11 @@ export class SmtpSender {
       secure: false,
       requireTLS: true,
       auth: { user: options.username, pass: options.password },
-      tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
+      tls: {
+        rejectUnauthorized: true,
+        minVersion: "TLSv1.2",
+        ...(options.tlsServername ? { servername: options.tlsServername } : {}),
+      },
     } as const;
     this.#transport = transportFactory(this.transportOptions);
     this.#envelopeFrom = options.envelopeFrom;

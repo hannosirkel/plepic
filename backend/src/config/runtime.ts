@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { join } from "node:path";
 
 // Extensionless on purpose, unlike the rest of `src/`. `medusa-config.ts`
@@ -43,6 +44,7 @@ export interface BackendRuntimeConfig {
   readonly smtp: {
     readonly host: string;
     readonly port: 587;
+    readonly tlsServername?: string;
     readonly username: string;
     readonly password: string;
     readonly envelopeFrom: string;
@@ -207,6 +209,15 @@ function requireSingleLineValue(environment: RuntimeEnvironment, name: string): 
     throw new Error(`${name} must be a single line`);
   }
   return value;
+}
+
+function optionalSingleLineValue(
+  environment: RuntimeEnvironment,
+  name: string,
+): string | undefined {
+  return environment[name] === undefined
+    ? undefined
+    : requireSingleLineValue(environment, name);
 }
 
 function requirePositiveInteger(environment: RuntimeEnvironment, name: string): number {
@@ -431,9 +442,15 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
   }
 
   const smtpPort = requireEnvironmentValue(environment, "SMTP_PORT");
+  const smtpHost = requireEnvironmentValue(environment, "SMTP_HOST");
+  const smtpTlsServername = optionalSingleLineValue(environment, "SMTP_TLS_SERVERNAME");
 
   if (smtpPort !== "587") {
     throw new Error("SMTP_PORT must be exactly 587 for STARTTLS submission");
+  }
+
+  if (isIP(smtpHost) !== 0 && !smtpTlsServername) {
+    throw new Error("SMTP_TLS_SERVERNAME is required when SMTP_HOST is an IP address");
   }
 
   // **Required, not optional**, and that is the point of this section. Without a
@@ -498,8 +515,9 @@ export function readBackendRuntimeConfig(environment: RuntimeEnvironment): Backe
       ),
     },
     smtp: {
-      host: requireEnvironmentValue(environment, "SMTP_HOST"),
+      host: smtpHost,
       port: 587,
+      tlsServername: smtpTlsServername,
       username: requireEnvironmentValue(environment, "SMTP_USERNAME"),
       password: requireEnvironmentValue(environment, "SMTP_PASSWORD"),
       envelopeFrom: requireEmailAddress(environment, "SMTP_ENVELOPE_FROM"),

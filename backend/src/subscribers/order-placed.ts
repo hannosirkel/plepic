@@ -1,5 +1,9 @@
 import type { SubscriberArgs, SubscriberConfig } from "@medusajs/framework";
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import {
+  ContainerRegistrationKeys,
+  Modules,
+  tryConvertToNumber,
+} from "@medusajs/framework/utils";
 
 import {
   ORDER_CONFIRMATION_TEMPLATE,
@@ -13,7 +17,16 @@ interface OrderPlacedEvent {
 
 interface QueriedOrderItem {
   readonly title?: string | null;
-  readonly quantity?: number | null;
+  readonly detail?: { readonly quantity?: unknown } | null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "object" || value === null)) {
+    return null;
+  }
+
+  const converted = tryConvertToNumber(value);
+  return typeof converted === "number" && Number.isFinite(converted) ? converted : null;
 }
 
 export default async function orderPlaced({
@@ -32,28 +45,27 @@ export default async function orderPlaced({
       "total",
       "items.id",
       "items.title",
-      "items.quantity",
-      "items.unit_price",
+      "items.detail.quantity",
     ],
     filters: { id: event.data.id },
   });
   const order = data[0];
+  const total = finiteNumber(order?.total);
 
   if (
     !order?.email ||
     order.display_id == null ||
     !order.currency_code ||
-    typeof order.total !== "number" ||
+    total === null ||
     !Array.isArray(order.items)
   ) {
     throw new Error("Placed order is missing confirmation data");
   }
 
-  const items = order.items.flatMap((item: QueriedOrderItem | null) =>
-    item?.title && typeof item.quantity === "number"
-      ? [{ title: item.title, quantity: item.quantity }]
-      : [],
-  );
+  const items = order.items.flatMap((item: QueriedOrderItem | null) => {
+    const quantity = finiteNumber(item?.detail?.quantity);
+    return item?.title && quantity !== null ? [{ title: item.title, quantity }] : [];
+  });
 
   if (items.length !== order.items.length) {
     throw new Error("Placed order is missing confirmation item data");
@@ -62,7 +74,7 @@ export default async function orderPlaced({
   const content = renderOrderConfirmation({
     display_id: order.display_id,
     currency_code: order.currency_code,
-    total: order.total,
+    total,
     items,
   }, readOrderConfirmationLegalConfig(process.env));
 

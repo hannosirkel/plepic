@@ -47,6 +47,7 @@ import { notificationModule } from "../src/config/notification.js";
 const smtpOptions: SmtpOptions = {
   host: "smtp.example.test",
   port: 587,
+  tlsServername: "mail.example.test",
   username: "smtp-user",
   password: "smtp-password",
   envelopeFrom: "orders@example.test",
@@ -69,7 +70,11 @@ describe("the transport is built for the configured submission host", () => {
       secure: false,
       requireTLS: true,
       auth: { user: "smtp-user", pass: "smtp-password" },
-      tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
+      tls: {
+        rejectUnauthorized: true,
+        minVersion: "TLSv1.2",
+        servername: "mail.example.test",
+      },
     });
   });
 
@@ -96,7 +101,11 @@ describe("the transport is built for the configured submission host", () => {
     const captured = captureTransportOptions(smtpOptions);
     expect(captured.requireTLS).toBe(true);
     expect(captured.secure).toBe(false);
-    expect(captured.tls).toEqual({ rejectUnauthorized: true, minVersion: "TLSv1.2" });
+    expect(captured.tls).toEqual({
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
+      servername: "mail.example.test",
+    });
   });
 
   /**
@@ -170,6 +179,7 @@ describe("port 25 cannot be configured, by any spelling of it", () => {
     REDIS_PASSWORD: "redis-password",
     SMTP_HOST: "smtp.example.test",
     SMTP_PORT: "587",
+    SMTP_TLS_SERVERNAME: "mail.example.test",
     SMTP_USERNAME: "smtp-user",
     SMTP_PASSWORD: "smtp-password",
     SMTP_ENVELOPE_FROM: "orders@example.test",
@@ -202,6 +212,14 @@ describe("port 25 cannot be configured, by any spelling of it", () => {
     }
   });
 
+  it("requires a TLS server name when the fixed submission target is an IP", () => {
+    expect(() => readBackendRuntimeConfig({
+      ...environment,
+      SMTP_HOST: "192.0.2.25",
+      SMTP_TLS_SERVERNAME: undefined,
+    })).toThrow(/SMTP_TLS_SERVERNAME/);
+  });
+
   it("carries the validated host and port through to the notification module unchanged", () => {
     const runtime = readBackendRuntimeConfig({ ...environment });
     const module = notificationModule(runtime.smtp);
@@ -209,6 +227,7 @@ describe("port 25 cannot be configured, by any spelling of it", () => {
 
     expect(options.host).toBe("smtp.example.test");
     expect(options.port).toBe(587);
+    expect(options.tlsServername).toBe("mail.example.test");
     expect(captureTransportOptions(runtime.smtp).host).toBe("smtp.example.test");
   });
 });

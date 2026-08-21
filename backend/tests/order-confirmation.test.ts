@@ -1,4 +1,4 @@
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import { BigNumber, ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import SmtpNotificationProvider, {
@@ -168,7 +168,15 @@ describe("SMTP notification provider", () => {
 
 describe("order.placed subscriber", () => {
   it("queries the order fields needed for confirmation and persists one idempotent email", async () => {
-    const graph = vi.fn().mockResolvedValue({ data: [order] });
+    const graph = vi.fn().mockResolvedValue({
+      data: [{
+        ...order,
+        items: order.items.map(({ quantity, ...item }) => ({
+          ...item,
+          detail: { quantity },
+        })),
+      }],
+    });
     const createNotifications = vi.fn().mockResolvedValue({ id: "noti_123" });
     const container = {
       resolve: vi.fn((key: string) => {
@@ -187,7 +195,7 @@ describe("order.placed subscriber", () => {
     expect(config).toEqual({ event: "order.placed" });
     expect(graph).toHaveBeenCalledWith({
       entity: "order",
-      fields: ["id", "display_id", "email", "currency_code", "total", "items.id", "items.title", "items.quantity", "items.unit_price"],
+      fields: ["id", "display_id", "email", "currency_code", "total", "items.id", "items.title", "items.detail.quantity"],
       filters: { id: "order_123" },
     });
     expect(createNotifications).toHaveBeenCalledTimes(1);
@@ -201,6 +209,81 @@ describe("order.placed subscriber", () => {
       resource_type: "order",
       idempotency_key: "order-confirmation:order_123",
     });
+  });
+
+  it("renders Medusa Query Graph numbers and the order item detail quantity", async () => {
+    const queriedOrder = {
+      ...order,
+      total: new BigNumber("25.99"),
+      items: [{
+        id: "item_1",
+        title: "Moonrock & <Ore>",
+        unit_price: new BigNumber("12.995"),
+        detail: { quantity: new BigNumber(2) },
+      }],
+    };
+    const graph = vi.fn().mockResolvedValue({ data: [queriedOrder] });
+    const createNotifications = vi.fn().mockResolvedValue({ id: "noti_123" });
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never);
+
+    expect(graph).toHaveBeenCalledWith({
+      entity: "order",
+      fields: ["id", "display_id", "email", "currency_code", "total", "items.id", "items.title", "items.detail.quantity"],
+      filters: { id: "order_123" },
+    });
+    expect(createNotifications).toHaveBeenCalledWith(expect.objectContaining({
+      content: renderOrderConfirmation(order, legal),
+    }));
+  });
+
+  it.each([
+    ["null total", {
+      ...order,
+      total: null,
+      items: [{ ...order.items[0], detail: { quantity: order.items[0].quantity } }],
+    }],
+    ["null item quantity", {
+      ...order,
+      items: [{ ...order.items[0], detail: { quantity: null } }],
+    }],
+    ["non-finite total", {
+      ...order,
+      total: new BigNumber("Infinity"),
+      items: [{ ...order.items[0], detail: { quantity: order.items[0].quantity } }],
+    }],
+    ["non-finite item quantity", {
+      ...order,
+      items: [{ ...order.items[0], detail: { quantity: new BigNumber("NaN") } }],
+    }],
+  ])("rejects a Query Graph %s", async (_field, queriedOrder) => {
+    const graph = vi.fn().mockResolvedValue({ data: [queriedOrder] });
+    const createNotifications = vi.fn();
+    const container = {
+      resolve: vi.fn((key: string) => {
+        if (key === ContainerRegistrationKeys.QUERY) return { graph };
+        if (key === Modules.NOTIFICATION) return { createNotifications };
+        throw new Error(`Unexpected registration: ${key}`);
+      }),
+    };
+
+    await expect(orderPlaced({
+      event: { name: "order.placed", data: { id: order.id } },
+      container,
+      pluginOptions: {},
+    } as never)).rejects.toThrow("Placed order is missing confirmation");
+    expect(createNotifications).not.toHaveBeenCalled();
   });
 
   it("uses the documented provider id", () => {
