@@ -1,6 +1,45 @@
 # Plepic Agent Instructions
 
-This file guides coding agents working in this repository.
+<!-- BEGIN MANAGED ARCHITECTURE BASELINE -->
+<!-- Generated from hannosirkel/architecture. Do not edit inside these markers.
+     Regenerate with: tooling/universe sync-baseline plepic -->
+
+Governed by [`architecture`](https://github.com/hannosirkel/architecture).
+
+| | |
+| --- | --- |
+| Profile | `application-public` |
+| Visibility | declared public, currently public |
+| Public-safe required | yes |
+| Languages | typescript, shell |
+
+**Standards that apply here.** Read a standard before you change something it
+governs.
+
+- [Agent operation](https://github.com/hannosirkel/architecture/blob/main/standards/agent-operation.md) — worktrees, branches, multi-agent safety, delegation
+- [Security](https://github.com/hannosirkel/architecture/blob/main/standards/security.md) — secrets, public and private boundaries, workflow hardening
+- [Code quality](https://github.com/hannosirkel/architecture/blob/main/standards/code-quality.md) — gates, coaching, testing, review cutoff
+- [Repository contract](https://github.com/hannosirkel/architecture/blob/main/standards/repository-contract.md) — required files, profiles, skills
+- [GitOps and deployment](https://github.com/hannosirkel/architecture/blob/main/standards/gitops-and-deployment.md) — promotion by digest, rollback, the sanctioned secrets path
+- Language standards: [typescript](https://github.com/hannosirkel/architecture/blob/main/standards/languages/typescript.md), [shell](https://github.com/hannosirkel/architecture/blob/main/standards/languages/shell.md)
+
+**Never commit to a default branch.** Work in `~/app/.worktrees/plepic/<task>`,
+branch from `origin/main`, and open a pull request.
+
+**This repository must be safe to publish.** Never commit a password, token, key, kubeconfig,
+rendered Secret, or live export. No repository here holds a secret value, and a
+private one is no exception.
+
+**Run `habit-hooks` before declaring an edit done.** If it is not on `PATH`:
+
+```bash
+uv tool install "habit-hooks[python,typescript]"
+```
+
+Name every language in that one command. A later install naming a different
+extra silently replaces this one. Then re-run `habit-hooks`.
+
+<!-- END MANAGED ARCHITECTURE BASELINE -->
 
 ## Commands
 
@@ -9,19 +48,20 @@ npm ci
 bash scripts/validate
 ```
 
-Install dependencies separately, run focused checks while developing, then use
-the canonical validation command before handoff.
+Install dependencies separately from validation. Run `bash scripts/validate`
+before handoff.
 
 ## Workflow
 
-- Inspect Git status and the relevant workspace before making changes.
-- Develop on a feature branch from current `main`.
-- Keep the tracked `.githooks/pre-commit` gitleaks scan enabled: run
-  `git config --local core.hooksPath .githooks` once per checkout (see
-  [`README.md`](./README.md)). Do not replace it with an undocumented local
-  Git configuration.
-- Review the complete diff and outgoing history before push. Never bypass the
-  pre-commit secret scan.
+A fresh checkout does not carry the secret scan. Enable the tracked
+`.githooks/pre-commit` gitleaks hook once per checkout:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+Do not replace it with an undocumented local Git configuration, and never bypass
+it. See [`README.md`](./README.md).
 
 ## Toolchain
 
@@ -39,20 +79,20 @@ the storefront workspace chooses its own TypeScript version when it lands (see
 
 ## Architecture
 
-`plepic` is an npm workspace root for the Plepic Games storefront:
+`plepic` is an npm workspace root. Both workspaces are built and both ship.
 
-- `storefront/` — Next.js App Router application serving the entire public
-  site. Currently a placeholder workspace; a later PR unit builds it.
-- `backend/` — Medusa backend workspace, added by a later PR unit. Not yet
-  present.
-- `scripts/` — repository tooling exercised by `scripts/validate` (lint,
-  type-check, unit tests).
+| Path | Holds |
+| --- | --- |
+| `storefront/` | workspace: the Next.js App Router site — routes under `src/app/(site)/`, the localized catch-all under `src/app/[locale]/`, and the same-origin `/store-api` proxy |
+| `backend/` | workspace: the Medusa v2 backend — Store API routes, commerce configuration and seeding, catalogue import, the Stripe payment session, the SMTP notification provider, and the Redis preflight |
+| `content/`, `design/`, `scripts/` | not workspaces: typed site copy, `tokens.css`, and the tooling `scripts/validate` runs |
 
-No application source, Dockerfile, or Kubernetes manifest lives outside this
-repository. Kubernetes manifests for both environments live in
-`hannosirkel/deploys` under `plepic/`; the Argo CD `Application` objects that
-point at them live in `hannosirkel/orange`. This repository's CI owns image
-promotion to those overlays.
+`compose.yaml` stands the whole stack up locally. See [`README.md`](./README.md).
+Current-state documents live in [`docs/current/`](./docs/current/).
+
+Kubernetes manifests for both environments live in `hannosirkel/deploys` under
+`plepic/`; the Argo CD `Application` objects live in `hannosirkel/orange`. This
+repository's CI builds the images and writes their digests into those overlays.
 
 ## Security and scope
 
@@ -70,14 +110,7 @@ promotion to those overlays.
 
 ## Testing
 
-Every change needs `npm ci && bash scripts/validate` passing before handoff.
-Add a focused test for new logic in the same commit; a documentation-only
-change needs no new test.
-
-## Review cutoff
-
-Must fix: contradictions between documentation and code, a validation script
-that fails or that passes without checking anything real, and any credential
-or per-environment value committed to the repository. Avoid historical
-narration and stylistic expansion that adds maintenance cost without
-preserving a decision.
+`scripts/validate` is pure: no Docker daemon, no database, no network. Two
+checks therefore sit outside it and run in CI — the browser suite
+(`npm -w storefront exec -- playwright test`) and the store smoke check
+(`bash scripts/store-smoke`), which needs a running Medusa.
