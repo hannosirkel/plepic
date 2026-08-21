@@ -156,7 +156,7 @@ The Plepic Games storefront and Medusa backend monorepo.
 
   Payment-method availability stays in the Stripe Payment Method Configuration
   selected at runtime by `STRIPE_PAYMENT_METHOD_CONFIGURATION_ID`. The test and
-  live configurations expose the same set: Card and PayPal are enabled;
+  live configurations must expose the same set: Card and PayPal are enabled;
   Bancontact, EPS, MB WAY and Satispay are disabled. Link remains enabled for
   Card, and Apple Pay and Google Pay remain automatic wallet choices for an
   eligible device, browser and location. The Payment Element presents eligible
