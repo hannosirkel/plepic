@@ -213,11 +213,9 @@ describe("Stripe payment session Store operations", () => {
           response.end(
             '{"cart":{"id":"cart_example","currency_code":"eur","total":32,"payment_collection":null}}',
           );
-        } else if (request.url === "/store-api/store/payment-collections") {
-          response.end('{"payment_collection":{"id":"paycol_example"}}');
         } else if (
           request.url ===
-          "/store-api/store/payment-collections/paycol_example/payment-sessions"
+          "/store-api/store/carts/cart_example/stripe-payment-session"
         ) {
           response.end(
             '{"payment_collection":{"id":"paycol_example","currency_code":"eur","amount":32,"payment_sessions":[{"id":"payses_example","provider_id":"pp_stripe_stripe","status":"pending","amount":32,"currency_code":"eur","data":{"id":"pi_example","client_secret":"pi_example_secret_example"}}]}}',
@@ -245,13 +243,8 @@ describe("Stripe payment session Store operations", () => {
       { method: "GET", path: "/store-api/store/carts/cart_example", body: null },
       {
         method: "POST",
-        path: "/store-api/store/payment-collections",
-        body: { cart_id: "cart_example" },
-      },
-      {
-        method: "POST",
-        path: "/store-api/store/payment-collections/paycol_example/payment-sessions",
-        body: { provider_id: "pp_stripe_stripe" },
+        path: "/store-api/store/carts/cart_example/stripe-payment-session",
+        body: null,
       },
     ]);
   });

@@ -93,13 +93,11 @@ export async function initiateStripePayment(
   if (cartId.length === 0 || !Number.isInteger(expected.amount) || expected.amount < 0) {
     throw new ConfigError("The checkout total is unavailable for payment");
   }
-  const cart = currentCart(await client.store.cart.retrieve(cartId), cartId, expected);
-  return stripeSession(
-    await client.store.payment.initiatePaymentSession(cart, {
-      provider_id: STRIPE_PROVIDER_ID,
-    }),
-    expected,
-  );
+  currentCart(await client.store.cart.retrieve(cartId), cartId, expected);
+  return stripeSession(await client.client.fetch(
+    `/store/carts/${encodeURIComponent(cartId)}/stripe-payment-session`,
+    { method: "POST" },
+  ), expected);
 }
 
 export interface CompletedStoreOrder {
