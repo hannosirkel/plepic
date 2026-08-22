@@ -83,6 +83,28 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Lint the workflows
+        # `zizmor` reads `.github/workflows/` only, so it needs nothing this
+        # job installs later and reports before the long build starts.
+        run: |
+          set -euo pipefail
+          pip install zizmor==1.29.0
+          zizmor .github/workflows/
+
+      - name: Check documentation layout
+        # DavidAnson/markdownlint-cli2-action v24.2.0
+        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff
+        with:
+          globs: '**/*.md'
+
+      - name: Check documentation links
+        # lycheeverse/lychee-action v2.9.0
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8
+        with:
+          args: --no-progress --config lychee.toml './**/*.md'
+          fail: true
 
       - name: Install locked dependencies
         run: npm ci
@@ -117,6 +139,8 @@ jobs:
       - name: Check out repository
         # actions/checkout v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Install locked dependencies
         run: npm ci
@@ -164,6 +188,8 @@ jobs:
       - name: Check out repository
         # actions/checkout v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Install locked dependencies
         run: npm ci
