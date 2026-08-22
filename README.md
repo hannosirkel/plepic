@@ -2194,11 +2194,23 @@ Google Tag Manager request has loaded before consent; the explicit
 
 ## Repository boundaries
 
-No application source, Dockerfile, image build, or Kubernetes manifest lives
-outside this repository — this repository's CI builds and publishes images
-and writes their digests to `hannosirkel/deploys`. This repository contains no
-live hostname, address, or credential; those are configuration, delivered at
-runtime, never committed here.
+This repository is public and must stay safe to publish.
+
+**It owns** the storefront and backend source, `content/`, the `design/` tokens,
+the Dockerfiles and image builds, the tests, the release procedure, and the
+promotion of image digests into `hannosirkel/deploys`.
+
+**It does not own** the Kubernetes manifests, which `hannosirkel/deploys` owns
+under `plepic/`, the Argo CD `Application` objects, which `hannosirkel/orange`
+owns, or any secret or per-environment value.
+
+Repository-local current state lives in [`docs/current/`](./docs/current/).
+Cross-repository standards and initiatives live in
+[`hannosirkel/architecture`](https://github.com/hannosirkel/architecture).
+
+No application source, Dockerfile, or image build lives outside this repository.
+This repository contains no live hostname, address, or credential; those are
+configuration, delivered at runtime, never committed here.
 
 That last sentence is a test, not a promise. `content/content.test.ts` holds
 `content/` to naming no hostname at all, and
