@@ -1,0 +1,38 @@
+{
+  // Layout checking for this repository's Markdown.
+  //
+  // The gate blocks on new work only. Three rules fire across the existing
+  // prose and are disabled here as a recorded baseline rather than fixed --
+  // 269 MD013, 236 MD060 and 1 MD029 finding at the time this landed. Wording
+  // and layout backlog is ordinary follow-up work, not this change.
+  "config": {
+    "default": true,
+
+    // 269 findings. Prose here wraps where the writer wrapped it, and the
+    // README's tables and pinned digests cannot wrap at all: enforcing 80
+    // columns would mean either a broken table or a truncated SHA.
+    "MD013": false,
+
+    // 236 findings. Every one is a table cell, including the two-column
+    // table the generated `AGENTS.md` baseline carries -- which is generated
+    // from `hannosirkel/architecture` and must not be hand-edited here.
+    "MD060": false,
+
+    // 1 finding, and it is a false positive: `content/content-document.md`
+    // opens a paragraph with the year "2017.", which CommonMark reads as an
+    // ordered list item. That is customer-facing copy and will not be
+    // reworded to please a linter.
+    "MD029": false,
+
+    // Decision records and release notes repeat section headings across
+    // documents. Duplicates within one document still fail.
+    "MD024": { "siblings_only": true }
+  },
+  "globs": ["**/*.md"],
+  "ignores": [
+    "node_modules/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/.medusa/**"
+  ]
+}

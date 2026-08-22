@@ -4,6 +4,40 @@ set -euo pipefail
 plepic_medusa_config_dir="$(mktemp -d "${TMPDIR:-/tmp}/plepic-medusa-config.XXXXXX")"
 trap 'rm -rf -- "${plepic_medusa_config_dir}"' EXIT
 
+# Every shell file this repository owns, gated by `shellcheck`.
+#
+# **The set is derived, not listed.** Shell does not announce itself here: it is
+# `scripts/`, a Git hook, and the guard a promotion decodes and runs, and a
+# listed set is one script away from being wrong and silent about it. The rule
+# is the one in `standards/languages/shell.md`: named `*.sh` or `*.bats`, or
+# tracked executable with a shell shebang.
+#
+# Pre-existing findings are baselined in place with narrow
+# `# shellcheck disable=SCxxxx` directives, so this reports only what a change
+# introduces.
+mapfile -t shell_files < <(
+  git ls-files | while IFS= read -r candidate; do
+    case "${candidate}" in
+      *.sh | *.bats)
+        printf '%s\n' "${candidate}"
+        continue
+        ;;
+    esac
+    [ -x "${candidate}" ] || continue
+    IFS= read -r shebang <"${candidate}" || shebang=''
+    case "${shebang}" in
+      '#!'*[\ /]bash* | '#!'*[\ /]sh | '#!'*[\ /]sh\ *)
+        printf '%s\n' "${candidate}"
+        ;;
+    esac
+  done
+)
+if [ "${#shell_files[@]}" -eq 0 ]; then
+  echo 'shellcheck found no shell files to lint, which cannot be right' >&2
+  exit 1
+fi
+shellcheck -- "${shell_files[@]}"
+
 npm run lint
 # The root tsconfig covers content/, design/ and scripts/ only, so the
 # storefront's program is typechecked explicitly -- otherwise the seam's
