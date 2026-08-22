@@ -11,6 +11,10 @@ name: Deploy Test
 # credential but runs no head code.
 
 'on':
+  # zizmor: ignore[dangerous-triggers] reviewed design, not an oversight: the
+  # `gate` job verifies trusted pull-request metadata before any later job
+  # checks out the head revision, and that checkout is by pinned SHA. This is
+  # the pre-authorised exception in `standards/security.md`.
   pull_request_target:
     branches:
       - main
