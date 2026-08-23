@@ -100,3 +100,24 @@ export function isTestHost(host: string, config: Pick<SiteHostConfig, "testHostn
 export function isCanonicalHost(host: string, config: Pick<SiteHostConfig, "canonicalHost">): boolean {
   return normalizeHost(host) === normalizeHost(config.canonicalHost);
 }
+
+/**
+ * True when `host` is the `www` label directly above the canonical host — the
+ * one alternate spelling of the site's own name.
+ *
+ * Composed from validated configuration rather than matched as a pattern, for
+ * the same reason {@link isTestHost} is: a bare `startsWith("www.")` would
+ * claim `www.example.org` on a deployment whose canonical host is
+ * `canonical.example.net`, and canonicalising somebody else's hostname onto
+ * this site is a redirect this code has no business emitting.
+ *
+ * Deliberately **not** folded into {@link isCanonicalHost}. That predicate
+ * guards the redirect branch against self-redirect loops, so widening it to
+ * accept `www` would silence the very redirect this exists to produce.
+ */
+export function isWwwOfCanonicalHost(
+  host: string,
+  config: Pick<SiteHostConfig, "canonicalHost">,
+): boolean {
+  return normalizeHost(host) === `www.${normalizeHost(config.canonicalHost)}`;
+}

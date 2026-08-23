@@ -118,6 +118,128 @@ describe("proxy(): the canonical-host redirect guard", () => {
 });
 
 /**
+ * The third carried finding, and the only one that reached production.
+ *
+ * This module's doc comment has always claimed `www.<canonical>` "resolves to
+ * exactly one destination on the canonical host and answers a single 301", and
+ * `content/routes.ts` reasons about `www.<canonical>/about` producing one hop
+ * rather than two. Neither was enforced: both depended entirely on the
+ * *operator's* redirect map carrying an entry for that host, and the live map
+ * carried entries only for the alternate-brand domain. Observed against the
+ * deployed live origin on 2026-08-23, before any public DNS existed:
+ * the live `www` host answered **200**, serving the whole site under a second
+ * name.
+ *
+ * Why that is a real defect and not a cosmetic one: two origins serving the
+ * same pages are two cookie jars for one cart. The entire reason this site puts
+ * the store on the canonical domain instead of a `store.` subdomain is to keep
+ * cart, checkout and CSRF state first-party on a single origin, and an
+ * un-redirected `www` reintroduces that split by the back door. The
+ * `rel=canonical` on every page mitigates the search-index duplicate; it does
+ * nothing whatever about the cookies.
+ *
+ * A map entry could not have fixed it properly, which is why the fix is in the
+ * code. Map targets are route ids, so the closest a map can express is "every
+ * `www` request goes to one route" — `/games/lunar-base` would land on `/`.
+ * These tests therefore assert the property a map entry cannot: the path
+ * survives the hop.
+ */
+describe("proxy(): www.<canonical> is canonicalised even when the operator map is silent", () => {
+  let dir: string;
+  let mapPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "proxy-www-"));
+    mapPath = join(dir, "redirect-map.json");
+    // The live shape: an entry for the alternate-brand host only. Nothing here
+    // mentions `www.canonical.example.net`, which is the whole point.
+    writeFileSync(
+      mapPath,
+      JSON.stringify({
+        hosts: { "legacy.example.org": [{ path: "*", target: "lunarBase" }] },
+      }),
+      "utf8",
+    );
+    clearRedirectMapCache();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    clearRedirectMapCache();
+  });
+
+  function redirectFor(url: string, host: string): { status: number; location: string | null } {
+    return withEnv(
+      {
+        SITE_BASE_URL: "https://canonical.example.net",
+        SITE_CANONICAL_HOST: "canonical.example.net",
+        REDIRECT_MAP_PATH: mapPath,
+      },
+      () => {
+        const response = proxy(new NextRequest(url, { headers: { host } }));
+        return { status: response.status, location: response.headers.get("location") };
+      },
+    );
+  }
+
+  it("redirects the www root to the canonical root", () => {
+    const { status, location } = redirectFor(
+      "https://www.canonical.example.net/",
+      "www.canonical.example.net",
+    );
+
+    expect(status).toBe(301);
+    expect(location).toBe("https://canonical.example.net/");
+  });
+
+  it("keeps the path — the property a map entry could not have preserved", () => {
+    const { status, location } = redirectFor(
+      "https://www.canonical.example.net/games/lunar-base",
+      "www.canonical.example.net",
+    );
+
+    expect(status).toBe(301);
+    expect(location).toBe("https://canonical.example.net/games/lunar-base");
+  });
+
+  it("keeps the query string, so campaign attribution survives the hop", () => {
+    const { status, location } = redirectFor(
+      "https://www.canonical.example.net/store?utm_source=newsletter",
+      "www.canonical.example.net",
+    );
+
+    expect(status).toBe(301);
+    expect(location).toBe("https://canonical.example.net/store?utm_source=newsletter");
+  });
+
+  it("resolves a retired route in the same hop, never two", () => {
+    const { status, location } = redirectFor(
+      "https://www.canonical.example.net/about",
+      "www.canonical.example.net",
+    );
+
+    expect(status).toBe(301);
+    // `/about` is retired to `home`: one hop straight to the replacement on the
+    // canonical host, not a hop to `/about` and a second one out of it.
+    expect(location).toBe("https://canonical.example.net/");
+  });
+
+  it("leaves the canonical host itself alone, so the new branch cannot loop", () => {
+    const { status } = redirectFor("https://canonical.example.net/", "canonical.example.net");
+
+    expect(status).not.toBe(301);
+  });
+
+  it("does not claim a `www` host belonging to somebody else", () => {
+    // `www.` prefixed, but not this site's name. Canonicalising it onto this
+    // origin would be a redirect this code has no business emitting.
+    const { status } = redirectFor("https://www.example.org/", "www.example.org");
+
+    expect(status).not.toBe(301);
+  });
+});
+
+/**
  * How wide the guard actually is, asserted rather than assumed either way.
  *
  * `tests/build-and-serve.test.ts` observes that this deployment serves 200 on

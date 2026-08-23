@@ -1,9 +1,16 @@
 /**
  * Two jobs, both configuration-driven, both request-time:
  *
- * 1. **Host-based redirects.** `www.<canonical>`, the alternate-brand host,
- *    and its `www` variant (see `config/redirect-map.ts`) each resolve to
+ * 1. **Host-based redirects.** The alternate-brand host and its `www` variant
+ *    (see `config/redirect-map.ts`) each resolve through the operator map to
  *    exactly one destination on the canonical host and answer a single 301.
+ *    `www.<canonical>` is handled separately and **in code**, after the map
+ *    has had its chance: it is not another site being pointed at this one, it
+ *    is this site under a second spelling of its own name, so it keeps its
+ *    path instead of collapsing to a route id. Until 2026-08-23 that case was
+ *    only ever claimed here and left entirely to the operator map, which did
+ *    not carry it — so the live `www` served a parallel 200, and with it a
+ *    second cookie origin for one cart. See `tests/proxy.test.ts`.
  *    A request to the canonical host itself never matches an entry in the
  *    map, so there is no second hop and no loop — and that is now an
  *    **enforced** guard, not just a fact about the maps this file has been
@@ -61,7 +68,12 @@ import type { NextRequest } from "next/server";
 import { ROUTE_PATHS } from "../../content/routes.js";
 import type { RouteId } from "../../content/routes.js";
 import { finalRouteFor, isRetiredRoute } from "../../content/schema.js";
-import { isCanonicalHost, isTestHost, loadSiteHostConfig } from "./config/hosts.js";
+import {
+  isCanonicalHost,
+  isTestHost,
+  isWwwOfCanonicalHost,
+  loadSiteHostConfig,
+} from "./config/hosts.js";
 import { loadRedirectMap, resolveRedirect } from "./config/redirect-map.js";
 import { buildContentSecurityPolicy } from "./lib/csp.js";
 import { absoluteUrl } from "./lib/urls.js";
@@ -99,6 +111,26 @@ export function proxy(request: NextRequest): NextResponse {
       // produces one hop to `/` rather than a hop to `/about` and a second
       // one out of it. The operator's Task 1 map does target it.
       const target = `${retirePath(redirect.targetPath)}${request.nextUrl.search}`;
+      return NextResponse.redirect(absoluteUrl(hostConfig.baseUrl, target), 301);
+    }
+
+    // The operator map is consulted first, so an explicit entry for
+    // `www.<canonical>` still wins — where its traffic goes is the operator's
+    // decision. Without one, `www` is not an unknown host: it is this site
+    // under a second spelling of its own name, and it must not answer a
+    // parallel 200. Two origins serving the same pages is two cookie jars for
+    // one cart, which is the precise split the single-origin site was chosen
+    // to avoid, and it is a duplicate the canonical tag mitigates rather than
+    // prevents.
+    //
+    // Canonicalising here rather than by adding a map entry is what keeps the
+    // path. The map's vocabulary is route ids, so the closest it can express
+    // is "send every `www` request to one route" — `/games/lunar-base` would
+    // arrive at `/`. Retirement is resolved on the way through for the same
+    // reason the map branch does it: `www.<canonical>/about` is one hop to
+    // `/`, never two.
+    if (isWwwOfCanonicalHost(host, hostConfig)) {
+      const target = `${retirePath(request.nextUrl.pathname)}${request.nextUrl.search}`;
       return NextResponse.redirect(absoluteUrl(hostConfig.baseUrl, target), 301);
     }
   }
