@@ -6,7 +6,7 @@ import { decorateCartTotals } from "@medusajs/framework/utils";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  FULFILLMENT_PROVIDER_ID,
+  MANUAL_FULFILLMENT_PROVIDER_ID,
   commerceRecords,
   configureCommerce,
   type CommerceRecord,
@@ -14,6 +14,7 @@ import {
 import { MedusaCommerceConfigurationTarget } from "../src/commerce/medusa-target.js";
 import {
   EU_MEMBER_STATE_CODES,
+  OMNIVA_FULFILLMENT_PROVIDER_ID,
   SHIPPING_ZONES,
   shippingAmountMinorForCountry,
 } from "../src/commerce/shipping-model.js";
@@ -110,8 +111,10 @@ function fakeMedusa(): FakeMedusa {
 
   const rows: Record<string, Row[]> = {
     // What a migrated database has before this configuration runs: Medusa's own
-    // default store and sales channel, and the one provider `defineConfig`
-    // registers. Nothing else.
+    // default store and sales channel, and the two providers
+    // `medusa-config.ts` registers since 2026-08-26 — `manual_manual`, which
+    // `defineConfig` supplied by default until a fulfillment module was
+    // declared to add Omniva, and `omniva_omniva` itself. Nothing else.
     store: [
       {
         id: "store_01",
@@ -119,7 +122,10 @@ function fakeMedusa(): FakeMedusa {
         supported_currencies: [{ currency_code: "eur", is_default: true }],
       },
     ],
-    fulfillment_provider: [{ id: FULFILLMENT_PROVIDER_ID, is_enabled: true }],
+    fulfillment_provider: [
+      { id: MANUAL_FULFILLMENT_PROVIDER_ID, is_enabled: true },
+      { id: OMNIVA_FULFILLMENT_PROVIDER_ID, is_enabled: true },
+    ],
     /**
      * The tax provider `@medusajs/tax`'s own loader registers and enables on
      * every boot, before it reads any `providers` option: `providers/system.js`
@@ -417,33 +423,40 @@ describe("the graph the configuration leaves behind", () => {
     expect(source).toContain('entryPoint: "service_zone"');
   });
 
-  it("enables the fulfillment provider at the stock location before an option needs it", async () => {
+  it("enables both fulfillment providers at the stock location before an option needs either", async () => {
     const medusa = fakeMedusa();
     const summary = await configureCommerce(
       new MedusaCommerceConfigurationTarget(medusa.container),
     );
 
     expect(summary.records).toBe(commerceRecords().length);
-    expect(medusa.rows.shipping_option).toHaveLength(SHIPPING_ZONES.length);
+    expect(medusa.rows.shipping_option).toHaveLength(
+      commerceRecords().filter((record) => record.kind === "shipping-option").length,
+    );
     expect(medusa.rows.stock_location?.[0]?.fulfillment_providers).toEqual([
-      { id: FULFILLMENT_PROVIDER_ID },
+      { id: MANUAL_FULFILLMENT_PROVIDER_ID },
+      { id: OMNIVA_FULFILLMENT_PROVIDER_ID },
     ]);
   });
 
   /**
    * The defect this file was written for, reproduced by deleting exactly the
-   * record that fixes it. Without this case the fake proves only that the
-   * configuration passes its own check.
+   * records that fix it — both of them, one per provider since 2026-08-26.
+   * Without this case the fake proves only that the configuration passes its
+   * own check.
    */
-  it("is refused by that validator when the provider link is not declared", async () => {
-    const withoutTheLink = commerceRecords().filter(
+  it("is refused by that validator when neither provider link is declared", async () => {
+    const withoutTheLinks = commerceRecords().filter(
       (record) => record.kind !== "stock-location-fulfillment-provider",
     );
-    expect(withoutTheLink).toHaveLength(commerceRecords().length - 1);
+    expect(withoutTheLinks).toHaveLength(commerceRecords().length - 2);
 
     const medusa = fakeMedusa();
-    await expect(applyAll(withoutTheLink, medusa)).rejects.toThrow(
-      new RegExp(`Providers \\(${FULFILLMENT_PROVIDER_ID}\\) ${VALIDATOR_REFUSAL}`),
+    // The manual link is missing too, and the manual method is the first
+    // shipping option `commerceRecords()` declares, so that is the provider
+    // the validator names first.
+    await expect(applyAll(withoutTheLinks, medusa)).rejects.toThrow(
+      new RegExp(`Providers \\(${MANUAL_FULFILLMENT_PROVIDER_ID}\\) ${VALIDATOR_REFUSAL}`),
     );
     expect(medusa.rows.shipping_option ?? []).toEqual([]);
   });
@@ -663,6 +676,11 @@ describe("the graph the configuration leaves behind", () => {
     expect(medusa.writes).toEqual([
       "updateRegionsWorkflow",
       ...EU_MEMBER_STATE_CODES.map(() => "updateTaxRatesWorkflow"),
+      // One per shipping option: two for the parcel machine zone (Standard
+      // delivery and the free Omniva method), one each for European Union and
+      // Rest of world.
+      "updateShippingOptionsWorkflow",
+      "updateShippingOptionsWorkflow",
       "updateShippingOptionsWorkflow",
       "updateShippingOptionsWorkflow",
     ]);
@@ -939,13 +957,17 @@ describe("the exact total presented before payment", () => {
    */
   it("produces three figures that add up, which is what the checkout requires", () => {
     for (const zone of SHIPPING_ZONES) {
-      for (const vatPercent of VAT_PERCENTS) {
-        const totals = presentedTotals({
-          shippingMinor: zone.amountMinor,
-          vatPercent,
-          taxInclusive: declaredTaxInclusivity("EUR"),
-        });
-        expect(totals.goodsMinor + totals.shippingMinor, zone.name).toBe(totals.totalMinor);
+      for (const method of zone.methods) {
+        for (const vatPercent of VAT_PERCENTS) {
+          const totals = presentedTotals({
+            shippingMinor: method.amountMinor,
+            vatPercent,
+            taxInclusive: declaredTaxInclusivity("EUR"),
+          });
+          expect(totals.goodsMinor + totals.shippingMinor, `${zone.name}/${method.name}`).toBe(
+            totals.totalMinor,
+          );
+        }
       }
     }
   });

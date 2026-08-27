@@ -184,8 +184,28 @@ export interface ShippingMethod {
   readonly ratesWithTax: Readonly<Record<ShippingZone, number>>;
 }
 
+/**
+ * The second delivery method, offered to three countries and priced at
+ * nothing — `storefront/mock/shipping.json`'s `parcelMachine` block.
+ *
+ * `name` is the string that crosses the boundary: the storefront cannot
+ * import `backend/src/commerce/shipping-model.ts`, so a later task that adds
+ * the machine picker recognises this method among the ones Medusa returns by
+ * comparing that method's display name to {@link ParcelMachineMethod.name}
+ * read from here — see `mock/shipping.json`'s `$comment`.
+ */
+export interface ParcelMachineMethod {
+  readonly id: string;
+  readonly name: string;
+  /** Minor units. Operator-frozen at `0` — see the JSON's `$comment`. */
+  readonly rate: number;
+  /** ISO 3166-1 alpha-2, the only zone this method is offered in. */
+  readonly countries: readonly string[];
+}
+
 interface ShippingFile {
   readonly method: ShippingMethod;
+  readonly parcelMachine: ParcelMachineMethod;
 }
 
 /**
@@ -232,6 +252,55 @@ export function assertPriceable(method: ShippingMethod): ShippingMethod {
 /** The one declared shipping method — see `storefront/mock/shipping.json`. */
 export const declaredShippingMethod: ShippingMethod = assertPriceable(
   (shippingSource as ShippingFile).method,
+);
+
+/**
+ * Refuses a parcel-machine block this checkout could not honestly offer.
+ *
+ * The same reasoning as {@link assertPriceable}, over a second method
+ * `mock/shipping.json` gained on 2026-08-26: it is edited by hand, by an
+ * operator, and a block nothing checks is exactly how a malformed `rate` or
+ * an empty `countries` list would reach a buyer's screen. Called at
+ * **import**, over a committed file — see {@link assertPriceable}'s doc
+ * comment for why that makes every branch below unreachable from a test that
+ * only imports this module, and why it is exported anyway.
+ */
+export function assertParcelMachine(method: ParcelMachineMethod): ParcelMachineMethod {
+  if (typeof method.name !== "string" || method.name.trim().length === 0) {
+    throw new Error(
+      `storefront/mock/shipping.json declares no usable parcel machine "name" (got ${JSON.stringify(method.name)}). ` +
+        "A method the checkout cannot name is a method it cannot offer.",
+    );
+  }
+  if (!Number.isInteger(method.rate) || method.rate < 0) {
+    throw new Error(
+      `storefront/mock/shipping.json declares no usable parcel machine "rate" (got ${String(method.rate)}). ` +
+        "It must be a whole number of minor units, zero or more, or the checkout would put a " +
+        "meaningless charge on the screen Article 8(2) CRD requires to be correct.",
+    );
+  }
+  if (!Array.isArray(method.countries) || method.countries.length === 0) {
+    throw new Error(
+      'storefront/mock/shipping.json declares no "countries" for the parcel machine method. ' +
+        "A method offered nowhere is a method that cannot be sold, and the checkout has no way to tell " +
+        "that apart from one nobody has configured yet.",
+    );
+  }
+  for (const code of method.countries) {
+    if (typeof code !== "string" || !/^[A-Z]{2}$/.test(code)) {
+      throw new Error(
+        `storefront/mock/shipping.json's parcel machine "countries" contains ${JSON.stringify(code)}, ` +
+          "which is not an ISO 3166-1 alpha-2 country code. A malformed code cannot be matched against " +
+          "a delivery address, so the method would silently never appear.",
+      );
+    }
+  }
+  return method;
+}
+
+/** The one declared parcel machine method — see `storefront/mock/shipping.json`. */
+export const declaredParcelMachineMethod: ParcelMachineMethod = assertParcelMachine(
+  (shippingSource as ShippingFile).parcelMachine,
 );
 
 const COUNTRIES_BY_NAME: ReadonlyMap<string, DeliveryCountry> = new Map(

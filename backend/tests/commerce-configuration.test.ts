@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { STRIPE_PAYMENT_PROVIDER_ID } from "../src/config/payment.js";
 import {
-  FULFILLMENT_PROVIDER_ID,
+  MANUAL_FULFILLMENT_PROVIDER_ID,
   REGION_NAME,
   commerceRecords,
   configureCommerce,
@@ -15,6 +15,10 @@ import {
 import {
   DELIVERABLE_COUNTRY_CODES,
   EU_MEMBER_STATE_CODES,
+  OMNIVA_FULFILLMENT_PROVIDER_ID,
+  PARCEL_MACHINE_COUNTRY_CODES,
+  PARCEL_MACHINE_OPTION_NAME,
+  PARCEL_MACHINE_ZONE_NAME,
 } from "../src/commerce/shipping-model.js";
 import {
   ESTONIAN_STANDARD_VAT_PERCENT,
@@ -88,11 +92,15 @@ describe("the declared commerce configuration", () => {
       ...EU_MEMBER_STATE_CODES.map(() => "tax-region"),
       "stock-location",
       "stock-location-fulfillment-provider",
+      "stock-location-fulfillment-provider",
       "fulfillment-set",
       "shipping-profile",
       "sales-channel-stock-location",
       "service-zone",
       "service-zone",
+      "service-zone",
+      "shipping-option",
+      "shipping-option",
       "shipping-option",
       "shipping-option",
     ]);
@@ -190,21 +198,29 @@ describe("the declared commerce configuration", () => {
    * first, and it refuses an option whose provider is not linked to a stock
    * location behind the zone. Without this record the predeploy Job — an Argo
    * CD sync hook — dies on the first shipping option on every environment.
+   *
+   * There are two links, one per provider, since 2026-08-26: the parcel
+   * machine method needs `omniva_omniva` enabled at the same location the two
+   * flat rates need `manual_manual` enabled at.
    */
-  it("enables the fulfillment provider at the stock location the zones hang off", () => {
+  it("enables both fulfillment providers at the stock location the zones hang off", () => {
     const links = only("stock-location-fulfillment-provider");
-    expect(links).toHaveLength(1);
-    expect(links[0]!.providerId).toBe(FULFILLMENT_PROVIDER_ID);
+    expect(links.map((link) => link.providerId)).toEqual([
+      MANUAL_FULFILLMENT_PROVIDER_ID,
+      OMNIVA_FULFILLMENT_PROVIDER_ID,
+    ]);
 
     const locations = only("stock-location").map((location) => location.name);
-    expect(locations).toContain(links[0]!.stockLocationName);
+    for (const link of links) {
+      expect(locations, link.providerId).toContain(link.stockLocationName);
+    }
 
-    // And it is declared before anything that needs it.
+    // And both are declared before anything that needs them.
     const kinds = commerceRecords().map((record) => record.kind);
     expect(kinds.indexOf("stock-location-fulfillment-provider")).toBeGreaterThan(
       kinds.indexOf("stock-location"),
     );
-    expect(kinds.indexOf("stock-location-fulfillment-provider")).toBeLessThan(
+    expect(kinds.lastIndexOf("stock-location-fulfillment-provider")).toBeLessThan(
       kinds.indexOf("shipping-option"),
     );
   });
@@ -216,8 +232,14 @@ describe("the declared commerce configuration", () => {
     expect(STRIPE_PAYMENT_PROVIDER_ID).toBe("pp_stripe_stripe");
   });
 
-  it("declares the two zones and their two flat rates, with no free method", () => {
+  it("declares three zones and four methods, with the frozen amounts", () => {
+    const parcelMachineZone = only("service-zone").find(
+      (zone) => zone.name === PARCEL_MACHINE_ZONE_NAME,
+    );
+    expect(parcelMachineZone?.countryCodes).toEqual([...PARCEL_MACHINE_COUNTRY_CODES]);
+
     expect(only("service-zone").map((zone) => zone.name)).toEqual([
+      PARCEL_MACHINE_ZONE_NAME,
       "European Union",
       "Rest of world",
     ]);
@@ -232,29 +254,63 @@ describe("the declared commerce configuration", () => {
       })),
     ).toEqual([
       {
+        zone: PARCEL_MACHINE_ZONE_NAME,
+        name: "Standard delivery",
+        currency: "EUR",
+        amountMinor: 700,
+        provider: MANUAL_FULFILLMENT_PROVIDER_ID,
+      },
+      {
+        zone: PARCEL_MACHINE_ZONE_NAME,
+        name: PARCEL_MACHINE_OPTION_NAME,
+        currency: "EUR",
+        amountMinor: 0,
+        provider: OMNIVA_FULFILLMENT_PROVIDER_ID,
+      },
+      {
         zone: "European Union",
         name: "Standard delivery",
         currency: "EUR",
         amountMinor: 700,
-        provider: FULFILLMENT_PROVIDER_ID,
+        provider: MANUAL_FULFILLMENT_PROVIDER_ID,
       },
       {
         zone: "Rest of world",
         name: "Standard delivery",
         currency: "EUR",
         amountMinor: 1200,
-        provider: FULFILLMENT_PROVIDER_ID,
+        provider: MANUAL_FULFILLMENT_PROVIDER_ID,
       },
     ]);
   });
 
   /**
+   * The free method exists in exactly one zone, and it is served by Omniva
+   * and nothing else. The old assertion here said no shipping option was
+   * free at all; that decision was reversed on 2026-08-26 for the parcel
+   * machine method only, and this is that reversal stated narrowly rather
+   * than the old constraint simply deleted.
+   */
+  it("offers the free method through Omniva only, and every flat rate through the manual provider", () => {
+    for (const option of only("shipping-option")) {
+      if (option.amountMinor === 0) {
+        expect(option.providerId, option.key).toBe(OMNIVA_FULFILLMENT_PROVIDER_ID);
+      } else {
+        expect(option.providerId, option.key).toBe(MANUAL_FULFILLMENT_PROVIDER_ID);
+      }
+    }
+    expect(only("shipping-option").filter((option) => option.amountMinor === 0)).toHaveLength(1);
+  });
+
+  /**
    * ADR `020`: no carrier interface, no quote cache, no fallback contract. The
    * manual provider quotes nothing and calls nothing, which is the whole reason
-   * it is the right one for a flat rate.
+   * it is the right one for a flat rate — and it is not the provider the free
+   * parcel machine method uses.
    */
-  it("serves both options from the manual fulfillment provider", () => {
-    expect(FULFILLMENT_PROVIDER_ID).toBe("manual_manual");
+  it("names the manual fulfillment provider correctly", () => {
+    expect(MANUAL_FULFILLMENT_PROVIDER_ID).toBe("manual_manual");
+    expect(OMNIVA_FULFILLMENT_PROVIDER_ID).toBe("omniva_omniva");
   });
 
   it("names a service zone for every shipping option it declares", () => {
@@ -289,6 +345,7 @@ describe("the declared commerce configuration", () => {
       "region",
       ...EU_MEMBER_STATE_CODES.map(() => "tax-region"),
       "stock-location",
+      "stock-location-fulfillment-provider",
       "stock-location-fulfillment-provider",
       "fulfillment-set",
     ]);
@@ -396,15 +453,28 @@ describe("the pages that describe this configuration", () => {
     expect(shipping).toContain("calculated at checkout once you have entered a delivery address");
     expect(catalogue).toContain("Shipping is calculated at checkout");
 
-    // Two zones at two different prices is exactly why the charge cannot be
-    // shown before an address: there is no single figure to show.
+    // Three distinct prices — free, EUR 7.00 and EUR 12.00 — is exactly why
+    // the charge cannot be shown before an address: there is no single
+    // figure to show.
     const amounts = commerceRecords()
       .filter((record) => record.kind === "shipping-option")
       .map((record) => record.amountMinor);
-    expect(new Set(amounts).size).toBe(2);
+    expect(new Set(amounts).size).toBe(3);
   });
 
-  it("promises free shipping on no surface, because no method is free", () => {
+  /**
+   * **The reversal, stated narrowly, at the configuration layer too.**
+   *
+   * No content page promises free shipping yet — legal/shipping, legal/terms
+   * and the catalogue price copy are unchanged by this task and are held to
+   * that here, same as before. But the old second half of this assertion said
+   * the *configuration* had no free shipping option at all, and the operator's
+   * decision of 2026-08-26 reversed exactly that: one method, the Omniva
+   * parcel machine, is now free. So that half is replaced with one that pins
+   * the free record to the one method and provider the operator named, rather
+   * than merely deleted.
+   */
+  it("promises free shipping on no content page, and configures exactly one free method", () => {
     for (const [name, source] of [
       ["legal/shipping", shipping],
       ["legal/terms", terms],
@@ -412,11 +482,14 @@ describe("the pages that describe this configuration", () => {
     ] as const) {
       expect(source.toLowerCase(), name).not.toMatch(/free (delivery|shipping|postage)/);
     }
-    expect(
-      commerceRecords().filter(
-        (record) => record.kind === "shipping-option" && record.amountMinor === 0,
-      ),
-    ).toEqual([]);
+
+    const free = only("shipping-option").filter((option) => option.amountMinor === 0);
+    expect(free).toHaveLength(1);
+    expect(free[0]).toMatchObject({
+      zoneName: PARCEL_MACHINE_ZONE_NAME,
+      optionName: PARCEL_MACHINE_OPTION_NAME,
+      providerId: OMNIVA_FULFILLMENT_PROVIDER_ID,
+    });
   });
 
   /**

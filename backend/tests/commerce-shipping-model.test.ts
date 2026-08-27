@@ -7,6 +7,9 @@ import {
   DELIVERABLE_COUNTRY_CODES,
   EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR,
   EU_MEMBER_STATE_CODES,
+  PARCEL_MACHINE_COUNTRY_CODES,
+  PARCEL_MACHINE_OPTION_NAME,
+  PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR,
   REST_OF_WORLD_SHIPPING_AMOUNT_MINOR,
   SHIPPING_CURRENCY,
   SHIPPING_ZONES,
@@ -50,41 +53,74 @@ interface StorefrontShipping {
     readonly rates: { readonly europeanUnion: number; readonly restOfWorld: number };
     readonly ratesWithTax: { readonly europeanUnion: number; readonly restOfWorld: number };
   };
+  readonly parcelMachine: {
+    readonly name: string;
+    readonly rate: number;
+    readonly countries: readonly string[];
+  };
 }
 
 describe("the frozen shipping model", () => {
-  it("declares two flat rates in EUR and nothing else", () => {
+  it("declares three zones, and the flat rates the operator froze", () => {
     expect(SHIPPING_CURRENCY).toBe("EUR");
     expect(EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR).toBe(700);
     expect(REST_OF_WORLD_SHIPPING_AMOUNT_MINOR).toBe(1200);
-    expect(SHIPPING_ZONES).toHaveLength(2);
+    expect(PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR).toBe(0);
     expect(SHIPPING_ZONES.map((zone) => zone.name)).toEqual([
+      "Estonia, Latvia and Lithuania",
       "European Union",
       "Rest of world",
     ]);
     for (const zone of SHIPPING_ZONES) {
-      expect(zone.currency, zone.name).toBe("EUR");
-      expect(zone.optionName, zone.name).toBe("Standard delivery");
+      for (const method of zone.methods) {
+        expect(method.currency, `${zone.name}/${method.name}`).toBe("EUR");
+      }
     }
   });
 
   /**
-   * The plan's checkbox says "flat and free shipping"; the operator's later
-   * decision replaced that with two flat rates and **no free method**. A
-   * zero-priced option would be a delivery offer nobody agreed to sell, so its
-   * absence is asserted rather than merely left out.
+   * The free method exists in exactly one zone, and the operator's decision to
+   * introduce it does not leak into the other two. The old assertion here said
+   * no zone had a free method at all; that decision was reversed on 2026-08-26
+   * for EE, LV and LT only, and this is that reversal stated narrowly.
    */
-  it("offers no free shipping method, in either zone", () => {
+  it("offers the free method only to Estonia, Latvia and Lithuania", () => {
+    const free = SHIPPING_ZONES.filter((zone) =>
+      zone.methods.some((method) => method.amountMinor === 0),
+    );
+    expect(free.map((zone) => zone.name)).toEqual(["Estonia, Latvia and Lithuania"]);
+
     for (const zone of SHIPPING_ZONES) {
-      expect(zone.amountMinor, zone.name).toBeGreaterThan(0);
+      const standard = zone.methods.find((method) => method.name === "Standard delivery");
+      expect(standard?.amountMinor, zone.name).toBeGreaterThan(0);
     }
-    expect(SHIPPING_ZONES.filter((zone) => zone.amountMinor === 0)).toEqual([]);
   });
 
-  it("offers exactly one method per zone — no rate table, no weight band", () => {
-    const options = SHIPPING_ZONES.map((zone) => `${zone.name}/${zone.optionName}`);
-    expect(options).toHaveLength(2);
-    expect(new Set(options).size).toBe(2);
+  it("sells one standard method everywhere, and a second method in one zone", () => {
+    const keys = SHIPPING_ZONES.flatMap((zone) =>
+      zone.methods.map((method) => `${zone.name}/${method.name}`),
+    );
+    expect(keys).toEqual([
+      "Estonia, Latvia and Lithuania/Standard delivery",
+      "Estonia, Latvia and Lithuania/Omniva parcel machine",
+      "European Union/Standard delivery",
+      "Rest of world/Standard delivery",
+    ]);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("serves the parcel machine method through the Omniva provider and nothing else", () => {
+    for (const zone of SHIPPING_ZONES) {
+      for (const method of zone.methods) {
+        const omniva = method.name === PARCEL_MACHINE_OPTION_NAME;
+        expect(method.providerId, `${zone.name}/${method.name}`).toBe(
+          omniva ? "omniva_omniva" : "manual_manual",
+        );
+        expect(method.omnivaChannel, `${zone.name}/${method.name}`).toBe(
+          omniva ? "PARCEL_MACHINE" : undefined,
+        );
+      }
+    }
   });
 
   it("pins the 27 EU member states, and only those", () => {
@@ -141,20 +177,54 @@ describe("the frozen shipping model", () => {
     for (const country of offered) {
       const zone = shippingZoneForCountry(country.code);
       expect(zone?.name, `${country.name} (${country.code}) has no zone`).toBeTypeOf("string");
-      expect(zone?.name, `${country.name} (${country.code}) is in the wrong zone`).toBe(
-        country.euMember ? "European Union" : "Rest of world",
-      );
+      const expected = PARCEL_MACHINE_COUNTRY_CODES.includes(country.code)
+        ? "Estonia, Latvia and Lithuania"
+        : country.euMember
+          ? "European Union"
+          : "Rest of world";
+      expect(zone?.name, `${country.name} (${country.code}) is in the wrong zone`).toBe(expected);
     }
 
+    // The VAT boundary has NOT moved. EE, LV and LT buy delivery from their own
+    // service zone and are still EU member states for tax.
     const euMembers = offered.filter((country) => country.euMember).map((country) => country.code);
     expect([...euMembers].sort()).toEqual([...EU_MEMBER_STATE_CODES].sort());
+    for (const code of PARCEL_MACHINE_COUNTRY_CODES) {
+      expect(EU_MEMBER_STATE_CODES, code).toContain(code);
+    }
   });
 
-  it("charges the same two figures the checkout's own rate file declares", () => {
+  it("still charges the standard rate the checkout's own rate file declares", () => {
     const { method } = storefrontJson<StorefrontShipping>("mock/shipping.json");
     expect(method.currency).toBe(SHIPPING_CURRENCY);
     expect(method.rates.europeanUnion).toBe(EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR);
     expect(method.rates.restOfWorld).toBe(REST_OF_WORLD_SHIPPING_AMOUNT_MINOR);
+    // EE, LV and LT pay the same standard rate as the rest of the EU. The
+    // basket's estimate quotes standard delivery, so `method` stays the one
+    // the basket prices against.
+    expect(shippingAmountMinorForCountry("EE")).toBe(EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR);
+  });
+
+  /**
+   * **The one string that crosses the boundary, held to one writer.**
+   *
+   * The storefront cannot import this model — it reads Medusa's option list,
+   * which carries the option's *display name* and not its provider id, so
+   * `isParcelMachineOption` compares names. That is a second copy of a value
+   * this file declares, and a second copy nothing compares is how a renamed
+   * option silently stops being recognised as the parcel machine method: the
+   * `<select>` would render it, the machine picker would never appear, and the
+   * order would be placed against an option with no machine chosen.
+   *
+   * So the name is written once into `mock/shipping.json` — the file this suite
+   * already reads for the rates — and both sides read it from there.
+   */
+  it("names the parcel machine method the same as the checkout does", () => {
+    const { parcelMachine } = storefrontJson<StorefrontShipping>("mock/shipping.json");
+    expect(parcelMachine.name).toBe(PARCEL_MACHINE_OPTION_NAME);
+    expect(parcelMachine.rate).toBe(PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR);
+    expect(parcelMachine.rate).toBe(0);
+    expect(parcelMachine.countries).toEqual([...PARCEL_MACHINE_COUNTRY_CODES]);
   });
 
   /**

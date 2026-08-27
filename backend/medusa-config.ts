@@ -160,5 +160,24 @@ module.exports = defineConfig({
     redisEventBusModule,
     redisWorkflowEngineModule,
     redisLockingModule,
+    /**
+     * **Both entries are required.** `defineConfig` supplies
+     * `@medusajs/medusa/fulfillment-manual` by default only while no
+     * fulfillment module is declared; declaring one to add Omniva is what
+     * makes listing the manual provider explicit rather than assumed. Without
+     * it the three `Standard delivery` options `configureCommerce` creates
+     * cannot be created and the predeploy Job dies on every environment — see
+     * `src/commerce/configuration.ts`, which addresses both providers by the
+     * ids declared in `src/commerce/shipping-model.ts`.
+     */
+    {
+      resolve: "@medusajs/medusa/fulfillment",
+      options: {
+        providers: [
+          { resolve: "@medusajs/medusa/fulfillment-manual", id: "manual" },
+          { resolve: "./src/modules/omniva", id: "omniva" },
+        ],
+      },
+    },
   ],
 });

@@ -49,7 +49,9 @@ import {
   cartTotals,
   catalogueLine,
   clampQuantity,
+  assertParcelMachine,
   assertPriceable,
+  declaredParcelMachineMethod,
   declaredShippingMethod,
   deliveryCountries,
   formatAmount,
@@ -690,6 +692,32 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     ] as const) {
       expect(() => assertPriceable(broken), label).toThrow(/shipping\.json/);
     }
+  });
+
+  /**
+   * The parcel machine method's own import-time refusals, reached the same
+   * way {@link assertPriceable}'s are, and for the same reason: a block the
+   * storefront trusts and nothing checks is how a malformed rate or an empty
+   * country list would reach a buyer's screen without anything going red.
+   */
+  it("refuses a parcel machine file that cannot be sold", () => {
+    const usable = declaredParcelMachineMethod;
+    expect(assertParcelMachine(usable)).toBe(usable);
+
+    for (const [label, broken] of [
+      ["a blank name", { ...usable, name: "  " }],
+      ["a negative rate", { ...usable, rate: -1 }],
+      ["a non-integer rate", { ...usable, rate: 0.5 }],
+      ["no countries at all", { ...usable, countries: [] }],
+      ["a country code that is not ISO 3166-1 alpha-2", { ...usable, countries: ["Estonia"] }],
+    ] as const) {
+      expect(() => assertParcelMachine(broken), label).toThrow(/shipping\.json/);
+    }
+  });
+
+  it("prices the parcel machine method at exactly nothing, for exactly three countries", () => {
+    expect(declaredParcelMachineMethod.rate).toBe(0);
+    expect([...declaredParcelMachineMethod.countries].sort()).toEqual(["EE", "LT", "LV"]);
   });
 
   /**
