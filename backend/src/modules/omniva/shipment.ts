@@ -1,0 +1,280 @@
+/**
+ * The OMX registration body: everything `createFulfillment` (Task 10) needs
+ * to hand Omniva a single shipment, and nothing this function cannot decide
+ * on its own from the order, the fulfilment and the frozen commerce models.
+ *
+ * **Pure, and deliberately so.** It touches no network, reads no environment
+ * and calls no clock — every branch below is reachable from a plain object
+ * literal, which is what lets `tests/omniva-shipment.test.ts` exercise all of
+ * them without a stub OMX server. `client.ts` (Task 10) is the one place that
+ * actually calls Omniva; this file only decides what to say.
+ *
+ * ## Every field here is conditional, and the condition is the point
+ *
+ * The OMX API manual v1.7 is explicit that an attribute with no value must
+ * not exist in the message *at all* — not `null`, not `""`, not present with
+ * `undefined`. So every optional key below is added with a conditional
+ * spread (`...(condition ? { key: value } : {})`) rather than written as
+ * `key: condition ? value : undefined`. `JSON.stringify` happens to drop
+ * `undefined` values too, which would make the wrong version *look* right in
+ * a test that only inspects the serialised JSON — `tests/omniva-shipment.test.ts`
+ * asserts directly on the returned object for exactly this reason.
+ *
+ * ## Two country sets decide two different things, and they are not the same set
+ *
+ * {@link PARCEL_MACHINE_COUNTRY_CODES} (EE, LT, LV) decides whether
+ * `deliveryChannel` or `servicePackage` is sent — OMX makes the former
+ * mandatory there and the latter mandatory everywhere else.
+ * {@link PHONE_OPTIONAL_COUNTRY_CODES} (EE, FI, LT, LV) decides whether a
+ * receiver `contactPhone` is mandatory — Finland is in this set and out of
+ * the other one, which is `shipping-model.ts`'s own reason for keeping the
+ * two constants apart rather than naming either of them after a region.
+ * {@link EU_MEMBER_STATE_CODES} decides a third, unrelated thing: whether a
+ * `customs` block is sent at all.
+ */
+
+// Extensionless: see the comment on `index.ts`'s import of `./service`. Both
+// of these are reached through the same MikroORM type-generation path.
+import {
+  EU_MEMBER_STATE_CODES,
+  PARCEL_MACHINE_COUNTRY_CODES,
+  PHONE_OPTIONAL_COUNTRY_CODES,
+} from "../../commerce/shipping-model";
+import { PRODUCT } from "../../commerce/product-model";
+
+/**
+ * The merchant side of every OMX registration, read from the environment by
+ * `config.ts` (Task 10) into exactly this shape.
+ *
+ * Declared here rather than in `config.ts`, per controller ruling R3:
+ * `shipment.ts` is the pure module that defines what a registration needs,
+ * and `config.ts` merely reads an environment into that shape — the
+ * dependency runs from the config to the shipment builder, never the other
+ * way, so the type that describes the shape lives on the builder's side.
+ *
+ * `street` is the only optional field: OMX requires sender `deliverypoint`
+ * (the city), `postcode` and `country`, and documents the street as
+ * optional. `phone` and `email` are mandatory for the same reason the
+ * receiver's are — see {@link PHONE_OPTIONAL_COUNTRY_CODES} — but the
+ * merchant's own destination-independent phone is supplied once, here,
+ * rather than looked up per shipment.
+ */
+export interface OmnivaSenderConfig {
+  readonly personName: string;
+  readonly street?: string;
+  readonly deliverypoint: string;
+  readonly postcode: string;
+  readonly country: string;
+  readonly phone: string;
+  readonly email: string;
+}
+
+/** One line item, exactly as Medusa's order and fulfilment carry it. */
+interface RegistrationOrderItem {
+  readonly title: string;
+  readonly quantity: number;
+  /**
+   * Grams, or `null` when the Medusa variant carries none. `null` is refused
+   * rather than defaulted — see {@link requireWeightGrams}.
+   */
+  readonly weightGrams: number | null;
+  /** Net of tax, per unit — what `customs.shipmentItems[].financialValue` wants. */
+  readonly unitPriceNet: number;
+}
+
+/** Everything `buildShipmentRegistration` needs to build one OMX shipment. */
+export interface ShipmentRegistrationInput {
+  readonly customerCode: string;
+  /** The Medusa fulfilment id. Becomes `partnerShipmentId`; see its length check below. */
+  readonly fulfillmentId: string;
+  /** The channel the buyer's chosen method registers as. */
+  readonly deliveryChannel: "PARCEL_MACHINE" | "COURIER";
+  /** The chosen machine's ZIP. Required when {@link deliveryChannel} is `"PARCEL_MACHINE"`. */
+  readonly parcelMachineZip?: string;
+  readonly sender: OmnivaSenderConfig;
+  readonly order: {
+    readonly email: string;
+    readonly shippingAddress: {
+      readonly firstName: string;
+      readonly lastName: string;
+      readonly address1: string;
+      readonly postalCode: string;
+      readonly city: string;
+      readonly countryCode: string;
+      readonly phone: string | null;
+    };
+    readonly items: readonly RegistrationOrderItem[];
+  };
+}
+
+/**
+ * OMX bounds `partnerShipmentId` at `string(30)`. A Medusa fulfilment id is
+ * `ful_` plus a 26-character ULID — exactly 30 — but that arithmetic is not
+ * asserted anywhere Medusa promises to keep it true, so this builder checks
+ * the actual length rather than trusting it to survive a Medusa upgrade.
+ */
+const PARTNER_SHIPMENT_ID_MAX_LENGTH = 30;
+
+/** OMX accepts at most 8 `customs.shipmentItems` entries per shipment. */
+const MAX_CUSTOMS_ITEMS = 8;
+
+/** Kilograms, rounded to three decimals — the precision OMX's `measurement.weight` takes. */
+function roundToThreeDecimals(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * An item's weight in grams, or a refusal naming the item.
+ *
+ * **Refuses rather than defaults.** A `null` weight means the Medusa variant
+ * was never given one; substituting a placeholder would register a real
+ * parcel at a fictitious weight, which is a carrier billing dispute an
+ * operator discovers after the parcel has shipped, not a rendering bug they
+ * can shrug off.
+ */
+function requireWeightGrams(item: RegistrationOrderItem): number {
+  if (item.weightGrams === null) {
+    throw new Error(
+      `"${item.title}" has no recorded weight; refusing to register an Omniva shipment at a weight nobody measured`,
+    );
+  }
+  return item.weightGrams;
+}
+
+/**
+ * The JSON body for one OMX shipment registration.
+ *
+ * Touches no network — see this file's header. Every refusal below names the
+ * field and, where useful, the offending value, because the reader is an
+ * operator deciding what to do about one stuck order in the Medusa Admin, not
+ * a developer with a stack trace.
+ */
+export function buildShipmentRegistration(input: ShipmentRegistrationInput): unknown {
+  const { order, sender } = input;
+  const { shippingAddress, items } = order;
+  const countryCode = shippingAddress.countryCode.trim().toUpperCase();
+
+  if (input.fulfillmentId.length > PARTNER_SHIPMENT_ID_MAX_LENGTH) {
+    throw new Error(
+      `OMX bounds partnerShipmentId at ${PARTNER_SHIPMENT_ID_MAX_LENGTH} characters; ` +
+        `"${input.fulfillmentId}" is ${input.fulfillmentId.length}`,
+    );
+  }
+
+  // measurement.weight: the sum of every line's weight * quantity, refusing
+  // before anything else is computed from an item OMX cannot be told a real
+  // weight for.
+  const totalWeightGrams = items.reduce(
+    (sum, item) => sum + requireWeightGrams(item) * item.quantity,
+    0,
+  );
+  const weightKilograms = roundToThreeDecimals(totalWeightGrams / 1000);
+
+  // contentDescription: the order's *distinct* item titles — two units of the
+  // same game is one description, not two.
+  const contentDescription = Array.from(new Set(items.map((item) => item.title))).join(", ");
+
+  // The receiver address carries offloadPostcode OR street/postcode/city,
+  // never both — a street address alongside an offloadPostcode is two
+  // destinations for one parcel. Which one applies follows the delivery
+  // channel the buyer actually chose, not the destination country: a courier
+  // order to a parcel-machine country still ships to a street.
+  let receiverAddress: Record<string, unknown>;
+  if (input.deliveryChannel === "PARCEL_MACHINE") {
+    if (typeof input.parcelMachineZip !== "string" || input.parcelMachineZip.trim().length === 0) {
+      throw new Error(
+        "A parcel machine registration requires parcelMachineZip, and none was supplied",
+      );
+    }
+    receiverAddress = { offloadPostcode: input.parcelMachineZip };
+  } else {
+    receiverAddress = {
+      street: shippingAddress.address1,
+      postcode: shippingAddress.postalCode,
+      city: shippingAddress.city,
+      country: countryCode,
+    };
+  }
+
+  // contactPhone: sent when present, and mandatory outside the four
+  // countries OMX exempts. Checked here, on the *destination*, and not
+  // conflated with PARCEL_MACHINE_COUNTRY_CODES — Finland is phone-optional
+  // and carries no parcel machines at all.
+  const phoneRequired = !PHONE_OPTIONAL_COUNTRY_CODES.includes(countryCode);
+  if (phoneRequired && (shippingAddress.phone === null || shippingAddress.phone.trim().length === 0)) {
+    throw new Error(
+      `OMX requires a receiver phone number for deliveries to ${countryCode}, ` +
+        "and this order's shipping address has none",
+    );
+  }
+
+  const receiverAddressee: Record<string, unknown> = {
+    personName: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+    contactEmail: order.email,
+    ...(shippingAddress.phone ? { contactPhone: shippingAddress.phone } : {}),
+    address: receiverAddress,
+  };
+
+  // senderAddressee: from configuration. deliverypoint (city), postcode and
+  // country are mandatory per the manual; street is optional, so it is only
+  // added when the config actually carries one.
+  const senderAddressee = {
+    personName: sender.personName,
+    contactPhone: sender.phone,
+    contactEmail: sender.email,
+    address: {
+      deliverypoint: sender.deliverypoint,
+      postcode: sender.postcode,
+      country: sender.country,
+      ...(sender.street ? { street: sender.street } : {}),
+    },
+  };
+
+  // customs: only outside the EU, capped at 8 items and refused rather than
+  // truncated above that, because silently dropping a line item is a
+  // customer's paid-for game that never gets declared.
+  const requiresCustoms = !EU_MEMBER_STATE_CODES.includes(countryCode);
+  let customs: Record<string, unknown> | undefined;
+  if (requiresCustoms) {
+    if (items.length > MAX_CUSTOMS_ITEMS) {
+      throw new Error(
+        `OMX accepts at most ${MAX_CUSTOMS_ITEMS} customs items per shipment; this order has ${items.length}`,
+      );
+    }
+    customs = {
+      goodsCategoryCode: PRODUCT.customs.goodsCategoryCode,
+      shipmentItems: items.map((item) => ({
+        description: item.title,
+        numberOfPieces: item.quantity,
+        weight: roundToThreeDecimals((requireWeightGrams(item) * item.quantity) / 1000),
+        financialValue: item.unitPriceNet,
+        tariffNumber: PRODUCT.customs.tariffNumber,
+        originCountry: PRODUCT.customs.originCountry,
+      })),
+    };
+  }
+
+  // deliveryChannel is mandatory in EE/LV/LT and must not exist elsewhere;
+  // servicePackage is the reverse. OMX refuses an attribute that is present
+  // with no value, which is why exactly one of these two branches ever
+  // contributes a key, and the other contributes none at all.
+  const isParcelMachineCountry = PARCEL_MACHINE_COUNTRY_CODES.includes(countryCode);
+
+  const shipment: Record<string, unknown> = {
+    partnerShipmentId: input.fulfillmentId,
+    mainService: "PARCEL",
+    ...(isParcelMachineCountry
+      ? { deliveryChannel: input.deliveryChannel }
+      : { servicePackage: { code: "ECONOMY" } }),
+    contentDescription,
+    measurement: { weight: weightKilograms },
+    receiverAddressee,
+    senderAddressee,
+    ...(customs ? { customs } : {}),
+  };
+
+  return {
+    customerCode: input.customerCode,
+    shipments: [shipment],
+  };
+}
