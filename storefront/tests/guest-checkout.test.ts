@@ -39,6 +39,8 @@ const address = {
   city: "Example Town",
   country: "Estonia",
   email: "buyer@example.test",
+  // Estonia is one of the four OMX does not require a phone for.
+  phone: "",
 };
 
 const CART_ID = "cart_guest_example";

@@ -168,6 +168,7 @@ import {
   addGuestShippingMethod,
   currentAddressTotals,
   isParcelMachineOption,
+  phoneRequiredForCountry,
   prepareGuestShipping,
   shippingOptionFigure,
   type AddressBoundTotals,
@@ -233,12 +234,38 @@ function guestAddress(values: AddressValues) {
     city: values.city ?? "",
     country: values.country ?? "",
     email: values.email ?? "",
+    // "" where the field was never asked for — `addressPayload` in
+    // `store-checkout.ts` sends it unconditionally either way, the same way
+    // it sends every other field here.
+    phone: values.phone ?? "",
   };
 }
 
 /** Deliberately permissive: enough to catch a typo, never enough to reject a real address. */
 function isPlausibleEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+/**
+ * Whether the phone field is asked for, given whatever is currently typed
+ * into the country field.
+ *
+ * `false` while no country is chosen, or the text is not one this site
+ * recognises: `phoneRequiredForCountry` needs an ISO code, and an
+ * unrecognised country name has none to give it. That state is not reachable
+ * from the served `<select>` either way — see `zoneForCountryName`'s doc
+ * comment in `src/lib/cart.ts` for the same argument about the shipping
+ * zone — so this is "nothing to ask about yet", not a guess dressed up as one.
+ *
+ * One function, three call sites (the render below, {@link validate}, and the
+ * effect that clears a hidden value), so the render, the validation and the
+ * reset can never disagree about which countries need a phone number.
+ */
+function phoneRequiredForCountryName(countryName: string): boolean {
+  const trimmed = countryName.trim();
+  if (trimmed.length === 0) return false;
+  const destination = destinationForCountryName(trimmed);
+  return destination !== null && phoneRequiredForCountry(destination.code);
 }
 
 function validate(values: AddressValues): Readonly<Record<string, string>> {
@@ -258,6 +285,22 @@ function validate(values: AddressValues): Readonly<Record<string, string>> {
     }
     if (field.type === "email" && !isPlausibleEmail(value)) {
       errors[field.name] = checkout.errors.invalidEmail;
+    }
+  }
+
+  /*
+   * Not one of `FIELDS`: this one is not asked of everybody, so it is not
+   * validated as though it were. The storefront's whole job here is presence
+   * and a leading `+` — see `phoneRequiredForCountry`'s doc comment for why
+   * the rest (a real national number, no special-tariff range, no Baltic
+   * fixed line) is OMX's to refuse at fulfilment.
+   */
+  if (phoneRequiredForCountryName(values.country ?? "")) {
+    const phone = (values.phone ?? "").trim();
+    if (phone.length === 0) {
+      errors.phone = `${checkout.errors.missingFieldPrefix}${checkout.address.phone.label.toLowerCase()}.`;
+    } else if (!phone.startsWith("+")) {
+      errors.phone = checkout.errors.invalidPhone;
     }
   }
 
@@ -436,7 +479,37 @@ export function CheckoutPageContent({
   );
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
-  const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
+  /*
+   * Field **names**, not `AddressFieldCopy` objects: `phone` is not one of
+   * `FIELDS` (see this file's doc comment on `phoneRequiredForCountryName`),
+   * but its error belongs in the same summary as every other field's, or a
+   * reader who presses the order button with the phone field newly required
+   * and empty would get no link to it at all.
+   */
+  const errorList = [...FIELDS.map((field) => field.name), "phone"].filter(
+    (name) => errors[name] !== undefined,
+  );
+  /*
+   * Whether the phone field is on screen at all right now. Read once here —
+   * rather than recomputed at each of its three call sites below — so the
+   * render, the reset effect and (via `errors`) the validation that already
+   * ran can never see three different answers for the same values.
+   */
+  const phoneNeeded = phoneRequiredForCountryName(values.country ?? "");
+
+  /*
+   * A phone typed for one country is not owed to a carrier that does not need
+   * it. `guestAddress` sends whatever `values.phone` holds unconditionally —
+   * see its own comment — so a value left behind after the field is hidden
+   * would still reach Medusa the next time an address was submitted. This is
+   * what stops that: the moment the country stops requiring a phone number,
+   * the field is cleared as well as hidden, not just hidden.
+   */
+  useEffect(() => {
+    if (!phoneNeeded) {
+      setValues((current) => (current.phone ? { ...current, phone: "" } : current));
+    }
+  }, [phoneNeeded]);
   /*
    * The chosen delivery method. Read here rather than only inside the hook
    * below, because `selectShippingOption` needs it too — deriving it once,
@@ -867,9 +940,9 @@ export function CheckoutPageContent({
           <div className={styles.error} ref={errorSummaryRef} tabIndex={-1}>
             <h2 className={styles.errorHeading}>{checkout.errors.heading}</h2>
             <ul>
-              {errorList.map((field) => (
-                <li key={field.name}>
-                  <a href={`#${baseId}-${field.name}`}>{errors[field.name]}</a>
+              {errorList.map((name) => (
+                <li key={name}>
+                  <a href={`#${baseId}-${name}`}>{errors[name]}</a>
                 </li>
               ))}
             </ul>
@@ -969,6 +1042,48 @@ export function CheckoutPageContent({
                 </div>
               );
             })}
+            {/* Not one of `FIELDS`, and rendered only while `phoneNeeded` is
+                true — see `phoneRequiredForCountryName`'s doc comment above.
+                OMX does not need this inside Estonia, Finland, Lithuania or
+                Latvia, so it appears and disappears with the country field
+                rather than sitting on screen, unrequired, for every buyer. */}
+            {phoneNeeded ? (
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel} htmlFor={`${baseId}-phone`}>
+                  {checkout.address.phone.label}
+                </label>
+                <p id={`${baseId}-phone-hint`} className={styles.fieldHint}>
+                  {checkout.address.phone.hint}
+                </p>
+                <input
+                  id={`${baseId}-phone`}
+                  name="phone"
+                  type="tel"
+                  required
+                  autoComplete={checkout.address.phone.autoComplete}
+                  value={values.phone ?? ""}
+                  disabled={placing}
+                  aria-invalid={errors.phone !== undefined}
+                  aria-describedby={[
+                    `${baseId}-phone-hint`,
+                    errors.phone === undefined ? null : `${baseId}-phone-error`,
+                  ]
+                    .filter((id): id is string => id !== null)
+                    .join(" ")}
+                  onChange={(event) => {
+                    if (attemptInFlight.current) return;
+                    const next = event.currentTarget.value;
+                    setValues((current) => ({ ...current, phone: next }));
+                  }}
+                  className={styles.field}
+                />
+                {errors.phone === undefined ? null : (
+                  <p id={`${baseId}-phone-error`} className={styles.fieldError}>
+                    {errors.phone}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
         </section>
 

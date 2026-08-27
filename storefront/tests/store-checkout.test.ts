@@ -7,6 +7,7 @@ import { createMedusaStoreClient } from "../src/lib/medusa-client.js";
 import {
   addGuestShippingMethod,
   currentAddressTotals,
+  phoneRequiredForCountry,
   prepareGuestShipping,
   shippingOptionFigure,
   NET_SHIPPING_SUFFIX,
@@ -92,13 +93,28 @@ async function close(server: Server): Promise<void> {
   );
 }
 
-const address = {
+const address: GuestCheckoutAddress = {
   fullName: "Example Buyer",
   streetAddress: "1 Example Street",
   postalCode: "00000",
   city: "Example Town",
   country: "Estonia",
   email: "buyer@example.test",
+  // Estonia is one of the four OMX does not require a phone for — see
+  // `phoneRequiredForCountry` below — so "" is a legitimate value here, not
+  // an oversight.
+  phone: "",
+};
+
+/** A destination OMX *does* require a phone number for. */
+const GERMAN_ADDRESS: GuestCheckoutAddress = {
+  fullName: "Example Buyer",
+  streetAddress: "Unter den Linden 1",
+  postalCode: "10117",
+  city: "Berlin",
+  country: "Germany",
+  email: "buyer@example.test",
+  phone: "",
 };
 
 describe("guest checkout Store operations", () => {
@@ -160,6 +176,7 @@ describe("guest checkout Store operations", () => {
             postal_code: "00000",
             city: "Example Town",
             country_code: "ee",
+            phone: "",
           },
           billing_address: {
             first_name: "Example Buyer",
@@ -167,6 +184,7 @@ describe("guest checkout Store operations", () => {
             postal_code: "00000",
             city: "Example Town",
             country_code: "ee",
+            phone: "",
           },
         },
       },
@@ -176,6 +194,49 @@ describe("guest checkout Store operations", () => {
         body: null,
       },
     ]);
+  });
+
+  /**
+   * `phone` reaches **both** Medusa addresses, unconditionally, the same way
+   * `prepareGuestShipping` already sends every other field to both — see
+   * `addressPayload`'s doc comment for why *whether* the field was required
+   * is not this function's decision.
+   */
+  it("sends the phone number to Medusa when one is given", async () => {
+    const seen: SeenRequest[] = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        const bodyText = Buffer.concat(chunks).toString("utf8");
+        seen.push({
+          method: request.method ?? "",
+          path: request.url ?? "",
+          body: bodyText === "" ? null : JSON.parse(bodyText),
+        });
+        response.setHeader("content-type", "application/json");
+        if (request.url === "/store-api/store/carts/cart_1") {
+          response.end('{"cart":{"id":"cart_1"}}');
+        } else {
+          response.end(
+            JSON.stringify({ shipping_options: [option("so_eu", "Standard delivery", 7)] }),
+          );
+        }
+      });
+    });
+    servers.push(server);
+    const client = createMedusaStoreClient(
+      { basePath: "/store-api", publishableKey: "pk_example_checkout" },
+      await listen(server),
+    );
+
+    await prepareGuestShipping(client, "cart_1", { ...GERMAN_ADDRESS, phone: "+49 30 1234567" });
+
+    const updateRequest = seen.find((request) => request.method === "POST");
+    expect(updateRequest?.body).toMatchObject({
+      shipping_address: { phone: "+49 30 1234567" },
+      billing_address: { phone: "+49 30 1234567" },
+    });
   });
 
   it("adds only the chosen option and returns Medusa-calculated totals", async () => {
@@ -330,6 +391,34 @@ describe("guest checkout Store operations", () => {
         true,
       ),
     ).rejects.toThrow(/Choose an Omniva parcel machine/);
+  });
+});
+
+/**
+ * OMX makes a receiver phone mandatory whenever the destination is not
+ * Estonia, Latvia, Lithuania or Finland. Inside those four the buyer's email
+ * satisfies it, so the field is not asked for — a required field nobody's
+ * carrier needs is friction that costs orders.
+ */
+describe("where OMX requires a phone number", () => {
+  it("requires a phone number only where Omniva requires one", () => {
+    for (const code of ["EE", "LV", "LT", "FI"]) {
+      expect(phoneRequiredForCountry(code), code).toBe(false);
+    }
+    for (const code of ["DE", "US", "AU", "GB"]) {
+      expect(phoneRequiredForCountry(code), code).toBe(true);
+    }
+  });
+
+  it("is case-insensitive and trims, because a code may arrive either way", () => {
+    expect(phoneRequiredForCountry("ee")).toBe(false);
+    expect(phoneRequiredForCountry(" ee ")).toBe(false);
+    expect(phoneRequiredForCountry("de")).toBe(true);
+  });
+
+  it("never excuses an unrecognised or empty code from the phone number", () => {
+    expect(phoneRequiredForCountry("")).toBe(true);
+    expect(phoneRequiredForCountry("ZZ")).toBe(true);
   });
 });
 
@@ -512,6 +601,8 @@ describe("the exact total presented before payment", () => {
         city: "Tallinn",
         country: "Estonia",
         email: "buyer@example.test",
+        // One of the four OMX does not require a phone for.
+        phone: "",
       },
       optionId: "so_eu",
       shippingNetMajor: 7,
@@ -536,6 +627,8 @@ describe("the exact total presented before payment", () => {
         city: "Cayenne",
         country: "French Guiana",
         email: "buyer@example.test",
+        // Not one of the four: OMX requires a phone number here.
+        phone: "+594 594 00 00 00",
       },
       optionId: "so_world",
       shippingNetMajor: 12,
@@ -558,6 +651,8 @@ describe("the exact total presented before payment", () => {
         city: "New York",
         country: "United States",
         email: "buyer@example.test",
+        // Not one of the four: OMX requires a phone number here.
+        phone: "+1 212 555 0100",
       },
       optionId: "so_world",
       shippingNetMajor: 12,

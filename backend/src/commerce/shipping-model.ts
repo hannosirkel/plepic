@@ -119,6 +119,41 @@ export const PARCEL_MACHINE_COUNTRY_CODES: readonly string[] = ["EE", "LT", "LV"
 const PARCEL_MACHINE_COUNTRY_SET: ReadonlySet<string> = new Set(PARCEL_MACHINE_COUNTRY_CODES);
 
 /**
+ * The four countries OMX (Omniva's shipment-registration API) does not
+ * require a receiver phone number for, ISO 3166-1 alpha-2, sorted.
+ *
+ * **Not a region, and not {@link PARCEL_MACHINE_COUNTRY_CODES}.** Finland is
+ * in this list and carries no parcel machines at all — see
+ * `locations.json` and the parcel-machine set above — so the two cannot be
+ * collapsed into one "Baltic" name, and this one is named for what it is: the
+ * exact set the OMX manual exempts from `contactPhone`/`contactMobile`, because
+ * a buyer's email already satisfies the carrier inside it. Written out rather
+ * than derived from {@link EU_MEMBER_STATE_CODES} or from
+ * {@link PARCEL_MACHINE_COUNTRY_CODES}, for the same reason those two are: a
+ * later change to either must not silently change who this list asks a phone
+ * number of.
+ *
+ * **This constant has two readers, and nothing compared them before this
+ * comment did.** `storefront/mock/shipping.json` declares the identical set as
+ * `phoneOptionalCountries`, read at import by `storefront/src/lib/cart.ts` and
+ * turned into a checkout decision by `phoneRequiredForCountry` in
+ * `storefront/src/lib/store-checkout.ts` — the field the buyer sees. This
+ * constant is the second reader: `backend/src/modules/omniva/shipment.ts`
+ * refuses to register a shipment with OMX when the destination falls outside
+ * it and carries no phone — the request the carrier actually receives.
+ * `tests/commerce-shipping-model.test.ts` holds this array and that JSON file
+ * to each other in both directions, because two copies of a carrier rule with
+ * nothing comparing them is exactly how the storefront ends up asking for a
+ * phone number the backend does not send, or the reverse.
+ *
+ * Every one of these four is also an EU member state — asserted alongside the
+ * agreement check, for the same reason {@link PARCEL_MACHINE_COUNTRY_CODES}'s
+ * doc comment gives: the day that stops being true is the day this list and
+ * the VAT treatment stop agreeing about which countries are "the same four".
+ */
+export const PHONE_OPTIONAL_COUNTRY_CODES: readonly string[] = ["EE", "FI", "LT", "LV"];
+
+/**
  * The fulfillment provider the three manual-rate methods are served by — the
  * three `Standard delivery` options, not the Omniva parcel machine.
  *

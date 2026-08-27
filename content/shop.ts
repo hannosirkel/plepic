@@ -83,6 +83,27 @@ export interface AddressFieldCopy {
 }
 
 /**
+ * The receiver phone field's own copy — kept **apart** from
+ * `checkout.address.fields` (the {@link AddressFieldCopy} array below) rather
+ * than as one more entry in it, because unlike every entry there, this field
+ * is not asked of everybody.
+ *
+ * OMX — Omniva's shipment-registration API — makes a receiver phone number
+ * mandatory for a delivery address anywhere except Estonia, Finland,
+ * Lithuania and Latvia, where the buyer's email already satisfies the
+ * carrier; a required field nobody's carrier needs is friction that costs
+ * orders for no benefit. `phoneRequiredForCountry` in
+ * `storefront/src/lib/store-checkout.ts` is what decides, from the country
+ * already typed into the address form, whether `CheckoutPageContent.tsx`
+ * renders this field at all — this object supplies only its words.
+ */
+export interface PhoneFieldCopy {
+  readonly label: string;
+  readonly hint: string;
+  readonly autoComplete: string;
+}
+
+/**
  * What a money figure says while the basket holds a line we cannot supply.
  *
  * Both screens use it, from this one string, because both are stating the same
@@ -316,6 +337,18 @@ export const checkout = {
      */
     countryUnchosen: "Choose a country",
     missingValue: "Enter your delivery address above.",
+    /**
+     * See {@link PhoneFieldCopy}. The hint names the four exempt countries
+     * rather than leaving the rule implicit, the same choice
+     * `content/legal/shipping.ts` already made for the parcel machine
+     * countries: a reader who is asked for a phone number is owed the reason,
+     * not just the instruction.
+     */
+    phone: {
+      label: "Phone number",
+      hint: "The carrier needs this to deliver outside Estonia, Finland, Lithuania and Latvia.",
+      autoComplete: "tel",
+    } satisfies PhoneFieldCopy,
   },
 
   delivery: {
@@ -481,6 +514,15 @@ export const checkout = {
      */
     missingSelectionPrefix: "Choose a ",
     invalidEmail: "Enter an email address we can send your confirmation to.",
+    /**
+     * The storefront checks presence and a leading `+` and nothing more — see
+     * `phoneRequiredForCountry`'s doc comment in
+     * `storefront/src/lib/store-checkout.ts` for why the rest (a real
+     * national number, no special-tariff range, no Baltic fixed line) is
+     * OMX's to refuse at fulfilment rather than this form's to guess at.
+     */
+    invalidPhone:
+      "Enter a phone number that starts with your country's dialling code, for example +372 5555 5555.",
     unavailableLine: "Remove the item we cannot supply before ordering.",
     paymentNotConnected:
       "No order was placed and nothing was charged: card payment is not connected on this site yet.",

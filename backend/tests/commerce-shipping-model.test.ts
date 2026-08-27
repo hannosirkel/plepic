@@ -10,6 +10,7 @@ import {
   PARCEL_MACHINE_COUNTRY_CODES,
   PARCEL_MACHINE_OPTION_NAME,
   PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR,
+  PHONE_OPTIONAL_COUNTRY_CODES,
   REST_OF_WORLD_SHIPPING_AMOUNT_MINOR,
   SHIPPING_CURRENCY,
   SHIPPING_ZONES,
@@ -58,6 +59,7 @@ interface StorefrontShipping {
     readonly rate: number;
     readonly countries: readonly string[];
   };
+  readonly phoneOptionalCountries: readonly string[];
 }
 
 describe("the frozen shipping model", () => {
@@ -225,6 +227,28 @@ describe("the frozen shipping model", () => {
     expect(parcelMachine.rate).toBe(PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR);
     expect(parcelMachine.rate).toBe(0);
     expect(parcelMachine.countries).toEqual([...PARCEL_MACHINE_COUNTRY_CODES]);
+  });
+
+  /**
+   * **The second carrier rule that crosses the boundary, held to one writer.**
+   *
+   * `PHONE_OPTIONAL_COUNTRY_CODES` is read by two things that must never
+   * disagree: the storefront's `phoneRequiredForCountry` (whether the checkout
+   * asks for a phone at all) and `backend/src/modules/omniva/shipment.ts` (a
+   * later task; whether OMX is sent a shipment with no phone). Nothing but this
+   * assertion compares them, so it is what stops one side asking for a phone
+   * number the other does not require, or the reverse.
+   */
+  it("agrees with the checkout about which four countries do not need a phone number for Omniva", () => {
+    const { phoneOptionalCountries } = storefrontJson<StorefrontShipping>("mock/shipping.json");
+    expect(phoneOptionalCountries).toEqual([...PHONE_OPTIONAL_COUNTRY_CODES]);
+    expect(PHONE_OPTIONAL_COUNTRY_CODES).toEqual(["EE", "FI", "LT", "LV"]);
+    // Not PARCEL_MACHINE_COUNTRY_CODES: Finland is here and has no parcel
+    // machines, which is why this is its own list rather than a reuse of that one.
+    expect(PHONE_OPTIONAL_COUNTRY_CODES).not.toEqual([...PARCEL_MACHINE_COUNTRY_CODES]);
+    for (const code of PHONE_OPTIONAL_COUNTRY_CODES) {
+      expect(EU_MEMBER_STATE_CODES, code).toContain(code);
+    }
   });
 
   /**

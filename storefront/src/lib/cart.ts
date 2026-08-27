@@ -206,6 +206,12 @@ export interface ParcelMachineMethod {
 interface ShippingFile {
   readonly method: ShippingMethod;
   readonly parcelMachine: ParcelMachineMethod;
+  /**
+   * The four countries OMX does not require a receiver phone number for —
+   * see {@link declaredPhoneOptionalCountries} and `mock/shipping.json`'s
+   * `$comment`.
+   */
+  readonly phoneOptionalCountries: readonly string[];
 }
 
 /**
@@ -301,6 +307,57 @@ export function assertParcelMachine(method: ParcelMachineMethod): ParcelMachineM
 /** The one declared parcel machine method — see `storefront/mock/shipping.json`. */
 export const declaredParcelMachineMethod: ParcelMachineMethod = assertParcelMachine(
   (shippingSource as ShippingFile).parcelMachine,
+);
+
+/**
+ * Refuses a phone-optional-country list this checkout could not honestly act
+ * on.
+ *
+ * The same reasoning as {@link assertParcelMachine}, over the second carrier
+ * rule `mock/shipping.json` gained on 2026-08-27: it too is edited by hand,
+ * it is not an operator-supplied commercial fact but a fact about OMX's own
+ * API, and a block nothing checks is exactly how a malformed or empty country
+ * list would silently start asking every buyer for a phone number — or none
+ * at all. Called at **import**, over a committed file — see
+ * {@link assertPriceable}'s doc comment for why that makes every branch below
+ * unreachable from a test that only imports this module, and why it is
+ * exported anyway.
+ */
+export function assertPhoneOptionalCountries(codes: readonly string[]): readonly string[] {
+  if (!Array.isArray(codes) || codes.length === 0) {
+    throw new Error(
+      'storefront/mock/shipping.json declares no "phoneOptionalCountries". ' +
+        "A field the checkout cannot read is a field it cannot excuse anybody from, so every " +
+        "destination would be asked for a phone number OMX may not actually require.",
+    );
+  }
+  for (const code of codes) {
+    if (typeof code !== "string" || !/^[A-Z]{2}$/.test(code)) {
+      throw new Error(
+        `storefront/mock/shipping.json's "phoneOptionalCountries" contains ${JSON.stringify(code)}, ` +
+          "which is not an ISO 3166-1 alpha-2 country code. A malformed code cannot be matched against " +
+          "the country a buyer chooses, so the phone field would be asked for, or excused, on the " +
+          "wrong destination.",
+      );
+    }
+  }
+  return codes;
+}
+
+/**
+ * The four countries OMX does not require a receiver phone number for — see
+ * `storefront/mock/shipping.json`'s `phoneOptionalCountries` and its
+ * `$comment`.
+ *
+ * Read from here rather than written a second time in
+ * `storefront/src/lib/store-checkout.ts`: that is the one place a value
+ * crossing the storefront/backend boundary belongs, for the same reason
+ * {@link declaredParcelMachineMethod}'s `name` is read through this module
+ * rather than imported from JSON a second time — a second unvalidated read
+ * here would be a second thing that could silently accept a malformed file.
+ */
+export const declaredPhoneOptionalCountries: readonly string[] = assertPhoneOptionalCountries(
+  (shippingSource as ShippingFile).phoneOptionalCountries,
 );
 
 const COUNTRIES_BY_NAME: ReadonlyMap<string, DeliveryCountry> = new Map(

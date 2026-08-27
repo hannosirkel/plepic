@@ -120,6 +120,13 @@ function renderCheckout(scenario: MockScenario | null): string {
  * changes what anybody is charged. No invented person exists here; every value
  * but the country is the same obviously-fake token the served form uses as a
  * validation example.
+ *
+ * `phone` is filled the same way, for a country that does not need it as much
+ * as for one that does: `phoneRequiredForCountryName` decides whether the
+ * field is asked for from the country alone, so a fixed, always-valid value
+ * here is what keeps this helper producing a *complete* address for every
+ * country a caller passes, rather than one that is complete for some and
+ * silently incomplete for others.
  */
 function addressIn(country: string): Readonly<Record<string, string>> {
   return {
@@ -129,6 +136,7 @@ function addressIn(country: string): Readonly<Record<string, string>> {
     city: "Town",
     country,
     email: "example@example.com",
+    phone: "+0000000000",
   };
 }
 
@@ -399,6 +407,99 @@ describe("empty is the default state", () => {
     // them.)
     expect(html).not.toMatch(/<input[^>]*value="[^"]+"[^>]*name="(fullName|streetAddress|city)"/);
     expect(html).not.toMatch(/\splaceholder="/);
+  });
+});
+
+/**
+ * The phone field OMX conditionally requires — see
+ * `phoneRequiredForCountryName` in `CheckoutPageContent.tsx` and
+ * `phoneRequiredForCountry` in `src/lib/store-checkout.ts`.
+ *
+ * Everything here is a static-render assertion, like every other test in this
+ * file: `storefront/` has no DOM in its test environment, so nothing
+ * simulates typing into the field. What *is* testable, and is the load-bearing
+ * half of this feature, is that `addressComplete` — and with it the whole
+ * Article 8(2) block — is computed straight from `values` at render, with no
+ * client event needed to see it react to a country that newly requires a
+ * phone number, or to one that is missing or malformed.
+ */
+describe("the phone field, where OMX requires one", () => {
+  /** Not one of the four OMX exempts. */
+  const REQUIRING_COUNTRY = "Germany";
+
+  function addressWithPhone(
+    country: string,
+    phone: string | undefined,
+  ): Readonly<Record<string, string>> {
+    const filled = addressIn(country);
+    if (phone === undefined) {
+      return Object.fromEntries(
+        Object.entries(filled).filter(([name]) => name !== "phone"),
+      );
+    }
+    return { ...filled, phone };
+  }
+
+  function renderWith(country: string, phone: string | undefined): string {
+    return renderToStaticMarkup(
+      <CartProvider scenario="filled" latencyMs={0}>
+        <CheckoutPageContent
+          turnstileSiteKey={null}
+          nonce={undefined}
+          scenario="filled"
+          latencyMs={0}
+          initialAddress={addressWithPhone(country, phone)}
+        />
+      </CartProvider>,
+    );
+  }
+
+  it("appears, labelled and required, for a country OMX needs a phone number for", () => {
+    const html = renderWith(REQUIRING_COUNTRY, "+49 30 1234567");
+    expect(html).toContain('name="phone"');
+    expect(visibleText(html)).toContain(checkout.address.phone.label);
+    expect(visibleText(html)).toContain(checkout.address.phone.hint);
+    const field = /<input[^>]*\sname="phone"[^>]*\/>/.exec(html)?.[0] ?? "";
+    expect(field, "the phone field was not found").not.toBe("");
+    expect(field).toMatch(/\srequired(?:=""|\s|>)/);
+  });
+
+  /**
+   * Not merely "not required" — **absent**. A field that renders unrequired
+   * is still a field a reader has to notice is optional; the four countries
+   * OMX exempts do not get asked at all.
+   */
+  it("does not appear at all for any of the four countries OMX exempts", () => {
+    for (const country of ["Estonia", "Finland", "Lithuania", "Latvia"]) {
+      const html = renderWith(country, undefined);
+      expect(html, country).not.toContain('name="phone"');
+      expect(visibleText(html), country).not.toContain(checkout.address.phone.label);
+    }
+  });
+
+  /**
+   * **The order cannot be placed while the field is required and empty.**
+   * `addressComplete` is false, so the shipping charge and the total stay
+   * unshown — the same instructions "the incomplete-address state" above
+   * asserts for a wholly empty form — which is what keeps `orderMayBePlaced`
+   * refusing the order rather than something this test reaches directly.
+   */
+  it("leaves the shipping charge and the total unshown when the country needs a phone number and none was given", () => {
+    const text = visibleText(renderWith(REQUIRING_COUNTRY, undefined));
+    expect(text).toContain(checkout.delivery.chargePending);
+    expect(text).toContain(checkout.order.totalPending);
+  });
+
+  /** The storefront's own rule is presence and a leading `+`, and nothing more. */
+  it("still leaves the total unshown for a phone number with no leading country code", () => {
+    const text = visibleText(renderWith(REQUIRING_COUNTRY, "030 1234567"));
+    expect(text).toContain(checkout.order.totalPending);
+  });
+
+  it("shows the settled figures once a phone number with a leading + is given", () => {
+    const text = visibleText(renderWith(REQUIRING_COUNTRY, "+49 30 1234567"));
+    expect(text).not.toContain(checkout.order.totalPending);
+    expect(text).not.toContain(checkout.delivery.chargePending);
   });
 });
 

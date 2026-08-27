@@ -1,6 +1,7 @@
 import { ConfigError } from "../config/env.js";
 import {
   declaredParcelMachineMethod,
+  declaredPhoneOptionalCountries,
   deliveryCountries,
   formatAmount,
   type CartTotals,
@@ -17,6 +18,52 @@ export interface GuestCheckoutAddress {
   readonly city: string;
   readonly country: string;
   readonly email: string;
+  /**
+   * The receiver phone number, or `""` where none was collected.
+   *
+   * **Always present, and always sent** — see {@link addressPayload}, which
+   * writes it into both Medusa addresses unconditionally, the same way it
+   * writes every other field. Whether the field was actually asked for is a
+   * checkout-page decision ({@link phoneRequiredForCountry}), not a decision
+   * this type or `addressPayload` makes: by the time an address reaches here
+   * the checkout has already validated it, and this module's job is to carry
+   * whatever it was given, not to re-decide whether it was required.
+   */
+  readonly phone: string;
+}
+
+/**
+ * Whether OMX — Omniva's shipment-registration API — requires a receiver
+ * phone number for a delivery address in this country.
+ *
+ * `false` for exactly four countries: Estonia, Finland, Lithuania and Latvia,
+ * where the buyer's email already satisfies the carrier, so asking for a
+ * phone number there is friction that costs orders for no carrier benefit.
+ * `true` everywhere else, including every country this site did not
+ * recognise — an unrecognised code is never treated as one of the four, so a
+ * malformed or empty value never *reduces* what a buyer is asked for.
+ *
+ * The four are read from {@link declaredPhoneOptionalCountries}
+ * (`./cart.js`), which in turn reads `storefront/mock/shipping.json`'s
+ * `phoneOptionalCountries` — **not** written a second time here — because a
+ * second, hand-typed copy of a carrier rule is exactly what let one side of a
+ * boundary start asking for something the other side does not. The second
+ * reader of that same set is `backend/src/commerce/shipping-model.ts`'s
+ * `PHONE_OPTIONAL_COUNTRY_CODES`, which a later task's OMX shipment builder
+ * (`backend/src/modules/omniva/shipment.ts`) refuses to register a shipment
+ * without a phone outside of; `backend/tests/commerce-shipping-model.test.ts`
+ * holds that constant and the JSON file to each other, in both directions.
+ *
+ * **This function decides presence and nothing else.** OMX itself validates
+ * with libphonenumber, refuses special-tariff (800/900-series) ranges and
+ * refuses a fixed line for a Baltic destination — carrier rules enforced at
+ * fulfilment, in front of the operator who can act on a refusal, deliberately
+ * *not* reimplemented in a checkout form where a subtly wrong rule rejects a
+ * legitimate customer instead of merely failing to catch an implausible one.
+ * `CheckoutPageContent.tsx` checks presence and a leading `+` and stops there.
+ */
+export function phoneRequiredForCountry(countryCode: string): boolean {
+  return !declaredPhoneOptionalCountries.includes(countryCode.trim().toUpperCase());
 }
 
 export interface GuestShippingOption {
@@ -185,6 +232,14 @@ function countryCode(countryName: string): string {
   return country.code.toLowerCase();
 }
 
+/**
+ * `phone` is sent unconditionally, trimmed like every other field —
+ * `""` where the checkout did not ask for one, exactly as Medusa already
+ * stores an empty string for any address field nobody typed into. It reaches
+ * **both** Medusa addresses because both are built from this one object; see
+ * {@link GuestCheckoutAddress.phone} for why *whether* it was required is not
+ * this function's decision to make.
+ */
 function addressPayload(address: GuestCheckoutAddress) {
   return {
     first_name: address.fullName.trim(),
@@ -192,6 +247,7 @@ function addressPayload(address: GuestCheckoutAddress) {
     postal_code: address.postalCode.trim(),
     city: address.city.trim(),
     country_code: countryCode(address.country.trim()),
+    phone: address.phone.trim(),
   };
 }
 
