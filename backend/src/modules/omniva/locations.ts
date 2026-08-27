@@ -134,8 +134,45 @@ export function parcelMachinesForCountry(
     );
 }
 
-/** Where the parsed list is cached. Versioned so a shape change can be rolled out by bumping the suffix rather than by racing an old cached shape. */
-const CACHE_KEY = "omniva:parcel-machines:v1";
+/**
+ * Where the fresh, TTL-bound copy is cached. Versioned so a shape change can
+ * be rolled out by bumping the suffix rather than by racing an old cached
+ * shape.
+ *
+ * Exported, like {@link STALE_CACHE_KEY}, purely so
+ * `tests/omniva-locations.test.ts` can simulate the fresh key having aged out
+ * of a real `ICacheService` by deleting exactly this entry from its fake
+ * cache's store, without the test having to guess or duplicate the literal
+ * string.
+ */
+export const CACHE_KEY = "omniva:parcel-machines:v1";
+
+/**
+ * Where the **last successfully parsed** copy is kept, with no TTL of its
+ * own. Written alongside {@link CACHE_KEY} on every successful fetch, and
+ * read only when a refetch fails -- see {@link OmnivaLocations}'s docstring
+ * for why this key, specifically, is never given an expiry.
+ */
+export const STALE_CACHE_KEY = "omniva:parcel-machines:v1:last-known-good";
+
+/**
+ * A place to say a fallback was taken. Narrower than the full Medusa
+ * `Logger` so a test can supply one without implementing every method that
+ * interface declares -- the real container logger already satisfies this
+ * structurally, since it has a `warn`.
+ */
+export interface OmnivaLocationsLogger {
+  warn(message: string): void;
+}
+
+const SILENT_LOGGER: OmnivaLocationsLogger = { warn: () => undefined };
+
+export interface OmnivaLocationsDependencies {
+  readonly cache: ICacheService;
+  readonly source?: OmnivaLocationSource;
+  readonly fetcher?: typeof fetch;
+  readonly logger?: OmnivaLocationsLogger;
+}
 
 /**
  * The location list, fetched once and cached.
@@ -153,33 +190,41 @@ const CACHE_KEY = "omniva:parcel-machines:v1";
  * browser fetching `omniva.ee` directly -- see that route's docstring for why
  * that specifically is a CSP requirement rather than a style preference.
  *
- * Caching is keyed on {@link CACHE_KEY} through `Modules.CACHE`'s
- * `ICacheService`, whose `get` cannot distinguish "nothing was ever written
- * here" from "the entry aged past its TTL and the module discarded it" --
- * both answer `null`. That means this class cannot tell "no fresh copy yet"
- * apart from "no copy at all", so it does not attempt to serve a stale
- * answer on a failed refetch: doing that well would mean keeping a second,
- * separately-aged copy and deciding how long a stale list stays trustworthy
- * and whether a prolonged Omniva outage should keep quietly serving last
- * week's machines rather than surfacing as a fault -- a real design decision
- * nobody has made yet. Until it is, a fetch that fails (a non-2xx response,
- * or a payload {@link parseParcelMachines} rejects) throws, exactly as an
- * empty parse does: an empty `<select>` at checkout is a broken-looking page
- * with no visible cause, and a thrown error at least names itself to
- * whoever is reading the logs.
+ * **Two cache entries, not one, because a single TTL key cannot tell "not
+ * fresh yet" from "not here at all".** `ICacheService.get` answers `null` for
+ * both a key that was never written and one that aged past its TTL, so a
+ * class reading only {@link CACHE_KEY} could never distinguish "no fresh
+ * copy, but a perfectly good one from an hour ago exists" from "nothing has
+ * ever been fetched" -- and would have nothing to fall back to on a failed
+ * refetch even when a serviceable answer was sitting right next to it a
+ * moment before. {@link STALE_CACHE_KEY} is written on every successful
+ * fetch with **no TTL**, so it persists, unrelated to freshness, until the
+ * next successful fetch overwrites it. A failed refetch (a non-2xx response,
+ * a payload {@link parseParcelMachines} rejects, or an empty parse) reads
+ * that key and, if it holds something, serves it and **logs the fallback** --
+ * an operator seeing a stale list at checkout has exactly one place to learn
+ * Omniva is unreachable, and this is it. Only when neither key holds a usable
+ * list does this throw: an empty `<select>` at checkout is a broken-looking
+ * page with no visible cause, and a thrown error at least names itself to
+ * whoever is reading the logs. This needed no staleness policy to add -- a
+ * non-expiring "last known good" key never has to answer "how stale is too
+ * stale", because it is only ever consulted when there is nothing fresher to
+ * prefer over it.
  */
 export class OmnivaLocations {
-  constructor(
-    private readonly cache: ICacheService,
-    private readonly source: OmnivaLocationSource = DEFAULT_OMNIVA_LOCATION_SOURCE,
-    private readonly fetcher: typeof fetch = fetch,
-  ) {}
+  private readonly cache: ICacheService;
+  private readonly source: OmnivaLocationSource;
+  private readonly fetcher: typeof fetch;
+  private readonly logger: OmnivaLocationsLogger;
 
-  private async all(): Promise<readonly OmnivaParcelMachine[]> {
-    const cached = await this.cache.get<readonly OmnivaParcelMachine[]>(CACHE_KEY);
-    if (Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
+  constructor(dependencies: OmnivaLocationsDependencies) {
+    this.cache = dependencies.cache;
+    this.source = dependencies.source ?? DEFAULT_OMNIVA_LOCATION_SOURCE;
+    this.fetcher = dependencies.fetcher ?? fetch;
+    this.logger = dependencies.logger ?? SILENT_LOGGER;
+  }
+
+  private async fetchAndCache(): Promise<readonly OmnivaParcelMachine[]> {
     const response = await this.fetcher(this.source.url);
     if (!response.ok) {
       throw new Error(`The Omniva location list answered ${String(response.status)}`);
@@ -189,7 +234,29 @@ export class OmnivaLocations {
       throw new Error("The Omniva location list carried no parcel machines");
     }
     await this.cache.set(CACHE_KEY, machines, this.source.cacheTtlSeconds);
+    await this.cache.set(STALE_CACHE_KEY, machines);
     return machines;
+  }
+
+  private async all(): Promise<readonly OmnivaParcelMachine[]> {
+    const cached = await this.cache.get<readonly OmnivaParcelMachine[]>(CACHE_KEY);
+    if (Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
+
+    try {
+      return await this.fetchAndCache();
+    } catch (error) {
+      const stale = await this.cache.get<readonly OmnivaParcelMachine[]>(STALE_CACHE_KEY);
+      if (Array.isArray(stale) && stale.length > 0) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Serving the last known Omniva parcel machine list because a refetch failed: ${reason}`,
+        );
+        return stale;
+      }
+      throw error;
+    }
   }
 
   /** The machines a buyer in `countryCode` may choose from, grouped and alphabetised. */

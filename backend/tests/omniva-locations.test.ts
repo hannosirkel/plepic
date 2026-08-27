@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  CACHE_KEY,
   OmnivaLocations,
+  STALE_CACHE_KEY,
   parcelMachinesForCountry,
   parseParcelMachines,
 } from "../src/modules/omniva/locations.js";
@@ -85,7 +87,7 @@ describe("OmnivaLocations, the cached reader", () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json([RAW_ESTONIAN_MACHINE]),
     );
-    const locations = new OmnivaLocations(cache, undefined, fetcher);
+    const locations = new OmnivaLocations({ cache, fetcher });
 
     await expect(locations.list("EE")).resolves.toEqual([
       { zip: "10145", name: "Kristiine Keskus", group: "Harjumaa — Tallinn", countryCode: "EE" },
@@ -106,7 +108,7 @@ describe("OmnivaLocations, the cached reader", () => {
   it("never serves an empty list as if it were a valid answer", async () => {
     const cache = fakeCache();
     const fetcher = vi.fn<typeof fetch>(async () => Response.json([]));
-    const locations = new OmnivaLocations(cache, undefined, fetcher);
+    const locations = new OmnivaLocations({ cache, fetcher });
 
     // A parse that yields zero machines is not cached and not returned: an
     // empty <select> at checkout is a broken-looking page with no visible
@@ -119,7 +121,7 @@ describe("OmnivaLocations, the cached reader", () => {
   it("throws, rather than guesses, when Omniva answers with an HTTP error and there is no cached copy", async () => {
     const cache = fakeCache();
     const fetcher = vi.fn<typeof fetch>(async () => new Response("", { status: 503 }));
-    const locations = new OmnivaLocations(cache, undefined, fetcher);
+    const locations = new OmnivaLocations({ cache, fetcher });
 
     await expect(locations.list("EE")).rejects.toThrow(/503/);
   });
@@ -127,8 +129,43 @@ describe("OmnivaLocations, the cached reader", () => {
   it("throws when the fetched payload cannot be parsed as a location list", async () => {
     const cache = fakeCache();
     const fetcher = vi.fn<typeof fetch>(async () => Response.json({ not: "a list" }));
-    const locations = new OmnivaLocations(cache, undefined, fetcher);
+    const locations = new OmnivaLocations({ cache, fetcher });
 
     await expect(locations.list("EE")).rejects.toThrow(/list/i);
+  });
+
+  it("serves the last known good list, and logs the fallback, when a refetch fails", async () => {
+    const cache = fakeCache();
+    const warmFetcher = vi.fn<typeof fetch>(async () => Response.json([RAW_ESTONIAN_MACHINE]));
+    const warm = new OmnivaLocations({ cache, fetcher: warmFetcher });
+    await expect(warm.list("EE")).resolves.toHaveLength(1);
+
+    // Simulate the freshness window elapsing without a real TTL clock: the
+    // TTL-bound key is gone -- exactly what `ICacheService.get` also answers
+    // for a key that was never written -- while the non-expiring "last known
+    // good" key this same successful fetch also wrote is untouched.
+    cache.store.delete(CACHE_KEY);
+    expect(cache.store.has(STALE_CACHE_KEY)).toBe(true);
+
+    const failingFetcher = vi.fn<typeof fetch>(async () => new Response("", { status: 503 }));
+    const warn = vi.fn<(message: string) => void>();
+    const cold = new OmnivaLocations({ cache, fetcher: failingFetcher, logger: { warn } });
+
+    await expect(cold.list("EE")).resolves.toEqual([
+      { zip: "10145", name: "Kristiine Keskus", group: "Harjumaa — Tallinn", countryCode: "EE" },
+    ]);
+    // The stale copy is served only after a refetch was genuinely attempted
+    // and failed -- never in place of one.
+    expect(failingFetcher).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/last known|refetch failed/i);
+  });
+
+  it("still refuses when a refetch fails and there is no last-known-good copy to fall back to", async () => {
+    const cache = fakeCache();
+    const fetcher = vi.fn<typeof fetch>(async () => new Response("", { status: 503 }));
+    const locations = new OmnivaLocations({ cache, fetcher });
+
+    await expect(locations.list("EE")).rejects.toThrow(/503/);
   });
 });
