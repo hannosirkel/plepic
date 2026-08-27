@@ -1,13 +1,24 @@
 import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils";
-import type { FulfillmentOption, Logger } from "@medusajs/framework/types";
+import type {
+  CreateFulfillmentResult,
+  FulfillmentDTO,
+  FulfillmentItemDTO,
+  FulfillmentOption,
+  FulfillmentOrderDTO,
+  Logger,
+} from "@medusajs/framework/types";
 
 // Extensionless: see the comment on `index.ts`'s import of `./service`. This
 // file is reached through the same MikroORM type-generation path, one hop
 // further in, and hits the same resolution gap.
 import { PARCEL_MACHINE_OPTION_NAME } from "../../commerce/shipping-model";
+import { PRODUCT } from "../../commerce/product-model";
 import { omnivaRedisCache } from "./redis-cache";
 import { OmnivaLocations } from "./locations";
 import type { OmnivaParcelMachine } from "./locations";
+import { OmnivaClient } from "./client";
+import { readOmnivaConfig } from "./config";
+import { buildShipmentRegistration } from "./shipment";
 
 /** The parcel machine method's option id, as `getFulfillmentOptions` returns it. */
 export const OMNIVA_PARCEL_MACHINE_OPTION_ID = "omniva-parcel-machine";
@@ -53,6 +64,30 @@ interface InjectedDependencies {
  * confirmation email — never calls Omniva. A refusal here fails the fulfilment
  * in front of the operator, which is the containment the design asks for, and
  * it is structural rather than a `try`/`catch` a later edit could remove.
+ *
+ * ## What this containment claim rests on, and what proves it
+ *
+ * `tests/omniva-create-fulfillment.test.ts` proves three things at this
+ * provider's boundary, against a real `http.createServer` stub rather than a
+ * mocked `fetch` (see that file's own header for why): `createFulfillment`
+ * throws when OMX refuses a registration; it does **not** throw when only
+ * the label call fails; and it refuses outright when Omniva is unconfigured.
+ *
+ * What no test in this repository walks is the far side of that first
+ * throw: payment → order → fulfilment attempt → the fulfilment staying
+ * absent → no shipment-notification email going out. This repository's only
+ * real-Medusa harness, `scripts/store-smoke`, cannot place a *paid* order
+ * without Stripe, which its tests deliberately do not reach — so that walk
+ * cannot be built honestly here. The containment claim therefore rests on
+ * one fact this file did not itself verify at runtime: that
+ * `@medusajs/core-flows`'s `createFulfillmentWorkflow` propagates a
+ * provider's thrown error as a failed workflow step rather than swallowing
+ * it — which is what turns this method's `throw` into "the fulfilment was
+ * never created" rather than "the fulfilment exists with no data". A Medusa
+ * upgrade that changed that propagation behaviour would not fail any test in
+ * this backend; it would only be found by a customer receiving a shipment
+ * email for a parcel Omniva never actually registered, unless whoever
+ * upgrades Medusa reads this paragraph first.
  */
 export default class OmnivaFulfillmentProviderService extends AbstractFulfillmentProviderService {
   static identifier = "omniva";
@@ -201,5 +236,147 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
     }
 
     return { parcel_machine_zip: machine.zip, parcel_machine_name: machine.name };
+  }
+
+  /**
+   * Registers a real parcel with Omniva. See this class's own docstring for
+   * why this is the *only* place that happens, and `client.ts`'s header for
+   * why the two OMX calls inside this method are allowed to fail so
+   * differently.
+   *
+   * ## Reading the four Medusa-supplied parameters
+   *
+   * `data` is the shipping method's own `data` — what `validateFulfillmentData`
+   * wrote at checkout. It carries `parcel_machine_zip` only when the buyer
+   * chose the Omniva parcel-machine method; a Standard-delivery order's
+   * `data` never carries it, whatever the destination. That single field
+   * doubles as this method's `deliveryChannel` signal: a parcel machine only
+   * exists in Estonia, Latvia or Lithuania (`PARCEL_MACHINE_COUNTRY_CODES` in
+   * `../../commerce/shipping-model`), so "the buyer chose a machine" and
+   * "this shipment registers as `PARCEL_MACHINE`" are the same fact — a
+   * Latvian *courier* order still correctly registers as `COURIER` even
+   * though Latvia has machines, because that order's `data` never gained a
+   * `parcel_machine_zip` in the first place.
+   *
+   * This is also, deliberately, *not* read from the shipping option's own
+   * `data` (`{id, deliveryChannel}`, written by
+   * `../../commerce/configuration.ts`'s `omnivaOptionData()`), even though
+   * that field exists and names the same thing: the real
+   * `createOrderFulfillmentWorkflow` (`@medusajs/core-flows`,
+   * `order/workflows/create-fulfillment.js`, read to confirm this rather than
+   * assumed) never populates `fulfillment.shipping_option` on the object it
+   * hands this method — the fulfilment record's own `{ items, data,
+   * provider_id, ...fulfillmentRest }` destructure keeps everything else
+   * *but* that relation. A design that read `fulfillment.shipping_option.data`
+   * here would work against every stub in this file's own tests and fail
+   * silently in production the first time a real order reached it.
+   *
+   * `items` and `order` are the fulfilment's line items and the order graph
+   * query, respectively, confirmed against that same workflow's source:
+   * `items` carries a title and a quantity and nothing about weight or
+   * price, and `order` carries the shipping address and the buyer's email.
+   * Because this shop sells exactly one physical product — `PRODUCT` in
+   * `../../commerce/product-model`, frozen: one SKU, one net price, one box —
+   * this method reads the weight and the net unit price from `PRODUCT`
+   * rather than from anything carried on a line item. `../shipment.ts`
+   * already made this same choice for the customs block's
+   * `tariffNumber`/`originCountry`/`goodsCategoryCode`, and for the same
+   * reason: there is exactly one true answer, declared once, and reading it
+   * from the order would only be a second, independently-driftable copy of a
+   * fact that cannot vary.
+   */
+  async createFulfillment(
+    data: Record<string, unknown>,
+    items: Partial<Omit<FulfillmentItemDTO, "fulfillment">>[],
+    order: Partial<FulfillmentOrderDTO> | undefined,
+    fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>,
+  ): Promise<CreateFulfillmentResult> {
+    const config = readOmnivaConfig(process.env);
+    if (config === null) {
+      throw new Error(
+        "Omniva is not configured: set OMNIVA_API_USER, OMNIVA_API_PASSWORD, " +
+          "OMNIVA_CUSTOMER_CODE, OMNIVA_BASE_URL and the merchant sender variables " +
+          "before an Omniva shipment can be registered",
+      );
+    }
+    const client = new OmnivaClient(config);
+
+    const fulfillmentId = typeof fulfillment.id === "string" ? fulfillment.id : "";
+    const parcelMachineZip =
+      typeof data.parcel_machine_zip === "string" && data.parcel_machine_zip.trim().length > 0
+        ? data.parcel_machine_zip
+        : undefined;
+    const parcelMachineName =
+      typeof data.parcel_machine_name === "string" ? data.parcel_machine_name : undefined;
+    const shippingAddress = order?.shipping_address;
+
+    const registrationBody = buildShipmentRegistration({
+      customerCode: config.customerCode,
+      fulfillmentId,
+      deliveryChannel: parcelMachineZip !== undefined ? "PARCEL_MACHINE" : "COURIER",
+      parcelMachineZip,
+      sender: config.sender,
+      order: {
+        email: order?.email ?? "",
+        shippingAddress: {
+          firstName: shippingAddress?.first_name ?? "",
+          lastName: shippingAddress?.last_name ?? "",
+          address1: shippingAddress?.address_1 ?? "",
+          postalCode: shippingAddress?.postal_code ?? "",
+          city: shippingAddress?.city ?? "",
+          countryCode: shippingAddress?.country_code ?? "",
+          phone: shippingAddress?.phone ?? null,
+        },
+        items: items.map((item) => ({
+          title: typeof item.title === "string" ? item.title : PRODUCT.title,
+          quantity: typeof item.quantity === "number" ? item.quantity : 1,
+          weightGrams: PRODUCT.packaging.weightGrams,
+          unitPriceNet: PRODUCT.amountMinor / 100,
+        })),
+      },
+    });
+
+    // Registration: creates a real parcel. Cannot be undone from here, so a
+    // refusal propagates unchanged -- see this class's own docstring and
+    // `client.ts`'s header for the full reasoning.
+    const { barcode } = await client.registerShipment(registrationBody);
+
+    // Labelling: deliberately isolated in its own try/catch, and this is the
+    // one place in this module where a failure does not propagate.
+    //
+    // Registration, above, just created a parcel that cannot be taken back.
+    // A label, by contrast, is only a *read* against a barcode that now
+    // exists -- asking for it again changes nothing at Omniva. If this
+    // `catch` re-threw, `createFulfillment` throwing here would make
+    // Medusa's `createFulfillmentWorkflow` roll the fulfilment back (its
+    // compensation deletes the fulfilment row this step just created), and
+    // the operator's retry would call this method again from the top --
+    // registering a SECOND parcel and incurring a second carrier charge for
+    // what may have been nothing more than a transient timeout on OMX's
+    // side. So: catch it, log it so an operator can see the barcode exists
+    // and re-request its label by hand, and return the fulfilment anyway.
+    let labelPdfBase64: string | undefined;
+    try {
+      labelPdfBase64 = await client.requestLabel(barcode);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger?.error(
+        `Omniva shipment ${barcode} registered, but its label could not be fetched: ${reason}`,
+      );
+    }
+
+    return {
+      data: {
+        barcode,
+        ...(labelPdfBase64 !== undefined ? { label_pdf_base64: labelPdfBase64 } : {}),
+        ...(parcelMachineZip !== undefined ? { parcel_machine_zip: parcelMachineZip } : {}),
+        ...(parcelMachineName !== undefined ? { parcel_machine_name: parcelMachineName } : {}),
+      },
+      labels: [{
+        tracking_number: barcode,
+        tracking_url: `https://www.omniva.ee/private/track-and-trace?barcode=${barcode}`,
+        label_url: "",
+      }],
+    };
   }
 }
