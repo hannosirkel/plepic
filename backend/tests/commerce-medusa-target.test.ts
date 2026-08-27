@@ -8,6 +8,7 @@ import {
   PARCEL_MACHINE_ZONE_NAME,
   SHIPPING_ZONES,
 } from "../src/commerce/shipping-model.js";
+import { OMNIVA_PARCEL_MACHINE_OPTION_ID } from "../src/modules/omniva/service.js";
 
 /**
  * The binding between the declared configuration and Medusa's own workflows.
@@ -576,7 +577,8 @@ describe("applying the shipping options", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.workflow).toBe("createShippingOptions");
-    expect((calls[0]?.input as Record<string, unknown>[])[0]).toMatchObject({
+    const [input] = calls[0]?.input as Record<string, unknown>[];
+    expect(input).toMatchObject({
       name: "Standard delivery",
       service_zone_id: "serzo_world",
       // The lowest identifier, the same tie-break the catalogue import uses to
@@ -586,9 +588,21 @@ describe("applying the shipping options", () => {
       price_type: "flat",
       prices: [{ currency_code: "eur", amount: 12 }],
     });
+    // No carrier integration touches this method, so nothing is stored for
+    // `validateFulfillmentData` to read back as `optionData` — a manual
+    // option with a stray `data` key is exactly the kind of copy that could
+    // silently start disagreeing with what created it.
+    expect(input).not.toHaveProperty("data");
   });
 
-  it("creates the free parcel machine option through the Omniva provider", async () => {
+  /**
+   * `optionData.id` is what a later task's `validateFulfillmentData` guard
+   * reads to decide whether a cart needs a parcel machine chosen before it
+   * can complete. An option created with no `data` makes that guard unable
+   * to fire — silently, because no unit test that hands `optionData` in
+   * directly would ever see the gap.
+   */
+  it("creates the free parcel machine option through the Omniva provider, carrying its optionData", async () => {
     await targetOver({
       service_zone: zones,
       shipping_profile: [{ id: "sp_01" }],
@@ -602,7 +616,38 @@ describe("applying the shipping options", () => {
       provider_id: "omniva_omniva",
       price_type: "flat",
       prices: [{ currency_code: "eur", amount: 0 }],
+      data: { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, deliveryChannel: "PARCEL_MACHINE" },
     });
+  });
+
+  /**
+   * The update path re-issues on every promoted digest — see
+   * `configuration.ts`'s `data` docstring — so a parcel machine option
+   * created before this field existed must converge to carry it, not merely
+   * gain it on a create it will never see again.
+   */
+  it("converges a pre-existing parcel machine option to carry its optionData", async () => {
+    await targetOver({
+      service_zone: zones,
+      shipping_profile: [{ id: "sp_01" }],
+      shipping_option: [
+        { id: "so_eelt_pm", name: "Omniva parcel machine", service_zone_id: "serzo_eelt" },
+      ],
+    }).apply(record("shipping-option", 1));
+
+    expect(calls).toEqual([
+      {
+        workflow: "updateShippingOptions",
+        input: [
+          {
+            id: "so_eelt_pm",
+            name: "Omniva parcel machine",
+            prices: [{ currency_code: "eur", amount: 0 }],
+            data: { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, deliveryChannel: "PARCEL_MACHINE" },
+          },
+        ],
+      },
+    ]);
   });
 
   it("reprices an existing option rather than creating a duplicate", async () => {
@@ -614,6 +659,8 @@ describe("applying the shipping options", () => {
       ],
     }).apply(record("shipping-option", 2));
 
+    // `toEqual` is exact: no `data` key here proves the manual method's
+    // update carries none, the same as its create.
     expect(calls).toEqual([
       {
         workflow: "updateShippingOptions",

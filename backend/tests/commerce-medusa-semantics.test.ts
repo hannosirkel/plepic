@@ -462,6 +462,34 @@ describe("the graph the configuration leaves behind", () => {
   });
 
   /**
+   * The sibling of the case above, deleting only the record this task
+   * added rather than both — proving the reproduction actually exercises a
+   * missing *Omniva* link, not just "some link is missing" as covered by
+   * the manual case above. Without this the manual case alone would still
+   * pass on a branch that forgot the Omniva link specifically, since the
+   * manual refusal fires first in declaration order regardless.
+   */
+  it("is refused by that validator when only the Omniva provider link is declared missing", async () => {
+    const withoutTheOmnivaLink = commerceRecords().filter(
+      (record) =>
+        !(
+          record.kind === "stock-location-fulfillment-provider" &&
+          record.providerId === OMNIVA_FULFILLMENT_PROVIDER_ID
+        ),
+    );
+    expect(withoutTheOmnivaLink).toHaveLength(commerceRecords().length - 1);
+
+    const medusa = fakeMedusa();
+    await expect(applyAll(withoutTheOmnivaLink, medusa)).rejects.toThrow(
+      new RegExp(`Providers \\(${OMNIVA_FULFILLMENT_PROVIDER_ID}\\) ${VALIDATOR_REFUSAL}`),
+    );
+    // The manual link is still declared, so the parcel-machine zone's
+    // Standard delivery option — the manual method that precedes the parcel
+    // machine method in declaration order — is created before the refusal.
+    expect(medusa.rows.shipping_option).toHaveLength(1);
+  });
+
+  /**
    * **No price this deployment holds may be tax inclusive — including by the
    * back door.**
    *

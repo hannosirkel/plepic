@@ -118,7 +118,25 @@ export const PARCEL_MACHINE_COUNTRY_CODES: readonly string[] = ["EE", "LT", "LV"
 
 const PARCEL_MACHINE_COUNTRY_SET: ReadonlySet<string> = new Set(PARCEL_MACHINE_COUNTRY_CODES);
 
-/** The fulfillment provider the two manual-rate methods are served by. */
+/**
+ * The fulfillment provider the three manual-rate methods are served by — the
+ * three `Standard delivery` options, not the Omniva parcel machine.
+ *
+ * `manual_manual` is `@medusajs/medusa/fulfillment-manual`, registered
+ * alongside Omniva in `medusa-config.ts`. It is the correct provider for a
+ * flat rate: it quotes nothing and calls nothing, which is precisely what ADR
+ * `020` chose over a carrier interface — and it is not true of the parcel
+ * machine method, which {@link OMNIVA_FULFILLMENT_PROVIDER_ID} serves
+ * instead.
+ *
+ * Declared here rather than in `configuration.ts`, alongside
+ * {@link OMNIVA_FULFILLMENT_PROVIDER_ID}: this is the file that names each
+ * method's provider, so it is the one place a reader's editor actually shows
+ * this reasoning on hover — a JSDoc block on `configuration.ts`'s
+ * `export { MANUAL_FULFILLMENT_PROVIDER_ID } from "./shipping-model.js"` is
+ * not what TypeScript surfaces there, so that used to be a second,
+ * shorter, wrong-by-omission copy of this comment that nobody would read.
+ */
 export const MANUAL_FULFILLMENT_PROVIDER_ID = "manual_manual";
 
 /**

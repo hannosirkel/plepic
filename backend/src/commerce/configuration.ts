@@ -70,11 +70,16 @@
 
 import { STRIPE_PAYMENT_PROVIDER_ID } from "../config/payment.js";
 import {
+  OMNIVA_COURIER_OPTION_ID,
+  OMNIVA_PARCEL_MACHINE_OPTION_ID,
+} from "../modules/omniva/service.js";
+import {
   DELIVERABLE_COUNTRY_CODES,
   MANUAL_FULFILLMENT_PROVIDER_ID,
   OMNIVA_FULFILLMENT_PROVIDER_ID,
   SHIPPING_CURRENCY,
   SHIPPING_ZONES,
+  type ShippingMethodModel,
 } from "./shipping-model.js";
 import {
   ESTONIAN_STANDARD_VAT_PERCENT,
@@ -107,17 +112,12 @@ export const SHIPPING_PROFILE_NAME = "Default";
 export const SHIPPING_PROFILE_TYPE = "default";
 
 /**
- * The fulfillment provider both flat-rate options are served by — the two
- * `Standard delivery` options, not the Omniva parcel machine.
- *
- * `manual_manual` is `@medusajs/medusa/fulfillment-manual`, registered
- * alongside Omniva in `medusa-config.ts`. It is the correct provider for a
- * flat rate: it quotes nothing and calls nothing, which is precisely what ADR
- * `020` chose over a carrier interface — and it is not true of the parcel
- * machine method, which {@link OMNIVA_FULFILLMENT_PROVIDER_ID} serves
- * instead. Declared in {@link ./shipping-model.js}, because the shipping
- * model is what names each method's provider; re-exported here because every
- * caller in this file already imports from `./configuration.js`.
+ * Re-exported from {@link ./shipping-model.js} — see
+ * {@link MANUAL_FULFILLMENT_PROVIDER_ID} there for the full reasoning, which
+ * belongs on the declaration rather than here: a JSDoc block on a re-export
+ * is not what an editor surfaces on hover, so a copy here would be the wrong,
+ * shorter comment winning over the right one. Re-exported anyway, because
+ * every other caller in this file already imports from `./configuration.js`.
  */
 export { MANUAL_FULFILLMENT_PROVIDER_ID } from "./shipping-model.js";
 
@@ -292,11 +292,48 @@ export type CommerceRecord =
       readonly currency: string;
       readonly amountMinor: number;
       readonly providerId: string;
+      /**
+       * What Medusa stores as `shipping_option.data` and hands back to the
+       * provider as `optionData` on every call — `getFulfillmentOptions`,
+       * `validateFulfillmentData`, `createFulfillment`. Absent for a method no
+       * carrier integration touches.
+       *
+       * This is not decoration. A later task's `validateFulfillmentData` guard
+       * reads `optionData.id` to decide whether a cart needs a parcel machine
+       * chosen before it can complete, and an option created with no `data`
+       * makes that guard unable to fire — every cart would sail through
+       * unvalidated, silently, because nothing here would be wrong in a way a
+       * unit test that hands `optionData` in directly could see.
+       */
+      readonly data?: Record<string, unknown>;
     };
 
 /** Applies one record by its natural key. Applying it twice is applying it once. */
 export interface CommerceConfigurationTarget {
   apply(record: CommerceRecord): Promise<void>;
+}
+
+/**
+ * The `shipping_option.data` a method's `omnivaChannel` becomes, or
+ * `undefined` for a method no carrier integration touches.
+ *
+ * The ids come from `service.ts` — `OMNIVA_PARCEL_MACHINE_OPTION_ID` and
+ * `OMNIVA_COURIER_OPTION_ID` — rather than being written again here, because
+ * `getFulfillmentOptions` is what Medusa actually calls to validate a
+ * `data.id` it is handed, and a second copy of that id is exactly the kind of
+ * value that silently stops matching the first.
+ */
+function omnivaOptionData(
+  omnivaChannel: ShippingMethodModel["omnivaChannel"],
+): Record<string, unknown> | undefined {
+  switch (omnivaChannel) {
+    case "PARCEL_MACHINE":
+      return { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, deliveryChannel: "PARCEL_MACHINE" };
+    case "COURIER":
+      return { id: OMNIVA_COURIER_OPTION_ID, deliveryChannel: "COURIER" };
+    case undefined:
+      return undefined;
+  }
 }
 
 /**
@@ -397,6 +434,7 @@ export function commerceRecords(): readonly CommerceRecord[] {
         currency: method.currency,
         amountMinor: method.amountMinor,
         providerId: method.providerId,
+        data: omnivaOptionData(method.omnivaChannel),
       })),
     ),
   ];

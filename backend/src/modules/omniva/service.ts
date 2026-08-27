@@ -1,6 +1,8 @@
 import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils";
 import type { FulfillmentOption } from "@medusajs/framework/types";
 
+import { PARCEL_MACHINE_OPTION_NAME } from "../../commerce/shipping-model.js";
+
 /** The parcel machine method's option id, as `getFulfillmentOptions` returns it. */
 export const OMNIVA_PARCEL_MACHINE_OPTION_ID = "omniva-parcel-machine";
 /** The courier method's option id. Not sold yet; Task 9 registers against it. */
@@ -25,7 +27,7 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
    */
   async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
     return [
-      { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, name: "Omniva parcel machine", deliveryChannel: "PARCEL_MACHINE" },
+      { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, name: PARCEL_MACHINE_OPTION_NAME, deliveryChannel: "PARCEL_MACHINE" },
       { id: OMNIVA_COURIER_OPTION_ID, name: "Omniva courier", deliveryChannel: "COURIER" },
     ];
   }
