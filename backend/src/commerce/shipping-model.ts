@@ -229,6 +229,17 @@ export interface ShippingZoneModel {
   readonly methods: readonly ShippingMethodModel[];
 }
 
+/**
+ * One object, shared by two zones below (`PARCEL_MACHINE_ZONE_NAME` and
+ * `EUROPEAN_UNION_ZONE_NAME`) rather than declared twice. Estonia, Latvia and
+ * Lithuania moved into their own service zone on 2026-08-26 so they could
+ * offer the free Omniva method *alongside* Standard delivery, but they are
+ * still charged the same frozen EUR 7.00 rate as the rest of the Union for
+ * that method — the operator's decision was to add a second option, not to
+ * reprice the first one. Sharing the object is what keeps that single price
+ * from becoming two declarations a future rate change could edit one of and
+ * not the other.
+ */
 const STANDARD_EUROPEAN_UNION_METHOD: ShippingMethodModel = {
   name: SHIPPING_OPTION_NAME,
   currency: SHIPPING_CURRENCY,

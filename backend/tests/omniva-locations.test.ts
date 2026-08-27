@@ -4,37 +4,36 @@ import {
   CACHE_KEY,
   OmnivaLocations,
   STALE_CACHE_KEY,
-  parcelMachinesForCountry,
   parseParcelMachines,
 } from "../src/modules/omniva/locations.js";
 
-const LOCATIONS_URL = "https://www.omniva.ee/locations.json";
-
+/**
+ * I2: this file used to also carry "parses the real published list, and
+ * finds machines in all three countries" -- a real `fetch` against
+ * `https://www.omniva.ee/locations.json`, no fixture. It moved to
+ * `tests/smoke/omniva-locations.test.ts`, and it did not move because the
+ * assertion was wrong; it moved because of *where it ran*.
+ *
+ * This file is collected by `vitest.config.mts`, which is what `npm run
+ * test:unit` and therefore `bash scripts/validate` run -- on a bare checkout,
+ * with nothing running, and (per `AGENTS.md`'s Testing section) with **no
+ * network**. A real fetch inside it made an Omniva outage, or an
+ * egress-restricted runner, turn this repository's one validation command
+ * red for a reason that is not a defect -- and worse than merely "red": a
+ * runner that silently drops the connection rather than refusing it can hang
+ * a bare `fetch()` (no `AbortSignal` was attached) well past any reasonable
+ * CI timeout, rather than failing fast. `vitest.config.mts`'s own docstring
+ * makes exactly this argument for excluding `tests/smoke/`: "a suite that
+ * refused without a server would make the repository's one validation
+ * command fail for every developer". `scripts/validate`'s comment on why it
+ * will not fetch another repository's manifests at validation time makes the
+ * same argument from the other direction: a green run must not depend on a
+ * third party's availability at the moment it happens to run.
+ *
+ * See `tests/smoke/omniva-locations.test.ts` for why the assertion itself is
+ * kept, and kept real rather than fixture-backed.
+ */
 describe("the Omniva location list", () => {
-  it("parses the real published list, and finds machines in all three countries", async () => {
-    const response = await fetch(LOCATIONS_URL);
-    expect(response.ok).toBe(true);
-    const machines = parseParcelMachines(await response.json());
-
-    // Measured 2026-08-26: 437 EE, 412 LV, 561 LT parcel machines. Asserted as
-    // floors rather than equalities -- Omniva adds and removes machines, and an
-    // equality here would go red for a reason that is not a defect.
-    expect(parcelMachinesForCountry(machines, "EE").length).toBeGreaterThan(300);
-    expect(parcelMachinesForCountry(machines, "LV").length).toBeGreaterThan(300);
-    expect(parcelMachinesForCountry(machines, "LT").length).toBeGreaterThan(400);
-
-    for (const machine of machines) {
-      expect(machine.zip, machine.name).toMatch(/^[0-9A-Za-z-]+$/);
-      expect(machine.name.length, machine.zip).toBeGreaterThan(0);
-      expect(["EE", "LV", "LT"]).toContain(machine.countryCode);
-    }
-
-    // ZIPs are the offloadPostcode a shipment registers against, so two
-    // machines sharing one would make the buyer's choice unrepresentable.
-    const zips = machines.map((machine) => machine.zip);
-    expect(new Set(zips).size).toBe(zips.length);
-  }, 30_000);
-
   it("keeps parcel machines and discards post offices", () => {
     const machines = parseParcelMachines([
       { ZIP: "10145", NAME: "Kristiine Keskus", TYPE: "0", A0_NAME: "EE", A1_NAME: "Harjumaa", A2_NAME: "Tallinn" },
@@ -51,20 +50,39 @@ describe("the Omniva location list", () => {
   });
 });
 
+/** One `set` call this fake cache recorded, in the shape `ICacheService.set` takes it. */
+interface RecordedSetCall {
+  readonly key: string;
+  readonly ttl: number | undefined;
+}
+
 /**
  * A minimal, in-memory stand-in for `Modules.CACHE`'s real `ICacheService`
  * (`get<T>(key): Promise<T | null>`, `set(key, data, ttl?): Promise<void>`).
  * Good enough to exercise `OmnivaLocations`'s own logic without a Redis or an
  * in-memory Medusa module behind it -- the class does not care which
  * `ICacheService` it is handed, only that it behaves like one.
+ *
+ * **`setCalls` records the `ttl` argument, which this fake used to drop
+ * entirely.** `locations.ts`'s whole "two cache entries, not one" design
+ * (see `OmnivaLocations`'s own docstring) rests on {@link CACHE_KEY} being
+ * written *with* a TTL and {@link STALE_CACHE_KEY} being written *without*
+ * one -- and nothing at this seam constrained that before `setCalls` existed:
+ * a `set(STALE_CACHE_KEY, machines, this.source.cacheTtlSeconds)` regression
+ * (the "last known good" key quietly gaining an expiry, and therefore quietly
+ * stopping being "last known good") would have passed every test in this
+ * file unchanged.
  */
 function fakeCache() {
   const store = new Map<string, unknown>();
+  const setCalls: RecordedSetCall[] = [];
   return {
     store,
+    setCalls,
     get: async <T>(key: string): Promise<T | null> => (store.has(key) ? (store.get(key) as T) : null),
-    set: async (key: string, data: unknown): Promise<void> => {
+    set: async (key: string, data: unknown, ttl?: number): Promise<void> => {
       store.set(key, data);
+      setCalls.push({ key, ttl });
     },
     invalidate: async (key: string): Promise<void> => {
       store.delete(key);
@@ -103,6 +121,16 @@ describe("OmnivaLocations, the cached reader", () => {
     // Three calls above, one fetch: the second and third are answered from
     // the cache this class populated on the first.
     expect(fetcher).toHaveBeenCalledTimes(1);
+
+    // The TTL split `OmnivaLocations`'s own docstring describes: the fresh
+    // key is written *with* a TTL (so it can age out), the "last known good"
+    // key *without* one (so it never does). Asserted here, at the seam,
+    // rather than trusted -- see `fakeCache`'s own docstring for what this
+    // catches.
+    const freshCall = cache.setCalls.find((call) => call.key === CACHE_KEY);
+    const staleCall = cache.setCalls.find((call) => call.key === STALE_CACHE_KEY);
+    expect(freshCall?.ttl, "the fresh key must be written with a TTL").toBeTypeOf("number");
+    expect(staleCall?.ttl, "the last-known-good key must never be given a TTL").toBeUndefined();
   });
 
   it("never serves an empty list as if it were a valid answer", async () => {

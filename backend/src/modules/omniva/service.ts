@@ -78,16 +78,33 @@ interface InjectedDependencies {
  * absent → no shipment-notification email going out. This repository's only
  * real-Medusa harness, `scripts/store-smoke`, cannot place a *paid* order
  * without Stripe, which its tests deliberately do not reach — so that walk
- * cannot be built honestly here. The containment claim therefore rests on
- * one fact this file did not itself verify at runtime: that
- * `@medusajs/core-flows`'s `createFulfillmentWorkflow` propagates a
- * provider's thrown error as a failed workflow step rather than swallowing
- * it — which is what turns this method's `throw` into "the fulfilment was
- * never created" rather than "the fulfilment exists with no data". A Medusa
- * upgrade that changed that propagation behaviour would not fail any test in
- * this backend; it would only be found by a customer receiving a shipment
- * email for a parcel Omniva never actually registered, unless whoever
- * upgrades Medusa reads this paragraph first.
+ * cannot be built honestly here.
+ *
+ * **What follows is a citation, not a hedge — both files were read to
+ * confirm it, not assumed.** `FulfillmentModuleService.createFulfillment`
+ * (`node_modules/@medusajs/fulfillment/dist/services/
+ * fulfillment-module-service.js:184-201`) wraps the call into *this* class's
+ * `createFulfillment` in a `try` whose `catch` runs
+ * `this.fulfillmentService_.delete(fulfillment.id, sharedContext)` and
+ * rethrows — so a throw from this method leaves no fulfilment row behind,
+ * not a half-written one. One level up, `createFulfillmentStep`
+ * (`@medusajs/core-flows`, `dist/fulfillment/steps/create-fulfillment.js`)
+ * calls `service.createFulfillment(data)` with nothing around it — no `try`,
+ * no `catch` — so that rethrown error fails the step itself, before its
+ * `StepResponse` exists and therefore before the step has anything for its
+ * own compensation function to act on. (That compensation function, for what
+ * it is worth, is `container.resolve(Modules.FULFILLMENT).cancelFulfillment(id)`,
+ * which — per the same `fulfillment-module-service.js`, `cancelFulfillment`,
+ * line 711 onward — calls this class's own `cancelFulfillment`, the one this
+ * file now implements; see its own docstring for why it refuses rather than
+ * calls Omniva.)
+ *
+ * A Medusa upgrade that changed either of those two facts — the `try`/`catch`
+ * around the provider call, or the absence of one around the step — would not
+ * fail any test in this backend; it would only be found by a customer
+ * receiving a shipment email for a parcel Omniva never actually registered,
+ * unless whoever upgrades Medusa reads this paragraph, and the two files it
+ * cites, first.
  */
 export default class OmnivaFulfillmentProviderService extends AbstractFulfillmentProviderService {
   static identifier = "omniva";
@@ -396,5 +413,55 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
         label_url: "",
       }],
     };
+  }
+
+  /**
+   * Refuses, naming the barcode. Not an omission: `client.ts:8-15` states it
+   * plainly — OMX API manual v1.7 has **no unregister call**, only a
+   * courier-pickup cancellation and a return-shipment registration, neither
+   * of which erases the original parcel. `AbstractFulfillmentProviderService`
+   * (`@medusajs/utils`) throws `"cancelFulfillment must be overridden by the
+   * child class"` when a provider does not supply one, and
+   * `@medusajs/fulfillment-manual` overrides it (returning `{}`, since a
+   * manual rate cancels nothing at a carrier). Leaving this provider's
+   * inherited from the base class would mean an operator using the Admin's
+   * **Cancel fulfilment** action, or a later workflow step failing and
+   * triggering `createFulfillmentStep`'s compensation (see this class's own
+   * docstring above for the exact call chain, cited rather than assumed),
+   * sees a message naming `AbstractFulfillmentProviderService` — true, but
+   * useless to someone who did not write this module.
+   *
+   * **This is a refusal, not a policy decision, and the two are not the
+   * same thing.** The design's §2 enumerates exactly four provider methods —
+   * `getFulfillmentOptions`, `validateFulfillmentData`, `canCalculate`,
+   * `createFulfillment` — and does not mention this one, because OMX simply
+   * has nothing behind it. An operator might reasonably prefer a different
+   * behaviour here: for instance, letting Medusa mark the fulfilment
+   * cancelled locally while the parcel stays live at Omniva, with the
+   * mismatch reconciled by hand. That is a real, debatable choice this file
+   * does not make. What it does instead is refuse honestly, so the gap is
+   * visible at the point someone hits it rather than quietly papered over by
+   * a `return {}` that would make Medusa believe a live parcel had been
+   * cancelled when nothing happened at the carrier at all — the same "log
+   * and continue" shape §9 of the design spends a whole section refusing for
+   * `createFulfillment`, for the same reason.
+   *
+   * `data` is the fulfilment's own `data` — this class's `createFulfillment`
+   * return value, so it carries `barcode` whenever one was ever assigned.
+   * Named in the message when present; when absent (a fulfilment that never
+   * reached a successful registration — see `createFulfillment`'s refusal
+   * paths above) the message says so rather than printing `undefined`.
+   */
+  async cancelFulfillment(data: Record<string, unknown>): Promise<unknown> {
+    const barcode = typeof data.barcode === "string" && data.barcode.trim().length > 0
+      ? data.barcode.trim()
+      : null;
+    throw new Error(
+      barcode !== null
+        ? `Omniva (OMX v1.7) has no shipment-cancellation endpoint. Parcel ${barcode} ` +
+          "cannot be cancelled from Medusa -- cancel it in Omniva's e-service instead."
+        : "Omniva (OMX v1.7) has no shipment-cancellation endpoint, and this fulfilment " +
+          "carries no barcode to look it up by in Omniva's e-service either.",
+    );
   }
 }

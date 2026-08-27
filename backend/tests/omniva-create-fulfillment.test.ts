@@ -17,10 +17,29 @@ import OmnivaFulfillmentProviderService from "../src/modules/omniva/service.js";
  * "registers, labels, and returns the barcode" can assert the client sent
  * exactly the Basic credential `readOmnivaConfig` was given -- not merely
  * *some* header.
+ *
+ * **The body posted to the registration path is captured and parsed, and
+ * this is new.** It used to say only "the body is never read: the stub only
+ * needs to answer by path" -- true of the *client*, but that framing quietly
+ * covered a much bigger hole: nothing anywhere asserted that the JSON this
+ * stub received was the *right* JSON. `service.ts`'s `createFulfillment`
+ * builds that body from real order data -- `deliveryChannel`, the receiver's
+ * `personName`, the customs `financialValue` -- and every one of those is a
+ * plain string or number a typechecker cannot tell from a wrong one of the
+ * same type (`"PARCEL_MACHINE"` vs `"COURIER"` is the same union;
+ * `first_name` swapped for `last_name` is still a `string`;
+ * `PRODUCT.amountMinor / 100` vs `PRODUCT.amountMinor` are both `number`).
+ * Recording `registeredBodies` is what lets the tests below assert on that
+ * mapping directly, at the wire boundary, rather than trusting
+ * `buildShipmentRegistration`'s own exhaustive pure tests to somehow also
+ * prove that `service.ts` calls it with the right input -- they cannot, by
+ * construction, since they never see `service.ts` at all.
  */
 interface StubOmx {
   readonly baseUrl: string;
   readonly authorizationHeaders: string[];
+  /** Every JSON body posted to `REGISTER_PATH`, in order, parsed. See this file's header. */
+  readonly registeredBodies: unknown[];
   close(): Promise<void>;
 }
 
@@ -36,17 +55,21 @@ const LABEL_PATH = "/api/v01/omx/shipments/package-labels";
 
 async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
   const authorizationHeaders: string[] = [];
+  const registeredBodies: unknown[] = [];
 
   const server: Server = createServer((request, response) => {
-    // The body is never read: the stub only needs to answer by path, and
-    // `client.ts`'s own request-shape correctness is proven by typechecking
-    // its `post` callers against `OmnivaConfig`/`buildShipmentRegistration`,
-    // not by this stub re-parsing what it sent.
-    request.resume();
+    // The label-request body is still never read: `requestLabel` only sends
+    // a barcode this stub already knows (it is the one `options.register`
+    // handed back), so there is nothing there worth asserting on. The
+    // registration body, below, is the one that carries real order data.
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       authorizationHeaders.push(request.headers.authorization ?? "");
 
       if (request.url === REGISTER_PATH) {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        registeredBodies.push(raw.length > 0 ? (JSON.parse(raw) as unknown) : undefined);
         const status = options.registerStatus ?? 200;
         response.writeHead(status, { "Content-Type": "application/json" });
         response.end(JSON.stringify(options.register));
@@ -74,6 +97,7 @@ async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
   return {
     baseUrl: `http://127.0.0.1:${String(port)}`,
     authorizationHeaders,
+    registeredBodies,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
@@ -110,6 +134,57 @@ const ORDER = {
     updated_at: new Date(),
   },
 };
+
+/**
+ * A destination outside the EU -- no test in this file drove one through
+ * `createFulfillment` before this suite gained the customs assertions below.
+ * `US` is outside `EU_MEMBER_STATE_CODES`, so `shipment.ts` attaches a
+ * `customs` block, and outside `PHONE_OPTIONAL_COUNTRY_CODES`, so it needs a
+ * phone -- carried here so this order builds a registration at all rather
+ * than tripping the phone refusal before customs is even reached.
+ */
+const NON_EU_ORDER = {
+  id: "order_2",
+  email: "buyer@example.com",
+  shipping_address: {
+    id: "ordaddr_2",
+    first_name: "Jane",
+    last_name: "Doe",
+    address_1: "5th Ave 1",
+    postal_code: "10001",
+    city: "New York",
+    country_code: "US",
+    phone: "+12025550123",
+    created_at: new Date(),
+    updated_at: new Date(),
+  },
+};
+
+/** The one shipment entry a registration body ever carries. Narrowed to what these tests read. */
+interface RegisteredShipment {
+  readonly deliveryChannel?: unknown;
+  readonly servicePackage?: { readonly code?: unknown };
+  readonly receiverAddressee: {
+    readonly personName?: unknown;
+    readonly address: Record<string, unknown>;
+  };
+  readonly customs?: {
+    readonly goodsCategoryCode?: unknown;
+    readonly shipmentItems: readonly {
+      readonly financialValue?: unknown;
+      readonly tariffNumber?: unknown;
+      readonly originCountry?: unknown;
+      readonly weight?: unknown;
+    }[];
+  };
+}
+
+/** The single registered shipment out of `StubOmx.registeredBodies[index]`. */
+function registeredShipment(omx: StubOmx, index = 0): RegisteredShipment {
+  const body = omx.registeredBodies[index] as { shipments: readonly RegisteredShipment[] };
+  expect(body.shipments, `registeredBodies[${String(index)}]`).toHaveLength(1);
+  return body.shipments[0]!;
+}
 
 /**
  * The narrow slice of Medusa's `Logger` this suite needs: just `error`, as a
@@ -177,7 +252,7 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
     try {
       const { service } = providerAgainst(omx);
       const result = await service.createFulfillment(
-        { parcel_machine_zip: "10145" },
+        { parcel_machine_zip: "10145", parcel_machine_name: "Tallinn, Kristiine Keskus" },
         ITEMS,
         ORDER,
         { id: STUB_FULFILLMENT_ID },
@@ -190,10 +265,93 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
       }]);
       expect(result.data.barcode).toBe("CE123456789EE");
       expect(result.data.label_pdf_base64).toBe("JVBERi0=");
+      // Minor M6: the chosen machine's ZIP and name must survive onto the
+      // fulfilment's own `data` -- the Admin widget and the label route both
+      // read them from there, and nothing asserted they arrive before this.
+      expect(result.data.parcel_machine_zip).toBe("10145");
+      expect(result.data.parcel_machine_name).toBe("Tallinn, Kristiine Keskus");
       expect(omx.authorizationHeaders).toEqual([
         "Basic " + Buffer.from("user:pass").toString("base64"),
         "Basic " + Buffer.from("user:pass").toString("base64"),
       ]);
+
+      // I1: the body actually posted to OMX, not merely "a request happened".
+      const shipment = registeredShipment(omx);
+      expect(shipment.deliveryChannel).toBe("PARCEL_MACHINE");
+      expect(shipment.receiverAddressee.address.offloadPostcode).toBe("10145");
+      // Minor M2: firstName/lastName swapped at shipment.ts:248 would print
+      // "Tamm Mari" on every label; ORDER's address is first_name "Mari",
+      // last_name "Tamm", so this is only right one way round.
+      expect(shipment.receiverAddressee.personName).toBe("Mari Tamm");
+    } finally {
+      await omx.close();
+    }
+  });
+
+  /**
+   * I1's courier counterpart to the parcel-machine assertions just above --
+   * `deliveryChannel: "COURIER"` and a **street** address, not an
+   * `offloadPostcode`. `ORDER`'s country is EE, a parcel-machine country, on
+   * purpose: it proves `deliveryChannel` follows the buyer's chosen method
+   * (`data.parcel_machine_zip` absent below) rather than the destination --
+   * exactly the case `service.ts`'s own docstring calls out ("a Latvian
+   * *courier* order still correctly registers as COURIER even though Latvia
+   * has machines").
+   */
+  it("registers a courier shipment to the street address, not a parcel machine", async () => {
+    const omx = await stubOmx({
+      register: { resultCode: "OK", savedShipments: [{ barcode: "CE123456789EE" }] },
+      label: { successAddressCards: [{ barcode: "CE123456789EE", filedata: "JVBERi0=" }] },
+    });
+    try {
+      const { service } = providerAgainst(omx);
+      await service.createFulfillment({}, ITEMS, ORDER, { id: STUB_FULFILLMENT_ID });
+
+      const shipment = registeredShipment(omx);
+      expect(shipment.deliveryChannel).toBe("COURIER");
+      expect(shipment.receiverAddressee.address).toEqual({
+        street: "Tee 1",
+        postcode: "10111",
+        city: "Tallinn",
+        country: "EE",
+      });
+      expect(shipment.receiverAddressee.address).not.toHaveProperty("offloadPostcode");
+    } finally {
+      await omx.close();
+    }
+  });
+
+  /**
+   * I1: no test drove a non-EU destination through `createFulfillment`
+   * before this one, so the customs block -- built from `PRODUCT`, not from
+   * anything on the order -- was unasserted on this path. `financialValue`
+   * is exactly where a 100x error is available: `service.ts` computes
+   * `unitPriceNet` as `PRODUCT.amountMinor / 100` (2500 minor units -> EUR
+   * 25.00), and asserting `25`, not `2500`, is what a `financialValue:
+   * PRODUCT.amountMinor` regression would fail.
+   */
+  it("attaches a customs block, built from PRODUCT, for a non-EU destination", async () => {
+    const omx = await stubOmx({
+      register: { resultCode: "OK", savedShipments: [{ barcode: "CE999999999US" }] },
+      label: { successAddressCards: [{ barcode: "CE999999999US", filedata: "JVBERi0=" }] },
+    });
+    try {
+      const { service } = providerAgainst(omx);
+      await service.createFulfillment({}, ITEMS, NON_EU_ORDER, { id: STUB_FULFILLMENT_ID });
+
+      const shipment = registeredShipment(omx);
+      // EE/LV/LT-only field; a US shipment carries servicePackage instead.
+      expect(shipment).not.toHaveProperty("deliveryChannel");
+      expect(shipment.servicePackage).toEqual({ code: "ECONOMY" });
+
+      expect(shipment.customs).toBeDefined();
+      expect(shipment.customs?.goodsCategoryCode).toBe("SALE_OF_GOODS");
+      expect(shipment.customs?.shipmentItems).toHaveLength(1);
+      const customsItem = shipment.customs?.shipmentItems[0];
+      expect(customsItem?.financialValue).toBe(25);
+      expect(customsItem?.tariffNumber).toBe("9504400000");
+      expect(customsItem?.originCountry).toBe("CHN");
+      expect(customsItem?.weight).toBe(0.3);
     } finally {
       await omx.close();
     }
@@ -349,5 +507,79 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
         await omx.close();
       }
     });
+
+    /**
+     * `client.ts:153-156`'s *inner* wrapper -- the `catch` around `fetch`
+     * itself, before any HTTP response exists at all. Every other case in
+     * this describe block gets a real response from `stubOmx` (a 500, a
+     * malformed success shape); none of them exercise a `fetch` that never
+     * connects in the first place, which is a different code path (`post`'s
+     * `try` around `fetch`/`response.text()`, not its `if (!response.ok)`
+     * branch below it). The outer wrap -- naming the fulfilment and cautioning
+     * that a shipment may already be registered -- is already proven by the
+     * "non-2xx registration status" test above; this only needs to reach the
+     * inner one, so a closed port is enough: nothing has to actually answer.
+     */
+    it("names Omniva and the path when the registration request never gets a response at all", async () => {
+      // A server that was briefly listening, then closed, rather than a
+      // hard-coded port number: this is a real "nothing is listening here"
+      // (ECONNREFUSED) on whichever port the OS happens to hand out, so the
+      // test cannot collide with anything else already bound on this machine.
+      const deadServer: Server = createServer();
+      await new Promise<void>((resolve) => deadServer.listen(0, "127.0.0.1", resolve));
+      const deadAddress = deadServer.address();
+      const deadPort = typeof deadAddress === "object" && deadAddress !== null ? deadAddress.port : 0;
+      await new Promise<void>((resolve, reject) => {
+        deadServer.close((error) => (error ? reject(error) : resolve()));
+      });
+
+      const unreachable: StubOmx = {
+        baseUrl: `http://127.0.0.1:${String(deadPort)}`,
+        authorizationHeaders: [],
+        registeredBodies: [],
+        close: () => Promise.resolve(),
+      };
+      const { service } = providerAgainst(unreachable);
+      await expect(
+        service.createFulfillment({}, ITEMS, ORDER, { id: STUB_FULFILLMENT_ID }),
+      ).rejects.toThrow(/Omniva did not answer POST/);
+    });
+  });
+});
+
+describe("cancelFulfillment: OMX v1.7 has no shipment-cancellation endpoint", () => {
+  /**
+   * I3. `AbstractFulfillmentProviderService.cancelFulfillment` throws
+   * `"cancelFulfillment must be overridden by the child class"` when a
+   * provider does not supply its own -- reachable from the Admin's **Cancel
+   * fulfilment** action and from `createFulfillmentStep`'s compensation (see
+   * `service.ts`'s own class docstring for the exact call chain). This
+   * provider now overrides it with a refusal that names the parcel rather
+   * than the base class, because OMX genuinely has no unregister call
+   * (`client.ts:8-15`).
+   */
+  it("refuses, naming the barcode and pointing at Omniva's e-service", async () => {
+    const service = new OmnivaFulfillmentProviderService();
+    await expect(service.cancelFulfillment({ barcode: "CE123456789EE" })).rejects.toThrow(
+      /CE123456789EE/,
+    );
+    await expect(service.cancelFulfillment({ barcode: "CE123456789EE" })).rejects.toThrow(
+      /e-service/i,
+    );
+  });
+
+  it("still refuses, without a barcode to point at, when the fulfilment's data carries none", async () => {
+    const service = new OmnivaFulfillmentProviderService();
+    await expect(service.cancelFulfillment({})).rejects.toThrow(/e-service/i);
+    // Not "undefined" printed where a barcode would go -- the message names
+    // its own absence instead. Caught by hand, rather than a second
+    // `.rejects.toThrow`, because asserting the *absence* of a substring is
+    // not what `toThrow`'s pattern matching is for.
+    try {
+      await service.cancelFulfillment({});
+      expect.unreachable("cancelFulfillment must always refuse");
+    } catch (error) {
+      expect(error instanceof Error ? error.message : String(error)).not.toMatch(/undefined/);
+    }
   });
 });
