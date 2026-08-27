@@ -301,7 +301,22 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
     }
     const client = new OmnivaClient(config);
 
-    const fulfillmentId = typeof fulfillment.id === "string" ? fulfillment.id : "";
+    // Ruling R18: refused, not coerced to `""`. `partnerShipmentId` (built
+    // from `fulfillmentId` below) is the only key that links an OMX parcel
+    // back to this fulfilment -- exactly what an operator needs to check
+    // "did this fulfilment already register a parcel?" after the ambiguous
+    // failure `client.ts`'s `registerShipment` names above. Registering with
+    // no reference would defeat the reconciliation that message exists to
+    // enable, and Medusa always supplies a fulfilment id here, so this is a
+    // defensive check against a shape Medusa is not expected to send, not a
+    // real-world branch this method has to accommodate.
+    if (typeof fulfillment.id !== "string" || fulfillment.id.trim().length === 0) {
+      throw new Error(
+        "Cannot register an Omniva shipment for a fulfilment with no id; " +
+          "partnerShipmentId would have nothing to link the parcel back to",
+      );
+    }
+    const fulfillmentId = fulfillment.id;
     const parcelMachineZip =
       typeof data.parcel_machine_zip === "string" && data.parcel_machine_zip.trim().length > 0
         ? data.parcel_machine_zip
@@ -338,8 +353,11 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
 
     // Registration: creates a real parcel. Cannot be undone from here, so a
     // refusal propagates unchanged -- see this class's own docstring and
-    // `client.ts`'s header for the full reasoning.
-    const { barcode } = await client.registerShipment(registrationBody);
+    // `client.ts`'s header for the full reasoning. `fulfillmentId` is passed
+    // through so an ambiguous failure (see `registerShipment`'s own
+    // docstring) names this fulfilment rather than leaving an operator to
+    // work out which one from context.
+    const { barcode } = await client.registerShipment(registrationBody, fulfillmentId);
 
     // Labelling: deliberately isolated in its own try/catch, and this is the
     // one place in this module where a failure does not propagate.

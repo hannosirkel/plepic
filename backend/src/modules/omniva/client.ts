@@ -120,19 +120,40 @@ export class OmnivaClient {
    * otherwise — rather than just the status code, because an operator
    * reading this in a log is trying to learn what OMX objected to, not just
    * that it objected.
+   *
+   * **A failure before any response arrives is a separate case, caught here
+   * and rethrown naming Omniva and the path.** `fetch` rejects with a bare
+   * `TimeoutError` or `TypeError: fetch failed` for a timeout, a DNS
+   * failure, or a connection reset — none of which mention Omniva, this
+   * path, or which call was in flight. Left unwrapped, that is exactly the
+   * message an operator would see for `registerShipment` failing *after*
+   * OMX already committed the parcel (a request that times out on the way
+   * back, or a 502 from a proxy in front of OMX, can each follow a real
+   * commit) — the one case this file's header says must not read as an
+   * ordinary, safely-retryable refusal. `registerShipment` below adds the
+   * fulfilment id and the explicit "may already be registered" caution on
+   * top of whatever this method throws; this method only owns naming Omniva
+   * and the path, because it does not know which of the two calls, or which
+   * fulfilment, it is answering for.
    */
   private async post(path: string, body: unknown): Promise<unknown> {
-    const response = await fetch(`${this.config.baseUrl.replace(/\/+$/, "")}${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: basicAuthorizationHeader(this.config),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-
-    const raw = await response.text();
+    let response: Response;
+    let raw: string;
+    try {
+      response = await fetch(`${this.config.baseUrl.replace(/\/+$/, "")}${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: basicAuthorizationHeader(this.config),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      raw = await response.text();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Omniva did not answer POST ${path}: ${reason}`, { cause: error });
+    }
 
     if (!response.ok) {
       let detail = raw;
@@ -158,6 +179,10 @@ export class OmnivaClient {
   /**
    * Registers one shipment. `body` is `buildShipmentRegistration`'s output —
    * this method sends it unchanged and reads only OMX's response.
+   * `fulfillmentId` is not sent to Omniva a second time (it is already
+   * `body`'s `partnerShipmentId`); it exists on this signature purely so the
+   * ambiguous-failure case below can name the fulfilment an operator would
+   * otherwise have to work out from context.
    *
    * **Refuses unless `resultCode === "OK"` with exactly one `savedShipments`
    * entry carrying a barcode.** Not "at least one": this client only ever
@@ -169,10 +194,34 @@ export class OmnivaClient {
    *
    * A `resultCode: "ERROR"` raises the first `failedShipments` entry's
    * `messageCode` and `message` **verbatim** — see this file's header for
-   * why that string, unedited, is what an operator needs.
+   * why that string, unedited, is what an operator needs. That case is not
+   * ambiguous: the manual states `"ERROR"` means registration failed, so
+   * nothing was committed, and the message below is deliberately not
+   * decorated with a "may already be registered" caution that would not be
+   * true.
+   *
+   * **Any failure reaching this point from `post` — a timeout, a connection
+   * reset, a non-2xx status — is different, and is not left as `post`'s bare
+   * message.** None of those tell this client whether OMX committed the
+   * parcel before failing to answer; a 502 from a proxy in front of OMX, or a
+   * timeout on the way back, can each follow a real commit. So this catch
+   * names the fulfilment and says outright that a shipment may already
+   * exist, so an operator sees that reasoning before retrying — not just
+   * this file's header, which they are not reading at 2am.
    */
-  async registerShipment(body: unknown): Promise<{ barcode: string }> {
-    const parsed = (await this.post(REGISTER_PATH, body)) as RegisterResponseBody;
+  async registerShipment(body: unknown, fulfillmentId: string): Promise<{ barcode: string }> {
+    let parsed: RegisterResponseBody;
+    try {
+      parsed = (await this.post(REGISTER_PATH, body)) as RegisterResponseBody;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Could not confirm the Omniva registration for fulfilment ${fulfillmentId}: ${reason}. ` +
+          "A shipment may already have been registered at Omniva for this fulfilment -- " +
+          "check OMX before retrying, rather than registering a second one.",
+        { cause: error },
+      );
+    }
 
     if (parsed.resultCode !== "OK") {
       const failed = Array.isArray(parsed.failedShipments)
@@ -232,10 +281,19 @@ export class OmnivaClient {
     const successCards = Array.isArray(parsed.successAddressCards)
       ? (parsed.successAddressCards as SuccessAddressCard[])
       : [];
-    const success = successCards.find((card) => text(card.barcode) === barcode) ?? successCards[0];
+    // Matched by barcode, never defaulted to `successCards[0]`. A response
+    // whose only success card names a different barcode is not this
+    // fulfilment's label -- returning it anyway would store, and later
+    // print, a label addressed to someone else's parcel. Refusing here is
+    // the same "refuse rather than guess" `registerShipment` already applies
+    // to a saved-shipments count it does not recognise; nothing in the
+    // manual's section 1.7 describes a `successAddressCards` entry that
+    // omits `barcode`, so there is no documented case this match is too
+    // strict for.
+    const success = successCards.find((card) => text(card.barcode) === barcode);
     const filedata = text(success?.filedata);
     if (filedata.length === 0) {
-      throw new Error(`OMX returned no label data for ${barcode}`);
+      throw new Error(`OMX returned no label for ${barcode}`);
     }
 
     return filedata;

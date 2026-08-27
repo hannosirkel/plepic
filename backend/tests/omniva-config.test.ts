@@ -71,11 +71,29 @@ describe("readOmnivaConfig: optional on total absence, refused on partial", () =
     expect(() => readOmnivaConfig({ OMNIVA_API_USER: "user" })).toThrow(/missing/i);
   });
 
-  it("throws when only the sender's street is set and nothing else", () => {
-    expect(() => readOmnivaConfig({ MERCHANT_SENDER_STREET: "Pihlaka tn 2" })).toThrow(/missing/i);
-  });
-
   it("treats a whitespace-only value the same as unset", () => {
     expect(readOmnivaConfig({ OMNIVA_API_USER: "   " })).toBeNull();
+  });
+
+  /**
+   * Ruling R17: presence is keyed on the four `OMNIVA_*` names only, not on
+   * the merchant sender facts -- `MERCHANT_PHONE_NUMBER` is already a
+   * storefront-required variable (`storefront/src/config/runtime-env.ts`,
+   * CRD Art. 6(1)(c)) for a reason that has nothing to do with Omniva. This
+   * is the scenario R17 exists for: a shared merchant `ConfigMap` handing the
+   * backend every `MERCHANT_*` fact while never mentioning Omniva at all
+   * must not be read as "Omniva is on and misconfigured".
+   */
+  it("returns null when merchant sender variables are set but no OMNIVA_* one is (R17)", () => {
+    const omnivaOnlyNames = ["OMNIVA_API_USER", "OMNIVA_API_PASSWORD", "OMNIVA_CUSTOMER_CODE", "OMNIVA_BASE_URL"] as const;
+    const merchantOnly = omnivaOnlyNames.reduce<Record<string, string | undefined>>(
+      (env, name) => withoutKey(env, name),
+      FULL_ENV,
+    );
+    expect(readOmnivaConfig(merchantOnly)).toBeNull();
+  });
+
+  it("returns null when only the sender's street is set and nothing else, per R17", () => {
+    expect(readOmnivaConfig({ MERCHANT_SENDER_STREET: "Pihlaka tn 2" })).toBeNull();
   });
 });
