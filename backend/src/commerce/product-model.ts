@@ -41,6 +41,17 @@
  * are recorded for the Admin and for a courier label rather than consulted by
  * any price. They are declared anyway because a product with no dimensions is a
  * product no fulfillment provider can quote if one is ever introduced.
+ *
+ * ## The customs facts, frozen 2026-08-26
+ *
+ * {@link ProductModel.customs} is the same kind of fact as the packaging: a
+ * property of the physical thing rather than of any order, declared here so
+ * there is exactly one place to freeze it. OMX requires all three whenever a
+ * shipment's destination is outside the EU and refuses the registration if
+ * they are absent or malformed — see {@link ProductCustoms} for the tariff
+ * code, the manufacturing origin and why the origin is written in a different
+ * standard's format from every other country code in this codebase. Nothing
+ * reads this block yet; a later task builds the customs declaration from it.
  */
 
 import { SHIPPING_CURRENCY } from "./shipping-model.js";
@@ -51,6 +62,40 @@ export interface ProductPackaging {
   readonly lengthMillimetres: number;
   readonly widthMillimetres: number;
   readonly heightMillimetres: number;
+}
+
+/**
+ * What a customs declaration says about this product.
+ *
+ * Operator-frozen, 2026-08-26, and declared here beside the weight and the box
+ * because it is the same kind of fact: a property of the thing in the parcel
+ * rather than of any order. OMX requires all three whenever the destination is
+ * outside the EU, and refuses the registration if they are absent or
+ * malformed. Nothing consumes this block yet — a later task builds the
+ * customs declaration from it.
+ *
+ * `9504400000` is HS 9504.40 — playing cards. `CHN` is where the game is
+ * manufactured, and OMX makes it mandatory for United States destinations
+ * specifically, because the landed cost cannot be calculated without it.
+ */
+export interface ProductCustoms {
+  /** HS code, digits only. */
+  readonly tariffNumber: string;
+  /**
+   * Country of manufacture, ISO 3166-1 **alpha-3** — OMX's format.
+   *
+   * Every other country code in this repository — `EU_MEMBER_STATE_CODES`,
+   * `PARCEL_MACHINE_COUNTRY_CODES`, `DELIVERABLE_COUNTRY_CODES` in
+   * `./shipping-model.js`, every delivery address Medusa carries — is
+   * ISO 3166-1 **alpha-2**. This one field is the exception, because it feeds
+   * OMX rather than Medusa, and OMX's own customs API takes alpha-3. Writing
+   * "CN" here by habit is the trap this comment exists to catch: it is a
+   * different standard's code for the same country, not a typo of this one,
+   * so nothing that checks alpha-2 codes elsewhere in this codebase would
+   * ever flag it.
+   */
+  readonly originCountry: string;
+  readonly goodsCategoryCode: "SALE_OF_GOODS";
 }
 
 export interface ProductModel {
@@ -71,6 +116,8 @@ export interface ProductModel {
   readonly packaging: ProductPackaging;
   /** `false`: stock is a statement, never a count. See this file's header. */
   readonly manageInventory: boolean;
+  /** What a customs declaration says about this product. See {@link ProductCustoms}. */
+  readonly customs: ProductCustoms;
 }
 
 /** Operator-frozen. */
@@ -87,4 +134,9 @@ export const PRODUCT: ProductModel = {
     heightMillimetres: 40,
   },
   manageInventory: false,
+  customs: {
+    tariffNumber: "9504400000",
+    originCountry: "CHN",
+    goodsCategoryCode: "SALE_OF_GOODS",
+  },
 };
