@@ -324,6 +324,35 @@ export const checkout = {
     chargeLabel: "Shipping",
     chargePending: "Enter your delivery address to see the shipping charge.",
     estimateLabel: "Delivery estimate",
+    /**
+     * The second `<select>`'s accessible name, shown once the Omniva parcel
+     * machine method is chosen. It has no visible `<dt>` of its own — it sits
+     * beneath the method it belongs to, inside the same row — so this is
+     * the only label a screen reader announces for it, the same pattern
+     * {@link methodLabel} already carries for the method `<select>` beside
+     * it.
+     */
+    parcelMachineLabel: "Parcel machine",
+    /**
+     * The picker's unchosen option. A real option rather than a blank one,
+     * for the same reason {@link AddressFieldCopy.control}'s country field
+     * has one: a screen reader announces the field as unset, and nobody is
+     * defaulted into a machine, and therefore a destination, they did not
+     * choose.
+     */
+    parcelMachinePrompt: "Choose a parcel machine",
+    /** Shown beside the picker while the machine list is being fetched. */
+    parcelMachineLoading: "Loading parcel machines…",
+    /**
+     * Shown in place of the picker when the machine list could not be
+     * fetched — the backend answers `503` when its own cache and Omniva are
+     * both unavailable. Says what to do next rather than only what failed:
+     * another method is still on offer, so a buyer is not stranded on this
+     * screen. Names no method: {@link methodLabel}'s `<select>` states them,
+     * and a name repeated here is a second place for one to go stale.
+     */
+    parcelMachineUnavailable:
+      "The parcel machine list could not be loaded. Choose another delivery method, or try again.",
   },
 
   payment: {

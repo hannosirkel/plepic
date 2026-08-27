@@ -149,6 +149,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { checkout, unavailableFigure } from "../../../../content/shop.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { destinationForCode, destinationForCountryName } from "../../lib/destination.js";
+import { fetchParcelMachines, type StorefrontParcelMachine } from "../../lib/omniva-locations.js";
 import { checkoutPriceQualification } from "../../lib/price-qualification.js";
 import {
   cartTotals,
@@ -167,6 +168,7 @@ import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import {
   addGuestShippingMethod,
   currentAddressTotals,
+  isParcelMachineOption,
   prepareGuestShipping,
   shippingOptionFigure,
   type AddressBoundTotals,
@@ -192,6 +194,7 @@ import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { ParcelMachinePicker } from "./ParcelMachinePicker.js";
 import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
 import {
   StripePaymentElement,
@@ -330,6 +333,19 @@ export function CheckoutPageContent({
   const [selectedShippingOption, setSelectedShippingOption] = useState("");
   const [storeTotals, setStoreTotals] = useState<AddressBoundTotals | null>(null);
   const [shippingState, setShippingState] = useState<"idle" | "loading" | "error">("idle");
+  /*
+   * The Omniva parcel machine method's second control. `parcelMachines` is
+   * the fetched list for the address's country, `parcelMachineZip` is what
+   * the buyer has chosen from it (`""` for nothing yet), and
+   * `parcelMachineState` covers the fetch the same way `shippingState`
+   * covers the method list — see the effect below, which is keyed on the
+   * address exactly as the shipping-options effect above it is, so a country
+   * change cannot leave a stale country's machines, or a stale choice,
+   * selectable.
+   */
+  const [parcelMachines, setParcelMachines] = useState<readonly StorefrontParcelMachine[]>([]);
+  const [parcelMachineZip, setParcelMachineZip] = useState("");
+  const [parcelMachineState, setParcelMachineState] = useState<"idle" | "loading" | "error">("idle");
   const [paymentSession, setPaymentSession] = useState<
     { readonly revision: string; readonly value: StripePaymentSession } | null
   >(null);
@@ -338,6 +354,7 @@ export function CheckoutPageContent({
   const [challengeRevision, setChallengeRevision] = useState(0);
   const [completedOrder, setCompletedOrder] = useState<CompletedStoreOrder | null>(null);
   const shippingRequest = useRef(0);
+  const parcelMachineRequest = useRef(0);
   const paymentRequest = useRef(0);
   const initializePayment = useRef(createSerialPaymentInitializer()).current;
   /*
@@ -434,6 +451,17 @@ export function CheckoutPageContent({
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
+  /*
+   * The chosen delivery method, and whether it is the one method that needs
+   * a second control. Derived rather than tracked in its own piece of state,
+   * so it can never disagree with `selectedShippingOption` — the value that
+   * actually decides which method Medusa adds.
+   */
+  const selectedShippingOptionRecord = shippingOptions.find(
+    (option) => option.id === selectedShippingOption,
+  );
+  const selectedIsParcelMachine =
+    selectedShippingOptionRecord !== undefined && isParcelMachineOption(selectedShippingOptionRecord);
   const payableRevision =
     scenario === null &&
     addressRevision !== null &&
@@ -453,6 +481,18 @@ export function CheckoutPageContent({
     setShippingOptionsAddress(null);
     setSelectedShippingOption("");
     setStoreTotals(null);
+    /*
+     * A machine chosen for the address that just changed is a machine chosen
+     * for an address that no longer exists. Cleared here, synchronously, for
+     * the same effect/event-gap reason the four resets above already are —
+     * without it a buyer who backs out to a new country would keep a
+     * previous country's zip selected underneath a picker that no longer
+     * shows it.
+     */
+    ++parcelMachineRequest.current;
+    setParcelMachines([]);
+    setParcelMachineZip("");
+    setParcelMachineState("idle");
     if (scenario !== null || !addressComplete) {
       setShippingState("idle");
       return;
@@ -493,6 +533,55 @@ export function CheckoutPageContent({
       window.clearTimeout(timer);
     };
   }, [addressComplete, addressRevision, scenario, values]);
+
+  /*
+   * The parcel machine list, fetched once the buyer has actually selected
+   * that method — not prefetched the moment the address is complete. That
+   * mirrors the guard in `selectShippingOption` below: nothing about the
+   * Omniva parcel machine method runs ahead of the buyer choosing it.
+   *
+   * Keyed on `selectedIsParcelMachine`, `shippingOptionsAddress` and
+   * `addressRevision` together, not on `values` directly: `shippingOptions`
+   * (and therefore `selectedIsParcelMachine`) only settles once the debounced
+   * effect above resolves for the current address, and reading the country
+   * before then would ask this address's endpoint with the previous one's
+   * country code for the one render in between.
+   */
+  useEffect(() => {
+    const request = ++parcelMachineRequest.current;
+    if (
+      !selectedIsParcelMachine ||
+      addressRevision === null ||
+      shippingOptionsAddress !== addressRevision
+    ) {
+      setParcelMachines([]);
+      setParcelMachineState("idle");
+      return;
+    }
+    const destination = destinationForCountryName((values.country ?? "").trim());
+    if (destination === null) {
+      setParcelMachines([]);
+      setParcelMachineState("idle");
+      return;
+    }
+    let active = true;
+    setParcelMachineState("loading");
+    void fetchParcelMachines(destination.code.toUpperCase()).then(
+      (machines) => {
+        if (!active || request !== parcelMachineRequest.current) return;
+        setParcelMachines(machines);
+        setParcelMachineState("idle");
+      },
+      () => {
+        if (!active || request !== parcelMachineRequest.current) return;
+        setParcelMachines([]);
+        setParcelMachineState("error");
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [selectedIsParcelMachine, shippingOptionsAddress, addressRevision, values]);
 
   useEffect(() => {
     const request = ++paymentRequest.current;
@@ -539,17 +628,82 @@ export function CheckoutPageContent({
       shippingOptionsAddress !== addressRevision ||
       addressRevision === null
     ) return;
-    const selectedAddressRevision = addressRevision;
-    const request = ++shippingRequest.current;
+    // Invalidates a response already in flight for the previous selection,
+    // even in the branch below that issues no new request of its own.
+    ++shippingRequest.current;
+    const chosen = shippingOptions.find((option) => option.id === optionId);
+    /*
+     * Choosing the Omniva parcel machine method with no machine chosen yet
+     * must not call the Store API — `addGuestShippingMethod` refuses to add
+     * a method with nowhere to collect the parcel from, and failing on a
+     * choice that is not wrong yet, only incomplete, is the wrong response
+     * to it. The selection is recorded and the method waits; `<select>`'s
+     * `selectedIsParcelMachine` render below is what makes the machine
+     * picker appear, and `selectParcelMachine` is what actually adds the
+     * method, once a zip exists for it to carry.
+     */
+    if (chosen !== undefined && isParcelMachineOption(chosen) && parcelMachineZip === "") {
+      setSelectedShippingOption(optionId);
+      setStoreTotals(null);
+      return;
+    }
     setSelectedShippingOption(optionId);
     setStoreTotals(null);
     if (optionId === "") return;
-    const chosen = shippingOptions.find((option) => option.id === optionId);
-    const cartId = storedMedusaCartId();
-    if (chosen === undefined || cartId === null) {
+    if (chosen === undefined) {
       setShippingState("error");
       return;
     }
+    addSelectedShippingMethod(chosen, isParcelMachineOption(chosen) ? parcelMachineZip : undefined);
+  }
+
+  /**
+   * Picks a specific machine for the already-selected Omniva parcel machine
+   * method, and adds the method now that it has a destination Medusa can
+   * collect the parcel from.
+   *
+   * Guarded the same way `selectShippingOption` is, over the same address and
+   * in-flight checks, because this is the other control that can attach a
+   * shipping method to the cart. Clearing the picker back to its unchosen
+   * option (`zip === ""`) is treated the same way an incomplete method choice
+   * is above: recorded, no Store API call, rather than an error — the method
+   * is still selected, just not addable yet.
+   */
+  function selectParcelMachine(zip: string): void {
+    if (
+      attemptInFlight.current ||
+      shippingOptionsAddress !== addressRevision ||
+      addressRevision === null
+    ) return;
+    const chosen = shippingOptions.find((option) => option.id === selectedShippingOption);
+    if (chosen === undefined || !isParcelMachineOption(chosen)) return;
+    ++shippingRequest.current;
+    setParcelMachineZip(zip);
+    setStoreTotals(null);
+    if (zip === "") return;
+    addSelectedShippingMethod(chosen, zip);
+  }
+
+  /**
+   * The Store API call both controls above end in: add exactly the chosen
+   * method, carrying a parcel machine zip when there is one to carry.
+   *
+   * Factored out because `selectShippingOption` and `selectParcelMachine` are
+   * two different decisions about *whether* to add a method — one over the
+   * method itself, one over the machine a method it already carries needs —
+   * that converge on the same request once the decision is "yes". Keeping the
+   * request in one place is what keeps the shown-versus-charged guard inside
+   * `addGuestShippingMethod` wired to a single call site instead of two that
+   * could drift.
+   */
+  function addSelectedShippingMethod(chosen: GuestShippingOption, zip: string | undefined): void {
+    const selectedAddressRevision = addressRevision;
+    const cartId = storedMedusaCartId();
+    if (selectedAddressRevision === null || cartId === null) {
+      setShippingState("error");
+      return;
+    }
+    const request = ++shippingRequest.current;
     setShippingState("loading");
     /*
      * `addGuestShippingMethod` takes the whole option, not its id, because it
@@ -564,6 +718,7 @@ export function CheckoutPageContent({
       cartId,
       chosen,
       deliveryZone === "europeanUnion",
+      zip,
     ).then(
       (nextTotals) => {
         if (request !== shippingRequest.current) return;
@@ -605,8 +760,21 @@ export function CheckoutPageContent({
      * complete-looking address whose country yields no zone leaves the shipping
      * charge and the total unshown, and nobody may be bound by a screen that
      * has not shown them the total.
+     *
+     * `parcelMachineNeedsZip` is the seventh: the Omniva parcel machine method
+     * selected with no machine chosen carries every one of the six values —
+     * the method's own charge included, since it is priced at zero and Free
+     * is a value — and would otherwise be placeable with no collectable
+     * destination.
      */
-    if (!orderMayBePlaced({ lines, addressComplete, totals })) return;
+    if (
+      !orderMayBePlaced({
+        lines,
+        addressComplete,
+        totals,
+        parcelMachineNeedsZip: selectedIsParcelMachine && parcelMachineZip === "",
+      })
+    ) return;
     if (
       typeof turnstileToken !== "string" ||
       turnstileToken.trim().length === 0 ||
@@ -876,29 +1044,55 @@ export function CheckoutPageContent({
               <dt>{checkout.delivery.methodLabel}</dt>
               <dd>
                 {scenario === null ? (
-                  <select
-                    className={`${styles.field} ${styles.select}`}
-                    aria-label={checkout.delivery.methodLabel}
-                    value={selectedShippingOption}
-                    disabled={
-                      shippingState === "loading" ||
-                      placing ||
-                      shippingOptions.length === 0 ||
-                      shippingOptionsAddress !== addressRevision
-                    }
-                    onChange={(event) => selectShippingOption(event.currentTarget.value)}
-                  >
-                    <option value="">Choose a delivery method</option>
-                    {/* Never a bare `option.amount`. That is the net rate, and
-                        rendering it unmarked beside a summary charging the
-                        gross one is two prices for one delivery — see
-                        `shippingOptionFigure`. */}
-                    {shippingOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      className={`${styles.field} ${styles.select}`}
+                      aria-label={checkout.delivery.methodLabel}
+                      value={selectedShippingOption}
+                      disabled={
+                        shippingState === "loading" ||
+                        placing ||
+                        shippingOptions.length === 0 ||
+                        shippingOptionsAddress !== addressRevision
+                      }
+                      onChange={(event) => selectShippingOption(event.currentTarget.value)}
+                    >
+                      <option value="">Choose a delivery method</option>
+                      {/* Never a bare `option.amount`. That is the net rate, and
+                          rendering it unmarked beside a summary charging the
+                          gross one is two prices for one delivery — see
+                          `shippingOptionFigure`. */}
+                      {shippingOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.name} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
+                        </option>
+                      ))}
+                    </select>
+                    {/* The second control the Omniva parcel machine method
+                        needs: a specific machine. Beneath the method select,
+                        inside the same row, so the two read as one choice
+                        made in two steps rather than two separate rows. */}
+                    {selectedIsParcelMachine ? (
+                      <ParcelMachinePicker
+                        label={checkout.delivery.parcelMachineLabel}
+                        prompt={checkout.delivery.parcelMachinePrompt}
+                        machines={parcelMachines}
+                        value={parcelMachineZip}
+                        loading={
+                          parcelMachineState === "loading"
+                            ? checkout.delivery.parcelMachineLoading
+                            : null
+                        }
+                        errorMessage={
+                          parcelMachineState === "error"
+                            ? checkout.delivery.parcelMachineUnavailable
+                            : null
+                        }
+                        disabled={shippingState === "loading" || placing || parcelMachineState === "loading"}
+                        onChange={selectParcelMachine}
+                      />
+                    ) : null}
+                  </>
                 ) : declaredShippingMethod.name}
               </dd>
             </div>

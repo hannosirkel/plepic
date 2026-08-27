@@ -582,19 +582,45 @@ export function cartTotals(
  * "this basket has no price". Article 8(2) is a disclosure obligation, so
  * refusing the placement without withholding the figure leaves a false
  * statement on the screen, which is exactly what shipped.
+ *
+ * ## The parcel machine method adds a seventh refusal
+ *
+ * Task 5 gave the Omniva parcel machine method a second control: the
+ * delivery method alone does not name a collectible destination, a specific
+ * machine does. `orderMayBePlaced` cannot know Medusa's option list or
+ * `isParcelMachineOption` itself — that would import `store-checkout.ts`,
+ * which already imports **this** module for {@link ShippingZone}, and a
+ * circular import between the two is a defect nothing here should have to
+ * survive. So the caller decides, and states the answer as the one thing
+ * this function needs: whether a selected method is that one with nothing
+ * chosen yet. `CheckoutPageContent` computes it from the selection it
+ * already holds, exactly as it already computes {@link addressComplete}
+ * from the form rather than handing this function the form itself.
  */
 export function orderMayBePlaced({
   lines,
   addressComplete,
   totals,
+  parcelMachineNeedsZip = false,
 }: {
   readonly lines: readonly CartLine[];
   readonly addressComplete: boolean;
   readonly totals: CartTotals;
+  /**
+   * True when the buyer has selected the Omniva parcel machine method but not
+   * yet chosen a specific machine — a selected method with no collectable
+   * destination, which `addGuestShippingMethod` in `./store-checkout.js`
+   * refuses to add for the same reason. Defaults to `false` so every caller
+   * that predates the parcel machine method — every test in
+   * `tests/shop-pages.test.tsx` among them — keeps its existing meaning
+   * unchanged.
+   */
+  readonly parcelMachineNeedsZip?: boolean;
 }): boolean {
   if (lines.length === 0) return false;
   if (lines.some((line) => !isAvailable(line))) return false;
   if (!addressComplete) return false;
+  if (parcelMachineNeedsZip) return false;
   return (
     totals.goodsAmount !== null && totals.shippingAmount !== null && totals.orderAmount !== null
   );

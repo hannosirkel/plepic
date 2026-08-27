@@ -1252,6 +1252,17 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
         totals: cartTotals(unavailable, { deliveryZone: "europeanUnion" }),
       }),
     ).toBe(false);
+    // The Omniva parcel machine method chosen, but no machine yet: a
+    // delivery method with no collectable destination. Every other
+    // disclosure is a value, and the order is still unplaceable.
+    expect(
+      orderMayBePlaced({
+        lines,
+        addressComplete: true,
+        totals: euTotals,
+        parcelMachineNeedsZip: true,
+      }),
+    ).toBe(false);
   });
 
   /**

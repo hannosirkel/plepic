@@ -1,5 +1,10 @@
 import { ConfigError } from "../config/env.js";
-import { deliveryCountries, formatAmount, type CartTotals } from "./cart.js";
+import {
+  declaredParcelMachineMethod,
+  deliveryCountries,
+  formatAmount,
+  type CartTotals,
+} from "./cart.js";
 import type { createMedusaStoreClient } from "./medusa-client.js";
 import { medusaMajorToMinor } from "./store-money.js";
 
@@ -80,17 +85,55 @@ export interface ShippingOptionFigure {
 /** What "+ VAT" is written as when a net rate has to be shown as one. */
 export const NET_SHIPPING_SUFFIX = " + VAT";
 
+/** What a zero-priced delivery method is written as. */
+export const FREE_SHIPPING_LABEL = "Free";
+
+/**
+ * The parcel machine method's display name, as Medusa returns it — read from
+ * `mock/shipping.json`, through `declaredParcelMachineMethod`
+ * (`./cart.js`), rather than written here.
+ *
+ * Medusa's option list carries a display name and not a provider id, so the
+ * name is the only thing the storefront can recognise the method by. A literal
+ * here would be a second copy of a value `backend/src/commerce/shipping-model.ts`
+ * declares, and a rename would then stop the method being recognised
+ * **silently**: it would still render in the `<select>`, the machine picker
+ * would never appear, and the order would go through with no machine chosen.
+ * `backend/tests/commerce-shipping-model.test.ts` holds the model to this
+ * file, so the two cannot drift apart.
+ *
+ * Read through `declaredParcelMachineMethod` rather than a second, separate
+ * import of the JSON: `./cart.js` already parses and validates
+ * `mock/shipping.json`'s `parcelMachine` block (`assertParcelMachine`), and a
+ * second unvalidated read here would be a second thing that could silently
+ * accept a malformed file.
+ */
+export const PARCEL_MACHINE_OPTION_NAME = declaredParcelMachineMethod.name;
+
+export function isParcelMachineOption(option: GuestShippingOption): boolean {
+  return option.name === PARCEL_MACHINE_OPTION_NAME;
+}
+
 /**
  * The figure to render for one delivery option.
  *
- * Three cases, and the middle one is what actually occurs today:
+ * Four cases, and the second is what actually occurs today for the standard
+ * method:
  *
- * 1. **Medusa supplied a with-tax amount** — render it; it is final.
- * 2. **It did not, and the delivery address is in the EU** — render the net
+ * 1. **The option is priced at zero** — render {@link FREE_SHIPPING_LABEL},
+ *    final, in both zones. There is no VAT on nothing, so the "+ VAT" branch
+ *    below would promise a charge that never arrives — checked first and
+ *    unconditionally, ahead of the tax-inclusive branches, because a rate of
+ *    zero is never a net rate awaiting anything. Reached only by a method the
+ *    operator priced at zero, which today is the Omniva parcel machine and is
+ *    asserted to be the only one in
+ *    `backend/tests/commerce-shipping-model.test.ts`.
+ * 2. **Medusa supplied a with-tax amount** — render it; it is final.
+ * 3. **It did not, and the delivery address is in the EU** — render the net
  *    rate, explicitly marked. Never bare: a bare net rate beside a grossed
  *    summary is two prices for one thing and the reader cannot tell which is
  *    the charge.
- * 3. **It did not, and the address is outside the EU** — the net rate *is* the
+ * 4. **It did not, and the address is outside the EU** — the net rate *is* the
  *    charge, because no EU VAT arises. Render it, final, unmarked. Marking it
  *    would promise a tax that is never added.
  *
@@ -103,6 +146,9 @@ export function shippingOptionFigure(
   option: GuestShippingOption,
   vatApplies: boolean,
 ): ShippingOptionFigure {
+  if (option.amount === 0) {
+    return { amount: 0, label: FREE_SHIPPING_LABEL, final: true };
+  }
   if (option.amountWithTax !== null) {
     return {
       amount: option.amountWithTax,
@@ -359,16 +405,32 @@ export function assertedCartTotals(value: unknown): CartTotals {
  * - a **net** figure marked "+ VAT" was shown, so what was charged, net of its
  *   own tax, must equal it. That is checkable because `shipping_tax_total`
  *   says how much of the charge is tax.
+ *
+ * `parcelMachineZip` is the one extra fact the Omniva parcel machine method
+ * needs to be collectable at all: Medusa's option list carries no field for
+ * it, so it travels as `data.parcel_machine_zip` on the shipping-method
+ * addition, the way `backend/src/modules/omniva/service.ts`'s
+ * `validateFulfillmentData` reads it back. **Refused here, not just in the
+ * picker**, because the picker is a `<select>` a script could bypass and a
+ * selected parcel machine method with no destination is one
+ * `orderMayBePlaced` (`./cart.js`) must never let reach payment either.
  */
 export async function addGuestShippingMethod(
   client: StoreClient,
   cartId: string,
   option: GuestShippingOption,
   vatApplies: boolean,
+  parcelMachineZip?: string,
 ): Promise<CartTotals> {
   if (option.id.length === 0) throw new ConfigError("Choose a shipping option");
+  if (isParcelMachineOption(option) && !parcelMachineZip) {
+    throw new ConfigError("Choose an Omniva parcel machine");
+  }
   const totals = cartTotals(
-    await client.store.cart.addShippingMethod(cartId, { option_id: option.id }),
+    await client.store.cart.addShippingMethod(cartId, {
+      option_id: option.id,
+      ...(parcelMachineZip === undefined ? {} : { data: { parcel_machine_zip: parcelMachineZip } }),
+    }),
   );
   const shown = shippingOptionFigure(option, vatApplies);
   const charged = totals.shippingAmount;

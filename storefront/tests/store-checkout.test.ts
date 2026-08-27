@@ -9,10 +9,11 @@ import {
   currentAddressTotals,
   prepareGuestShipping,
   shippingOptionFigure,
+  NET_SHIPPING_SUFFIX,
   type GuestCheckoutAddress,
   type GuestShippingOption,
 } from "../src/lib/store-checkout.js";
-import { formatAmount } from "../src/lib/cart.js";
+import { formatAmount, zoneForCountryName, SHIPPING_ZONES } from "../src/lib/cart.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { destinationForCountryName } from "../src/lib/destination.js";
 
@@ -44,6 +45,25 @@ const parsedOption = (id: string, name: string, amountMinor: number): GuestShipp
   amountWithTax: null,
   taxInclusive: false,
 });
+
+/**
+ * A Medusa stub for the one method `addGuestShippingMethod` calls on a
+ * client — `store.cart.addShippingMethod` — that answers with exactly the
+ * cart fixture given, wrapped the way a Store response is.
+ *
+ * No HTTP server: the case this exists for (a free method's totals, and the
+ * shown-versus-charged guard over a zero) does not need the request itself
+ * inspected, only the response `addGuestShippingMethod` is handed. The other
+ * tests in this file, which do assert on the request, use a real server —
+ * see `listen`/`close` above.
+ */
+function clientAddingShippingMethod(fixture: {
+  readonly cart: Record<string, unknown>;
+}): Parameters<typeof addGuestShippingMethod>[0] {
+  return {
+    store: { cart: { addShippingMethod: async () => fixture } },
+  } as unknown as Parameters<typeof addGuestShippingMethod>[0];
+}
 
 interface SeenRequest {
   readonly method: string;
@@ -275,6 +295,42 @@ describe("guest checkout Store operations", () => {
       /contains tax/,
     );
   });
+
+  it("charges nothing for the free method, and still refuses a mismatch", async () => {
+    const client = clientAddingShippingMethod({
+      cart: {
+        currency_code: "eur", item_total: 30.5, item_tax_total: 5.9,
+        shipping_total: 0, shipping_tax_total: 0, tax_total: 5.9, total: 30.5,
+      },
+    });
+    // A zip travels with the parcel machine method: `isParcelMachineOption`
+    // matches this option by name, and `addGuestShippingMethod` refuses one
+    // with none — see the "refuses to add the parcel machine method with no
+    // machine chosen" case below for that guard on its own.
+    const totals = await addGuestShippingMethod(
+      client, "cart_1",
+      { id: "so_free", name: "Omniva parcel machine", amount: 0, amountWithTax: null, taxInclusive: false },
+      true,
+      "10111",
+    );
+    expect(totals.shippingAmount).toBe(0);
+  });
+
+  it("refuses to add the parcel machine method with no machine chosen", async () => {
+    const client = clientAddingShippingMethod({
+      cart: {
+        currency_code: "eur", item_total: 30.5, item_tax_total: 5.9,
+        shipping_total: 0, shipping_tax_total: 0, tax_total: 5.9, total: 30.5,
+      },
+    });
+    await expect(
+      addGuestShippingMethod(
+        client, "cart_1",
+        { id: "so_free", name: "Omniva parcel machine", amount: 0, amountWithTax: null, taxInclusive: false },
+        true,
+      ),
+    ).rejects.toThrow(/Choose an Omniva parcel machine/);
+  });
 });
 
 /**
@@ -310,6 +366,35 @@ describe("the figure a delivery option is shown as", () => {
 
   it("never renders a bare figure for a net rate inside the EU", () => {
     expect(shippingOptionFigure(net, true).label).not.toBe("€7.00");
+  });
+
+  it("renders a free method as Free, never as a net rate awaiting VAT", () => {
+    const free = {
+      id: "so_free", name: "Omniva parcel machine",
+      amount: 0, amountWithTax: null, taxInclusive: false,
+    } as const;
+
+    // Inside the EU, where every other net figure gains a "+ VAT" marker.
+    const shown = shippingOptionFigure(free, true);
+    expect(shown.label).toBe("Free");
+    expect(shown.amount).toBe(0);
+    expect(shown.final).toBe(true);
+    expect(shown.label).not.toContain(NET_SHIPPING_SUFFIX);
+
+    // And outside it, where the marker never applied anyway.
+    expect(shippingOptionFigure(free, false).label).toBe("Free");
+  });
+
+  /**
+   * The VAT hazard this design exists beside: EE, LV and LT buy delivery from
+   * their own service zone and are still EU member states for tax. If
+   * `ShippingZone` ever gained a third member, this goes red.
+   */
+  it("still treats an Estonian address as EU for VAT", () => {
+    expect(zoneForCountryName("Estonia")).toBe("europeanUnion");
+    expect(zoneForCountryName("Latvia")).toBe("europeanUnion");
+    expect(zoneForCountryName("Lithuania")).toBe("europeanUnion");
+    expect(SHIPPING_ZONES).toEqual(["europeanUnion", "restOfWorld"]);
   });
 });
 
