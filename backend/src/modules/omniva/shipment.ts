@@ -17,8 +17,12 @@
  * spread (`...(condition ? { key: value } : {})`) rather than written as
  * `key: condition ? value : undefined`. `JSON.stringify` happens to drop
  * `undefined` values too, which would make the wrong version *look* right in
- * a test that only inspects the serialised JSON — `tests/omniva-shipment.test.ts`
- * asserts directly on the returned object for exactly this reason.
+ * a test that only inspects the serialised JSON — and `Object.is(actual,
+ * undefined)`, which is what Vitest's `toBeUndefined()` runs, is exactly as
+ * blind: it passes identically for a missing key and for one set to
+ * `undefined`. `tests/omniva-shipment.test.ts` asserts key *presence* with
+ * `toHaveProperty`/`not.toHaveProperty` wherever that distinction is the
+ * point, for this reason.
  *
  * ## Two country sets decide two different things, and they are not the same set
  *
@@ -58,6 +62,15 @@ import { PRODUCT } from "../../commerce/product-model";
  * receiver's are — see {@link PHONE_OPTIONAL_COUNTRY_CODES} — but the
  * merchant's own destination-independent phone is supplied once, here,
  * rather than looked up per shipment.
+ *
+ * `deliverypoint` is spelled exactly as OMX's manual spells it — one word,
+ * lowercase `p` — deliberately not renamed to `deliveryPoint` to match its
+ * camelCase neighbours. It is the field name the wire format sends, and
+ * `tests/omniva-shipment.test.ts` asserts the full `senderAddressee` object
+ * with `toEqual` for exactly this reason: a typo here fails every
+ * registration the moment `client.ts` (Task 10) sends it, and nothing about
+ * TypeScript's structural typing would catch a wrong string key at compile
+ * time.
  */
 export interface OmnivaSenderConfig {
   readonly personName: string;
@@ -118,6 +131,9 @@ const PARTNER_SHIPMENT_ID_MAX_LENGTH = 30;
 /** OMX accepts at most 8 `customs.shipmentItems` entries per shipment. */
 const MAX_CUSTOMS_ITEMS = 8;
 
+/** OMX bounds `contentDescription` at `string(1500)`. See its truncation below for why. */
+const MAX_CONTENT_DESCRIPTION_LENGTH = 1500;
+
 /** Kilograms, rounded to three decimals — the precision OMX's `measurement.weight` takes. */
 function roundToThreeDecimals(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -171,14 +187,30 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
   const weightKilograms = roundToThreeDecimals(totalWeightGrams / 1000);
 
   // contentDescription: the order's *distinct* item titles — two units of the
-  // same game is one description, not two.
-  const contentDescription = Array.from(new Set(items.map((item) => item.title))).join(", ");
+  // same game is one description, not two. Truncated, not refused, above the
+  // manual's string(1500): this is free text describing what is in the box,
+  // not an identifier a mismatch could corrupt, and refusing a paid order
+  // because its product titles happen to be long would be a worse outcome
+  // than the carrier seeing a shortened description.
+  const contentDescription = Array.from(new Set(items.map((item) => item.title)))
+    .join(", ")
+    .slice(0, MAX_CONTENT_DESCRIPTION_LENGTH);
 
-  // The receiver address carries offloadPostcode OR street/postcode/city,
-  // never both — a street address alongside an offloadPostcode is two
-  // destinations for one parcel. Which one applies follows the delivery
-  // channel the buyer actually chose, not the destination country: a courier
-  // order to a parcel-machine country still ships to a street.
+  // The receiver address always carries `country` — mandatory per the
+  // manual regardless of address form — plus either `offloadPostcode` alone
+  // or `street`/`postcode`/`city` alone, never both: a street address
+  // alongside an offloadPostcode is two destinations for one parcel. Which
+  // of the two applies follows the delivery channel the buyer actually
+  // chose, not the destination country: a courier order to a parcel-machine
+  // country still ships to a street.
+  //
+  // A parcel machine registration requires a chosen machine's ZIP. Refusing
+  // its absence here, rather than letting it through, matters because the
+  // alternative is not "no destination" but a silently wrong one:
+  // `offloadPostcode: undefined` would be dropped by the eventual
+  // JSON.stringify, leaving an address with no offloadPostcode AND no street
+  // — a parcel addressed nowhere at all, which is worse than refusing it at
+  // fulfilment.
   let receiverAddress: Record<string, unknown>;
   if (input.deliveryChannel === "PARCEL_MACHINE") {
     if (typeof input.parcelMachineZip !== "string" || input.parcelMachineZip.trim().length === 0) {
@@ -186,7 +218,7 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
         "A parcel machine registration requires parcelMachineZip, and none was supplied",
       );
     }
-    receiverAddress = { offloadPostcode: input.parcelMachineZip };
+    receiverAddress = { offloadPostcode: input.parcelMachineZip, country: countryCode };
   } else {
     receiverAddress = {
       street: shippingAddress.address1,
@@ -196,12 +228,16 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
     };
   }
 
-  // contactPhone: sent when present, and mandatory outside the four
-  // countries OMX exempts. Checked here, on the *destination*, and not
+  // contactPhone: sent, trimmed, when present, and mandatory outside the
+  // four countries OMX exempts. Checked here, on the *destination*, and not
   // conflated with PARCEL_MACHINE_COUNTRY_CODES — Finland is phone-optional
-  // and carries no parcel machines at all.
+  // and carries no parcel machines at all. The same trimmed value backs both
+  // the presence check and the emitted key, so a phone of all whitespace is
+  // treated as absent in both places rather than refused here and sent blank
+  // there.
   const phoneRequired = !PHONE_OPTIONAL_COUNTRY_CODES.includes(countryCode);
-  if (phoneRequired && (shippingAddress.phone === null || shippingAddress.phone.trim().length === 0)) {
+  const trimmedPhone = shippingAddress.phone?.trim() ?? "";
+  if (phoneRequired && trimmedPhone.length === 0) {
     throw new Error(
       `OMX requires a receiver phone number for deliveries to ${countryCode}, ` +
         "and this order's shipping address has none",
@@ -211,13 +247,15 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
   const receiverAddressee: Record<string, unknown> = {
     personName: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
     contactEmail: order.email,
-    ...(shippingAddress.phone ? { contactPhone: shippingAddress.phone } : {}),
+    ...(trimmedPhone.length > 0 ? { contactPhone: trimmedPhone } : {}),
     address: receiverAddress,
   };
 
   // senderAddressee: from configuration. deliverypoint (city), postcode and
   // country are mandatory per the manual; street is optional, so it is only
-  // added when the config actually carries one.
+  // added when the config actually carries one. `country` is normalised the
+  // same way the receiver's is — a config value typed as `string` carries no
+  // guarantee of case, and OMX's alpha-2 codes are upper case.
   const senderAddressee = {
     personName: sender.personName,
     contactPhone: sender.phone,
@@ -225,7 +263,7 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
     address: {
       deliverypoint: sender.deliverypoint,
       postcode: sender.postcode,
-      country: sender.country,
+      country: sender.country.trim().toUpperCase(),
       ...(sender.street ? { street: sender.street } : {}),
     },
   };

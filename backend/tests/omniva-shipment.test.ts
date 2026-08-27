@@ -32,6 +32,7 @@ function input(overrides: Record<string, unknown> = {}) {
  * this type lying that it is always there.
  */
 interface OmxShipment {
+  readonly partnerShipmentId: string;
   readonly mainService: string;
   readonly deliveryChannel?: string;
   readonly servicePackage?: { readonly code: string };
@@ -47,6 +48,17 @@ interface OmxShipment {
       readonly postcode?: string;
       readonly city?: string;
       readonly country?: string;
+    };
+  };
+  readonly senderAddressee: {
+    readonly personName: string;
+    readonly contactPhone: string;
+    readonly contactEmail: string;
+    readonly address: {
+      readonly deliverypoint: string;
+      readonly postcode: string;
+      readonly country: string;
+      readonly street?: string;
     };
   };
   readonly customs?: {
@@ -72,15 +84,113 @@ describe("the OMX registration body", () => {
     expect(one.mainService).toBe("PARCEL");
     expect(one.deliveryChannel).toBe("PARCEL_MACHINE");
     expect(one.receiverAddressee.address.offloadPostcode).toBe("10145");
+    // `country` is mandatory on the address per the manual regardless of
+    // form -- without this, every EE/LV/LT parcel machine registration would
+    // be missing a required field and refused by the carrier.
+    expect(one.receiverAddressee.address).toHaveProperty("country", "EE");
     expect(one.receiverAddressee.contactEmail).toBe("buyer@example.com");
     expect(one.measurement.weight).toBe(0.3);
     // The buyer collects from the machine; a street address alongside an
-    // offloadPostcode is two destinations for one parcel.
-    expect(one.receiverAddressee.address.street).toBeUndefined();
+    // offloadPostcode is two destinations for one parcel. `toBeUndefined()`
+    // cannot tell a missing key from one set to `undefined`, so the absence
+    // is asserted on the key itself.
+    expect(one.receiverAddressee.address).not.toHaveProperty("street");
     // servicePackage is mandatory only outside EE, LV and LT, and OMX refuses
     // an attribute that exists with no value.
-    expect(one.servicePackage).toBeUndefined();
-    expect(one.customs).toBeUndefined();
+    expect(one).not.toHaveProperty("servicePackage");
+    expect(one).not.toHaveProperty("customs");
+  });
+
+  it("truncates a contentDescription over OMX's 1500-character bound rather than refusing it", () => {
+    // Free text, not an identifier: a long run of product titles is
+    // shortened, not a reason to fail a paid order.
+    const longTitle = "Lunar Base ".repeat(200); // well over 1500 characters
+    const one = shipment(buildShipmentRegistration(input({
+      order: { ...input().order, items: [
+        { title: longTitle, quantity: 1, weightGrams: 300, unitPriceNet: 25 },
+      ] },
+    })));
+    expect(one.contentDescription.length).toBe(1500);
+    expect(one.contentDescription).toBe(longTitle.slice(0, 1500));
+  });
+
+  it("sends the full senderAddressee from configuration, including its lowercase-p deliverypoint", () => {
+    const one = shipment(buildShipmentRegistration(input()));
+    expect(one.senderAddressee).toEqual({
+      personName: "Plepic Games OÜ",
+      contactPhone: "+37255550100",
+      contactEmail: "info@example.com",
+      address: {
+        deliverypoint: "Jüri alevik",
+        postcode: "75301",
+        country: "EE",
+        street: "Pihlaka tn 2",
+      },
+    });
+  });
+
+  it("omits the sender's street when the config carries none", () => {
+    const one = shipment(buildShipmentRegistration(input({
+      sender: { ...SENDER, street: undefined },
+    })));
+    expect(one.senderAddressee.address).not.toHaveProperty("street");
+    expect(one.senderAddressee.address).toEqual({
+      deliverypoint: "Jüri alevik", postcode: "75301", country: "EE",
+    });
+  });
+
+  it("normalises a lowercase sender country the same way the receiver's is", () => {
+    const one = shipment(buildShipmentRegistration(input({
+      sender: { ...SENDER, country: "ee" },
+    })));
+    expect(one.senderAddressee.address.country).toBe("EE");
+  });
+
+  it("carries the fulfilment id and customer code through unchanged", () => {
+    const body = buildShipmentRegistration(input());
+    expect((body as { customerCode: string }).customerCode).toBe("CUSTOMER");
+    expect(shipment(body).partnerShipmentId).toBe("ful_01JABCDEFGHJKMNPQRSTVWXYZ");
+  });
+
+  it("sums weight across quantity and distinct lines, in kilograms, to three decimals", () => {
+    // 2*300 + 1*450 + 3*125 = 1425 g = 1.425 kg. Dropping "* quantity" or the
+    // rounding would still pass a suite that only ever used 1 x 300 g.
+    const one = shipment(buildShipmentRegistration(input({
+      deliveryChannel: "COURIER", parcelMachineZip: undefined,
+      order: { ...input().order,
+        shippingAddress: {
+          firstName: "Ann", lastName: "Lee", address1: "5th Ave", postalCode: "10001",
+          city: "New York", countryCode: "US", phone: "+12125550100",
+        },
+        items: [
+          { title: "Game A", quantity: 2, weightGrams: 300, unitPriceNet: 25 },
+          { title: "Game B", quantity: 1, weightGrams: 450, unitPriceNet: 30 },
+          { title: "Game C", quantity: 3, weightGrams: 125, unitPriceNet: 10 },
+        ],
+      },
+    })));
+    expect(one.measurement.weight).toBe(1.425);
+    expect(one.customs!.shipmentItems.map((item) => item.weight)).toEqual([0.6, 0.45, 0.375]);
+  });
+
+  /**
+   * The extra refusal this builder adds beyond the brief: without it, a
+   * `PARCEL_MACHINE` registration with no chosen machine would emit
+   * `offloadPostcode: undefined`, which `JSON.stringify` drops, leaving an
+   * address with neither an offload postcode nor a street -- a parcel
+   * addressed nowhere. It must never fire for a courier order, which never
+   * needs a machine ZIP at all.
+   */
+  it("refuses a parcel machine registration with no chosen machine, but not a courier order", () => {
+    expect(() => buildShipmentRegistration(input({ parcelMachineZip: undefined })))
+      .toThrow(/parcelMachineZip/);
+    expect(() => buildShipmentRegistration(input({
+      deliveryChannel: "COURIER", parcelMachineZip: undefined,
+      order: { ...input().order, shippingAddress: {
+        firstName: "Anna", lastName: "Klein", address1: "Weg 3", postalCode: "10115",
+        city: "Berlin", countryCode: "DE", phone: "+4930123456",
+      } },
+    }))).not.toThrow();
   });
 
   /**
@@ -99,12 +209,12 @@ describe("the OMX registration body", () => {
       } },
     })));
     expect(one.deliveryChannel).toBe("COURIER");
-    expect(one.servicePackage).toBeUndefined();
+    expect(one).not.toHaveProperty("servicePackage");
     expect(one.receiverAddressee.address.street).toBe("Brivibas iela 10");
-    expect(one.receiverAddressee.address.offloadPostcode).toBeUndefined();
+    expect(one.receiverAddressee.address).not.toHaveProperty("offloadPostcode");
     // Latvia is phone-optional; the address carries none, and that must not refuse.
-    expect(one.receiverAddressee.contactPhone).toBeUndefined();
-    expect(one.customs).toBeUndefined();   // Latvia is in the EU
+    expect(one.receiverAddressee).not.toHaveProperty("contactPhone");
+    expect(one).not.toHaveProperty("customs");   // Latvia is in the EU
   });
 
   it("sends a service package and no delivery channel for a German courier order", () => {
@@ -116,11 +226,11 @@ describe("the OMX registration body", () => {
       } },
     })));
     expect(one.servicePackage).toEqual({ code: "ECONOMY" });
-    expect(one.deliveryChannel).toBeUndefined();
+    expect(one).not.toHaveProperty("deliveryChannel");
     expect(one.contentDescription).toBe("Lunar Base");
     expect(one.receiverAddressee.contactPhone).toBe("+4930123456");
     expect(one.receiverAddressee.address.postcode).toBe("10115");
-    expect(one.customs).toBeUndefined();   // Germany is in the EU
+    expect(one).not.toHaveProperty("customs");   // Germany is in the EU
   });
 
   it("declares customs for a destination outside the EU", () => {
