@@ -5,8 +5,9 @@
  * this one:
  *
  * - Every estimate is the commercial model Task 1 froze. Two shipping zones,
- *   Euroopa Liit and the rest of the world; nothing territory-by-territory is
- *   elaborated here, by standing operator decision.
+ *   Euroopa Liit and the rest of the world, until 2026-08-26; nothing
+ *   territory-by-territory is elaborated here beyond what that decision
+ *   added, by standing operator decision.
  * - **The advertised figure is net, and the VAT section says so in both
  *   directions.** The advertised figure is the price before tax; Estonian VAT
  *   is added for a delivery address in the European Union and added nowhere
@@ -15,6 +16,30 @@
  *   — because the English text it translated did. Both were rewritten on
  *   2026-08-18, together.
  * - The figure itself is never written here; it resolves from the catalogue.
+ *
+ * ## The parcel machine method, added 2026-08-26
+ *
+ * `../shipping.ts` gained a paragraph naming the free Omniva parcel machine
+ * method the operator added for a delivery address in Estonia, Latvia or
+ * Lithuania, alongside Standard delivery rather than instead of it — see that
+ * file's own header for the full reasoning, including why the method's rate
+ * is written as the plain word "free" instead of through a placeholder. The
+ * paragraph below is this file's translation of it, added in the same
+ * change so the two editions' delivery sections keep the identical structure
+ * `content/content.test.ts`'s edition-parity check requires. `Standard
+ * delivery` and `Omniva parcel machine` are left untranslated because they
+ * are the exact option names Medusa returns at checkout in every locale —
+ * translating them here would give an Estonian reader a name they will not
+ * meet at checkout.
+ *
+ * **This one paragraph has not itself had the qualified reader's separate
+ * confirmation the header below records for the rest of the page's Estonian
+ * text**, for the reason that header already gives: a change to this page's
+ * substance needs its own reading. It is added now so the structural
+ * guarantee holds and no legally required disclosure exists in one edition
+ * and not the other; the operator's own review of this specific Estonian
+ * wording is outstanding and should happen before this page is next
+ * reviewed as a whole.
  *
  * Anchors, `covers`, sources and every placeholder token are byte-identical to
  * the English page, which is why the callout's `lead` is `{priceTaxQualifier}`
@@ -61,6 +86,7 @@ export const shipping: LegalPage = {
       covers: ["delivery-terms", "dispatch-estimate"],
       body: [
         "Saadame igasse riiki.",
+        "Standard delivery on saadaval igale aadressile, kuhu me saadame: üks kindel tariif tarneaadressile, mis asub Euroopa Liidu liikmesriigis, ja kõrgem kindel tariif tarneaadressile mujal — mõlemad arvutatakse tellimuse vormistamisel. Kui sinu tarneaadress on Eestis, Lätis või Leedus, võid Standard delivery asemel valida Omniva parcel machine, ja see viis on tasuta.",
         "Tellimused antakse vedajale üle 3 tööpäeva jooksul pärast makse laekumist. Pärast teelepanekut võtab kättetoimetamine Euroopa Liidus tavaliselt 3 kuni 7 tööpäeva ning mujal maailmas tavaliselt 7 kuni 21 tööpäeva.",
         "Need on vedaja hinnangud, mitte lubadused. Tollikontroll, streigid ja jõulueelsed paar nädalat liigutavad neid kõiki. Kui pakk on oluliselt üle aja, kirjuta meile aadressil {merchantContactAddress} ja me uurime järele.",
         "Kui pakki lihtsalt ei tulegi, võid määrata meile täiendava mõistliku tähtaja ja kui me ka sellest mööda laseme, tellimusest taganeda ja saada kogu raha tagasi.",

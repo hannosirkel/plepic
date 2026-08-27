@@ -7,6 +7,28 @@
  * stale silently, which on this particular page is a misrepresentation rather
  * than a typo.
  *
+ * ## The parcel machine method the operator added on 2026-08-26, and the one price that is not a placeholder
+ *
+ * `backend/src/commerce/shipping-model.ts` records the operator's decision in
+ * full: a free Omniva parcel machine method, offered to a delivery address in
+ * Estonia, Latvia or Lithuania alongside Standard delivery rather than instead
+ * of it. The delivery section below names all three countries individually
+ * rather than reaching for the regional name a reader might expect: that name
+ * is not one of the three countries, and using it here would invite a fourth
+ * member on grounds the operator's decision does not give it.
+ *
+ * Standard delivery's two rates are described here the way this page has
+ * always described money: without a figure, because a figure written down is
+ * a figure that can go stale. The parcel machine's rate is different, and it
+ * is the one place on this page that states a price directly, as the word
+ * "free" rather than as a placeholder. Zero is the one figure that cannot go
+ * stale silently — there is no lower price for it to drift away from and be
+ * wrong about. Should the operator ever start charging for this method,
+ * "free" becomes false the moment that happens, in plain sight, rather than
+ * quietly — which is the ordinary risk any stated commitment carries, and a
+ * smaller one than inventing a placeholder mechanism for a figure this page
+ * has no live source to resolve it from today.
+ *
  * ## The VAT section was rewritten on 2026-08-18, and the reason is arithmetic
  *
  * Everything below this heading describes the page as it stood while the
@@ -149,6 +171,7 @@ export const shipping: LegalPage = {
       covers: ["delivery-terms", "dispatch-estimate"],
       body: [
         "We ship to every country.",
+        "Standard delivery is available to every address we ship to, at one flat rate for a delivery address in an EU member state and a higher flat rate for a delivery address anywhere else, calculated at checkout. If your delivery address is in Estonia, Latvia or Lithuania, you can choose an Omniva parcel machine instead, and that method is free.",
         "Orders are dispatched within 3 business days of payment clearing. After dispatch, delivery inside the European Union usually takes 3 to 7 business days, and delivery to the rest of the world usually takes 7 to 21 business days.",
         "Those are estimates from the carrier, not guarantees. Customs inspection, strikes and the fortnight before Christmas all move them. If a parcel is materially overdue, write to us at {merchantContactAddress} and we will chase it.",
         "If a parcel simply never comes, you can set us a further reasonable deadline and, if we miss that too, cancel for a full refund.",

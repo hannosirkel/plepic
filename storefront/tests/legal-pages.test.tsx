@@ -19,6 +19,10 @@
  * `tests/no-unresolved-placeholder.test.tsx` is the brace-hunting scan and now
  * covers these routes too; this file is about the states either side of it.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -86,6 +90,9 @@ function visibleText(html: string): string {
 const CONFIGURED_TARGETS: ExternalTargetUrls = {
   "consumer-disputes-committee": "https://disputes.example.org/committee",
 };
+
+/** `storefront/tests` -> `storefront` -> repo root. */
+const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /*
  * `locale` matters: pass 2 of this unit's review found the per-edition loops
@@ -1030,6 +1037,66 @@ describe("the VAT section makes one statement about tax", () => {
         catalogue.priceHeadline,
       );
       expect(vat?.callout?.detail).toBe(catalogue.priceShippingNote);
+    }
+  });
+});
+
+/**
+ * The delivery-method section the operator added on 2026-08-26: a free Omniva
+ * parcel machine to Estonia, Latvia and Lithuania, offered alongside Standard
+ * delivery rather than instead of it. See
+ * `backend/src/commerce/shipping-model.ts` for the commercial model this
+ * section describes, and this file's own header for why the parcel machine's
+ * rate is the one price on the page written as a word rather than a
+ * placeholder.
+ */
+describe("the delivery section names every method Omniva added on 2026-08-26", () => {
+  const shipping = legalPages.find((page) => page.route === "legalShipping");
+  const delivery = shipping?.body.find((candidate) => candidate.anchor === "delivery");
+
+  it("names Standard delivery for an EU member state, Standard delivery elsewhere, and the Omniva parcel machine", () => {
+    const text = visibleText(render(shipping!, CONFIGURED));
+
+    expect(text, "Standard delivery is not named").toContain("Standard delivery");
+    expect(text, "the EU member state rate is not described").toMatch(/EU member state/);
+    expect(
+      text,
+      "the rate for a destination outside the EU is not described",
+    ).toMatch(/anywhere else|any other address|outside the European Union/);
+    expect(text, "the Omniva parcel machine is not named").toContain("Omniva parcel machine");
+  });
+
+  it("says the parcel machine method is free, and names Estonia, Latvia and Lithuania by name", () => {
+    const paragraph = (delivery?.body ?? []).find((candidate) =>
+      candidate.includes("Omniva parcel machine"),
+    );
+
+    expect(paragraph, "no paragraph names the Omniva parcel machine").toBeDefined();
+    expect(paragraph, "the parcel machine paragraph does not say it is free").toMatch(/\bfree\b/i);
+    expect(paragraph, "the parcel machine paragraph does not name Estonia").toContain("Estonia");
+    expect(paragraph, "the parcel machine paragraph does not name Latvia").toContain("Latvia");
+    expect(paragraph, "the parcel machine paragraph does not name Lithuania").toContain(
+      "Lithuania",
+    );
+  });
+
+  /**
+   * Asserted against the rendered page **and** the raw source text — "in copy
+   * or in code" — because a region name in a comment is exactly as capable of
+   * inviting a fourth, undecided member as one in a sentence a visitor reads.
+   */
+  it('never says "Baltics" or "the Baltic states", in copy or in code', () => {
+    const rendered = visibleText(render(shipping!, CONFIGURED));
+    expect(rendered, "the rendered page names a region rather than the three countries").not.toMatch(
+      /baltic/i,
+    );
+
+    for (const relativePath of ["content/legal/shipping.ts", "content/legal/et/shipping.ts"]) {
+      const source = readFileSync(join(repoRoot, ...relativePath.split("/")), "utf8");
+      expect(
+        source,
+        `${relativePath} names a region rather than the three countries`,
+      ).not.toMatch(/baltic/i);
     }
   });
 });
