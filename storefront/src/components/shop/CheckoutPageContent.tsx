@@ -149,7 +149,6 @@ import type { ChangeEvent, FormEvent } from "react";
 import { checkout, unavailableFigure } from "../../../../content/shop.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { destinationForCode, destinationForCountryName } from "../../lib/destination.js";
-import { fetchParcelMachines, type StorefrontParcelMachine } from "../../lib/omniva-locations.js";
 import { checkoutPriceQualification } from "../../lib/price-qualification.js";
 import {
   cartTotals,
@@ -196,6 +195,7 @@ import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { ParcelMachinePicker } from "./ParcelMachinePicker.js";
 import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
+import { useParcelMachineSelection } from "./useParcelMachineSelection.js";
 import {
   StripePaymentElement,
   type StripePaymentElementHandle,
@@ -333,19 +333,6 @@ export function CheckoutPageContent({
   const [selectedShippingOption, setSelectedShippingOption] = useState("");
   const [storeTotals, setStoreTotals] = useState<AddressBoundTotals | null>(null);
   const [shippingState, setShippingState] = useState<"idle" | "loading" | "error">("idle");
-  /*
-   * The Omniva parcel machine method's second control. `parcelMachines` is
-   * the fetched list for the address's country, `parcelMachineZip` is what
-   * the buyer has chosen from it (`""` for nothing yet), and
-   * `parcelMachineState` covers the fetch the same way `shippingState`
-   * covers the method list — see the effect below, which is keyed on the
-   * address exactly as the shipping-options effect above it is, so a country
-   * change cannot leave a stale country's machines, or a stale choice,
-   * selectable.
-   */
-  const [parcelMachines, setParcelMachines] = useState<readonly StorefrontParcelMachine[]>([]);
-  const [parcelMachineZip, setParcelMachineZip] = useState("");
-  const [parcelMachineState, setParcelMachineState] = useState<"idle" | "loading" | "error">("idle");
   const [paymentSession, setPaymentSession] = useState<
     { readonly revision: string; readonly value: StripePaymentSession } | null
   >(null);
@@ -354,7 +341,6 @@ export function CheckoutPageContent({
   const [challengeRevision, setChallengeRevision] = useState(0);
   const [completedOrder, setCompletedOrder] = useState<CompletedStoreOrder | null>(null);
   const shippingRequest = useRef(0);
-  const parcelMachineRequest = useRef(0);
   const paymentRequest = useRef(0);
   const initializePayment = useRef(createSerialPaymentInitializer()).current;
   /*
@@ -452,16 +438,39 @@ export function CheckoutPageContent({
   const blockedNoteId = `${baseId}-order-blocked`;
   const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
   /*
-   * The chosen delivery method, and whether it is the one method that needs
-   * a second control. Derived rather than tracked in its own piece of state,
-   * so it can never disagree with `selectedShippingOption` — the value that
-   * actually decides which method Medusa adds.
+   * The chosen delivery method. Read here rather than only inside the hook
+   * below, because `selectShippingOption` needs it too — deriving it once,
+   * from `selectedShippingOption`, is what keeps the method `<select>` and
+   * the machine picker unable to disagree about which method is chosen.
    */
   const selectedShippingOptionRecord = shippingOptions.find(
     (option) => option.id === selectedShippingOption,
   );
-  const selectedIsParcelMachine =
-    selectedShippingOptionRecord !== undefined && isParcelMachineOption(selectedShippingOptionRecord);
+  /*
+   * The Omniva parcel machine method's second control — the fetched machine
+   * list, the chosen zip, and `selectParcelMachine` — lives in this hook
+   * rather than in this component. See `useParcelMachineSelection.ts`'s doc
+   * comment for why. `addSelectedShippingMethod`, defined below, is the one
+   * thing it does not own: both this component's `selectShippingOption` and
+   * the hook's `selectParcelMachine` end in that same call.
+   */
+  const {
+    selectedIsParcelMachine,
+    parcelMachines,
+    parcelMachineZip,
+    parcelMachineState,
+    selectParcelMachine,
+    resetParcelMachineSelection,
+  } = useParcelMachineSelection({
+    selectedOption: selectedShippingOptionRecord,
+    shippingOptionsAddress,
+    addressRevision,
+    countryName: values.country ?? "",
+    attemptInFlight,
+    shippingRequest,
+    clearTotals: () => setStoreTotals(null),
+    addMethod: addSelectedShippingMethod,
+  });
   const payableRevision =
     scenario === null &&
     addressRevision !== null &&
@@ -483,16 +492,15 @@ export function CheckoutPageContent({
     setStoreTotals(null);
     /*
      * A machine chosen for the address that just changed is a machine chosen
-     * for an address that no longer exists. Cleared here, synchronously, for
+     * for an address that no longer exists. Reset here, synchronously, for
      * the same effect/event-gap reason the four resets above already are —
      * without it a buyer who backs out to a new country would keep a
      * previous country's zip selected underneath a picker that no longer
-     * shows it.
+     * shows it. `resetParcelMachineSelection` is `useParcelMachineSelection`'s
+     * own reset, stable across renders, so it is safe to call unconditionally
+     * here without appearing in this effect's dependency list.
      */
-    ++parcelMachineRequest.current;
-    setParcelMachines([]);
-    setParcelMachineZip("");
-    setParcelMachineState("idle");
+    resetParcelMachineSelection();
     if (scenario !== null || !addressComplete) {
       setShippingState("idle");
       return;
@@ -533,55 +541,6 @@ export function CheckoutPageContent({
       window.clearTimeout(timer);
     };
   }, [addressComplete, addressRevision, scenario, values]);
-
-  /*
-   * The parcel machine list, fetched once the buyer has actually selected
-   * that method — not prefetched the moment the address is complete. That
-   * mirrors the guard in `selectShippingOption` below: nothing about the
-   * Omniva parcel machine method runs ahead of the buyer choosing it.
-   *
-   * Keyed on `selectedIsParcelMachine`, `shippingOptionsAddress` and
-   * `addressRevision` together, not on `values` directly: `shippingOptions`
-   * (and therefore `selectedIsParcelMachine`) only settles once the debounced
-   * effect above resolves for the current address, and reading the country
-   * before then would ask this address's endpoint with the previous one's
-   * country code for the one render in between.
-   */
-  useEffect(() => {
-    const request = ++parcelMachineRequest.current;
-    if (
-      !selectedIsParcelMachine ||
-      addressRevision === null ||
-      shippingOptionsAddress !== addressRevision
-    ) {
-      setParcelMachines([]);
-      setParcelMachineState("idle");
-      return;
-    }
-    const destination = destinationForCountryName((values.country ?? "").trim());
-    if (destination === null) {
-      setParcelMachines([]);
-      setParcelMachineState("idle");
-      return;
-    }
-    let active = true;
-    setParcelMachineState("loading");
-    void fetchParcelMachines(destination.code.toUpperCase()).then(
-      (machines) => {
-        if (!active || request !== parcelMachineRequest.current) return;
-        setParcelMachines(machines);
-        setParcelMachineState("idle");
-      },
-      () => {
-        if (!active || request !== parcelMachineRequest.current) return;
-        setParcelMachines([]);
-        setParcelMachineState("error");
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [selectedIsParcelMachine, shippingOptionsAddress, addressRevision, values]);
 
   useEffect(() => {
     const request = ++paymentRequest.current;
@@ -658,43 +617,21 @@ export function CheckoutPageContent({
   }
 
   /**
-   * Picks a specific machine for the already-selected Omniva parcel machine
-   * method, and adds the method now that it has a destination Medusa can
-   * collect the parcel from.
+   * The Store API call both `selectShippingOption` above and
+   * `useParcelMachineSelection`'s `selectParcelMachine` end in: add exactly
+   * the chosen method, carrying a parcel machine zip when there is one to
+   * carry.
    *
-   * Guarded the same way `selectShippingOption` is, over the same address and
-   * in-flight checks, because this is the other control that can attach a
-   * shipping method to the cart. Clearing the picker back to its unchosen
-   * option (`zip === ""`) is treated the same way an incomplete method choice
-   * is above: recorded, no Store API call, rather than an error — the method
-   * is still selected, just not addable yet.
-   */
-  function selectParcelMachine(zip: string): void {
-    if (
-      attemptInFlight.current ||
-      shippingOptionsAddress !== addressRevision ||
-      addressRevision === null
-    ) return;
-    const chosen = shippingOptions.find((option) => option.id === selectedShippingOption);
-    if (chosen === undefined || !isParcelMachineOption(chosen)) return;
-    ++shippingRequest.current;
-    setParcelMachineZip(zip);
-    setStoreTotals(null);
-    if (zip === "") return;
-    addSelectedShippingMethod(chosen, zip);
-  }
-
-  /**
-   * The Store API call both controls above end in: add exactly the chosen
-   * method, carrying a parcel machine zip when there is one to carry.
-   *
-   * Factored out because `selectShippingOption` and `selectParcelMachine` are
-   * two different decisions about *whether* to add a method — one over the
-   * method itself, one over the machine a method it already carries needs —
-   * that converge on the same request once the decision is "yes". Keeping the
-   * request in one place is what keeps the shown-versus-charged guard inside
-   * `addGuestShippingMethod` wired to a single call site instead of two that
-   * could drift.
+   * Factored out because the two are different decisions about *whether* to
+   * add a method — one over the method itself, one over the machine a method
+   * it already carries needs — that converge on the same request once the
+   * decision is "yes". Keeping the request in one place is what keeps the
+   * shown-versus-charged guard inside `addGuestShippingMethod` wired to a
+   * single call site instead of two that could drift. It stays in this
+   * component rather than moving into the hook alongside
+   * `selectParcelMachine`, because `selectShippingOption` needs it too, and a
+   * function two callers share belongs where both can reach it without one
+   * importing the other.
    */
   function addSelectedShippingMethod(chosen: GuestShippingOption, zip: string | undefined): void {
     const selectedAddressRevision = addressRevision;
