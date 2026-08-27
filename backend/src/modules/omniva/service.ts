@@ -1,7 +1,10 @@
 import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils";
 import type { FulfillmentOption } from "@medusajs/framework/types";
 
-import { PARCEL_MACHINE_OPTION_NAME } from "../../commerce/shipping-model.js";
+// Extensionless: see the comment on `index.ts`'s import of `./service`. This
+// file is reached through the same MikroORM type-generation path, one hop
+// further in, and hits the same resolution gap.
+import { PARCEL_MACHINE_OPTION_NAME } from "../../commerce/shipping-model";
 
 /** The parcel machine method's option id, as `getFulfillmentOptions` returns it. */
 export const OMNIVA_PARCEL_MACHINE_OPTION_ID = "omniva-parcel-machine";

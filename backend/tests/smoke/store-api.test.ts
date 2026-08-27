@@ -5,7 +5,15 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { REGION_NAME } from "../../src/commerce/configuration.js";
 import { PRODUCT } from "../../src/commerce/product-model.js";
-import { SHIPPING_CURRENCY } from "../../src/commerce/shipping-model.js";
+import {
+  EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR,
+  MANUAL_FULFILLMENT_PROVIDER_ID,
+  OMNIVA_FULFILLMENT_PROVIDER_ID,
+  PARCEL_MACHINE_OPTION_NAME,
+  PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR,
+  SHIPPING_CURRENCY,
+  SHIPPING_OPTION_NAME,
+} from "../../src/commerce/shipping-model.js";
 import {
   ESTONIAN_STANDARD_VAT_PERCENT,
   TAX_PROVIDER_ID,
@@ -198,8 +206,14 @@ async function json(
 }
 
 /** A Store request, carrying the publishable key every `/store/*` route requires. */
-async function store(path: string): Promise<{ status: number; body: unknown; text: string }> {
-  return await json(path, { headers: { "x-publishable-api-key": publishableKey } });
+async function store(
+  path: string,
+  init?: { readonly method?: string; readonly headers?: Record<string, string>; readonly body?: string },
+): Promise<{ status: number; body: unknown; text: string }> {
+  return await json(path, {
+    ...init,
+    headers: { "x-publishable-api-key": publishableKey, ...(init?.headers ?? {}) },
+  });
 }
 
 /**
@@ -409,6 +423,82 @@ describe("the catalogue request the storefront makes", () => {
     const variants = sequence(products[0]!.variants, "variants") as readonly StoreVariant[];
     expect(variants).toHaveLength(1);
     expect(variants[0]!.sku).toBe(PRODUCT.sku);
+  });
+});
+
+/**
+ * A cart with a completed shipping address, the way `cart-store.tsx` builds
+ * one on the path to checkout: `POST /store/carts` with a `region_id` and a
+ * `shipping_address` carrying nothing but a `country_code`, which is all
+ * `listShippingOptionsForCartWorkflow` reads off it to resolve a service zone.
+ */
+async function cartWithShippingAddress(countryCode: string): Promise<Record<string, unknown>> {
+  const created = await store("/store/carts", {
+    method: "POST",
+    body: JSON.stringify({ region_id: regionId, shipping_address: { country_code: countryCode } }),
+  });
+  expect(
+    created.status,
+    `POST /store/carts for ${countryCode} answered ${String(created.status)}: ${created.text}`,
+  ).toBe(200);
+  return record(record(created.body, "cart response")["cart"], "cart");
+}
+
+/** `GET /store/shipping-options`, the request a completed address makes checkout ask. */
+async function listShippingOptionsForCart(cartId: string): Promise<readonly Record<string, unknown>[]> {
+  const response = await store(`/store/shipping-options?cart_id=${cartId}`);
+  expect(response.status, response.text).toBe(200);
+  return sequence(
+    record(response.body, "shipping options response")["shipping_options"],
+    "shipping_options",
+  ).map((option) => record(option, "shipping option"));
+}
+
+/**
+ * The proof Task 2 exists for: declaring an explicit fulfillment module with a
+ * `providers` array, to register Omniva, does not unregister Medusa's default
+ * `manual_manual`.
+ *
+ * `backend/tests/commerce-medusa-semantics.test.ts` reproduces Medusa's
+ * `validateFulfillmentProvidersStep` check over a graph it builds by hand, and
+ * that is a good test — but it never runs Medusa's own module loader, so it
+ * cannot see a `providers` array that silently displaced the built-in manual
+ * provider. The only place that loader runs is here: a real Medusa, built and
+ * started by `scripts/store-smoke`, with `npm run configure:commerce` already
+ * having created the three `Standard delivery` options against
+ * `manual_manual` and the free `Omniva parcel machine` option against
+ * `omniva_omniva`. If declaring the `providers` array in `medusa-config.ts`
+ * had displaced the default, `configureCommerce` would have thrown
+ * `Providers (manual_manual) are not enabled for the service location` while
+ * `npm run predeploy` ran, long before this suite ever got a socket to ask —
+ * so a green run here is standing proof of the negative, not an assumption of
+ * it.
+ */
+describe("the shipping options a completed address is offered", () => {
+  it("offers an Estonian cart both methods, and a German cart only Standard delivery", async () => {
+    const estonian = await cartWithShippingAddress("ee");
+    const estonianOptions = await listShippingOptionsForCart(String(estonian["id"]));
+    expect((estonianOptions.map((option) => option["name"]) as string[]).sort()).toEqual(
+      [PARCEL_MACHINE_OPTION_NAME, SHIPPING_OPTION_NAME].sort(),
+    );
+
+    const parcelMachine = estonianOptions.find((option) => option["name"] === PARCEL_MACHINE_OPTION_NAME);
+    expect(parcelMachine?.["amount"]).toBe(major(PARCEL_MACHINE_SHIPPING_AMOUNT_MINOR));
+    expect(parcelMachine?.["provider_id"]).toBe(OMNIVA_FULFILLMENT_PROVIDER_ID);
+
+    const standard = estonianOptions.find((option) => option["name"] === SHIPPING_OPTION_NAME);
+    expect(standard?.["amount"]).toBe(major(EUROPEAN_UNION_SHIPPING_AMOUNT_MINOR));
+    // manual_manual still serves the flat rate alongside the free Omniva
+    // method. A `providers` array that had replaced Medusa's default manual
+    // provider would have failed configureCommerce, and therefore
+    // npm run predeploy, long before this line — this is the assertion Task 2
+    // exists for, asserting the survivor rather than assuming it.
+    expect(standard?.["provider_id"]).toBe(MANUAL_FULFILLMENT_PROVIDER_ID);
+
+    const german = await cartWithShippingAddress("de");
+    const germanOptions = await listShippingOptionsForCart(String(german["id"]));
+    expect(germanOptions.map((option) => option["name"])).toEqual([SHIPPING_OPTION_NAME]);
+    expect(germanOptions[0]?.["provider_id"]).toBe(MANUAL_FULFILLMENT_PROVIDER_ID);
   });
 });
 
