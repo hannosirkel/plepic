@@ -83,6 +83,30 @@ describe("the OMX registration body", () => {
     expect(one.customs).toBeUndefined();
   });
 
+  /**
+   * `deliveryChannel` is mandatory in EE/LV/LT because the country is one of
+   * the three, not because the buyer picked the parcel machine method. A
+   * Latvian *courier* order proves the two are independent: the destination
+   * still gets `deliveryChannel`, and the address is still a street, because
+   * the buyer chose courier, not a machine.
+   */
+  it("sends a delivery channel, not a service package, for a Latvian courier order", () => {
+    const one = shipment(buildShipmentRegistration(input({
+      deliveryChannel: "COURIER", parcelMachineZip: undefined,
+      order: { ...input().order, shippingAddress: {
+        firstName: "Zane", lastName: "Ozola", address1: "Brivibas iela 10", postalCode: "LV-1010",
+        city: "Riga", countryCode: "LV", phone: null,
+      } },
+    })));
+    expect(one.deliveryChannel).toBe("COURIER");
+    expect(one.servicePackage).toBeUndefined();
+    expect(one.receiverAddressee.address.street).toBe("Brivibas iela 10");
+    expect(one.receiverAddressee.address.offloadPostcode).toBeUndefined();
+    // Latvia is phone-optional; the address carries none, and that must not refuse.
+    expect(one.receiverAddressee.contactPhone).toBeUndefined();
+    expect(one.customs).toBeUndefined();   // Latvia is in the EU
+  });
+
   it("sends a service package and no delivery channel for a German courier order", () => {
     const one = shipment(buildShipmentRegistration(input({
       deliveryChannel: "COURIER", parcelMachineZip: undefined,
