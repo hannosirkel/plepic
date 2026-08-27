@@ -54,7 +54,18 @@
  * reads this block yet; a later task builds the customs declaration from it.
  */
 
-import { SHIPPING_CURRENCY } from "./shipping-model.js";
+// Extensionless on purpose, unlike the rest of `src/commerce/` (see
+// `tax-model.ts`'s own `./shipping-model.js` import for the ordinary form) --
+// this file is reachable from `medusa-config.ts` through ts-node by way of
+// `modules/omniva/service.ts`, which `../config/runtime.ts`'s own header
+// documents as evaluated literally, unable to map a `.js` suffix back onto
+// the `.ts` file beside it. A `.js` here fails `medusa build` with "Cannot
+// find module" for the same reason `runtime.ts` gives, and it did: this
+// import shipped with a `.js` suffix for as long as nothing on this branch
+// rebuilt the image, and only broke once something did.
+// `tests/omniva-extensionless-imports.test.ts` guards this specific file
+// from regressing the same way a second time.
+import { SHIPPING_CURRENCY } from "./shipping-model";
 
 /** The box the one copy ships in. Grams and millimetres. */
 export interface ProductPackaging {
