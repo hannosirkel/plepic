@@ -18,6 +18,52 @@ zone and learns that a zone can sell more than one method.
 
 **Spec:** [`docs/working/2026-08-26-omniva-shipping.md`](./2026-08-26-omniva-shipping.md)
 
+## Correction, 2026-08-28 — read this before "origin country `CHN`" below
+
+Written after Omniva issued a test key and this branch's own code was run
+against the real `test-omx.omniva.eu` API for the first time. Three things
+this plan states as fact — one in Global Constraints just below, the rest in
+Tasks 7, 9 and 10 — are wrong:
+
+- **`originCountry` is ISO 3166-1 alpha-2, not alpha-3.** "origin country
+  `CHN`" in Global Constraints, the `ProductCustoms.originCountry` comment in
+  Task 7 ("Country of manufacture, ISO 3166-1 alpha-3 — OMX's format, not
+  alpha-2"), and every `"CHN"` literal in Tasks 7 and 9 are wrong. Omniva
+  refused a US courier registration carrying `originCountry: "CHN"` with a
+  `jakarta.validation.constraints.Size` violation naming
+  `shipment.customs.shipmentItems[0].originCountry`; the identical request
+  with `"CN"` answered `200 OK` with a real barcode.
+  `backend/src/commerce/product-model.ts` now carries `originCountry: "CN"`,
+  and Task 7's own regex assertion (`/^[A-Z]{3}$/`) is likewise wrong — it is
+  now `/^[A-Z]{2}$/` in `commerce-product-seed.test.ts` (commit `d61ca12`).
+- **Task 9's rule "the receiver address carries offloadPostcode or
+  street/postcode/city" names the wrong OMX field.** OMX's field is
+  `deliverypoint`, exactly as `OmnivaSenderConfig.deliverypoint` above it
+  already models correctly for the *sender* — this plan simply never said so
+  for the *receiver*, and `shipment.ts` was built literally from this rule,
+  sending `city` on every courier order worldwide until commit `94003e2`
+  fixed it. Confirmed live: a receiver address carrying `city` answers `500`
+  (`Unrecognized field "city" ... not marked as ignorable`); the identical
+  request with `deliverypoint` answers `200` with a barcode.
+- **Task 10's stub, `filedata: "JVBERi0="`, models the wrong casing, and its
+  `barcodes` request shape is unstated.** The real label response field is
+  `fileData` (capital D); `client.ts` now reads `fileData` first and
+  tolerates `filedata` as a fallback rather than refusing outright — a
+  deliberate exception to "refuse rather than guess", because this defect is
+  silent (label failure is swallowed by `createFulfillment` by design) and a
+  manual already wrong twice is not worth trusting absolutely a third time.
+  Separately, and not stated anywhere in this plan either way: OMX's
+  `barcodes` field for a label request wants an array of *objects*
+  (`[{"barcode": "..."}]`), not strings, contrary to the manual's own
+  `array, string(5-30)`. Both fixed in commit `94003e2`.
+
+This plan is not rewritten below: per the handover, it is already history —
+several of its instructions were overruled during execution before these
+three defects were even found. Read
+[the handover](./2026-08-26-omniva-shipping-handover.md) for the current,
+maintained state; where this plan and the handover disagree, the handover
+wins.
+
 ## Global Constraints
 
 Copied verbatim from the spec. Every task's requirements implicitly include

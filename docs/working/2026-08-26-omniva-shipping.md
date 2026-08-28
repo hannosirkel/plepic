@@ -3,6 +3,39 @@
 Design, 2026-08-26. Supersedes nothing; extends the shipping model ADR `020`
 froze.
 
+## Correction, 2026-08-28 — read this before "Country of origin: `CHN`" below
+
+Everything below this notice was written before Omniva had issued a test key,
+reasoning from the OMX manual v1.7. Calling the real `test-omx.omniva.eu` API
+on 2026-08-28 with the branch's own code proved one fact this document states
+below is wrong:
+
+- **`originCountry` is ISO 3166-1 alpha-2, not alpha-3.** "Country of origin |
+  `CHN` | Operator, 2026-08-26" in the decisions table below, and `"CHN"` in
+  the customs section further down, both assume alpha-3. Omniva refused a US
+  courier registration carrying `originCountry: "CHN"` with a
+  `jakarta.validation.constraints.Size` violation naming
+  `shipment.customs.shipmentItems[0].originCountry`; the identical request
+  with `originCountry: "CN"` answered `200 OK` with a real barcode. The
+  operator's decision — the product's country of manufacture — is unchanged;
+  only its encoding was wrong. `backend/src/commerce/product-model.ts` now
+  carries `originCountry: "CN"` (commit `d61ca12`).
+
+The same verification run also caught three implementation defects the OMX
+manual itself misled on — a receiver-address field actually named
+`deliverypoint`, not `city`; a label `barcodes` field that wants an array of
+objects, not strings; and a label response field spelled `fileData`, not
+`filedata` (fixed in commit `94003e2`). None of the three is a claim this
+spec makes in writing, so none is corrected above; they are named here
+because the same live matrix that disproved `CHN` found all four.
+
+This document is not rewritten below: it is a dated design record, and
+`content/legal/shipping.ts` sets this repository's convention for superseded
+reasoning — keep it, mark it, don't silently rewrite it. Read
+[the handover](./2026-08-26-omniva-shipping-handover.md) for the current,
+maintained state; where this spec and the handover disagree, the handover
+wins.
+
 ## What this changes
 
 Two things the operator asked for, and they are separable:

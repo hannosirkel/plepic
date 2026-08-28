@@ -1,24 +1,34 @@
 # Omniva shipping — handover
 
-Written 2026-08-27, at the end of the implementation run. The branch is
-complete and unmerged by the operator's decision.
+Written 2026-08-27, at the end of the implementation run; updated 2026-08-28
+after Omniva issued test credentials and the branch's own code was run
+against the real carrier for the first time. The branch is complete and
+unmerged by the operator's decision.
 
 Read this first, then
 [the spec](./2026-08-26-omniva-shipping.md). The spec is the binding
-authority; [the plan](./2026-08-26-omniva-shipping-plan.md) is its argument and
-is now **history** — several of its instructions were overruled during
-execution and are wrong if followed literally. Where they disagree, the code
-and this document win.
+authority, with one correction dated 2026-08-28 at its top — read that before
+anything about `originCountry`.
+[The plan](./2026-08-26-omniva-shipping-plan.md) is its argument and is now
+**history** — several of its instructions were overruled during execution
+and are wrong if followed literally, and it carries the same kind of dated
+correction. Where either disagrees with the code, the code and this document
+win.
 
 ## State
 
 | Repository | Branch | Commits | Worktree |
 | --- | --- | --- | --- |
-| `plepic` | `feat/omniva-shipping` | 21 (`440d8af..b4f9002`) | `~/app/.worktrees/plepic/omniva-shipping` |
-| `orange` | `feat/omniva-secret` | 1 (`63ef3a7`) | `~/app/.worktrees/orange/omniva-secret` |
+| `plepic` | `feat/omniva-shipping` | 24 (`440d8af..d61ca12`) | `~/app/.worktrees/plepic/omniva-shipping` |
+| `orange` | `feat/omniva-secret` | 2 (`63ef3a7`, `6c490e1`) | `~/app/.worktrees/orange/omniva-secret` |
 | `deploys` | `feat/omniva-env` | 2 (`ca3ef8f`, `294e5ce`) | `~/app/.worktrees/deploys/omniva-env` |
 
 All three working trees are clean. Nothing is pushed. No pull request exists.
+`deploys` needed no new commit: `plepic/base/{backend,worker}.yaml` already
+read a Secret named `plepic-omniva` with `optional: true` regardless of which
+namespace the base renders into, so orange's `feat/omniva-secret` test-side
+projection (below) targets that same name in `plepic-test` and nothing here
+had to change.
 
 `bash scripts/validate` exits 0 in the plepic worktree: shellcheck, eslint,
 three typechecks, a real `medusa build` (backend **and** Admin frontend), and
@@ -27,37 +37,152 @@ and `bash plepic/tests/manifests.sh` passes in deploys with both overlays
 rendering.
 
 **Do not treat a green suite as proof the branch is finished** — see
-[What nothing tests](#what-nothing-tests).
+[What nothing tests](#what-nothing-tests). It did not, in fact, catch four
+real defects; see the next section.
 
-## What is owed before a live shipment can succeed
+## What was resolved on 2026-08-28
 
-These are the operator's, not an agent's. The first is hard-blocking.
+The two hard blockers the first handover named are both closed.
 
-1. **`customerCode`.** `~/app/orange/.keys/plepic-omniva` holds `apiUser` and
-   `apiPassword`. The parser expects a third line, `customerCode=…`. Without
-   it the OpenBao seed cannot run, and OMX refuses every registration —
-   verified: a live probe answered
-   `customerCode: CustomerIsValid — "User is not allowed to represent"`.
-2. **Merchant sender address.** OMX requires sender *city*, *postcode* and
-   *country* as separate fields. `MERCHANT_REGISTERED_ADDRESS` is one line
-   with no postcode and cannot be split reliably. The variables exist and are
-   read: `MERCHANT_SENDER_STREET`, `MERCHANT_SENDER_CITY`,
-   `MERCHANT_SENDER_POSTCODE`, `MERCHANT_SENDER_COUNTRY`, `MERCHANT_PHONE_NUMBER`.
-3. **The Estonian legal paragraph.** `content/legal/et/shipping.ts` carries a
+- **`customerCode` is resolved.** Omniva issued it. `~/app/orange/.keys/plepic-omniva`
+  and `~/app/orange/.keys/plepic-omniva-test` each now hold all three lines
+  (`apiUser`, `apiPassword`, `customerCode`), mode `600`. Probed with an empty
+  `shipments` array against both live and test hosts: `customerCode: CustomerIsValid`
+  with no complaint, so the value is accepted server-side. **`customerCode`
+  equals `apiUser` on both accounts** — confirmed by probe, not assumed.
+- **Test credentials are resolved and bound.** Omniva issued a separate test
+  key; it is refused by live with 401 and the live key is refused by test
+  with 401 the same way, so the two environments are cleanly separated.
+  `orange`'s `feat/omniva-secret` (`6c490e1`) mirrors the live import for
+  `plepic-test`: a second `OMNIVA_SECRET_IMPORTS` entry (source
+  `plepic-test-omniva`), `plepic-test-omniva` added to
+  `openbao_seed_allowed_sources`, and a `plepic-test` projection targeting a
+  Secret named `plepic-omniva` (not `plepic-test-omniva` — see the comment in
+  `roles/argocd/defaults/main.yml` for why the name doesn't get a test-
+  prefix). Seeding either one is still its own operator action — `seed()`
+  refuses mixing `plepic` and `plepic-test` sources in one run, unchanged from
+  before — and so is adding `plepic-omniva` / `plepic-test-omniva` to
+  `argocd_openbao_enabled_optional_sources` in the **private inventory**. No
+  agent took either action, deliberately.
+
+**All four delivery paths were registered end to end against the real
+carrier** (`test-omx.omniva.eu`), using the branch's own compiled
+`buildShipmentRegistration` and `OmnivaClient`, not a stand-in for either:
+
+| Path | Result |
+| --- | --- |
+| Estonian parcel machine (`offloadPostcode`, no receiver street) | `200 OK`, barcode `CC405869298EE`/`LL000058703EE` |
+| Latvian courier (street address, no `servicePackage`) | `200 OK` |
+| German courier (`servicePackage`, receiver phone) | `200 OK` |
+| US courier (customs, `originCountry`) | `200 OK`, after the fixes below |
+
+Registering a real label and downloading it also succeeded; the returned
+`fileData` decodes to a genuine PDF (`%PDF-1…`).
+
+## The OMX manual is wrong in four places
+
+Every one of these survived thirteen task reviews, a whole-branch review and
+3213 passing tests, because every test on the branch drove a stub built from
+reading the manual — faithfully, in three of these four cases. All four are
+now fixed (`94003e2`, `d61ca12`) and covered by tests that assert the
+*correct* wire shape and were each verified killable by reverting the fix.
+
+1. **The receiver's city field is `deliverypoint`, not `city`.** The manual
+   itself agrees — `deliverypoint` is documented at §1.6 — this was a plain
+   implementation slip that the branch's own stub never caught because the
+   stub never validated field names. Sending `city` answered `500`
+   (`Unrecognized field "city" ... not marked as ignorable`); the identical
+   request with `deliverypoint` answered `200`. Broke every courier order
+   worldwide; parcel-machine orders were unaffected because that branch sends
+   `offloadPostcode` and never emits a city field.
+2. **`barcodes` is an array of objects, not strings.** The manual's own
+   §1.7 says `array, string(5-30)` — the manual is wrong here.
+   `["CC405869298EE"]` answered `500` (`no String-argument constructor ...
+   BarcodeValueDto`); `[{"barcode": "CC405869298EE"}]` answered `200`.
+3. **The label response field is `fileData`, not `filedata`.** The manual
+   spells it `filedata`; the live API returns `fileData` (capital D). Because
+   label failure is swallowed by `createFulfillment` by design, this defect
+   was silent — every fulfilment would have succeeded with no label ever
+   stored, and the Admin's Request Label button would have failed forever.
+   `client.ts` now reads `fileData` first and tolerates `filedata` as a
+   fallback, a deliberate, documented exception to "refuse rather than
+   guess."
+4. **`customs.shipmentItems[].originCountry` is ISO 3166-1 alpha-2, not the
+   alpha-3 the manual's `string(3)` implies.** `originCountry: "CHN"`
+   answered a `jakarta.validation.constraints.Size` violation on
+   `shipment.customs.shipmentItems[0].originCountry`; `"CN"` answered `200`.
+   `product-model.ts` now carries `"CN"`. See the correction sections atop
+   the spec and the plan — both stated `"CHN"` as fact.
+
+## Verify this integration against test-omx, not the manual
+
+**Standing instruction.** Three of the four defects above are places where
+this codebase read the OMX manual v1.7 faithfully and the manual itself is
+wrong. A future change to anything in `backend/src/modules/omniva/` —
+including one that looks like it only touches a stub — must be re-verified
+by calling `https://test-omx.omniva.eu` with real test credentials before it
+is trusted, not by re-reading the manual more carefully. A stub built purely
+from the manual will happily agree with a wrong assumption forever; that is
+exactly what let all four of these survive review.
+
+The harness used for the 2026-08-28 verification run,
+`/tmp/claude-1000/-home-hanno-app-plepic/54455d27-b775-4109-adc6-3942f1e3fd6a/scratchpad/verify-omniva.cjs`,
+is session scratchpad and will not survive this conversation. It called
+`buildShipmentRegistration` and `OmnivaClient` directly against all four
+paths in the table above, reading real test credentials from the
+environment. If a durable version of this is worth keeping — and given how
+this class of defect survived 3213 tests once already, it probably is — it
+should live at `scripts/verify-omniva-contract.mjs`: read
+`OMNIVA_API_USER`/`OMNIVA_API_PASSWORD`/`OMNIVA_CUSTOMER_CODE` from the
+environment (never hardcode them, and never commit a fixture carrying a real
+one), and stay **out of** `bash scripts/validate` and any CI job — it needs
+live third-party network access and real test credentials neither has, and
+running it automatically would either fail every sandboxed run or, worse,
+train reviewers to ignore its failures.
+
+## What remains owed by the operator
+
+1. **The merchant sender address is still a placeholder, on both sides.**
+   The 2026-08-28 verification run above used `Pihlaka tn 2, Jüri alevik,
+   75301, EE` — an Omniva-manual-style example address, not the merchant's
+   real registered one. That is a *different* placeholder from the one
+   already committed in `orange`'s public
+   `roles/argocd/defaults/main.yml`/`inventory-example/group_vars/orange.yml`
+   (`Example Street 1, Tallinn, 10111, EE`) — the two do not match each
+   other, and neither is real. Both prove only that `MERCHANT_SENDER_STREET`,
+   `MERCHANT_SENDER_CITY`, `MERCHANT_SENDER_POSTCODE`,
+   `MERCHANT_SENDER_COUNTRY` and `MERCHANT_PHONE_NUMBER` reach OMX correctly
+   shaped and that OMX accepts a well-formed sender. The operator still owes
+   the real registered business address in the **private** inventory before
+   a live shipment can succeed; nothing here should be read as that address
+   being settled.
+2. **The Estonian legal paragraph.** `content/legal/et/shipping.ts` carries a
    machine-translated sentence about the parcel machine method. Its own header
    records that it lacks the qualified-reader confirmation the rest of that
    `operator-approved` page has. A reviewer who reads Estonian judged the
    grammar and register sound but explicitly did not certify it.
-4. **The seed itself, and enabling the projection.** Running
-   `playbooks/openbao-seed.yml` and adding `plepic-omniva` to
-   `argocd_openbao_enabled_optional_sources` in the **private inventory** are
-   operator actions. No agent took them, deliberately.
-
-Not blocking: **Omniva test credentials.** Their test host rejects the live
-key with 401 (verified). Until they issue one, the test environment holds no
-Omniva secret — which is *why* the configuration is optional at boot. When
-they arrive it is one more seed source and one more ExternalSecret; no code
-changes.
+3. **The seeds themselves, and enabling the projections.** Running
+   `playbooks/openbao-seed.yml` for both `plepic-omniva` and
+   `plepic-test-omniva` (two separate operator runs — see above) and adding
+   both to `argocd_openbao_enabled_optional_sources` in the **private
+   inventory** are operator actions. No agent took them, deliberately.
+4. **A key-file name mismatch, found while writing this handover, not yet
+   fixed.** `orange/scripts/openbao-admin` looks a source's key up by its
+   exact `source` name (`keys_directory / item.source`), and every other
+   `plepic-test` source in that file — `plepic-test-runtime-credentials`,
+   `plepic-test-publishable-key`, and so on — puts `test` right after
+   `plepic`. `feat/omniva-secret` followed that convention:
+   `plepic-test-omniva`. The file that actually exists on disk is
+   `~/app/orange/.keys/plepic-omniva-test` — `test` at the *end*. Neither
+   this agent nor the one before it touched that directory (out of scope by
+   the standing constraint), so the mismatch was not created here and was
+   not fixed here either. As written, `playbooks/openbao-seed.yml` will not
+   find the test key under the name it looks for. Before the first seed
+   attempt: either rename the key file to `plepic-test-omniva` (matching
+   every other test source in `openbao-admin`), or rename the source in
+   `OMNIVA_SECRET_IMPORTS` to `plepic-omniva-test` (breaking that
+   convention). This handover does not choose between them — that is an
+   operator call, not an agent one.
 
 ## Effect gates — read before merging anything
 
