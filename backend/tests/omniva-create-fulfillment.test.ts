@@ -34,12 +34,35 @@ import OmnivaFulfillmentProviderService from "../src/modules/omniva/service.js";
  * `buildShipmentRegistration`'s own exhaustive pure tests to somehow also
  * prove that `service.ts` calls it with the right input -- they cannot, by
  * construction, since they never see `service.ts` at all.
+ *
+ * **The label-request body is now captured too, in `labelBodies`, for the
+ * same reason.** It used to go unread because "`requestLabel` only sends a
+ * barcode this stub already knows" was true but incomplete -- it says
+ * nothing about the *shape* `barcodes` is sent in, and OMX's real test
+ * environment refuses the shape this client used to send (see `client.ts`'s
+ * header: `barcodes: ["X"]` answers `500`, `barcodes: [{"barcode":"X"}]`
+ * answers `200`). Recording `labelBodies` is what lets "registers, labels,
+ * and returns the barcode" below assert the actual wire shape rather than
+ * just that a label request happened.
+ *
+ * **This stub also refuses a registration whose receiver address carries
+ * `city`, the way OMX's real test environment does.** OMX's manual names the
+ * field `deliverypoint`; a receiver address built with `city` answered `500`
+ * -- `Unrecognized field "city" (class
+ * com.omniva.phoenix.domain.dto.presend.OffLoadSupportedAddressDto), not
+ * marked as ignorable` -- against the real API (see `shipment.ts`'s header on
+ * that branch). This is **not** a general schema validator: the stub checks
+ * for exactly this one field, on exactly this one path, because that is the
+ * one shape the real API is known to refuse and the one this suite needs a
+ * regression to a `city`-emitting `shipment.ts` to be caught by.
  */
 interface StubOmx {
   readonly baseUrl: string;
   readonly authorizationHeaders: string[];
   /** Every JSON body posted to `REGISTER_PATH`, in order, parsed. See this file's header. */
   readonly registeredBodies: unknown[];
+  /** Every JSON body posted to `LABEL_PATH`, in order, parsed. See this file's header. */
+  readonly labelBodies: unknown[];
   close(): Promise<void>;
 }
 
@@ -53,15 +76,28 @@ interface StubOmxOptions {
 const REGISTER_PATH = "/api/v01/omx/shipments/business-to-client";
 const LABEL_PATH = "/api/v01/omx/shipments/package-labels";
 
+/**
+ * OMX's actual refusal for a receiver address carrying a field it does not
+ * recognise -- transcribed from the real `500` this suite's header cites,
+ * not invented. Modelled here, rather than as a generic "unknown field"
+ * checker, because refusing exactly the one shape the real API is known to
+ * refuse is what makes this stub a regression test for defect A rather than
+ * a schema validator this repository does not otherwise want to build or
+ * maintain.
+ */
+function unrecognizedCityFieldResponse(): unknown {
+  return {
+    developerMessage:
+      'Unrecognized field "city" (class com.omniva.phoenix.domain.dto.presend.OffLoadSupportedAddressDto), not marked as ignorable',
+  };
+}
+
 async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
   const authorizationHeaders: string[] = [];
   const registeredBodies: unknown[] = [];
+  const labelBodies: unknown[] = [];
 
   const server: Server = createServer((request, response) => {
-    // The label-request body is still never read: `requestLabel` only sends
-    // a barcode this stub already knows (it is the one `options.register`
-    // handed back), so there is nothing there worth asserting on. The
-    // registration body, below, is the one that carries real order data.
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
@@ -69,7 +105,25 @@ async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
 
       if (request.url === REGISTER_PATH) {
         const raw = Buffer.concat(chunks).toString("utf8");
-        registeredBodies.push(raw.length > 0 ? (JSON.parse(raw) as unknown) : undefined);
+        const body = raw.length > 0 ? (JSON.parse(raw) as unknown) : undefined;
+        registeredBodies.push(body);
+
+        // Models the one shape OMX's real test API is known to refuse: a
+        // receiver address carrying `city` instead of `deliverypoint`. See
+        // this file's header.
+        const shipments = (body as { shipments?: readonly { receiverAddressee?: { address?: unknown } }[] } | undefined)
+          ?.shipments;
+        const receiverAddress = shipments?.[0]?.receiverAddressee?.address;
+        if (
+          receiverAddress !== null &&
+          typeof receiverAddress === "object" &&
+          Object.prototype.hasOwnProperty.call(receiverAddress, "city")
+        ) {
+          response.writeHead(500, { "Content-Type": "application/json" });
+          response.end(JSON.stringify(unrecognizedCityFieldResponse()));
+          return;
+        }
+
         const status = options.registerStatus ?? 200;
         response.writeHead(status, { "Content-Type": "application/json" });
         response.end(JSON.stringify(options.register));
@@ -77,6 +131,8 @@ async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
       }
 
       if (request.url === LABEL_PATH) {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        labelBodies.push(raw.length > 0 ? (JSON.parse(raw) as unknown) : undefined);
         const status = options.labelStatus ?? 200;
         response.writeHead(status, { "Content-Type": "application/json" });
         response.end(
@@ -98,6 +154,7 @@ async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
     baseUrl: `http://127.0.0.1:${String(port)}`,
     authorizationHeaders,
     registeredBodies,
+    labelBodies,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
@@ -247,7 +304,9 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
   it("registers, labels, and returns the barcode as the tracking number", async () => {
     const omx = await stubOmx({
       register: { resultCode: "OK", savedShipments: [{ barcode: "CE123456789EE" }] },
-      label: { successAddressCards: [{ barcode: "CE123456789EE", filedata: "JVBERi0=" }] },
+      // fileData, capital D: the field the real API sends. See client.ts's
+      // header -- the manual spells it `filedata`, and is wrong.
+      label: { successAddressCards: [{ barcode: "CE123456789EE", fileData: "JVBERi0=" }] },
     });
     try {
       const { service } = providerAgainst(omx);
@@ -283,6 +342,15 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
       // "Tamm Mari" on every label; ORDER's address is first_name "Mari",
       // last_name "Tamm", so this is only right one way round.
       expect(shipment.receiverAddressee.personName).toBe("Mari Tamm");
+
+      // Defect B: OMX wants `barcodes` as an array of objects, not strings --
+      // `{"barcodes":["X"]}` answers 500 against the real test API,
+      // `{"barcodes":[{"barcode":"X"}]}` answers 200. See client.ts's header.
+      expect(omx.labelBodies).toEqual([{
+        customerCode: "CUSTOMER",
+        barcodes: [{ barcode: "CE123456789EE" }],
+        sendAddressCardTo: "RESPONSE",
+      }]);
     } finally {
       await omx.close();
     }
@@ -301,7 +369,7 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
   it("registers a courier shipment to the street address, not a parcel machine", async () => {
     const omx = await stubOmx({
       register: { resultCode: "OK", savedShipments: [{ barcode: "CE123456789EE" }] },
-      label: { successAddressCards: [{ barcode: "CE123456789EE", filedata: "JVBERi0=" }] },
+      label: { successAddressCards: [{ barcode: "CE123456789EE", fileData: "JVBERi0=" }] },
     });
     try {
       const { service } = providerAgainst(omx);
@@ -309,13 +377,17 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
 
       const shipment = registeredShipment(omx);
       expect(shipment.deliveryChannel).toBe("COURIER");
+      // Defect A: OMX's field is `deliverypoint`, not `city` -- see
+      // shipment.ts's header. `toEqual` here is exact, so this also proves
+      // `city` is not sent at all, not merely that `deliverypoint` is.
       expect(shipment.receiverAddressee.address).toEqual({
         street: "Tee 1",
         postcode: "10111",
-        city: "Tallinn",
+        deliverypoint: "Tallinn",
         country: "EE",
       });
       expect(shipment.receiverAddressee.address).not.toHaveProperty("offloadPostcode");
+      expect(shipment.receiverAddressee.address).not.toHaveProperty("city");
     } finally {
       await omx.close();
     }
@@ -333,7 +405,7 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
   it("attaches a customs block, built from PRODUCT, for a non-EU destination", async () => {
     const omx = await stubOmx({
       register: { resultCode: "OK", savedShipments: [{ barcode: "CE999999999US" }] },
-      label: { successAddressCards: [{ barcode: "CE999999999US", filedata: "JVBERi0=" }] },
+      label: { successAddressCards: [{ barcode: "CE999999999US", fileData: "JVBERi0=" }] },
     });
     try {
       const { service } = providerAgainst(omx);
@@ -420,7 +492,7 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
   it("does not attach a label meant for a different barcode", async () => {
     const omx = await stubOmx({
       register: { resultCode: "OK", savedShipments: [{ barcode: "CE123456789EE" }] },
-      label: { successAddressCards: [{ barcode: "CE_SOME_OTHER_PARCEL", filedata: "unrelated" }] },
+      label: { successAddressCards: [{ barcode: "CE_SOME_OTHER_PARCEL", fileData: "unrelated" }] },
     });
     try {
       const { service, logger } = providerAgainst(omx);
@@ -537,6 +609,7 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
         baseUrl: `http://127.0.0.1:${String(deadPort)}`,
         authorizationHeaders: [],
         registeredBodies: [],
+        labelBodies: [],
         close: () => Promise.resolve(),
       };
       const { service } = providerAgainst(unreachable);

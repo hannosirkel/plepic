@@ -30,6 +30,31 @@
  * own tests run against. The stub can only prove this file parses what it is
  * told to expect; the manual is what says OMX's real response actually looks
  * like this.
+ *
+ * **Two exceptions, both confirmed by calling `test-omx.omniva.eu` on
+ * 2026-08-28, both wrong in the manual as written:**
+ *
+ * - `requestLabel`'s outgoing `barcodes` field. The manual (section 1.7)
+ *   says `array, string(5-30)` — an array of barcode strings. The live API
+ *   disagrees: `{"barcodes":["CC405869298EE"]}` answers `500` —
+ *   `Cannot construct instance of
+ *   com.omniva.phoenix.domain.dto.common.BarcodeValueDto (although at least
+ *   one Creator exists): no String-argument constructor/factory method to
+ *   deserialize from String value ('CC405869298EE')` — while
+ *   `{"barcodes":[{"barcode":"CC405869298EE"}]}` answers `200`. See
+ *   `requestLabel`'s own docstring.
+ * - `SuccessAddressCard`'s incoming label field. The manual spells it
+ *   `filedata`; the live API returns `fileData` (capital D):
+ *   `{"successAddressCards":[{"barcode":"CC405869298EE","fileData":"JVBERi0…"}]}`
+ *   (`JVBERi0` decodes to `%PDF-1`, confirming it is the label PDF, not a
+ *   coincidentally-similar field). See `requestLabel`'s own docstring for
+ *   how this file reads both spellings.
+ *
+ * Trust the observed response over the manual for these two; a future
+ * "correction" back to what the manual says would silently reintroduce a
+ * `500` on every label request (`barcodes`) or a `filedata`-shaped hole that
+ * makes every label request appear to succeed while storing nothing
+ * (`fileData`).
  */
 
 import type { OmnivaConfig } from "./config";
@@ -69,9 +94,18 @@ interface RegisterResponseBody {
   readonly failedShipments?: unknown;
 }
 
-/** One entry of OMX's `successAddressCards[]` — section 1.7 of the manual. */
+/**
+ * One entry of OMX's `successAddressCards[]` — section 1.7 of the manual.
+ *
+ * Carries **both** spellings of the label field. `fileData` is what the live
+ * API actually sends — see this file's header for the observed response.
+ * `filedata` — the manual's spelling — is kept as a fallback so this file
+ * keeps working without a code change if Omniva ever aligns the API with its
+ * own manual; see `requestLabel` for how the two are read.
+ */
 interface SuccessAddressCard {
   readonly barcode?: unknown;
+  readonly fileData?: unknown;
   readonly filedata?: unknown;
 }
 
@@ -254,20 +288,54 @@ export class OmnivaClient {
    * Requests the PDF label for an **already-registered** barcode, as base64.
    *
    * `sendAddressCardTo: "RESPONSE"` — not `"EMAIL"` — is what makes OMX
-   * return `filedata` in this response at all rather than mailing it, per
+   * return the label in this response at all rather than mailing it, per
    * the manual's section 1.7; `createFulfillment` needs the PDF in hand to
    * store on the fulfilment, not delivered to an inbox nobody here reads.
    *
+   * **`barcodes` is sent as an array of objects, `[{ barcode }]`, not an
+   * array of strings.** The manual (section 1.7) documents `barcodes` as
+   * `array, string(5-30)`, and that is what this method used to send. OMX's
+   * real test environment refuses it: `{"barcodes":["CC405869298EE"]}`
+   * answers `500` — `Cannot construct instance of
+   * com.omniva.phoenix.domain.dto.common.BarcodeValueDto (although at least
+   * one Creator exists): no String-argument constructor/factory method to
+   * deserialize from String value ('CC405869298EE')` — while
+   * `{"barcodes":[{"barcode":"CC405869298EE"}]}` answers `200`. Trust the
+   * observed shape, not the manual's `string(5-30)`: this is the one field
+   * name in this file that is transcribed from the live response rather than
+   * the document, and a future "correction" back to plain strings would fail
+   * every label request in this backend.
+   *
+   * **Reads `fileData`, tolerating `filedata` as a fallback.** OMX's real
+   * response carries `fileData` (capital D); the manual spells it
+   * `filedata`, all lowercase. See this file's header for the observed body.
+   * This is the one place in this file that reads a field the manual did not
+   * predict *without* refusing the unexpected shape — a deliberate exception
+   * to the "refuse rather than guess" rule this same method applies to
+   * matching a `successAddressCards` entry by barcode (below): matching the
+   * wrong barcode's label to this parcel is a correctness hazard (the wrong
+   * PDF gets stored and printed), so that case refuses. Accepting either
+   * capitalisation of the *same*, already-matched card's own field is not —
+   * there is only one plausible reading of "the label content for the card
+   * this method already confirmed is barcode X", and refusing it because OMX
+   * capitalised a letter differently than its own manual would trade a
+   * silent, indefinite label outage (`requestLabel` throwing
+   * `OMX returned no label for …` forever, exactly what defect C's blast
+   * radius was before this fix) for no real safety. If Omniva ever changes
+   * the live response to match the manual's `filedata`, this method keeps
+   * working with no code change.
+   *
    * Every failure path here — a non-2xx status, `failedAddressCards`
-   * carrying this barcode, or a `successAddressCards` entry with no
-   * `filedata` — throws. This method has no "partial success" to report; it
-   * is `createFulfillment`'s `try`/`catch` around this call, not this
-   * method, that decides a label failure must not fail the fulfilment.
+   * carrying this barcode, or a `successAddressCards` entry with neither
+   * `fileData` nor `filedata` — throws. This method has no "partial success"
+   * to report; it is `createFulfillment`'s `try`/`catch` around this call,
+   * not this method, that decides a label failure must not fail the
+   * fulfilment.
    */
   async requestLabel(barcode: string): Promise<string> {
     const parsed = (await this.post(LABEL_PATH, {
       customerCode: this.config.customerCode,
-      barcodes: [barcode],
+      barcodes: [{ barcode }],
       sendAddressCardTo: "RESPONSE",
     })) as LabelResponseBody;
 
@@ -291,7 +359,13 @@ export class OmnivaClient {
     // omits `barcode`, so there is no documented case this match is too
     // strict for.
     const success = successCards.find((card) => text(card.barcode) === barcode);
-    const filedata = text(success?.filedata);
+    // `fileData` first -- the field OMX's live API actually sends, per this
+    // method's own docstring -- `filedata` as a fallback for the spelling
+    // the manual documents, in case Omniva ever aligns the two. See the
+    // docstring above for why this is a deliberate exception to "refuse
+    // rather than guess", not an instance of it.
+    const rawLabel = text(success?.fileData);
+    const filedata = rawLabel.length > 0 ? rawLabel : text(success?.filedata);
     if (filedata.length === 0) {
       throw new Error(`OMX returned no label for ${barcode}`);
     }

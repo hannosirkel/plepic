@@ -198,11 +198,25 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
 
   // The receiver address always carries `country` — mandatory per the
   // manual regardless of address form — plus either `offloadPostcode` alone
-  // or `street`/`postcode`/`city` alone, never both: a street address
-  // alongside an offloadPostcode is two destinations for one parcel. Which
-  // of the two applies follows the delivery channel the buyer actually
-  // chose, not the destination country: a courier order to a parcel-machine
-  // country still ships to a street.
+  // or `street`/`postcode`/`deliverypoint` alone, never both: a street
+  // address alongside an offloadPostcode is two destinations for one
+  // parcel. Which of the two applies follows the delivery channel the buyer
+  // actually chose, not the destination country: a courier order to a
+  // parcel-machine country still ships to a street.
+  //
+  // **`deliverypoint`, not `city`.** OMX's manual (line 519-526) names the
+  // field `deliverypoint` for exactly this address form -- "City, small
+  // town, village, rural municipality, county" -- and there is no `city`
+  // field anywhere in the OMX schema. This branch used to send `city`; OMX's
+  // real test environment answered with `500` and `Unrecognized field
+  // "city" (class ...OffLoadSupportedAddressDto), not marked as ignorable`.
+  // Sending `deliverypoint` for an otherwise-identical request answered
+  // `200 OK` with `resultCode: "OK"` and a barcode. This is not a manual
+  // discrepancy the way client.ts's `barcodes` and `fileData` are -- the
+  // manual was right all along -- it was a plain slip in this branch, caught
+  // only by calling the real API rather than by reading. The sender branch a
+  // few lines below (`senderAddressee.address.deliverypoint`) always had
+  // this right; see its own docstring on {@link OmnivaSenderConfig}.
   //
   // A parcel machine registration requires a chosen machine's ZIP. Refusing
   // its absence here, rather than letting it through, matters because the
@@ -223,7 +237,7 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
     receiverAddress = {
       street: shippingAddress.address1,
       postcode: shippingAddress.postalCode,
-      city: shippingAddress.city,
+      deliverypoint: shippingAddress.city,
       country: countryCode,
     };
   }

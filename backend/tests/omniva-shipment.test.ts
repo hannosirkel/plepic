@@ -46,7 +46,11 @@ interface OmxShipment {
       readonly offloadPostcode?: string;
       readonly street?: string;
       readonly postcode?: string;
-      readonly city?: string;
+      // OMX's field for the receiver's city is `deliverypoint`, not `city` --
+      // see shipment.ts's header on that branch. `city` is deliberately not
+      // declared on this type at all, matching what `buildShipmentRegistration`
+      // actually emits.
+      readonly deliverypoint?: string;
       readonly country?: string;
     };
   };
@@ -212,6 +216,11 @@ describe("the OMX registration body", () => {
     expect(one).not.toHaveProperty("servicePackage");
     expect(one.receiverAddressee.address.street).toBe("Brivibas iela 10");
     expect(one.receiverAddressee.address).not.toHaveProperty("offloadPostcode");
+    // Defect A: OMX's field is `deliverypoint`, not `city` -- see
+    // shipment.ts's header on this branch, and client.ts's header for the
+    // sibling defects (B, C) this same live-API session confirmed.
+    expect(one.receiverAddressee.address.deliverypoint).toBe("Riga");
+    expect(one.receiverAddressee.address).not.toHaveProperty("city");
     // Latvia is phone-optional; the address carries none, and that must not refuse.
     expect(one.receiverAddressee).not.toHaveProperty("contactPhone");
     expect(one).not.toHaveProperty("customs");   // Latvia is in the EU
@@ -230,6 +239,9 @@ describe("the OMX registration body", () => {
     expect(one.contentDescription).toBe("Lunar Base");
     expect(one.receiverAddressee.contactPhone).toBe("+4930123456");
     expect(one.receiverAddressee.address.postcode).toBe("10115");
+    // Defect A, see the Latvian courier test above.
+    expect(one.receiverAddressee.address.deliverypoint).toBe("Berlin");
+    expect(one.receiverAddressee.address).not.toHaveProperty("city");
     expect(one).not.toHaveProperty("customs");   // Germany is in the EU
   });
 
