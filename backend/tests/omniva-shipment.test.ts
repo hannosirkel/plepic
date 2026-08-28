@@ -254,9 +254,13 @@ describe("the OMX registration body", () => {
       } },
     })));
     expect(one.customs!.goodsCategoryCode).toBe("SALE_OF_GOODS");
+    // originCountry: "CN", alpha-2 -- not "CHN". See PRODUCT.customs.originCountry's
+    // own docstring in product-model.ts: the manual's `string(3)` reads as
+    // alpha-3, and is wrong; the live carrier refuses alpha-3 with a
+    // jakarta.validation.constraints.Size violation and accepts alpha-2.
     expect(one.customs!.shipmentItems).toEqual([{
       description: "Lunar Base", numberOfPieces: 1, weight: 0.3,
-      financialValue: 25, tariffNumber: "9504400000", originCountry: "CHN",
+      financialValue: 25, tariffNumber: "9504400000", originCountry: "CN",
     }]);
   });
 

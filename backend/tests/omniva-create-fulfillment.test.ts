@@ -55,6 +55,20 @@ import OmnivaFulfillmentProviderService from "../src/modules/omniva/service.js";
  * for exactly this one field, on exactly this one path, because that is the
  * one shape the real API is known to refuse and the one this suite needs a
  * regression to a `city`-emitting `shipment.ts` to be caught by.
+ *
+ * **And a registration whose `customs.shipmentItems[].originCountry` is
+ * alpha-3, the same way.** The OMX manual gives that field as `string(3)`,
+ * read everywhere in this codebase (until 2026-08-28) as ISO 3166-1
+ * alpha-3. It is not: `originCountry: "CHN"` against the real test API
+ * answers `200` with `resultCode: "ERROR"` and a `failedShipments` entry
+ * carrying `{jakarta.validation.constraints.Size.message}:
+ * shipment.customs.shipmentItems[0].originCountry - size must be between
+ * {min} and {max}`; `originCountry: "CN"`, nothing else changed, answers
+ * `200` with `resultCode: "OK"`. See `product-model.ts`'s
+ * `ProductCustoms.originCountry` docstring for the full citation. Modelled
+ * the same way as the `city` check above -- one field, one path, not a
+ * schema validator -- so a regression to `PRODUCT.customs.originCountry:
+ * "CHN"` is caught here rather than reaching the carrier.
  */
 interface StubOmx {
   readonly baseUrl: string;
@@ -92,6 +106,26 @@ function unrecognizedCityFieldResponse(): unknown {
   };
 }
 
+/**
+ * OMX's actual refusal for an alpha-3 `customs.shipmentItems[].originCountry`
+ * -- transcribed from the real `resultCode: "ERROR"` response this suite's
+ * header cites (a `200` carrying a business-level refusal, not an HTTP
+ * error -- see `client.ts`'s `registerShipment` for why that is handled as
+ * a `failedShipments` entry rather than a non-2xx status). Modelled here the
+ * same way `unrecognizedCityFieldResponse` models defect A's refusal: one
+ * field, one path, not a schema validator.
+ */
+function alpha3OriginCountryResponse(): unknown {
+  return {
+    resultCode: "ERROR",
+    failedShipments: [{
+      messageCode: "jakarta.validation.constraints.Size.message",
+      message:
+        "shipment.customs.shipmentItems[0].originCountry - size must be between {min} and {max}",
+    }],
+  };
+}
+
 async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
   const authorizationHeaders: string[] = [];
   const registeredBodies: unknown[] = [];
@@ -111,8 +145,16 @@ async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
         // Models the one shape OMX's real test API is known to refuse: a
         // receiver address carrying `city` instead of `deliverypoint`. See
         // this file's header.
-        const shipments = (body as { shipments?: readonly { receiverAddressee?: { address?: unknown } }[] } | undefined)
-          ?.shipments;
+        const shipments = (
+          body as
+            | {
+                shipments?: readonly {
+                  receiverAddressee?: { address?: unknown };
+                  customs?: { shipmentItems?: readonly { originCountry?: unknown }[] };
+                }[];
+              }
+            | undefined
+        )?.shipments;
         const receiverAddress = shipments?.[0]?.receiverAddressee?.address;
         if (
           receiverAddress !== null &&
@@ -121,6 +163,20 @@ async function stubOmx(options: StubOmxOptions): Promise<StubOmx> {
         ) {
           response.writeHead(500, { "Content-Type": "application/json" });
           response.end(JSON.stringify(unrecognizedCityFieldResponse()));
+          return;
+        }
+
+        // Models the one shape OMX's real test API is known to refuse on the
+        // customs path: an alpha-3 `originCountry`. See this file's header.
+        const customsItems = shipments?.[0]?.customs?.shipmentItems;
+        if (
+          Array.isArray(customsItems) &&
+          customsItems.some(
+            (item) => typeof item?.originCountry === "string" && /^[A-Z]{3}$/.test(item.originCountry),
+          )
+        ) {
+          response.writeHead(200, { "Content-Type": "application/json" });
+          response.end(JSON.stringify(alpha3OriginCountryResponse()));
           return;
         }
 
@@ -422,7 +478,13 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
       const customsItem = shipment.customs?.shipmentItems[0];
       expect(customsItem?.financialValue).toBe(25);
       expect(customsItem?.tariffNumber).toBe("9504400000");
-      expect(customsItem?.originCountry).toBe("CHN");
+      // Defect D: OMX's originCountry is alpha-2 ("CN"), not alpha-3 ("CHN")
+      // -- see this file's header and product-model.ts's
+      // ProductCustoms.originCountry docstring. This request also reaches
+      // this stub's alpha-3 rejection (above) if PRODUCT.customs.originCountry
+      // regresses to "CHN": createFulfillment would then throw, and this
+      // whole test would fail rather than merely this one assertion.
+      expect(customsItem?.originCountry).toBe("CN");
       expect(customsItem?.weight).toBe(0.3);
     } finally {
       await omx.close();

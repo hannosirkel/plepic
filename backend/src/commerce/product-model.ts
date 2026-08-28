@@ -49,9 +49,10 @@
  * there is exactly one place to freeze it. OMX requires all three whenever a
  * shipment's destination is outside the EU and refuses the registration if
  * they are absent or malformed — see {@link ProductCustoms} for the tariff
- * code, the manufacturing origin and why the origin is written in a different
- * standard's format from every other country code in this codebase. Nothing
- * reads this block yet; a later task builds the customs declaration from it.
+ * code, the manufacturing origin, and why that origin's format was believed
+ * to be an exception to every other country code in this codebase until the
+ * live carrier proved otherwise. Nothing reads this block yet; a later task
+ * builds the customs declaration from it.
  */
 
 // Extensionless on purpose, unlike the rest of `src/commerce/` (see
@@ -85,7 +86,7 @@ export interface ProductPackaging {
  * malformed. Nothing consumes this block yet — a later task builds the
  * customs declaration from it.
  *
- * `9504400000` is HS 9504.40 — playing cards. `CHN` is where the game is
+ * `9504400000` is HS 9504.40 — playing cards. `CN` is where the game is
  * manufactured, and OMX makes it mandatory for United States destinations
  * specifically, because the landed cost cannot be calculated without it.
  */
@@ -93,17 +94,36 @@ export interface ProductCustoms {
   /** HS code, digits only. */
   readonly tariffNumber: string;
   /**
-   * Country of manufacture, ISO 3166-1 **alpha-3** — OMX's format.
+   * Country of manufacture, ISO 3166-1 **alpha-2** — confirmed against the
+   * live carrier, 2026-08-28, not read off the manual.
+   *
+   * The OMX API manual for customers, v1.7, gives `customs.shipmentItems[].originCountry`
+   * as `string(3)`, which every other reader of this codebase (including a
+   * prior version of this very comment) took to mean ISO 3166-1 **alpha-3**.
+   * **The manual is wrong.** Registering a US-bound shipment with
+   * `originCountry: "CHN"` against `test-omx.omniva.eu` answers `200` with
+   * `resultCode: "ERROR"` and a `failedShipments` entry carrying
+   * `{jakarta.validation.constraints.Size.message}: shipment.customs.shipmentItems[0].originCountry
+   * - size must be between {min} and {max}` — the same request with
+   * `originCountry: "CN"`, nothing else changed, answers `200` with
+   * `resultCode: "OK"` and a barcode. `string(3)` in the manual bounds the
+   * field's *length*, not its standard, and two of that bound's three
+   * characters are simply unused by every alpha-2 code.
+   *
+   * This is the third place in this module where the manual and the live API
+   * disagree — see `../modules/omniva/client.ts`'s header for the other two
+   * (`barcodes`, `fileData`) and the same warning: a future reader with the
+   * manual open, seeing `string(3)`, will otherwise "correct" this field
+   * straight back to alpha-3 and reintroduce a refusal on every non-EU order.
+   * `tests/commerce-product-seed.test.ts` asserts the alpha-2 shape for
+   * exactly this reason, and `tests/omniva-create-fulfillment.test.ts`'s stub
+   * OMX refuses an alpha-3 `originCountry` the way the real API does.
    *
    * Every other country code in this repository — `EU_MEMBER_STATE_CODES`,
    * `PARCEL_MACHINE_COUNTRY_CODES`, `DELIVERABLE_COUNTRY_CODES` in
-   * `./shipping-model.js`, every delivery address Medusa carries — is
-   * ISO 3166-1 **alpha-2**. This one field is the exception, because it feeds
-   * OMX rather than Medusa, and OMX's own customs API takes alpha-3. Writing
-   * "CN" here by habit is the trap this comment exists to catch: it is a
-   * different standard's code for the same country, not a typo of this one,
-   * so nothing that checks alpha-2 codes elsewhere in this codebase would
-   * ever flag it.
+   * `./shipping-model.js`, every delivery address Medusa carries — is also
+   * ISO 3166-1 alpha-2, so this field is no longer the exception it was
+   * believed to be; it is simply consistent with the rest of this codebase.
    */
   readonly originCountry: string;
   readonly goodsCategoryCode: "SALE_OF_GOODS";
@@ -147,7 +167,7 @@ export const PRODUCT: ProductModel = {
   manageInventory: false,
   customs: {
     tariffNumber: "9504400000",
-    originCountry: "CHN",
+    originCountry: "CN",
     goodsCategoryCode: "SALE_OF_GOODS",
   },
 };
