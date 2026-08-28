@@ -45,7 +45,7 @@ real defects; see the next section.
 The two hard blockers the first handover named are both closed.
 
 - **`customerCode` is resolved.** Omniva issued it. `~/app/orange/.keys/plepic-omniva`
-  and `~/app/orange/.keys/plepic-omniva-test` each now hold all three lines
+  and `~/app/orange/.keys/plepic-test-omniva` each now hold all three lines
   (`apiUser`, `apiPassword`, `customerCode`), mode `600`. Probed with an empty
   `shipments` array against both live and test hosts: `customerCode: CustomerIsValid`
   with no complaint, so the value is accepted server-side. **`customerCode`
@@ -166,23 +166,26 @@ train reviewers to ignore its failures.
    `plepic-test-omniva` (two separate operator runs — see above) and adding
    both to `argocd_openbao_enabled_optional_sources` in the **private
    inventory** are operator actions. No agent took them, deliberately.
-4. **A key-file name mismatch, found while writing this handover, not yet
-   fixed.** `orange/scripts/openbao-admin` looks a source's key up by its
-   exact `source` name (`keys_directory / item.source`), and every other
+4. **A key-file name mismatch — found, and now resolved.**
+   `orange/scripts/openbao-admin` looks a source's key up by its exact
+   `source` name (`keys_directory / item.source`), and every other
    `plepic-test` source in that file — `plepic-test-runtime-credentials`,
    `plepic-test-publishable-key`, and so on — puts `test` right after
    `plepic`. `feat/omniva-secret` followed that convention:
-   `plepic-test-omniva`. The file that actually exists on disk is
-   `~/app/orange/.keys/plepic-omniva-test` — `test` at the *end*. Neither
-   this agent nor the one before it touched that directory (out of scope by
-   the standing constraint), so the mismatch was not created here and was
-   not fixed here either. As written, `playbooks/openbao-seed.yml` will not
-   find the test key under the name it looks for. Before the first seed
-   attempt: either rename the key file to `plepic-test-omniva` (matching
-   every other test source in `openbao-admin`), or rename the source in
-   `OMNIVA_SECRET_IMPORTS` to `plepic-omniva-test` (breaking that
-   convention). This handover does not choose between them — that is an
-   operator call, not an agent one.
+   `plepic-test-omniva`. The file delivered by the operator was named
+   `plepic-omniva-test`, with `test` at the *end* — the **only** one of the
+   fifteen files in `.keys/` not matching the convention its siblings all
+   follow. As written, `playbooks/openbao-seed.yml` would not have found the
+   test key under the name it looks for.
+
+   Resolved on 2026-08-28 by renaming the file to
+   `~/app/orange/.keys/plepic-test-omniva`, preserving content and mode
+   `600`. The file was renamed rather than the source, because the source
+   name is shared by fourteen other entries across `openbao-admin`,
+   `openbao_seed_allowed_sources` and the argocd projections — changing it
+   would have made Omniva the exception in three places to spare one file.
+   The end-to-end verification below was re-run after the rename and all
+   four paths still register and label.
 
 ## Effect gates — read before merging anything
 
