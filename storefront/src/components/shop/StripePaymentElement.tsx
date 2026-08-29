@@ -50,8 +50,35 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
     return (
       <PaymentElement
         options={{
-          layout: "tabs",
-          paymentMethodOrder: ["apple_pay", "google_pay", "card", "paypal"],
+          // An accordion showing one item, rather than tabs: card renders
+          // open and immediately usable, and everything else -- Link included
+          // -- sits behind a single "More payment methods" row. That is the
+          // point. Link should be available without being in the way, and a
+          // tab strip cannot express "present but quiet": every method
+          // competes for one row, and whichever do not fit fall into an
+          // overflow whose contents depend on viewport width and on which
+          // wallets the device offers. Whether a customer saw Link at all was
+          // effectively decided by their screen.
+          //
+          // `defaultCollapsed: false` is deliberate, against the obvious
+          // reading of "unobtrusive". Collapsing everything would cost every
+          // customer a click to reach card, the overwhelmingly common path;
+          // the goal is to demote the alternatives, not to demote paying.
+          layout: {
+            type: "accordion",
+            defaultCollapsed: false,
+            visibleAccordionItemsCount: 1,
+          },
+          // `link` is named explicitly. Leaving it out did not remove it --
+          // Stripe appends eligible methods this list omits, in an order
+          // nothing here controls. Naming it is what makes its position a
+          // decision rather than an accident.
+          paymentMethodOrder: ["card", "apple_pay", "google_pay", "link", "paypal"],
+          // `auto` is already the default for all three, so this grants no
+          // control it would not otherwise have: for wallets the only other
+          // value is `never`, which hides. It stays because it records at the
+          // call site that hiding any of them is a decision nobody has taken,
+          // and it is where a future "hide Link" would be written.
           wallets: { applePay: "auto", googlePay: "auto", link: "auto" },
         }}
       />
