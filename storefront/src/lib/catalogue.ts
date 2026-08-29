@@ -262,6 +262,23 @@ export interface ResolvedCatalogue {
    * was removed: not "always say VAT is included", but "say so when it
    * genuinely is" — see `content/publisher.ts`'s `homepageCallsToAction`,
    * whose "Buy for {price}" entry is the one surface that renders this today.
+   *
+   * **That one surface is English-only, so `TAX_VOCABULARY.et`'s
+   * `vatIncludedNote` ("Käibemaks sisaldub") is currently unreachable.**
+   * `HomepageMockup` and `CallToActionLink` — the only renderers of this field
+   * — import `content/publisher.ts` directly rather than taking a `locale`,
+   * which `src/app/localized-routes.tsx`'s own doc comment records as
+   * deliberate and out of this module's authority to change; no call site
+   * ever resolves the catalogue with `locale: "et"` for a component that
+   * renders `vatIncludedNote`. The Estonian string was added for
+   * completeness with `en` — {@link TaxVocabulary} makes it a required field
+   * of both — but it has **not** had the qualified reader's confirmation
+   * `content/legal/et/*` records for its Estonian text (see e.g.
+   * `content/legal/et/shipping.ts`'s header for that pattern), because
+   * nothing has ever put it in front of a reader. Do not wire a locale into
+   * `HomepageMockup` on the strength of this comment alone: get that
+   * confirmation on the Estonian wording first, the same as any other
+   * Estonian copy this shop ships.
    */
   readonly vatIncludedNote: string;
   readonly availability: CatalogueAvailability;
@@ -390,6 +407,9 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
     vatAdded: (destination) => `käibemaks lisatud, kättetoimetamisel sihtkohta ${destination}`,
     noVatAdded: (destination) =>
       `käibemaksu ei lisata, kättetoimetamisel sihtkohta ${destination}`,
+    // Unreachable and unreviewed — see `ResolvedCatalogue.vatIncludedNote`'s
+    // doc comment above before wiring this anywhere or treating it as
+    // confirmed Estonian copy.
     vatIncludedNote: "Käibemaks sisaldub",
     shippingNote:
       "Saatekulu arvutatakse tellimuse vormistamisel ja Euroopa Liidu sisese kättetoimetamise " +
