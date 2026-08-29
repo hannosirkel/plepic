@@ -63,7 +63,28 @@ describe("Stripe Payment Element fail-closed states", () => {
 });
 
 describe("Stripe Payment Element method presentation", () => {
-  it("offers eligible wallets before Card and PayPal while preserving Link", () => {
+  /**
+   * Link was reported present on the test site and absent on live, with
+   * nothing to explain it: identical code, both Stripe payment method
+   * configurations carrying `link: on`, real PaymentIntents in both modes
+   * resolving to the same `card,link,paypal`, and byte-identical CSP headers
+   * served by both. Nothing server-side differed, which is what pointed at
+   * the two things this test now pins.
+   *
+   * `link` was absent from `paymentMethodOrder`, and omitting a method does
+   * not remove it -- Stripe appends the eligible ones the list leaves out.
+   * Under the previous `tabs` layout they competed for a single row and the
+   * overflow depended on viewport width and on which wallets the device
+   * offered, so whether a customer ever saw Link was decided by their screen
+   * rather than by anything here. Naming it, in an accordion, makes its
+   * position a decision.
+   *
+   * Asserted as one exact object rather than field by field, because the
+   * failure being guarded against is a *missing* key: `toEqual` on the whole
+   * options object fails when `link` drops out of the order again, and a
+   * `toContain("link")` would not.
+   */
+  it("opens on card and keeps Link named, present, and out of the way", () => {
     vi.stubGlobal("window", {
       location: {
         assign: () => undefined,
@@ -81,8 +102,12 @@ describe("Stripe Payment Element method presentation", () => {
 
     expect(renderedPaymentElement.options).toEqual([
       {
-        layout: "tabs",
-        paymentMethodOrder: ["apple_pay", "google_pay", "card", "paypal"],
+        layout: {
+          type: "accordion",
+          defaultCollapsed: false,
+          visibleAccordionItemsCount: 1,
+        },
+        paymentMethodOrder: ["card", "apple_pay", "google_pay", "link", "paypal"],
         wallets: { applePay: "auto", googlePay: "auto", link: "auto" },
       },
     ]);

@@ -184,6 +184,18 @@ describe("Stripe browser boundary", () => {
       expect.arrayContaining(["https://js.stripe.com", "https://hooks.stripe.com"]),
     );
     expect(directives.get("connect-src")).toContain("https://api.stripe.com");
+
+    // The wildcard is a separate requirement from the bare host, and asserting
+    // the bare host does not cover it: a CSP host-source matches one exact
+    // host and never its subdomains. Stripe's security guide requires
+    // `https://*.js.stripe.com` in both directives because Stripe.js opens
+    // frames on different origins under that suffix, which is how Link renders
+    // inside the Payment Element. Without it those frames are refused while
+    // card -- served from the bare host -- keeps working, so the symptom is a
+    // payment method quietly missing rather than anything that looks like a
+    // policy error.
+    expect(directives.get("script-src")).toContain("https://*.js.stripe.com");
+    expect(directives.get("frame-src")).toContain("https://*.js.stripe.com");
     expect(directives.get("form-action")).toEqual(["'self'"]);
   });
 });

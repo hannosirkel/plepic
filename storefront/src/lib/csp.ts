@@ -23,6 +23,17 @@
  * they are injected by an already-nonced Next.js script and are therefore
  * covered by `'strict-dynamic'` propagation; the explicit host-sources are
  * kept as a fallback for a browser that only supports CSP Level 2.
+ *
+ * **`https://*.js.stripe.com` is not a nicety, and the bare host does not
+ * cover it.** Stripe's security guide requires the wildcard in both
+ * `script-src` and `frame-src`, because Stripe.js opens frames on *different
+ * origins* under that suffix — that is how Link renders inside the Payment
+ * Element. With only `https://js.stripe.com` allowed, those frames are
+ * refused and Link degrades or vanishes while card, which renders on the
+ * bare host, keeps working: a failure that looks like a Stripe
+ * misconfiguration rather than a policy one. A CSP host-source matches an
+ * exact host and never its subdomains, so the wildcard has to be written
+ * out; adding it does not widen the policy beyond Stripe.
  */
 
 export function buildContentSecurityPolicy(nonce: string): string {
@@ -32,11 +43,11 @@ export function buildContentSecurityPolicy(nonce: string): string {
     `object-src 'none'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.googletagmanager.com https://challenges.cloudflare.com https://js.stripe.com`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.googletagmanager.com https://challenges.cloudflare.com https://js.stripe.com https://*.js.stripe.com`,
     `style-src 'self' 'nonce-${nonce}'`,
     `img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com`,
     `connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://challenges.cloudflare.com https://api.stripe.com`,
-    `frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com https://js.stripe.com https://hooks.stripe.com`,
+    `frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com`,
     `font-src 'self'`,
     `upgrade-insecure-requests`,
   ];
