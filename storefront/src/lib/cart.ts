@@ -653,12 +653,38 @@ export function cartTotals(
  * chosen yet. `CheckoutPageContent` computes it from the selection it
  * already holds, exactly as it already computes {@link addressComplete}
  * from the form rather than handing this function the form itself.
+ *
+ * ## An eighth refusal, added fixing the Task 8 regression: the phone
+ *
+ * `addressComplete` names the **postal** address only — country, street,
+ * postcode, city, name, email — and has done since the fix on 2026-08-29.
+ * Before that fix it also required a valid phone number wherever OMX needs
+ * one, which was the defect an operator reported: the phone has no bearing
+ * on which delivery methods exist or what they cost, but requiring it before
+ * `addressComplete` went true blocked the delivery method `<select>` itself
+ * from ever loading outside Estonia, Finland, Lithuania and Latvia, and a
+ * buyer typing an ordinary local number (no leading `+`) stayed blocked
+ * forever. `CheckoutPageContent.tsx`'s `isPostalAddressComplete` is what
+ * `addressComplete` is fed from now, and it does not look at the phone at
+ * all.
+ *
+ * That does not make the phone optional — Omniva still refuses to register a
+ * shipment for a country it requires one for and gets none, and a fulfilment
+ * refusal after payment is a strictly worse outcome than refusing the order
+ * first. `phoneIncomplete` is where that requirement moved to: **placement**,
+ * not method selection. Defaults to `false` so every caller that predates the
+ * phone field — every pre-Task-8 test in `tests/shop-pages.test.tsx` among
+ * them — keeps its existing meaning unchanged. `CheckoutPageContent.tsx`
+ * computes it with `checkout-address.ts`'s `isPhoneComplete`, negated, the
+ * same way it already computes `parcelMachineNeedsZip` from the selection it
+ * holds rather than handing this function the form.
  */
 export function orderMayBePlaced({
   lines,
   addressComplete,
   totals,
   parcelMachineNeedsZip = false,
+  phoneIncomplete = false,
 }: {
   readonly lines: readonly CartLine[];
   readonly addressComplete: boolean;
@@ -673,11 +699,21 @@ export function orderMayBePlaced({
    * unchanged.
    */
   readonly parcelMachineNeedsZip?: boolean;
+  /**
+   * True when OMX requires a receiver phone number for the chosen country and
+   * the buyer has not given one that starts with `+` — see this function's
+   * doc comment above. Defaults to `false`: a caller that never asks about
+   * the phone (every pre-Task-8 test, and any future caller with no phone
+   * field of its own) gets the pre-Task-8 behaviour rather than a silent new
+   * refusal it did not opt into.
+   */
+  readonly phoneIncomplete?: boolean;
 }): boolean {
   if (lines.length === 0) return false;
   if (lines.some((line) => !isAvailable(line))) return false;
   if (!addressComplete) return false;
   if (parcelMachineNeedsZip) return false;
+  if (phoneIncomplete) return false;
   return (
     totals.goodsAmount !== null && totals.shippingAmount !== null && totals.orderAmount !== null
   );

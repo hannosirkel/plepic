@@ -412,8 +412,8 @@ describe("empty is the default state", () => {
 
 /**
  * The phone field OMX conditionally requires — see
- * `phoneRequiredForCountryName` in `CheckoutPageContent.tsx` and
- * `phoneRequiredForCountry` in `src/lib/store-checkout.ts`.
+ * `phoneRequiredForCountryName` in `src/components/shop/checkout-address.ts`
+ * and `phoneRequiredForCountry` in `src/lib/store-checkout.ts`.
  *
  * Everything here is a static-render assertion, like every other test in this
  * file: `storefront/` has no DOM in its test environment, so nothing
@@ -422,6 +422,18 @@ describe("empty is the default state", () => {
  * Article 8(2) block — is computed straight from `values` at render, with no
  * client event needed to see it react to a country that newly requires a
  * phone number, or to one that is missing or malformed.
+ *
+ * **Fixed 2026-08-29.** `addressComplete` used to require a valid phone
+ * number too, wherever OMX asks for one, which meant the Article 8(2) block
+ * — and, in the served app, the delivery method `<select>` itself — could
+ * not settle outside Estonia, Finland, Lithuania and Latvia until a
+ * `+`-prefixed phone number was typed. `checkout-address.ts`'s
+ * `isPostalAddressComplete` now ignores the phone entirely, so the six
+ * disclosures below react to the *postal* address alone; `isPhoneComplete`
+ * is where the requirement moved to, feeding `orderMayBePlaced`'s
+ * `phoneIncomplete` (pinned directly in the ARTICLE 8(2) INVARIANT describe
+ * block further down, since a static render cannot observe a submit-time
+ * refusal). `tests/checkout-address.test.ts` drives both functions directly.
  */
 describe("the phone field, where OMX requires one", () => {
   /** Not one of the four OMX exempts. */
@@ -478,22 +490,32 @@ describe("the phone field, where OMX requires one", () => {
   });
 
   /**
-   * **The order cannot be placed while the field is required and empty.**
-   * `addressComplete` is false, so the shipping charge and the total stay
-   * unshown — the same instructions "the incomplete-address state" above
-   * asserts for a wholly empty form — which is what keeps `orderMayBePlaced`
-   * refusing the order rather than something this test reaches directly.
+   * **The regression, pinned the way the operator reported it.** The postal
+   * address is complete; the phone is not. Before the 2026-08-29 fix this
+   * left the shipping charge and the total as instructions, exactly like a
+   * wholly empty form — which is what blocked the delivery method
+   * `<select>` from ever loading in the served app, since the phone has no
+   * bearing on which delivery methods exist or what they cost. Now the
+   * postal address alone settles them.
    */
-  it("leaves the shipping charge and the total unshown when the country needs a phone number and none was given", () => {
+  it("does not withhold the shipping charge or the total while the phone is missing", () => {
     const text = visibleText(renderWith(REQUIRING_COUNTRY, undefined));
-    expect(text).toContain(checkout.delivery.chargePending);
-    expect(text).toContain(checkout.order.totalPending);
+    expect(text).not.toContain(checkout.delivery.chargePending);
+    expect(text).not.toContain(checkout.order.totalPending);
   });
 
-  /** The storefront's own rule is presence and a leading `+`, and nothing more. */
-  it("still leaves the total unshown for a phone number with no leading country code", () => {
+  /**
+   * Same fix, over the storefront's other phone rule: presence and a leading
+   * `+`, nothing more (`isPhoneComplete`'s doc comment explains why the rest
+   * is OMX's to refuse at fulfilment). A malformed phone still leaves the
+   * order unplaceable — see `orderMayBePlaced`'s `phoneIncomplete` refusal,
+   * pinned in the ARTICLE 8(2) INVARIANT block below — but it must not hide
+   * figures that do not depend on it.
+   */
+  it("does not withhold them for a phone number with no leading country code either", () => {
     const text = visibleText(renderWith(REQUIRING_COUNTRY, "030 1234567"));
-    expect(text).toContain(checkout.order.totalPending);
+    expect(text).not.toContain(checkout.order.totalPending);
+    expect(text).not.toContain(checkout.delivery.chargePending);
   });
 
   it("shows the settled figures once a phone number with a leading + is given", () => {
@@ -1364,6 +1386,36 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
         parcelMachineNeedsZip: true,
       }),
     ).toBe(false);
+  });
+
+  /**
+   * **The Task 8 regression, fixed 2026-08-29, pinned directly on the
+   * invariant.** `addressComplete` is postal-only now (see
+   * `checkout-address.ts`'s `isPostalAddressComplete`), so it no longer
+   * refuses a placement OMX needs a phone number for — `phoneIncomplete`
+   * does that instead. This is the state the postal-only split makes newly
+   * reachable: every one of the six Article 8(2) values is a value (postal
+   * address complete, a real zone, a real total) and the order is still
+   * unplaceable, because the phone the chosen country needs was never given.
+   */
+  it("refuses a placement OMX needs a phone number for, even with every other disclosure a value", () => {
+    const totals = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    expect(
+      orderMayBePlaced({ lines, addressComplete: true, totals, phoneIncomplete: true }),
+    ).toBe(false);
+  });
+
+  /**
+   * The default keeps every caller that predates the phone field — every
+   * other assertion in this describe block among them — meaning what it
+   * always meant: omitting `phoneIncomplete` is not a silent new refusal.
+   */
+  it("keeps placing an order when the phone is complete, or the question was never asked", () => {
+    const totals = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    expect(
+      orderMayBePlaced({ lines, addressComplete: true, totals, phoneIncomplete: false }),
+    ).toBe(true);
+    expect(orderMayBePlaced({ lines, addressComplete: true, totals })).toBe(true);
   });
 
   /**

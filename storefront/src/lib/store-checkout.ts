@@ -162,6 +162,36 @@ export function isParcelMachineOption(option: GuestShippingOption): boolean {
 }
 
 /**
+ * Which delivery method a fresh option list should start selected as, before
+ * the buyer has touched the `<select>` themselves.
+ *
+ * Operator instruction, 2026-08-29: *"For EE/LV/LT, should be standard and
+ * parcel machine (default), rest - the standard option only."* The parcel
+ * machine method, when it is one of `options` — and it is one of `options`
+ * only for Estonia, Latvia and Lithuania, decided entirely server-side by
+ * `backend/src/commerce/shipping-model.ts` and never re-derived here from a
+ * country code, so this file carries no second copy of that set to drift
+ * from the one Medusa actually priced the cart against. `""` — nothing
+ * selected, the state a fresh option list has always started in — everywhere
+ * the method is absent, which is every country the operator's "rest" covers:
+ * the single Standard method there still needs an explicit choice, exactly
+ * as it does today.
+ *
+ * **Chooses a name, not a request.** Preselecting the parcel machine method
+ * must not itself add a shipping method to the cart — a machine has not been
+ * picked yet, and `addGuestShippingMethod` refuses to add this method
+ * without one. The one caller, `CheckoutPageContent.tsx`'s shipping-options
+ * effect, calls this exactly once per settled address, in the same state
+ * update that records the fetched options — never from an effect keyed on
+ * the selection itself — which is what keeps this from re-firing on every
+ * render and snapping a buyer who switched to Standard delivery back to the
+ * parcel machine.
+ */
+export function defaultShippingOptionId(options: readonly GuestShippingOption[]): string {
+  return options.find(isParcelMachineOption)?.id ?? "";
+}
+
+/**
  * The figure to render for one delivery option.
  *
  * Four cases, and the second is what actually occurs today for the standard

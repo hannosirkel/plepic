@@ -7,6 +7,8 @@ import { createMedusaStoreClient } from "../src/lib/medusa-client.js";
 import {
   addGuestShippingMethod,
   currentAddressTotals,
+  defaultShippingOptionId,
+  PARCEL_MACHINE_OPTION_NAME,
   phoneRequiredForCountry,
   prepareGuestShipping,
   shippingOptionFigure,
@@ -909,5 +911,44 @@ describe("the exact total presented before payment", () => {
     await expect(
       addGuestShippingMethod(client, "cart_example", parsedOption("so_eu", "Standard delivery", 700), true),
     ).resolves.toMatchObject({ shippingAmount: 868 });
+  });
+});
+
+/**
+ * Which delivery method a fresh option list starts selected as — the second
+ * half of the operator's 2026-08-29 instruction, *"For EE/LV/LT, should be
+ * standard and parcel machine (default), rest - the standard option only."*
+ *
+ * `defaultShippingOptionId` is the one call site `CheckoutPageContent.tsx`'s
+ * shipping-options effect uses, and it decides purely from **what Medusa
+ * returned** — never from a country code re-derived here — which is what
+ * keeps this file from carrying a second copy of the EE/LV/LT set the
+ * handover warns is a trap to duplicate (see
+ * `docs/working/2026-08-26-omniva-shipping-handover.md`, "Two country sets,
+ * and confusing them is the trap").
+ */
+describe("defaultShippingOptionId — the EE/LV/LT preselection", () => {
+  const standard = parsedOption("so_standard", "Standard delivery", 700);
+  const parcelMachine = parsedOption("so_parcel_machine", PARCEL_MACHINE_OPTION_NAME, 0);
+
+  it("prefers the Omniva parcel machine method when Medusa offered it", () => {
+    expect(defaultShippingOptionId([standard, parcelMachine])).toBe(parcelMachine.id);
+    // Order in the response must not matter either.
+    expect(defaultShippingOptionId([parcelMachine, standard])).toBe(parcelMachine.id);
+  });
+
+  /**
+   * "rest - the standard option only": nothing is preselected, exactly the
+   * state a fresh option list has always started in. Medusa returns only the
+   * Standard method outside Estonia, Latvia and Lithuania (see the
+   * handover's "Established facts"), so this is the case that actually
+   * occurs for every other delivery address.
+   */
+  it("selects nothing when the parcel machine method was not offered", () => {
+    expect(defaultShippingOptionId([standard])).toBe("");
+  });
+
+  it("selects nothing for an empty option list", () => {
+    expect(defaultShippingOptionId([])).toBe("");
   });
 });

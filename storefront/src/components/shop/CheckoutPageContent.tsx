@@ -147,7 +147,6 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
 import { checkout, unavailableFigure } from "../../../../content/shop.js";
-import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { destinationForCode, destinationForCountryName } from "../../lib/destination.js";
 import { checkoutPriceQualification } from "../../lib/price-qualification.js";
 import {
@@ -167,13 +166,23 @@ import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import {
   addGuestShippingMethod,
   currentAddressTotals,
+  defaultShippingOptionId,
   isParcelMachineOption,
-  phoneRequiredForCountry,
   prepareGuestShipping,
   shippingOptionFigure,
   type AddressBoundTotals,
   type GuestShippingOption,
 } from "../../lib/store-checkout.js";
+import {
+  EMPTY_ADDRESS,
+  FIELDS,
+  guestAddress,
+  isPhoneComplete,
+  isPostalAddressComplete,
+  phoneRequiredForCountryName,
+  validate,
+  type AddressValues,
+} from "./checkout-address.js";
 import {
   createSerialPaymentInitializer,
   completeStripeOrder,
@@ -212,103 +221,12 @@ import {
 } from "./checkout-terms.js";
 import styles from "../../styles/pages/shop.module.css";
 
-const FIELDS: readonly AddressFieldCopy[] = checkout.address.fields;
-
-type AddressValues = Readonly<Record<string, string>>;
-
-const EMPTY_ADDRESS: AddressValues = Object.fromEntries(FIELDS.map((field) => [field.name, ""]));
-
 function browserRuntimeConfig(): ClientRuntimeConfig {
   const element = document.getElementById("plepic-runtime-config");
   if (element === null || element.textContent === null) {
     throw new Error("Store runtime configuration is unavailable");
   }
   return JSON.parse(element.textContent) as ClientRuntimeConfig;
-}
-
-function guestAddress(values: AddressValues) {
-  return {
-    fullName: values.fullName ?? "",
-    streetAddress: values.streetAddress ?? "",
-    postalCode: values.postalCode ?? "",
-    city: values.city ?? "",
-    country: values.country ?? "",
-    email: values.email ?? "",
-    // "" where the field was never asked for — `addressPayload` in
-    // `store-checkout.ts` sends it unconditionally either way, the same way
-    // it sends every other field here.
-    phone: values.phone ?? "",
-  };
-}
-
-/** Deliberately permissive: enough to catch a typo, never enough to reject a real address. */
-function isPlausibleEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-/**
- * Whether the phone field is asked for, given whatever is currently typed
- * into the country field.
- *
- * `false` while no country is chosen, or the text is not one this site
- * recognises: `phoneRequiredForCountry` needs an ISO code, and an
- * unrecognised country name has none to give it. That state is not reachable
- * from the served `<select>` either way — see `zoneForCountryName`'s doc
- * comment in `src/lib/cart.ts` for the same argument about the shipping
- * zone — so this is "nothing to ask about yet", not a guess dressed up as one.
- *
- * One function, three call sites (the render below, {@link validate}, and the
- * effect that clears a hidden value), so the render, the validation and the
- * reset can never disagree about which countries need a phone number.
- */
-function phoneRequiredForCountryName(countryName: string): boolean {
-  const trimmed = countryName.trim();
-  if (trimmed.length === 0) return false;
-  const destination = destinationForCountryName(trimmed);
-  return destination !== null && phoneRequiredForCountry(destination.code);
-}
-
-function validate(values: AddressValues): Readonly<Record<string, string>> {
-  const errors: Record<string, string> = {};
-
-  for (const field of FIELDS) {
-    const value = (values[field.name] ?? "").trim();
-    if (value.length === 0) {
-      // "Enter country" is an instruction nobody can follow in front of a
-      // dropdown, so a chosen field asks to be chosen.
-      const prefix =
-        field.control === "country"
-          ? checkout.errors.missingSelectionPrefix
-          : checkout.errors.missingFieldPrefix;
-      errors[field.name] = `${prefix}${field.label.toLowerCase()}.`;
-      continue;
-    }
-    if (field.type === "email" && !isPlausibleEmail(value)) {
-      errors[field.name] = checkout.errors.invalidEmail;
-    }
-  }
-
-  /*
-   * Not one of `FIELDS`: this one is not asked of everybody, so it is not
-   * validated as though it were. The storefront's whole job here is presence
-   * and a leading `+` — see `phoneRequiredForCountry`'s doc comment for why
-   * the rest (a real national number, no special-tariff range, no Baltic
-   * fixed line) is OMX's to refuse at fulfilment.
-   */
-  if (phoneRequiredForCountryName(values.country ?? "")) {
-    const phone = (values.phone ?? "").trim();
-    if (phone.length === 0) {
-      errors.phone = `${checkout.errors.missingFieldPrefix}${checkout.address.phone.label.toLowerCase()}.`;
-    } else if (!phone.startsWith("+")) {
-      errors.phone = checkout.errors.invalidPhone;
-    }
-  }
-
-  return errors;
-}
-
-function isComplete(values: AddressValues): boolean {
-  return Object.keys(validate(values)).length === 0;
 }
 
 export interface CheckoutPageContentProps {
@@ -409,7 +327,15 @@ export function CheckoutPageContent({
     }));
   }, [lines, scenario]);
 
-  const addressComplete = isComplete(values);
+  /*
+   * The **postal** address alone — country, street, postcode, city, name,
+   * email — with no regard to the phone. See `checkout-address.ts`'s doc
+   * comment for the defect this split fixes: gating this on the phone too
+   * (Task 8's mistake) blocked the delivery method `<select>` from ever
+   * loading outside Estonia, Finland, Lithuania and Latvia, because the
+   * phone has no bearing on which delivery methods exist or what they cost.
+   */
+  const addressComplete = isPostalAddressComplete(values);
   const addressRevision = addressComplete ? JSON.stringify(guestAddress(values)) : null;
   /*
    * The zone, and therefore the charge, is a function of the chosen country
@@ -602,7 +528,19 @@ export function CheckoutPageContent({
           if (!active || request !== shippingRequest.current || addressRevision !== JSON.stringify(guestAddress(values))) return;
           setShippingOptions(options);
           setShippingOptionsAddress(addressRevision);
-          setSelectedShippingOption("");
+          /*
+           * Operator instruction, 2026-08-29: EE/LV/LT starts on the Omniva
+           * parcel machine method; every other address starts unchosen, as
+           * it always has. `defaultShippingOptionId` decides which — see its
+           * doc comment in `src/lib/store-checkout.ts` — and this is its one
+           * call site, reached exactly once per address each time a fetch
+           * for that address actually settles. It does not call
+           * `addSelectedShippingMethod`: a machine has not been chosen, so
+           * nothing is added to the cart yet, exactly as picking the method
+           * by hand with no zip already does not (see `selectShippingOption`
+           * below).
+           */
+          setSelectedShippingOption(defaultShippingOptionId(options));
           setShippingState("idle");
         },
         () => {
@@ -781,6 +719,18 @@ export function CheckoutPageContent({
      * the method's own charge included, since it is priced at zero and Free
      * is a value — and would otherwise be placeable with no collectable
      * destination.
+     *
+     * `phoneIncomplete` is the eighth, added fixing the Task 8 regression:
+     * `addressComplete` above is postal-only now, so it is this flag, not
+     * that one, that keeps an order unplaceable while OMX needs a phone
+     * number for the chosen country and none valid has been given —
+     * `nextErrors` just refused the same submission on the same ground, so by
+     * the time this runs `isPhoneComplete(values)` is already true whenever
+     * it matters; this is the belt this codebase's other invariants wear
+     * beside their braces (see `assertedCartTotals`'s doc comment in
+     * `src/lib/store-checkout.ts` for the same kind of redundant check kept
+     * on purpose), so the refusal survives even if a future edit removes the
+     * earlier one.
      */
     if (
       !orderMayBePlaced({
@@ -788,6 +738,7 @@ export function CheckoutPageContent({
         addressComplete,
         totals,
         parcelMachineNeedsZip: selectedIsParcelMachine && parcelMachineZip === "",
+        phoneIncomplete: !isPhoneComplete(values),
       })
     ) return;
     if (
