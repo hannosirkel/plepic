@@ -177,6 +177,28 @@ describe("resolveCatalogue", () => {
   });
 
   /**
+   * **The secondary "VAT included" note under "Buy for {price}" — added
+   * 2026-08-29, and derived from `vatApplies`, the same value that already
+   * decides {@link ResolvedCatalogue.price}, rather than from a second flag.**
+   *
+   * `content/schema.ts` records that a `taxNote` placeholder resolving to a
+   * bare "VAT included" was removed on 2026-08-10 because it rendered
+   * regardless of destination, stating something false on an export. This is
+   * the opposite claim, checked in both directions: present exactly where
+   * `price` is the gross figure, empty exactly where it is the net one — so a
+   * mutation that made it non-empty unconditionally (reinstating the removed
+   * defect) fails the second assertion, and a mutation that made it always
+   * empty fails the first.
+   */
+  it("states 'VAT included' only for the destination whose price includes it", () => {
+    expect(eu.vatIncludedNote).toBe("VAT included");
+    expect(nonEu.vatIncludedNote).toBe("");
+    for (const resolved of [eu, nonEu]) {
+      expect(resolved.vatIncludedNote.length > 0).toBe(resolved.vatApplies);
+    }
+  });
+
+  /**
    * The operator's *format*, not only their words: two lines, the first
    * emphasised, with the figure and the tax qualification above and the
    * shipping and duties sentence below.

@@ -22,6 +22,8 @@ import { NeutralTexture } from "../src/components/decor/NeutralTexture.js";
 import { SectionDivider } from "../src/components/decor/SectionDivider.js";
 import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
 import { LunarBaseMockup } from "../src/components/mockups/LunarBaseMockup.js";
+import { resolveCatalogue } from "../src/lib/catalogue.js";
+import { destinationForCode } from "../src/lib/destination.js";
 
 /** Every `<img …>` tag's `alt="…"` value, in document order. */
 function altTexts(html: string): readonly string[] {
@@ -302,6 +304,50 @@ describe("HomepageMockup", () => {
 
   it("has exactly one <h1> and skips no heading level", () => {
     expectSoundHeadingStructure(html);
+  });
+});
+
+/**
+ * **"VAT included" beneath "Buy for {price}" — added 2026-08-29, and only
+ * where the figure beside it actually includes VAT.**
+ *
+ * `resolveCatalogue().vatIncludedNote` (`src/lib/catalogue.ts`) is the pure
+ * decision; this is the binding, over real markup, of both directions the
+ * operator's instruction distinguishes: an EU destination, where `{price}` is
+ * gross and the note must appear, and a non-EU one, where it is net and
+ * nothing about VAT may be rendered at all — no empty element, no announced
+ * absence.
+ */
+describe("HomepageMockup: the 'VAT included' note under 'Buy for {price}'", () => {
+  const eu = renderToStaticMarkup(<HomepageMockup catalogue={resolveCatalogue(undefined, destinationForCode("EE"))} />);
+  const nonEu = renderToStaticMarkup(<HomepageMockup catalogue={resolveCatalogue(undefined, destinationForCode("US"))} />);
+
+  it("renders the note, visibly, for a destination whose advertised price includes VAT", () => {
+    expect(eu).toContain("VAT included");
+  });
+
+  it("renders nothing about VAT at all for a destination whose price does not include it", () => {
+    expect(nonEu).not.toContain("VAT included");
+  });
+
+  /**
+   * **Reaches the accessible name too.** `content/publisher.ts`'s
+   * `accessibleLabel` for this action, "Buy Lunar Base for {price}", does not
+   * contain the visible label "Buy for {price}" as a substring, so
+   * `CallToActionLink` already falls back to the visible label alone for its
+   * `aria-label` on this exact button — which is precisely the case a note
+   * folded in only when a richer accessible label already existed would
+   * silently miss. A note that is visible but unannounced leaves the
+   * ambiguity in place for the people least able to resolve it.
+   */
+  it("folds the note into the button's accessible name", () => {
+    const buyLink = eu.slice(eu.indexOf('href="/games/lunar-base#buy"'));
+    const tag = buyLink.slice(0, buyLink.indexOf(">") + 1);
+    expect(tag, "no aria-label carries the note").toMatch(/aria-label="[^"]*VAT included[^"]*"/);
+  });
+
+  it("carries no aria-label mentioning VAT at all when the price does not include it", () => {
+    expect(nonEu).not.toMatch(/aria-label="[^"]*VAT[^"]*"/);
   });
 });
 
