@@ -502,6 +502,19 @@ export function assertedCartTotals(value: unknown): CartTotals {
     orderAmount,
     taxAmount,
     shippingTaxAmount,
+    /*
+     * Already computed above to check the totals add up — see the two
+     * refusals over `goodsTaxAmount + shippingTaxAmount` — and now returned
+     * rather than only used and discarded. Neither the checkout nor the
+     * confirmation page reads it: both already have the full `taxAmount`
+     * Medusa supplied the moment either screen has anything to show, so this
+     * is a value with the same number they could reconstruct from it, not one
+     * that changes what either renders. It exists on `CartTotals` for the one
+     * caller that cannot use `taxAmount` at all — `cart.ts`'s own
+     * `cartTotals`, on the pre-address basket — see
+     * `CartTotals.goodsTaxAmount`'s doc comment in `./cart.js`.
+     */
+    goodsTaxAmount,
   };
 }
 

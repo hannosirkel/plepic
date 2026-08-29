@@ -49,6 +49,11 @@ const ESTONIAN_TOTALS: CartTotals = {
   orderAmount: 3968,
   taxAmount: 768,
   shippingTaxAmount: 168,
+  // Unread by this suite — the checkout and confirmation qualification never
+  // consult it, only `taxAmount` — but `CartTotals` requires it now that
+  // `cart.ts`'s basket-only VAT figure lives on the same interface. See
+  // `CartTotals.goodsTaxAmount`'s doc comment.
+  goodsTaxAmount: 600,
 };
 
 const ADDRESS_REVISION = "address-estonia";

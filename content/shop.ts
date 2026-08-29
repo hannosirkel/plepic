@@ -497,6 +497,17 @@ export const checkout = {
      * same reason the wording changed then: the decomposition it labels
      * changed.
      *
+     * **Shared with the basket's goods-VAT row, fixing the regression that
+     * followed the same 2026-08-29 change.** `basket.summary` renders it too,
+     * composed with the same `{vatRate}` — see `BasketPageContent.tsx`. The
+     * two screens quote a different *figure* beside it (this screen's is the
+     * addend that reaches the total; the basket's is the goods' own VAT
+     * alone, all it can know before an address exists — see `cart.ts`'s
+     * `CartTotals.goodsTaxAmount`), but the label makes no claim about
+     * completeness either way: "VAT at 24%" is true of a partial figure
+     * exactly as it is of the full one. A second, basket-only copy of this
+     * string would only be a second place the rate's wording could drift.
+     *
      * Until this change, the goods and shipping rows above it were grossed —
      * Medusa's `item_total`/`shipping_total`, tax already inside them — so the
      * VAT row was a breakdown of the two figures above it, worded "Includes",

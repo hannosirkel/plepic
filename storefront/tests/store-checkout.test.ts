@@ -295,6 +295,7 @@ describe("guest checkout Store operations", () => {
       orderAmount: 3968,
       taxAmount: 768,
       shippingTaxAmount: 168,
+      goodsTaxAmount: 600,
     });
     expect(seen).toEqual([
       {
@@ -501,6 +502,7 @@ describe("checkout shipping option address binding", () => {
       orderAmount: 3968,
       taxAmount: 768,
       shippingTaxAmount: 168,
+      goodsTaxAmount: 600,
     };
     expect(currentAddressTotals({ addressRevision: "address-a", totals }, "address-a")).toEqual(totals);
     expect(currentAddressTotals({ addressRevision: "address-a", totals }, "address-b")).toBeNull();
@@ -591,6 +593,7 @@ describe("the exact total presented before payment", () => {
       readonly orderAmount: number;
       readonly taxAmount: number;
       readonly shippingTaxAmount: number;
+      readonly goodsTaxAmount: number;
     };
   }
 
@@ -621,6 +624,7 @@ describe("the exact total presented before payment", () => {
         orderAmount: 3968,
         taxAmount: 768,
         shippingTaxAmount: 168,
+        goodsTaxAmount: 600,
       },
     },
     {
@@ -647,6 +651,7 @@ describe("the exact total presented before payment", () => {
         orderAmount: 3700,
         taxAmount: 0,
         shippingTaxAmount: 0,
+        goodsTaxAmount: 0,
       },
     },
     {
@@ -671,6 +676,7 @@ describe("the exact total presented before payment", () => {
         orderAmount: 3700,
         taxAmount: 0,
         shippingTaxAmount: 0,
+        goodsTaxAmount: 0,
       },
     },
   ];

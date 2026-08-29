@@ -492,6 +492,46 @@ export interface CartTotals {
    * `./store-checkout.js`.
    */
   readonly shippingTaxAmount: number | null;
+  /**
+   * The VAT {@link goodsAmount} attracts on its own — the part of
+   * {@link taxAmount} that does not wait on {@link shippingAmount}.
+   *
+   * **Added fixing the regression that followed the 2026-08-29 decomposition
+   * change, on `/cart` before a delivery address exists.** There
+   * {@link shippingAmount}, {@link taxAmount} and {@link orderAmount} are all
+   * `null` — nobody has said where this is going, so the shipping VAT and the
+   * total genuinely are unknown — but the goods figure and its tax are not:
+   * both come from lines already on screen, priced for the destination
+   * already chosen. Before this field existed the basket had no way to state
+   * that part, so an Estonian buyer saw a net goods row, "Calculated at
+   * checkout" for shipping, and a sentence promising VAT is added — with no
+   * VAT anywhere on the screen. That is *less* information than the gross row
+   * this module replaced, and it is the exact ambiguity the 2026-08-29 change
+   * existed to remove.
+   *
+   * **Not a substitute for {@link taxAmount}, and not read where
+   * {@link taxAmount} already is.** The checkout and the confirmation page
+   * have Medusa's full figure — goods tax plus shipping tax — the moment
+   * either is known, and this field would only be a second, partial name for
+   * part of that same number there. It exists because `/cart` is the one
+   * screen with a state {@link taxAmount} cannot describe at all: the goods
+   * priced, the shipping not yet asked about.
+   *
+   * **`sum(line.taxAmount × line.quantity)`** — literally the figure
+   * {@link cartTotals} already summed to build {@link taxAmount}, kept and
+   * returned here instead of only being added into that total and discarded.
+   * No new computation, and no rate: see {@link CartLine.taxAmount}'s own doc
+   * comment for where the number underneath it comes from.
+   *
+   * **`null` and `0` mean different things, exactly as {@link taxAmount}
+   * draws the same distinction.** `null` is "some line's tax has not been
+   * answered" — the same condition that leaves {@link taxAmount} `null`; `0`
+   * is every line's own answer that this destination attracts none, which is
+   * true of every export. Neither is a row: a formatted zero here would claim
+   * a zero-rating this shop does not apply to an export, the same defect this
+   * module already refuses for {@link goodsAmount} and {@link taxAmount}.
+   */
+  readonly goodsTaxAmount: number | null;
 }
 
 /** True when this line can actually be supplied today. */
@@ -718,6 +758,10 @@ export function cartTotals(
    * `undefined` and this figure permanently withheld on `/cart` for every real
    * basket. That is the same distinction the rest of this module draws:
    * "nothing has been asked" is not "nothing".
+   *
+   * Returned below as {@link CartTotals.goodsTaxAmount} as well as folded into
+   * {@link taxAmount} — see that field's own doc comment for why the basket
+   * needs it under its own name rather than only inside the total.
    */
   const goodsTaxAmount =
     goodsAmount !== null && lines.every((line) => line.taxAmount !== undefined)
@@ -745,6 +789,7 @@ export function cartTotals(
         : goodsAmount + shippingAmount + taxAmount,
     taxAmount,
     shippingTaxAmount,
+    goodsTaxAmount,
   };
 }
 

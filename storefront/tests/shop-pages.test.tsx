@@ -92,9 +92,9 @@ function visibleText(html: string): string {
     .replaceAll(/\s+/g, " ");
 }
 
-function renderBasket(scenario: MockScenario | null): string {
+function renderBasket(scenario: MockScenario | null, destinationCode?: string): string {
   return renderToStaticMarkup(
-    <CartProvider scenario={scenario} latencyMs={0}>
+    <CartProvider scenario={scenario} latencyMs={0} destinationCode={destinationCode}>
       <BasketPageContent />
     </CartProvider>,
   );
@@ -985,6 +985,45 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     expect(text).toContain(formatAmount(catalogueLine(1).unitAmount, "EUR"));
     expect(text).toContain(basket.summary.shippingPending);
     expect(text).toContain(basket.summary.totalPending);
+  });
+
+  /**
+   * **The regression this pins.** The 2026-08-29 decomposition made the
+   * basket's goods row net and moved its VAT into `taxAmount`, which
+   * `cart.ts` never populates before a delivery zone exists — same as
+   * `shippingAmount` and `orderAmount`. An operator caught what that left an
+   * Estonian buyer looking at: a net goods figure, "Calculated at checkout"
+   * for shipping, and a sentence promising VAT is added, with no VAT stated
+   * anywhere on the screen — strictly less than the gross row this
+   * decomposition replaced.
+   *
+   * The fix states the one figure the basket page actually knows —
+   * `CartTotals.goodsTaxAmount` — with the same `checkout.order.vatLabel`
+   * term the checkout's own VAT row already uses. Both directions: present
+   * for the EU destination the operator reported, absent for the site's
+   * default (non-EU) destination, where it would otherwise claim a VAT this
+   * shop does not charge.
+   */
+  it("states the goods' own VAT on the basket for an EU destination, and none for the default one", () => {
+    const eu = catalogueLine(1, undefined, "lunar-base", destinationForCountryName("Estonia")!);
+    const eur = visibleText(renderBasket("filled", "EE"));
+    const vatLabel = resolveCataloguePlaceholders(
+      checkout.order.vatLabel,
+      resolveCatalogue(undefined, destinationForCountryName("Estonia")!),
+    );
+    expect(eur, "an Estonian destination states no VAT amount on the basket").toContain(vatLabel);
+    expect(eur).toContain(formatAmount(eu.taxAmount!, "EUR"));
+
+    // The default destination is not in the EU (see `defaultDestination` in
+    // `src/lib/destination.ts`), so no VAT is due and the row must not
+    // appear — a formatted figure here would claim a zero-rating this shop
+    // does not apply, the same reasoning `cart.ts` states for every other
+    // figure on this screen.
+    const defaultDestinationText = visibleText(renderBasket("filled"));
+    expect(
+      defaultDestinationText,
+      "the site's default (non-EU) destination states a VAT amount where none is due",
+    ).not.toContain(vatLabel);
   });
 
   it("shows the checkout that the charge and the total wait on the address", () => {
