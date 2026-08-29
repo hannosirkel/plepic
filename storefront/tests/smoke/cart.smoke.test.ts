@@ -60,7 +60,14 @@ const backendUrl = requiredEnvironmentValue("STORE_SMOKE_BACKEND_URL");
 const adminEmail = requiredEnvironmentValue("MEDUSA_ADMIN_EMAIL");
 const adminPassword = requiredEnvironmentValue("MEDUSA_ADMIN_PASSWORD");
 
-/** Minor units, gross, for a delivery address inside the VAT union. */
+/**
+ * Minor units, net — the catalogue's declared price before tax, and what a
+ * real basket line's `unitAmount` states in every zone, since the
+ * basket-lines fix that followed 2026-08-29.
+ */
+const NET_MINOR = mockCatalogue.price.amount;
+/** Minor units, gross — what a delivery address inside the VAT union is
+ *  actually charged; `NET_MINOR` plus the per-line `taxAmount` addend. */
 const GROSS_MINOR = mockCatalogue.price.amountWithTax;
 
 let sdk: StoreClient;
@@ -138,13 +145,20 @@ describe("the basket the storefront builds, on a live Medusa", () => {
     expect(lines, "the basket must hold the one line that was added").toHaveLength(1);
     expect(lines[0]!.quantity).toBe(1);
     /*
-     * Estonia is inside the VAT union, so the figure the buyer is charged is
-     * the gross one. A parser reading `unit_price` would report the net price
-     * and the basket would understate it by the VAT — which is the reason the
-     * parser reads line totals in the first place, and therefore the reason it
-     * needs them to be present.
+     * Estonia is inside the VAT union, so `unitAmount` is the net figure and
+     * `taxAmount` is the VAT that gets added to it — since the basket-lines
+     * fix that followed 2026-08-29, `unitAmount` reads Medusa's `subtotal`
+     * rather than `total`, so `cartTotals`' summary and this line's own
+     * columns are the same figure on the basket rather than two that could
+     * silently disagree. A parser reading the stored `unit_price` would also
+     * report the net price, for the wrong reason: it never asks Medusa's tax
+     * engine anything, so it would not move with a discount or a future
+     * per-region price the way `subtotal` does — which is the reason the
+     * parser reads line totals in the first place, and therefore the reason
+     * it needs them to be present.
      */
-    expect(lines[0]!.unitAmount).toBe(GROSS_MINOR);
+    expect(lines[0]!.unitAmount).toBe(NET_MINOR);
+    expect(lines[0]!.taxAmount).toBe(GROSS_MINOR - NET_MINOR);
     expect(
       lines[0]!.variantId,
       "no variant reached the line, so availability is being guessed and the analytics event cannot match",
@@ -166,7 +180,7 @@ describe("the basket the storefront builds, on a live Medusa", () => {
 
     expect(updated).toHaveLength(1);
     expect(updated[0]!.quantity).toBe(3);
-    expect(updated[0]!.unitAmount, "three of them must cost the same each").toBe(GROSS_MINOR);
+    expect(updated[0]!.unitAmount, "three of them must cost the same each").toBe(NET_MINOR);
   });
 
   it("removes a line and leaves an empty basket", async () => {
@@ -179,7 +193,8 @@ describe("the basket the storefront builds, on a live Medusa", () => {
   it("prices a destination outside the VAT union without tax", async () => {
     const lines = await addStoreLine(sdk, await basketFor("us"), variantId);
 
-    expect(lines[0]!.unitAmount).toBe(mockCatalogue.price.amount);
+    expect(lines[0]!.unitAmount).toBe(NET_MINOR);
+    expect(lines[0]!.taxAmount).toBe(0);
   });
 
   /*
