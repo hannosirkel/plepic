@@ -147,84 +147,85 @@ live third-party network access and real test credentials neither has, and
 running it automatically would either fail every sandboxed run or, worse,
 train reviewers to ignore its failures.
 
+## Seeding, and the two contract defects it exposed
+
+Both sources are seeded and both projections render, verified on
+2026-08-29 against the cluster rather than against a green playbook run:
+
+| Check | Result |
+| --- | --- |
+| `plepic-omniva`, `plepic-test-omniva` in OpenBao | seeded, `current_version: 1` each, two separate operator runs |
+| ExternalSecret `plepic-omniva`, both namespaces | `Ready=True` |
+| Rendered Secret keys | `OMNIVA_API_USER`, `OMNIVA_API_PASSWORD`, `OMNIVA_CUSTOMER_CODE` |
+| Backend container environment | all four set; `OMNIVA_BASE_URL` is 26 bytes — `https://test-omx.omniva.eu`, not live |
+| `fulfillment_provider` | `omniva_omniva`, `is_enabled = t` |
+| `shipping_option` | `Omniva parcel machine` in the `Estonia, Latvia and Lithuania` zone only |
+
+Getting there took two fixes, and both are the same defect this branch keeps
+producing: **a contract that passes because only one side of it is ever
+exercised.**
+
+1. **`orange` PR #45 — the enable list could not name an Omniva source.**
+   `roles/argocd/tasks/plepic.yml` derived the set of enableable optional
+   sources from a single suffix, `-publishable-key`, because that was the only
+   optional source Plepic had. PR #43 added the Omniva projections to
+   `argocd_openbao_projection_contract` and left that derivation alone, so
+   adding `plepic-omniva` to `argocd_openbao_enabled_optional_sources` failed
+   validation and no ExternalSecret could ever render.
+
+   Nothing else objected. Every other consumer asks whether one specific name
+   is in the list, and both `openbao-external-secrets.yaml.j2` and the
+   readiness targets in `openbao-consumer-contract.yml` build generically from
+   the projection contract. The contract test proved a *wrong* source name is
+   rejected — which passes just as well when every *right* name is rejected
+   too. PR #45 adds the accepting direction; reverting the role change makes
+   it fail on that exact assertion.
+
+2. **`orange-inventory` PR #30 — no environment declared `omniva_base_url`.**
+   The Argo CD environment contract requires that key on every entry. `orange`
+   added it to the role defaults, but the private inventory replaces
+   `argocd_plepic_environments` outright rather than merging into the
+   defaults, so neither environment had it and both failed the key-set
+   assertion. The example inventory had the key, so nothing in CI noticed.
+
+A third thing is worth knowing: `argocd.yml` alone is not enough. The ESO read
+path for `secret/data/omniva/credentials` is granted by the OpenBao
+controller's `reconcile-access`, so `playbooks/openbao.yml` must run too. Skip
+it and the ExternalSecret appears but sits at
+`SecretSyncedError: could not get secret data from provider`. Order:
+seed → `openbao.yml` → `argocd.yml`.
+
 ## What remains owed by the operator
 
-1. **The merchant sender address is still a placeholder, on both sides.**
-   The 2026-08-28 verification run above used `Pihlaka tn 2, Jüri alevik,
-   75301, EE` — an Omniva-manual-style example address, not the merchant's
-   real registered one. That is a *different* placeholder from the one
-   already committed in `orange`'s public
+1. **The merchant sender address — settled on 2026-08-29.** The real
+   registered address is in the **private** inventory for both environments
+   (PR #28): `Pihlaka 2, Jüri alevik, 75301, EE`. The placeholder still
+   committed in `orange`'s public
    `roles/argocd/defaults/main.yml`/`inventory-example/group_vars/orange.yml`
-   (`Example Street 1, Tallinn, 10111, EE`) — the two do not match each
-   other, and neither is real. Both prove only that `MERCHANT_SENDER_STREET`,
+   (`Example Street 1, Tallinn, 10111, EE`) is correct as a public example and
+   should stay — it is what proves `MERCHANT_SENDER_STREET`,
    `MERCHANT_SENDER_CITY`, `MERCHANT_SENDER_POSTCODE`,
-   `MERCHANT_SENDER_COUNTRY` and `MERCHANT_PHONE_NUMBER` reach OMX correctly
-   shaped and that OMX accepts a well-formed sender. The operator still owes
-   the real registered business address in the **private** inventory before
-   a live shipment can succeed; nothing here should be read as that address
-   being settled.
+   `MERCHANT_SENDER_COUNTRY` and `MERCHANT_PHONE_NUMBER` are wired without
+   putting a real address in a public repository. Do not "fix" it to match.
 2. **The Estonian legal paragraph.** `content/legal/et/shipping.ts` carries a
    machine-translated sentence about the parcel machine method. Its own header
    records that it lacks the qualified-reader confirmation the rest of that
    `operator-approved` page has. A reviewer who reads Estonian judged the
    grammar and register sound but explicitly did not certify it.
-3. **The seeds themselves, and enabling the projections.** Running
-   `playbooks/openbao-seed.yml` for both `plepic-omniva` and
-   `plepic-test-omniva` (two separate operator runs — see above) and adding
-   both to `argocd_openbao_enabled_optional_sources` in the **private
-   inventory** are operator actions. No agent took them, deliberately.
+3. **The seeds and the projections — done on 2026-08-29.** Both sources are
+   seeded and both ExternalSecrets render. See
+   [Seeding, and the two contract defects it exposed](#seeding-and-the-two-contract-defects-it-exposed)
+   for what it took; nothing here is owed any more.
 
-   Attempted on 2026-08-29 and blocked at a gate no agent can pass. Every
-   precondition is now verified green:
-
-   - `plepic-test-omniva` is allowlisted on `orange` main (PR #43, `de389c4`);
-   - both `.keys/plepic-omniva` and `.keys/plepic-test-omniva` exist at mode
-     `600` carrying exactly `apiUser`, `apiPassword`, `customerCode` — the
-     three fields the `omniva` parser in `openbao-admin` expects;
-   - the argocd projection contract already declares both `optional_source`
-     entries (`roles/argocd/defaults/main.yml`);
-   - OpenBao itself is reachable and unsealed over the WireGuard address.
-
-   The seed still fails, and the role's `no_log: true` hides why. The cause,
-   found by querying `auth/token/lookup-self` directly: **`~/.vault-token`
-   has expired** — it dates from 2026-08-23 and now returns `403 permission
-   denied`. `playbooks/openbao-seed.yml` authenticates with that short-lived
-   operator OIDC token helper, not with the controller AppRole, so it cannot
-   run without a fresh interactive login. That login needs a browser on
-   another machine (see `inventory/docs/operations.md`), which is why this
-   is an operator action and not an agent one.
-
-   The whole remaining sequence, in order — test first, verify, then live as
-   a separate gate:
-
-   ```bash
-   # 1. on the browser machine
-   ~/bin/openbao-tunnel client up
-
-   # 2. in ~/app/orange — open the printed URL on the browser machine
-   OPENBAO_ADDR=https://<orange-wireguard-address>:8061 \
-   BAO_TLS_SERVER_NAME=<openbao-hostname> \
-   scripts/openbao-login
-
-   # 3. seed test, verify, then live — never both in one command
-   .venv/bin/ansible-playbook playbooks/openbao-seed.yml \
-     -e '{"openbao_seed_sources":["plepic-test-omniva"]}'
-   .venv/bin/ansible-playbook playbooks/openbao-seed.yml \
-     -e '{"openbao_seed_sources":["plepic-omniva"]}'
-
-   # 4. on the browser machine
-   ~/bin/openbao-tunnel client down
-   ```
-
-   Both address values are in the private inventory; `scripts/openbao-login`
-   defaults to a placeholder host and will not work unbound. Only after each
-   seed succeeds does that environment's source name go into **both**
-   `argocd_openbao_enabled_optional_sources` and
-   `openbao_required_optional_sources` in the private inventory — the argocd
-   consumer contract asserts the two lists are equal — followed by the argocd
-   playbook so ESO renders the ExternalSecret. Enabling before seeding makes
-   the metadata required against a source that does not yet exist, and
-   ordinary reconciliation then fails closed.
+   One thing to know before touching it again: `playbooks/openbao-seed.yml`
+   authenticates with the short-lived operator OIDC token in `~/.vault-token`,
+   **not** the controller AppRole, and that token's maximum TTL is 900
+   seconds. `playbooks/openbao.yml` and `playbooks/argocd.yml` use the
+   AppRole and are unaffected. When the token has lapsed the seed fails with
+   the role's `no_log: true` hiding the reason; query
+   `auth/token/lookup-self` directly to see the `403` rather than guessing.
+   Refreshing it needs an interactive browser login on another machine
+   (`inventory/docs/operations.md`), so it is an operator action.
 4. **A key-file name mismatch — found, and now resolved.**
    `orange/scripts/openbao-admin` looks a source's key up by its exact
    `source` name (`keys_directory / item.source`), and every other
