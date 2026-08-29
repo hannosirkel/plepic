@@ -7,3 +7,4 @@ build/
 coverage/
 npm-debug.log
 .worktrees/
+.superpowers/
