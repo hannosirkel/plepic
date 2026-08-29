@@ -121,6 +121,44 @@ now fixed (`94003e2`, `d61ca12`) and covered by tests that assert the
    `product-model.ts` now carries `"CN"`. See the correction sections atop
    the spec and the plan — both stated `"CHN"` as fact.
 
+## test-omx's parcel machine list is stale, and it will waste your afternoon
+
+**test-omx does not know about every machine in `locations.json`.** A test
+order to one it does not know is refused with:
+
+```text
+OffloadPostcodeIsValid: receiverAddressee.address - Invalid offload postcode
+```
+
+Measured on 2026-08-29 by registering against test-omx across the Estonian
+`TYPE=0` list. The refusals are one contiguous band at the top, not scattered:
+
+| Estonian machine ZIP | test-omx |
+| --- | --- |
+| 93999 – 96400 (Ruhnu, Tartu, Tallinn, Jõhvi, Maardu…) | accepts |
+| 96420 – 96470 (Hagudi, Tabasalu, Suurupi, Peri, Uulu) | refuses |
+
+The cutoff sits between `96400` and `96420`, and **60 of 437 Estonian
+machines — 13.7% — fall above it.** That is the shape of a sandbox whose
+address book stopped being updated: the refused machines are the
+newest-numbered ones. `locations.json` is served from `omniva.ee` and is the
+*live* list, so it carries machines the sandbox has never heard of.
+
+Two things follow.
+
+1. **When testing a parcel machine order, pick one below the cutoff.**
+   Tallinna Smuuli Maxima XX (`96080`) and Tallinna Jannseni Maxima X
+   (`96400`) both register cleanly. The 2026-08-28 verification run passed
+   only because its "middle of the list" heuristic happened to land on Ruhnu
+   (`93999`). Order #9 on 2026-08-29 picked Suurupi (`96445`) and could not
+   be fulfilled at all.
+2. **Do not "fix" this in the picker.** Filtering the storefront's machine
+   list to what test-omx accepts would hide 14% of real machines from live
+   customers to make a sandbox happy. Nothing has been proven about live's
+   address book either way — establishing that needs one real live
+   registration against a machine above the cutoff, immediately cancelled,
+   and that is an operator's call to make, not an agent's.
+
 ## Verify this integration against test-omx, not the manual
 
 **Standing instruction.** Three of the four defects above are places where
