@@ -37,6 +37,40 @@
  * `values`, so the postal fields and the phone can never be validated one way
  * for the summary a buyer sees and another way for the boolean that gates the
  * page around it.
+ *
+ * ## The phone field is always shown, and this is deliberate policy — not "always required"
+ *
+ * A second operator-reported defect, 2026-08-29: a buyer choosing an Omniva
+ * parcel machine was never even *shown* a phone field, because the field was
+ * hidden entirely inside Estonia, Finland, Lithuania and Latvia — the same
+ * four countries OMX does not strictly require one for. `CheckoutPageContent.tsx`
+ * now renders the field for every destination, so a locker buyer *can*
+ * volunteer a phone number if they want one. **The requirement itself did not
+ * change**: `phoneRequiredForCountryName` still decides whether its absence is
+ * an error, and it is still `false` for exactly those four countries — see its
+ * own doc comment. Two things were considered and rejected:
+ *
+ * - **Requiring a phone for every parcel machine order.** Confirmed live
+ *   against Omniva's test API, 2026-08-29 (see `backend/src/modules/omniva/
+ *   shipment.ts`'s own header for the endpoint and the full evidence — this
+ *   package does not talk to Omniva itself, so it does not repeat that
+ *   hostname): an Estonian locker registration with no phone at all,
+ *   `contactEmail` only, still answers `200 OK` with a barcode. Omniva's own
+ *   pickup notice reaches the buyer by email in that case, so refusing an
+ *   order for lacking a phone nobody's carrier actually needs would cost
+ *   orders for no benefit — the same argument this module's header already
+ *   makes for not asking outside these four countries at all.
+ * - **Requiring a phone everywhere** (the policy this file briefly carried
+ *   earlier in this task, since reverted): rejected by the operator directly
+ *   — *"Make the phone field optional. Shipments work without phone and email
+ *   only, Omniva sends parcel codes there too."*
+ *
+ * `validate` below now checks a typed phone's `+`-prefix shape **regardless**
+ * of whether the country requires one — a buyer who volunteers a number gets
+ * the same cheap sanity check as one who was required to give it, because a
+ * malformed voluntary value is exactly the kind of thing that would otherwise
+ * reach OMX unchecked and fail a paid order at fulfilment instead of at the
+ * form.
  */
 
 import { checkout } from "../../../../content/shop.js";
@@ -131,19 +165,25 @@ export function validate(values: AddressValues): Readonly<Record<string, string>
   }
 
   /*
-   * Not one of `FIELDS`: this one is not asked of everybody, so it is not
-   * validated as though it were. The storefront's whole job here is presence
-   * and a leading `+` — see `phoneRequiredForCountry`'s doc comment for why
-   * the rest (a real national number, no special-tariff range, no Baltic
-   * fixed line) is OMX's to refuse at fulfilment.
+   * Not one of `FIELDS`: this one is not asked of everybody the same way, so
+   * it is not validated as though it were. The storefront's whole job here is
+   * presence (where required) and a leading `+` — see `phoneRequiredForCountry`'s
+   * doc comment for why the rest (a real national number, no special-tariff
+   * range, no Baltic fixed line) is OMX's to refuse at fulfilment.
+   *
+   * **Shape is checked whenever anything is typed, required or not.**
+   * The field is shown for every destination (see this file's header), so a
+   * buyer in a phone-optional country can volunteer a number nobody asked
+   * for; if they do, it gets the same `+`-prefix check as a required one,
+   * because a malformed voluntary value would otherwise reach OMX unchecked.
+   * Presence is checked only where {@link phoneRequiredForCountryName} says
+   * OMX needs one.
    */
-  if (phoneRequiredForCountryName(values.country ?? "")) {
-    const phone = (values.phone ?? "").trim();
-    if (phone.length === 0) {
-      errors.phone = `${checkout.errors.missingFieldPrefix}${checkout.address.phone.label.toLowerCase()}.`;
-    } else if (!phone.startsWith("+")) {
-      errors.phone = checkout.errors.invalidPhone;
-    }
+  const phone = (values.phone ?? "").trim();
+  if (phone.length > 0 && !phone.startsWith("+")) {
+    errors.phone = checkout.errors.invalidPhone;
+  } else if (phone.length === 0 && phoneRequiredForCountryName(values.country ?? "")) {
+    errors.phone = `${checkout.errors.missingFieldPrefix}${checkout.address.phone.label.toLowerCase()}.`;
   }
 
   return errors;
@@ -176,8 +216,18 @@ export function isPostalAddressComplete(values: AddressValues): boolean {
 }
 
 /**
- * Whether the phone requirement is satisfied: not asked for, or asked for and
+ * Whether the phone requirement is satisfied: not given and not required, or
  * given in the shape this form checks.
+ *
+ * **Not the same as "empty is always fine outside the four countries".**
+ * Since the field is shown for every destination (see this file's header),
+ * an unrequired phone can still be *typed* — and if it is, it must still
+ * start with `+`, the same as a required one: `validate` checks shape
+ * whenever anything is present, regardless of whether presence itself was
+ * required. So this is `true` for an empty phone anywhere, `true` for a
+ * `+`-prefixed phone anywhere, and `false` for a non-empty, non-`+`-prefixed
+ * phone anywhere — the phone-optional countries only relax *presence*, never
+ * shape.
  *
  * This is **not** part of {@link isPostalAddressComplete} — see this file's
  * doc comment for why the two questions are asked separately — and it is not

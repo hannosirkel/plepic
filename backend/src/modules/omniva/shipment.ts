@@ -30,11 +30,64 @@
  * `deliveryChannel` or `servicePackage` is sent — OMX makes the former
  * mandatory there and the latter mandatory everywhere else.
  * {@link PHONE_OPTIONAL_COUNTRY_CODES} (EE, FI, LT, LV) decides whether a
- * receiver `contactPhone` is mandatory — Finland is in this set and out of
+ * receiver phone is mandatory at all — Finland is in this set and out of
  * the other one, which is `shipping-model.ts`'s own reason for keeping the
  * two constants apart rather than naming either of them after a region.
  * {@link EU_MEMBER_STATE_CODES} decides a third, unrelated thing: whether a
  * `customs` block is sent at all.
+ *
+ * ## Why this always sends `contactPhone`, never `contactMobile`, and never refuses a phoneless locker order
+ *
+ * This file briefly required a phone for every `PARCEL_MACHINE` registration
+ * and sent it as `contactMobile` rather than `contactPhone`. Both were
+ * retracted by the operator, 2026-08-29, directly: *"Make the phone field
+ * optional. Shipments work without phone and email only, Omniva sends parcel
+ * codes there too."* Three live probes against `test-omx.omniva.eu` back
+ * that instruction and shape what this file does instead:
+ *
+ * 1. **A locker registration with no phone at all genuinely succeeds.** An
+ *    Estonian `PARCEL_MACHINE` registration carrying only `contactEmail`
+ *    (always sent — see `receiverAddressee` below) answered `200 OK` with a
+ *    barcode (`CC405869806EE`). The OMX manual's own rule agrees:
+ *    `receiverAddressee/contactEmail` is "mandatory if: … Delivery channel
+ *    is PARCEL_MACHINE and contactMobile is missing" — email is the
+ *    documented fallback, not a workaround. So this file does **not** refuse
+ *    a phoneless parcel-machine registration: OMX notifies the buyer by
+ *    email in that case, which is the outcome the operator chose over
+ *    blocking the order for a number nobody's carrier strictly needs.
+ * 2. **`contactMobile` type-validates a Baltic number and refuses a fixed
+ *    line; `contactPhone` does not.** Sending the identical landline
+ *    `+37266012345` to the same locker as `contactMobile` answered `200`
+ *    with `resultCode: "ERROR"` and a `failedShipments` entry naming the
+ *    field (`Invalid mobile phone number: +37266012345`); the same number as
+ *    `contactPhone` answered `200 OK` (`CC405869797EE`). So switching a
+ *    volunteered phone to `contactMobile` would turn a buyer's helpfulness
+ *    (typing their landline) into a paid order refused at fulfilment. This
+ *    file always sends a supplied phone as `contactPhone` for exactly that
+ *    reason — the trade-off is that Omniva's pickup notice for a locker
+ *    order goes out by email rather than SMS, which is the outcome the
+ *    operator explicitly chose over risking that refusal. A future reader
+ *    who wants SMS notice back should read this paragraph before switching
+ *    to `contactMobile`: the type-validation above is the price of it, and
+ *    it is not optional the way requiring a phone is — OMX enforces it
+ *    server-side regardless of what this file wants.
+ * 3. **Outside the four phone-optional countries, OMX itself requires the
+ *    field, independent of this file's own refusal below.** A courier order
+ *    to Germany and to the United States, both with no phone, each answered
+ *    `200` with `resultCode: "ERROR"` and `failedShipments` entries reading
+ *    `contactPhone - contact.number.must.exist; contactMobile -
+ *    contact.number.must.exist`. This is live confirmation of the rule
+ *    {@link PHONE_OPTIONAL_COUNTRY_CODES} already encoded from the manual,
+ *    not a new one — it is why the `phoneRequired` refusal below stays
+ *    exactly as it was, and why "the phone is optional" is true only for a
+ *    parcel machine, never for a courier order outside those four countries.
+ *
+ * `client.ts`'s `registerShipment` throws OMX's `failedShipments[0]`
+ * `messageCode`/`message` verbatim and unwrapped, with no `catch` around the
+ * call in `service.ts` — confirmed by reading both files, not assumed — so
+ * whichever of the messages above actually fires reaches the operator
+ * reading a failed fulfilment exactly as OMX phrased it, not a generic "OMX
+ * refused" summary.
  */
 
 // Extensionless: see the comment on `index.ts`'s import of `./service`. Both
@@ -243,12 +296,16 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
   }
 
   // contactPhone: sent, trimmed, when present, and mandatory outside the
-  // four countries OMX exempts. Checked here, on the *destination*, and not
-  // conflated with PARCEL_MACHINE_COUNTRY_CODES — Finland is phone-optional
-  // and carries no parcel machines at all. The same trimmed value backs both
-  // the presence check and the emitted key, so a phone of all whitespace is
-  // treated as absent in both places rather than refused here and sent blank
-  // there.
+  // four countries OMX exempts -- see this file's header
+  // ("Why this always sends `contactPhone`...") for why that requirement
+  // does NOT extend to a phoneless PARCEL_MACHINE registration: OMX itself
+  // accepts `contactEmail` alone there (live-confirmed `200 OK`), so this
+  // file does not add a refusal OMX's own rule does not ask for. Checked
+  // here, on the *destination*, and not conflated with
+  // PARCEL_MACHINE_COUNTRY_CODES — Finland is phone-optional and carries no
+  // parcel machines at all. The same trimmed value backs both the presence
+  // check and the emitted key, so a phone of all whitespace is treated as
+  // absent in both places rather than refused here and sent blank there.
   const phoneRequired = !PHONE_OPTIONAL_COUNTRY_CODES.includes(countryCode);
   const trimmedPhone = shippingAddress.phone?.trim() ?? "";
   if (phoneRequired && trimmedPhone.length === 0) {
@@ -258,6 +315,12 @@ export function buildShipmentRegistration(input: ShipmentRegistrationInput): unk
     );
   }
 
+  // Always `contactPhone`, never `contactMobile` -- see this file's header
+  // for why: `contactMobile` type-validates a Baltic number and refuses a
+  // fixed line, live-confirmed, and this file would rather a buyer's
+  // volunteered landline reach OMX successfully (and Omniva notify by email)
+  // than have that same helpfulness turn a paid parcel-machine order into a
+  // fulfilment refusal.
   const receiverAddressee: Record<string, unknown> = {
     personName: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
     contactEmail: order.email,

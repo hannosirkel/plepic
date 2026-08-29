@@ -86,7 +86,8 @@ export interface AddressFieldCopy {
  * The receiver phone field's own copy — kept **apart** from
  * `checkout.address.fields` (the {@link AddressFieldCopy} array below) rather
  * than as one more entry in it, because unlike every entry there, this field
- * is not asked of everybody.
+ * is not *required* of everybody, even though — since 2026-08-29 — it is
+ * shown to everybody.
  *
  * OMX — Omniva's shipment-registration API — makes a receiver phone number
  * mandatory for a delivery address anywhere except Estonia, Finland,
@@ -94,8 +95,19 @@ export interface AddressFieldCopy {
  * carrier; a required field nobody's carrier needs is friction that costs
  * orders for no benefit. `phoneRequiredForCountry` in
  * `storefront/src/lib/store-checkout.ts` is what decides, from the country
- * already typed into the address form, whether `CheckoutPageContent.tsx`
- * renders this field at all — this object supplies only its words.
+ * already typed into the address form, whether the field's **absence** is an
+ * error — `CheckoutPageContent.tsx` renders the field itself unconditionally
+ * now, because an operator-reported defect was that a buyer choosing an
+ * Omniva parcel machine (only offered in Estonia, Latvia and Lithuania —
+ * three of these same four countries) was never even shown the field, so
+ * they had no way to volunteer a number for Omniva's delivery notice. This
+ * object's `hint` states the policy honestly rather than only its first
+ * half — see it below for the wording, and this codebase's standing rule
+ * (`backend/src/modules/omniva/shipment.ts`'s own header) for why it does
+ * *not* say "mobile": OMX's pickup notice is sent by email when no phone is
+ * given, and a volunteered landline is accepted and forwarded as
+ * `contactPhone`, not refused the way it would be if this builder sent it as
+ * `contactMobile`.
  */
 export interface PhoneFieldCopy {
   readonly label: string;
@@ -342,11 +354,16 @@ export const checkout = {
      * rather than leaving the rule implicit, the same choice
      * `content/legal/shipping.ts` already made for the parcel machine
      * countries: a reader who is asked for a phone number is owed the reason,
-     * not just the instruction.
+     * not just the instruction. Rewritten 2026-08-29 from a single sentence
+     * that was only ever true in one direction ("The carrier needs this to
+     * deliver outside Estonia, Finland, Lithuania and Latvia") to state both
+     * halves: the field is shown everywhere now, so a reader inside those
+     * four countries needs to be told they may skip it, not left to guess
+     * from a sentence that reads as a demand either way.
      */
     phone: {
       label: "Phone number",
-      hint: "The carrier needs this to deliver outside Estonia, Finland, Lithuania and Latvia.",
+      hint: "Required outside Estonia, Finland, Lithuania and Latvia; optional there. Omniva uses it, or your email, to send delivery and pickup notices.",
       autoComplete: "tel",
     } satisfies PhoneFieldCopy,
   },

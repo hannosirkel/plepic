@@ -42,6 +42,7 @@ interface OmxShipment {
     readonly personName: string;
     readonly contactEmail: string;
     readonly contactPhone?: string;
+    readonly contactMobile?: string;
     readonly address: {
       readonly offloadPostcode?: string;
       readonly street?: string;
@@ -83,7 +84,7 @@ function shipment(body: unknown): OmxShipment {
 }
 
 describe("the OMX registration body", () => {
-  it("registers an Estonian parcel machine against its offloadPostcode", () => {
+  it("registers an Estonian parcel machine against its offloadPostcode, with no phone at all", () => {
     const one = shipment(buildShipmentRegistration(input()));
     expect(one.mainService).toBe("PARCEL");
     expect(one.deliveryChannel).toBe("PARCEL_MACHINE");
@@ -103,6 +104,28 @@ describe("the OMX registration body", () => {
     // an attribute that exists with no value.
     expect(one).not.toHaveProperty("servicePackage");
     expect(one).not.toHaveProperty("customs");
+    // No phone at all: EE is phone-optional, `input()`'s address carries
+    // `phone: null`, and this file's header explains why that is not
+    // refused -- OMX itself accepts `contactEmail` alone for a locker.
+    // `not.toHaveProperty`, not `toBeUndefined()`, for the same reason this
+    // file's header gives at the top: the latter cannot tell a missing key
+    // from one present and set to `undefined`.
+    expect(one.receiverAddressee).not.toHaveProperty("contactPhone");
+    expect(one.receiverAddressee).not.toHaveProperty("contactMobile");
+  });
+
+  it("sends a volunteered parcel-machine phone as contactPhone, never contactMobile", () => {
+    const one = shipment(buildShipmentRegistration(input({
+      order: { ...input().order, shippingAddress: {
+        ...input().order.shippingAddress, phone: "+37255512345",
+      } },
+    })));
+    // Always contactPhone -- see this file's header ("Why this always sends
+    // `contactPhone`...") for the live-verified reason contactMobile is not
+    // used even for a parcel machine: it type-validates a Baltic number and
+    // refuses a fixed line, which contactPhone does not.
+    expect(one.receiverAddressee.contactPhone).toBe("+37255512345");
+    expect(one.receiverAddressee).not.toHaveProperty("contactMobile");
   });
 
   it("truncates a contentDescription over OMX's 1500-character bound rather than refusing it", () => {
@@ -238,6 +261,9 @@ describe("the OMX registration body", () => {
     expect(one).not.toHaveProperty("deliveryChannel");
     expect(one.contentDescription).toBe("Lunar Base");
     expect(one.receiverAddressee.contactPhone).toBe("+4930123456");
+    // contactMobile is never sent by this file -- see its header ("Why this
+    // always sends `contactPhone`...").
+    expect(one.receiverAddressee).not.toHaveProperty("contactMobile");
     expect(one.receiverAddressee.address.postcode).toBe("10115");
     // Defect A, see the Latvian courier test above.
     expect(one.receiverAddressee.address.deliverypoint).toBe("Berlin");
@@ -299,5 +325,21 @@ describe("the OMX registration body", () => {
         city: "Berlin", countryCode: "DE", phone: null,
       } },
     }))).toThrow(/phone/i);
+  });
+
+  /**
+   * The mirror image of the refusal just above, pinned directly: a
+   * PARCEL_MACHINE registration with no phone at all must **not** be
+   * refused. See this file's header ("Why this always sends `contactPhone`,
+   * never `contactMobile`, and never refuses a phoneless locker order") for
+   * the live confirmation this rests on -- an otherwise identical
+   * registration with `contactEmail` only answered `200 OK`. Every
+   * PARCEL_MACHINE_COUNTRY_CODES member (EE, LT, LV) is also in
+   * PHONE_OPTIONAL_COUNTRY_CODES, so the `phoneRequired` check above was
+   * already silent here; this pins that no *separate* channel-based refusal
+   * was added on top of it.
+   */
+  it("does not refuse a parcel machine registration with no phone at all", () => {
+    expect(() => buildShipmentRegistration(input())).not.toThrow();
   });
 });

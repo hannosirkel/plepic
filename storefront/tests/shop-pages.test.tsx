@@ -411,9 +411,16 @@ describe("empty is the default state", () => {
 });
 
 /**
- * The phone field OMX conditionally requires — see
+ * The phone field OMX conditionally *requires* — see
  * `phoneRequiredForCountryName` in `src/components/shop/checkout-address.ts`
- * and `phoneRequiredForCountry` in `src/lib/store-checkout.ts`.
+ * and `phoneRequiredForCountry` in `src/lib/store-checkout.ts`. Since
+ * 2026-08-29 it is no longer conditionally *shown*: every destination gets
+ * the field, because a buyer choosing an Omniva parcel machine (offered only
+ * in Estonia, Latvia and Lithuania — three of the four countries below) needs
+ * the chance to volunteer a number even though OMX does not strictly require
+ * one there. See `checkout-address.ts`'s doc comment ("The phone field is
+ * always shown, and this is deliberate policy") for the full reasoning and
+ * the live evidence it rests on.
  *
  * Everything here is a static-render assertion, like every other test in this
  * file: `storefront/` has no DOM in its test environment, so nothing
@@ -477,15 +484,21 @@ describe("the phone field, where OMX requires one", () => {
   });
 
   /**
-   * Not merely "not required" — **absent**. A field that renders unrequired
-   * is still a field a reader has to notice is optional; the four countries
-   * OMX exempts do not get asked at all.
+   * Shown, but not required — the opposite of this test's pre-2026-08-29
+   * name. A buyer choosing an Omniva parcel machine (only offered in three of
+   * these four countries) needs the chance to volunteer a phone number even
+   * though OMX does not strictly require one, so the field appears with its
+   * label; only the HTML `required` attribute is absent, which is what tells
+   * a browser's own validation UI and assistive tech that it may be skipped.
    */
-  it("does not appear at all for any of the four countries OMX exempts", () => {
+  it("appears, but is not required, for any of the four countries OMX exempts", () => {
     for (const country of ["Estonia", "Finland", "Lithuania", "Latvia"]) {
       const html = renderWith(country, undefined);
-      expect(html, country).not.toContain('name="phone"');
-      expect(visibleText(html), country).not.toContain(checkout.address.phone.label);
+      expect(html, country).toContain('name="phone"');
+      expect(visibleText(html), country).toContain(checkout.address.phone.label);
+      const field = /<input[^>]*\sname="phone"[^>]*\/>/.exec(html)?.[0] ?? "";
+      expect(field, `${country}: the phone field was not found`).not.toBe("");
+      expect(field, country).not.toMatch(/\srequired(?:=""|\s|>)/);
     }
   });
 
@@ -564,7 +577,11 @@ describe("the loading state", () => {
     const html = renderCheckout("placing");
     expect(html).toContain('aria-busy="true"');
     expect(visibleText(html)).toContain(checkout.placingLabel);
-    expect(html.match(/<(?:input|select)[^>]*\sdisabled(?:=""|\s|>)/g)?.length).toBe(6);
+    // FIELDS (5) plus the phone field, which — since 2026-08-29 — renders
+    // unconditionally rather than only once a country needing one is typed.
+    // See `checkout-address.ts`'s doc comment ("The phone field is always
+    // shown, and this is deliberate policy").
+    expect(html.match(/<(?:input|select)[^>]*\sdisabled(?:=""|\s|>)/g)?.length).toBe(7);
   });
 });
 

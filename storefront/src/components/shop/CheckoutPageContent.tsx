@@ -416,26 +416,20 @@ export function CheckoutPageContent({
     (name) => errors[name] !== undefined,
   );
   /*
-   * Whether the phone field is on screen at all right now. Read once here —
-   * rather than recomputed at each of its three call sites below — so the
-   * render, the reset effect and (via `errors`) the validation that already
-   * ran can never see three different answers for the same values.
+   * Whether the phone is *required* for the country currently typed in —
+   * not whether the field is shown, which is unconditional now (see
+   * `checkout-address.ts`'s doc comment, "The phone field is always shown,
+   * and this is deliberate policy"). Read once here — rather than recomputed
+   * at each of its call sites below — so the render and (via `errors`) the
+   * validation that already ran can never see two different answers for the
+   * same values. Drives only the input's HTML `required` attribute and the
+   * hint text below; it does not gate rendering, and there is no longer a
+   * reset effect that clears the field when a country stops requiring one —
+   * the field is never hidden now, so a value a buyer typed voluntarily is
+   * never silently discarded out from under them.
    */
-  const phoneNeeded = phoneRequiredForCountryName(values.country ?? "");
+  const phoneRequiredNow = phoneRequiredForCountryName(values.country ?? "");
 
-  /*
-   * A phone typed for one country is not owed to a carrier that does not need
-   * it. `guestAddress` sends whatever `values.phone` holds unconditionally —
-   * see its own comment — so a value left behind after the field is hidden
-   * would still reach Medusa the next time an address was submitted. This is
-   * what stops that: the moment the country stops requiring a phone number,
-   * the field is cleared as well as hidden, not just hidden.
-   */
-  useEffect(() => {
-    if (!phoneNeeded) {
-      setValues((current) => (current.phone ? { ...current, phone: "" } : current));
-    }
-  }, [phoneNeeded]);
   /*
    * The chosen delivery method. Read here rather than only inside the hook
    * below, because `selectShippingOption` needs it too — deriving it once,
@@ -998,48 +992,52 @@ export function CheckoutPageContent({
                 </div>
               );
             })}
-            {/* Not one of `FIELDS`, and rendered only while `phoneNeeded` is
-                true — see `phoneRequiredForCountryName`'s doc comment above.
-                OMX does not need this inside Estonia, Finland, Lithuania or
-                Latvia, so it appears and disappears with the country field
-                rather than sitting on screen, unrequired, for every buyer. */}
-            {phoneNeeded ? (
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} htmlFor={`${baseId}-phone`}>
-                  {checkout.address.phone.label}
-                </label>
-                <p id={`${baseId}-phone-hint`} className={styles.fieldHint}>
-                  {checkout.address.phone.hint}
+            {/* Not one of `FIELDS`, and — since 2026-08-29 — shown for every
+                destination rather than only outside Estonia, Finland,
+                Lithuania and Latvia. See `checkout-address.ts`'s doc comment
+                ("The phone field is always shown, and this is deliberate
+                policy") for why: a buyer choosing an Omniva parcel machine
+                needs the chance to volunteer a number even though OMX does
+                not strictly require one there. `required` still follows
+                `phoneRequiredNow`, so the browser's own validation UI and
+                assistive tech both still say "optional" inside those four
+                countries and "required" everywhere else — only *presence* is
+                relaxed, never the field's existence on screen. */}
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel} htmlFor={`${baseId}-phone`}>
+                {checkout.address.phone.label}
+              </label>
+              <p id={`${baseId}-phone-hint`} className={styles.fieldHint}>
+                {checkout.address.phone.hint}
+              </p>
+              <input
+                id={`${baseId}-phone`}
+                name="phone"
+                type="tel"
+                required={phoneRequiredNow}
+                autoComplete={checkout.address.phone.autoComplete}
+                value={values.phone ?? ""}
+                disabled={placing}
+                aria-invalid={errors.phone !== undefined}
+                aria-describedby={[
+                  `${baseId}-phone-hint`,
+                  errors.phone === undefined ? null : `${baseId}-phone-error`,
+                ]
+                  .filter((id): id is string => id !== null)
+                  .join(" ")}
+                onChange={(event) => {
+                  if (attemptInFlight.current) return;
+                  const next = event.currentTarget.value;
+                  setValues((current) => ({ ...current, phone: next }));
+                }}
+                className={styles.field}
+              />
+              {errors.phone === undefined ? null : (
+                <p id={`${baseId}-phone-error`} className={styles.fieldError}>
+                  {errors.phone}
                 </p>
-                <input
-                  id={`${baseId}-phone`}
-                  name="phone"
-                  type="tel"
-                  required
-                  autoComplete={checkout.address.phone.autoComplete}
-                  value={values.phone ?? ""}
-                  disabled={placing}
-                  aria-invalid={errors.phone !== undefined}
-                  aria-describedby={[
-                    `${baseId}-phone-hint`,
-                    errors.phone === undefined ? null : `${baseId}-phone-error`,
-                  ]
-                    .filter((id): id is string => id !== null)
-                    .join(" ")}
-                  onChange={(event) => {
-                    if (attemptInFlight.current) return;
-                    const next = event.currentTarget.value;
-                    setValues((current) => ({ ...current, phone: next }));
-                  }}
-                  className={styles.field}
-                />
-                {errors.phone === undefined ? null : (
-                  <p id={`${baseId}-phone-error`} className={styles.fieldError}>
-                    {errors.phone}
-                  </p>
-                )}
-              </div>
-            ) : null}
+              )}
+            </div>
           </div>
         </section>
 

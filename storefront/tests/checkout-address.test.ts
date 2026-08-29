@@ -148,6 +148,26 @@ describe("validate — the full error set, postal fields and phone together", ()
     const errors = validate(postalAddress(PHONE_REQUIRING_COUNTRY, "+49 30 1234567"));
     expect(errors.phone).toBeUndefined();
   });
+
+  /**
+   * 2026-08-29: the phone field is shown for every destination — including
+   * one OMX does not require a phone for — so a buyer there can volunteer a
+   * number nobody asked for. This pins that presence is relaxed but shape is
+   * not: a voluntary phone still has to start with `+`, the same check a
+   * required one gets. Before this change the field was hidden entirely in
+   * a phone-optional country, so this case was unreachable from the form;
+   * now it is reachable and must still be caught here rather than reaching
+   * OMX unchecked.
+   */
+  it("still flags a malformed phone in a country OMX does not require one for, since it can now be typed there", () => {
+    const errors = validate(postalAddress(PHONE_EXEMPT_COUNTRY, "not a phone number"));
+    expect(errors.phone).toBeDefined();
+  });
+
+  it("accepts a +-prefixed voluntary phone in a phone-optional country", () => {
+    const errors = validate(postalAddress(PHONE_EXEMPT_COUNTRY, "+372 5555 5555"));
+    expect(errors.phone).toBeUndefined();
+  });
 });
 
 describe("isPostalAddressComplete — the fix: independent of the phone", () => {
@@ -185,9 +205,24 @@ describe("isPostalAddressComplete — the fix: independent of the phone", () => 
 });
 
 describe("isPhoneComplete — the other half: where the requirement actually lives now", () => {
-  it("is true wherever OMX does not require a phone, regardless of what was typed", () => {
+  it("is true where OMX does not require a phone and none was given", () => {
     expect(isPhoneComplete(postalAddress(PHONE_EXEMPT_COUNTRY))).toBe(true);
-    expect(isPhoneComplete(postalAddress(PHONE_EXEMPT_COUNTRY, "not a phone number"))).toBe(true);
+  });
+
+  /**
+   * Presence is relaxed in a phone-optional country; shape never is. Before
+   * 2026-08-29 this case could not happen — the field was hidden entirely
+   * there — so `isPhoneComplete` used to return `true` for a garbage value
+   * simply because it was never asked for. It is asked for now (optionally),
+   * and a garbage voluntary value must still block the order the same way a
+   * garbage required one does.
+   */
+  it("is false where OMX does not require a phone but a malformed one was typed anyway", () => {
+    expect(isPhoneComplete(postalAddress(PHONE_EXEMPT_COUNTRY, "not a phone number"))).toBe(false);
+  });
+
+  it("is true where OMX does not require a phone and a well-formed one was volunteered", () => {
+    expect(isPhoneComplete(postalAddress(PHONE_EXEMPT_COUNTRY, "+372 5555 5555"))).toBe(true);
   });
 
   it("is false where OMX requires a phone and none, or an invalid one, was given", () => {
