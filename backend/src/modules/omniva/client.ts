@@ -55,6 +55,25 @@
  * `500` on every label request (`barcodes`) or a `filedata`-shaped hole that
  * makes every label request appear to succeed while storing nothing
  * (`fileData`).
+ *
+ * ## `test-omx` does not know every machine in `locations.json`
+ *
+ * Registering against a parcel machine the test environment has never heard
+ * of is refused with `OffloadPostcodeIsValid: receiverAddressee.address -
+ * Invalid offload postcode`. Measured across the Estonian `TYPE=0` list on
+ * 2026-08-29, the refusals are one contiguous band at the top rather than
+ * scattered: everything from `93999` to `96400` registers, everything from
+ * `96420` to `96470` is refused — **60 of 437 Estonian machines, 13.7%**.
+ * That is a sandbox whose address book stopped being updated; the refused
+ * ones are the newest-numbered.
+ *
+ * `locations.ts` reads `https://www.omniva.ee/locations.json`, which is the
+ * *live* list, so it legitimately carries machines `test-omx` cannot accept.
+ * **Do not filter the machine list to match the sandbox** — that would hide
+ * one Estonian machine in seven from live customers to make a test
+ * environment happy. When testing a parcel machine order by hand, pick one
+ * below the cutoff (Tallinna Smuuli Maxima XX, `96080`, registers cleanly);
+ * a refusal up there is the environment, not this code.
  */
 
 import type { OmnivaConfig } from "./config";

@@ -4,8 +4,7 @@
  *
  * Extracted out of `CheckoutPageContent.tsx` on 2026-08-29, fixing an
  * operator-reported defect: `storefront/` has no jsdom for that component
- * (see its own doc comment, and the handover at
- * `docs/working/2026-08-26-omniva-shipping-handover.md`), so a decision that
+ * (see its own doc comment), so a decision that
  * only exists as a closure inside it can only be exercised by a static
  * render, which never runs an effect and therefore never drove the delivery
  * method `<select>` this file's split was written to fix. Pulling the

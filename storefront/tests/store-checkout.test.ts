@@ -992,10 +992,11 @@ describe("the exact total presented before payment", () => {
  * `defaultShippingOptionId` is the one call site `CheckoutPageContent.tsx`'s
  * shipping-options effect uses, and it decides purely from **what Medusa
  * returned** — never from a country code re-derived here — which is what
- * keeps this file from carrying a second copy of the EE/LV/LT set the
- * handover warns is a trap to duplicate (see
- * `docs/working/2026-08-26-omniva-shipping-handover.md`, "Two country sets,
- * and confusing them is the trap").
+ * keeps this file from carrying a second copy of the EE/LV/LT set. That set
+ * and the phone-optional set differ by exactly one member and are a
+ * standing trap to conflate — see `PARCEL_MACHINE_COUNTRY_CODES` and
+ * `PHONE_OPTIONAL_COUNTRY_CODES` in `backend/src/commerce/shipping-model.ts`,
+ * whose doc comments spell out why neither is derived from the other.
  */
 describe("defaultShippingOptionId — the EE/LV/LT preselection", () => {
   const standard = parsedOption("so_standard", "Standard delivery", 700);
