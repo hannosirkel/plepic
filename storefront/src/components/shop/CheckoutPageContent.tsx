@@ -543,6 +543,11 @@ export function CheckoutPageContent({
     shippingRequest,
     clearTotals: () => setStoreTotals(null),
     addMethod: addSelectedShippingMethod,
+    // A factory, not a client: `createMedusaStoreClient` throws when
+    // `window` is undefined, and this component still renders once on the
+    // server for the initial HTML. See `useParcelMachineSelection.ts`'s doc
+    // comment on `createClient` for the `/checkout` 500 this replaces.
+    createClient: () => createMedusaStoreClient(browserRuntimeConfig().medusa),
   });
   const payableRevision =
     scenario === null &&

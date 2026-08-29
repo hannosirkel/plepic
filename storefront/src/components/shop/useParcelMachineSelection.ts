@@ -28,8 +28,11 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import { destinationForCountryName } from "../../lib/destination.js";
+import type { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import { fetchParcelMachines, type StorefrontParcelMachine } from "../../lib/omniva-locations.js";
 import { isParcelMachineOption, type GuestShippingOption } from "../../lib/store-checkout.js";
+
+type StoreClient = ReturnType<typeof createMedusaStoreClient>;
 
 export type ParcelMachineFetchState = "idle" | "loading" | "error";
 
@@ -81,6 +84,22 @@ export interface UseParcelMachineSelectionArgs {
   readonly clearTotals: () => void;
   /** Adds the method now that it has a zip to carry. */
   readonly addMethod: (option: GuestShippingOption, zip: string) => void;
+  /**
+   * Builds the Medusa Store client handed to {@link fetchParcelMachines}.
+   * A **factory**, not a client instance, and called only from inside the
+   * fetch effect below rather than at render time — `createMedusaStoreClient`
+   * calls `browserOrigin()`, which throws when `window` is undefined, and
+   * this component still renders once on the server for the initial HTML.
+   * An eager `createMedusaStoreClient(...)` passed in as a prop is evaluated
+   * in the caller's render body before this hook ever runs, so it throws
+   * during that server render regardless of whether anything here reads it —
+   * `tests/build-and-serve.test.ts` caught exactly that as a `500` on
+   * `/checkout` when this was first tried. `CheckoutPageContent.tsx` passes
+   * `() => createMedusaStoreClient(browserRuntimeConfig().medusa)`, the same
+   * construction every other Store call site on the page makes lazily, from
+   * inside an effect or an event handler, never from the render body.
+   */
+  readonly createClient: () => StoreClient;
 }
 
 export function useParcelMachineSelection({
@@ -92,6 +111,7 @@ export function useParcelMachineSelection({
   shippingRequest,
   clearTotals,
   addMethod,
+  createClient,
 }: UseParcelMachineSelectionArgs): ParcelMachineSelection {
   const [parcelMachines, setParcelMachines] = useState<readonly StorefrontParcelMachine[]>([]);
   const [parcelMachineZip, setParcelMachineZip] = useState("");
@@ -120,6 +140,13 @@ export function useParcelMachineSelection({
    * once the debounced method list has settled for the *current* address,
    * and reading the country before then would ask this address's endpoint
    * with the previous one's country code for the one render in between.
+   *
+   * `createClient` and `addMethod` are read from the closure rather than
+   * listed as dependencies, the same way `addMethod` already was:
+   * `CheckoutPageContent.tsx` hands down a fresh closure on every render, so
+   * listing it would refetch the machine list on every keystroke elsewhere
+   * on the page instead of once per settled address — the four values
+   * already listed are the actual triggers.
    */
   useEffect(() => {
     const request = ++parcelMachineRequest.current;
@@ -140,7 +167,7 @@ export function useParcelMachineSelection({
     }
     let active = true;
     setParcelMachineState("loading");
-    void fetchParcelMachines(destination.code.toUpperCase()).then(
+    void fetchParcelMachines(createClient(), destination.code.toUpperCase()).then(
       (machines) => {
         if (!active || request !== parcelMachineRequest.current) return;
         setParcelMachines(machines);

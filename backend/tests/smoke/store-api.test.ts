@@ -502,6 +502,65 @@ describe("the shipping options a completed address is offered", () => {
   });
 });
 
+/**
+ * The exact defect this describe block exists to catch by asking a real
+ * Medusa, reproduced from inside the deployed test environment's pod as:
+ *
+ * ```
+ * GET /store/omniva/parcel-machines?country=EE
+ * 400 {"type":"not_allowed","message":"Publishable API key required in the
+ * request header: x-publishable-api-key. …"}
+ * ```
+ *
+ * `storefront/src/lib/omniva-locations.ts`'s `fetchParcelMachines` hand-rolled
+ * its own `fetch()` call carrying only an `accept` header, while every other
+ * Store call in the storefront went through `@medusajs/js-sdk`'s client
+ * (`createMedusaStoreClient`), which attaches `x-publishable-api-key` itself —
+ * so this one call alone was refused. No storefront unit test caught it,
+ * because those tests stub `global.fetch`, which cannot fail on a header it
+ * never inspects: 3,213 passing tests and a green `bash scripts/validate`
+ * both missed a 400 on the one request this feature depends on. `store()`
+ * below carries the same header every other assertion in this file does; this
+ * is the one place in the repository that proves a **real** Medusa answers
+ * this specific route with it, the way the tax-provider describe block above
+ * is the one place that proves the catalogue route does.
+ */
+describe("the Omniva parcel machine list the checkout picker fetches", () => {
+  it("answers 200 with a non-empty list for Estonia, with the publishable key", async () => {
+    const response = await store(`/store/omniva/parcel-machines?country=${EU_PRICING_COUNTRY}`);
+    expect(
+      response.status,
+      `GET /store/omniva/parcel-machines?country=${EU_PRICING_COUNTRY} answered ${String(response.status)}: ${response.text}`,
+    ).toBe(200);
+    const machines = sequence(
+      record(response.body, "parcel machines response")["parcel_machines"],
+      "parcel_machines",
+    ).map((machine) => record(machine, "parcel machine"));
+    expect(machines.length, "the Omniva parcel machine list must not be empty").toBeGreaterThan(0);
+    for (const machine of machines) {
+      expect(machine["zip"], "a parcel machine with no zip cannot be selected").toBeTypeOf("string");
+      expect(machine["name"], "a parcel machine with no name cannot be shown").toBeTypeOf("string");
+    }
+  });
+
+  /**
+   * The exact refusal reproduced above, asked directly rather than inferred:
+   * the same route, the same country, with no `x-publishable-api-key` header
+   * at all — `json()` rather than `store()`, which is what makes this request
+   * the unauthenticated one.
+   */
+  it("refuses the same request without the publishable key", async () => {
+    const response = await json(`/store/omniva/parcel-machines?country=${EU_PRICING_COUNTRY}`);
+    expect(
+      response.status,
+      `GET /store/omniva/parcel-machines?country=${EU_PRICING_COUNTRY} with no publishable key answered ${String(response.status)}: ${response.text}`,
+    ).toBe(400);
+    expect(
+      record(response.body, "unauthenticated response")["message"],
+    ).toContain("x-publishable-api-key");
+  });
+});
+
 /** The one variant's computed price, refusing anything that is not one. */
 function calculatedPrice(body: unknown): CalculatedPrice {
   const products = sequence(
