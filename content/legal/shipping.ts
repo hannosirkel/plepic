@@ -7,6 +7,37 @@
  * stale silently, which on this particular page is a misrepresentation rather
  * than a typo.
  *
+ * ## Correction, 2026-08-29 — read this before "the operator's own wording" below
+ *
+ * The checkout's own decomposition changed on this date, and the sections
+ * below — written for the decomposition that came before it — describe the
+ * **old** one at length. Nothing below is rewritten; this file's own
+ * convention, stated in full further down ("What follows is the record of the
+ * previous revision, kept as history"), is to mark a correction rather than
+ * silently rewrite a dated record, and that is what this notice does.
+ *
+ * Until 2026-08-29 the checkout's "Price of the goods" and "Shipping charge"
+ * rows were **grossed** — Medusa's `item_total` and `shipping_total`, VAT
+ * already inside them — and the VAT row beneath them was worded "Includes",
+ * a breakdown of the two figures above it. `storefront/src/lib/store-
+ * checkout.ts`'s `assertedCartTotals` now states the opposite invariant: both
+ * rows are **net** — the same figures for every destination, EU or not — and
+ * the VAT row is an addend, present only where VAT is due, worded "VAT at
+ * {vatRate}" rather than "Includes VAT at {vatRate}".
+ *
+ * **Nothing below is false because of this.** Every sentence on this page
+ * that names a figure quotes `{price}`, `{priceNet}`, `{priceGross}`,
+ * `{priceVat}` or `{vatRate}` — the catalogue's own resolved values, not a
+ * description of which row of the checkout's disclosure block states which
+ * of them — and those five placeholders resolve to the same amounts they
+ * always did. "The price of the goods is then {priceGross} … and that is the
+ * figure you pay" is still true: {priceGross} is still what an EU buyer pays
+ * for the goods, in total. What changed is only which row of the checkout's
+ * Article 8(2) block states {priceNet} directly and which states the VAT
+ * that gets it to {priceGross} — a presentation change to *how* the total is
+ * decomposed on screen, not to what any of these five figures mean or what a
+ * buyer is charged.
+ *
  * ## The parcel machine method the operator added on 2026-08-26, and the one price that is not a placeholder
  *
  * `backend/src/commerce/shipping-model.ts` records the operator's decision in

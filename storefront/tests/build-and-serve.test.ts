@@ -1419,7 +1419,7 @@ describe("the basket and the checkout serve their real composition", () => {
     const text = paintedText(response.body);
 
     // Article 8(2): the label, and the six disclosures above it.
-    expect(text).toContain("Order with obligation to pay");
+    expect(text).toContain("Pay now");
     for (const label of [
       "The goods",
       "Price of the goods",
@@ -2042,7 +2042,7 @@ describe("?mock= is inert on the hostname a visitor reaches", () => {
         resolveCatalogue().price,
       );
       expect(text, `${path} served an order button on the live hostname`).not.toContain(
-        "Order with obligation to pay",
+        "Pay now",
       );
     }
   });
@@ -2052,7 +2052,7 @@ describe("?mock= is inert on the hostname a visitor reaches", () => {
     expect(paintedText(cart.body)).toContain(resolveCatalogue().price);
 
     const checkout = await requestWithHost(server.port, "/checkout?mock=filled", MOCK_HOST);
-    expect(paintedText(checkout.body)).toContain("Order with obligation to pay");
+    expect(paintedText(checkout.body)).toContain("Pay now");
   });
 
   it("leaves both routes working on the canonical host without the parameter", async () => {

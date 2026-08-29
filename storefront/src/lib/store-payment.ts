@@ -108,12 +108,23 @@ export interface CompletedStoreOrder {
 export interface ReturnOrderDisclosure {
   readonly currency: string;
   readonly goods: string;
+  /**
+   * The price of the goods, before tax — **net since 2026-08-29**, the same
+   * figure `CheckoutPageContent`'s "Price of the goods" row now states for
+   * this same order. It was Medusa's gross `item_total` before that date; see
+   * `assertedCartTotals` in `./store-checkout.js`, which both this function
+   * and the checkout read through.
+   */
   readonly goodsAmount: number;
+  /** The shipping charge, before tax — net since 2026-08-29, on the same terms as {@link goodsAmount}. */
   readonly shippingAmount: number;
+  /** The total. Unchanged by the 2026-08-29 decomposition change — what a buyer is charged does not move. */
   readonly orderAmount: number;
   /**
-   * The VAT contained in {@link orderAmount} — Medusa's `cart.tax_total`,
-   * **after the same three refusals the checkout applies**.
+   * The VAT that gets {@link goodsAmount} plus {@link shippingAmount} to
+   * {@link orderAmount} — Medusa's `cart.tax_total`, **after the same three
+   * refusals the checkout applies**. An addend since 2026-08-29, not a
+   * quantity contained in the two figures above it.
    *
    * Zero for an order going outside the EU, where no EU VAT arises, and the
    * return page renders **no row** in that state rather than a row of zero:

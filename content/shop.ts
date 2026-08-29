@@ -24,15 +24,34 @@
  * ## The order button's label
  *
  * `orderButtonLabel` is the one string in this file with a legal test to pass.
- * Article 8(2) of the Consumer Rights Directive requires the final control to
- * be labelled with "order with obligation to pay" or a corresponding
- * unambiguous formulation, and `content/legal/terms.ts` states that the button
- * "is labelled to say that pressing it places an order with an obligation to
- * pay" — a description of the label rather than the label itself. This is the
- * article's own canonical formulation, unabbreviated. Do not shorten it to
- * "Order", "Buy" or "Confirm": that is the single most-cited defect in EU
- * distance-selling enforcement, and shortening it would also make the legal
- * page false.
+ * Article 8(2) CRD requires the final control to be labelled "order with
+ * obligation to pay" **or a corresponding unambiguous formulation** — it does
+ * not require the article's own words verbatim. The European Commission's
+ * guidance on the Directive names "buy now", "pay now" and "confirm purchase"
+ * as compliant formulations, and names "register", "confirm" and "order now"
+ * as **not** compliant: a label that reads as an instruction to continue
+ * rather than a statement that money is now owed.
+ *
+ * **Operator instruction, 2026-08-29: replace the article's own wording with
+ * "Pay now".** It is one of the Commission's own examples, not an
+ * improvisation, and the stake is worth restating here because it is why the
+ * guard below exists rather than a hand-typed string: if the button is not
+ * compliantly labelled, **the consumer is not bound by the contract**.
+ * `content/legal/terms.ts:56` describes what the buyer will see rather than
+ * repeating the label, for exactly this reason — a description survives the
+ * label changing to another compliant formulation; a quotation does not.
+ *
+ * {@link COMPLIANT_ORDER_BUTTON_LABELS} is the guard: `orderButtonLabel` must
+ * be a member of it, checked in
+ * `storefront/tests/shop-pages.test.tsx`. That test used to pin the exact
+ * string "Order with obligation to pay" and separately assert the label
+ * contained the substring "obligation to pay" — a guard that could only ever
+ * pass the wording it was written against, and would have refused "Pay now"
+ * exactly as readily as it would have refused "Confirm". Checking membership
+ * of the accepted set instead is what lets this file's wording move between
+ * compliant formulations without weakening what the test protects: a future
+ * edit to "Confirm" or "Order now" still fails, because neither is on the
+ * list.
  *
  * No amount of money appears in this file, and none can: `content.test.ts`
  * rejects a currency symbol, a currency code and a decimal amount in any
@@ -42,6 +61,28 @@
  */
 
 import type { CallToAction, Link } from "./schema.js";
+
+/**
+ * Formulations the European Commission's guidance on Article 8(2) CRD
+ * accepts as a "corresponding unambiguous formulation" of "order with
+ * obligation to pay" — "buy now", "pay now" and "confirm purchase" — plus the
+ * Directive's own wording, which is always compliant by definition. The same
+ * guidance names "register", "confirm" and "order now" as **not** compliant,
+ * which is exactly why this is a fixed set rather than a free-text field: a
+ * label is checked against it, in
+ * `storefront/tests/shop-pages.test.tsx`, so a future edit that drifts the
+ * label to one of the rejected forms — or to any wording not on this list —
+ * fails the suite rather than shipping unnoticed.
+ *
+ * Compared case-insensitively, because the guidance is about the words rather
+ * than their capitalisation.
+ */
+export const COMPLIANT_ORDER_BUTTON_LABELS: readonly string[] = [
+  "order with obligation to pay",
+  "buy now",
+  "pay now",
+  "confirm purchase",
+];
 
 /** One field of the delivery address form. `autoComplete` is the HTML token, not copy. */
 export interface AddressFieldCopy {
@@ -440,9 +481,10 @@ export const checkout = {
    * and the delivery estimate".
    *
    * {@link order.vatLabel} is a **seventh** value and does not disturb that
-   * order: it is a breakdown of two of the six, placed between the shipping
-   * charge and the total because that is where the two figures it accounts for
-   * end, and it is absent entirely for an order that attracts no VAT.
+   * order: it is the addend the two net figures above it need to reach the
+   * total, placed between the shipping charge and the total because that is
+   * where it is added, and it is absent entirely for an order that attracts
+   * no VAT — never a row of zero.
    */
   order: {
     heading: "Your order",
@@ -450,23 +492,29 @@ export const checkout = {
     goodsPriceLabel: "Price of the goods",
     shippingLabel: "Shipping charge",
     /**
-     * The VAT row's term, worded as a **breakdown** rather than as a charge,
-     * on purpose.
+     * The VAT row's term, worded as an **addend** rather than as a
+     * breakdown — the opposite of what it said before 2026-08-29, and for the
+     * same reason the wording changed then: the decomposition it labels
+     * changed.
      *
-     * The row sits between the shipping charge and the total, which is where a
-     * reader expects an addend — and it is not one. The tax is already inside
-     * the price of the goods and inside the shipping charge, so a row headed
-     * simply "VAT", sitting between the shipping charge and the total, invites
-     * a reader to add it to them and find that the column does not sum.
-     * "Includes" is the whole fix, and
-     * `storefront/src/lib/store-checkout.ts` refuses a set of totals in which
-     * that word would be false.
+     * Until this change, the goods and shipping rows above it were grossed —
+     * Medusa's `item_total`/`shipping_total`, tax already inside them — so the
+     * VAT row was a breakdown of the two figures above it, worded "Includes",
+     * and a row headed simply "VAT" would have invited a reader to add it to
+     * an already-taxed column and find the total overstated.
+     * `storefront/src/lib/store-checkout.ts`'s `assertedCartTotals` now states
+     * the opposite invariant: the goods and shipping rows are **net** —
+     * `item_total − item_tax_total`, `shipping_total − shipping_tax_total`,
+     * the same figures for every destination — and this row is what makes the
+     * column sum to the total again. "Includes" would now be false; the
+     * refusal that used to guard that word now guards `goods + shipping + tax
+     * === total` instead, over the same three fields.
      *
      * `{vatRate}` resolves from the catalogue. The rate is a fact this
      * workspace quotes and never applies; it is declared in
      * `backend/src/commerce/tax-model.ts`.
      */
-    vatLabel: "Includes VAT at {vatRate}",
+    vatLabel: "VAT at {vatRate}",
     /**
      * The price qualification when the figures above are the ones **the
      * delivery address produced**, and the qualification therefore follows
@@ -508,8 +556,13 @@ export const checkout = {
     totalPending: "Shown once your delivery address is complete",
   },
 
-  /** See this file's doc comment: Article 8(2)'s own formulation, unabbreviated. */
-  orderButtonLabel: "Order with obligation to pay",
+  /**
+   * See this file's doc comment: one of the European Commission's own
+   * compliant formulations of the Article 8(2) obligation-to-pay requirement
+   * — operator instruction, 2026-08-29. Must be a member of
+   * {@link COMPLIANT_ORDER_BUTTON_LABELS}.
+   */
+  orderButtonLabel: "Pay now",
   placingLabel: "Placing your order…",
 
   errors: {

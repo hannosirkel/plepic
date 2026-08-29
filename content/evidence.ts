@@ -215,8 +215,8 @@ export const COMMERCIAL_TERMS: Readonly<
   },
   "checkout-contract": {
     summary:
-      "The order is an offer; the contract exists on dispatch confirmation. The final button says it carries an obligation to pay, and the goods, price, shipping, total, address and delivery estimate are all on that screen.",
-    decidedIn: "Task 1 commercial model, and EU distance selling",
+      "The order is an offer; the contract exists on dispatch confirmation. The final button is labelled \"Pay now\" — a formulation the European Commission's guidance names compliant with the Article 8(2) obligation-to-pay requirement — and the goods, price, shipping, total, address and delivery estimate are all on that screen.",
+    decidedIn: "Task 1 commercial model, EU distance selling, and the operator's 2026-08-29 button-label instruction",
   },
   "stock-policy": {
     summary: "Stock is unlimited and unmanaged, so availability is a phrase and never a count.",

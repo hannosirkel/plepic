@@ -93,6 +93,20 @@ const CART_QUERY = { fields: STORE_CART_FIELDS } as const;
  * and what `./store-payment.js` already read on the confirmation path. This is
  * the basket agreeing with both.
  *
+ * {@link CartLine.unitAmount} stays this — the **charged**, tax-inclusive
+ * figure — unchanged by the 2026-08-29 decomposition change: it is what the
+ * basket's own "Price" and "Line total" columns state, and what
+ * `emitAddToCart` reports, and neither of those moved. What moved is
+ * {@link CartLine.taxAmount}, added in the same change: each line's own
+ * `subtotal` — Medusa's net figure for that line, requested via the same
+ * {@link STORE_CART_FIELDS} — subtracted from `total` and divided by
+ * quantity. It exists so `cartTotals` in `./cart.js` can net the tax back out
+ * of its **summary** "Goods" total the same way it already could for a
+ * mock-catalogue line, which is what makes that summary agree with
+ * `/checkout`'s now-net "Price of the goods" row for the same basket, rather
+ * than the two screens stating two different figures for the goods in the
+ * same cart.
+ *
  * The per-unit figure the basket's price column shows is each line's own
  * `total` divided by its quantity, and a division that is not exact is
  * **refused** rather than rounded. A rounded unit price beside an unrounded
@@ -100,20 +114,25 @@ const CART_QUERY = { fields: STORE_CART_FIELDS } as const;
  * product divides exactly at every quantity a basket may hold. If a future
  * catalogue does not, that is a presentation decision somebody has to make on
  * purpose — a column showing "from" pricing, or no unit column — rather than a
- * cent this function invented.
+ * cent this function invented. The same divisibility refusal now applies to
+ * `subtotal`, for the identical reason applied to the identical figure.
  *
  * The line totals are then checked to sum to `item_total`, for the same reason
  * `cartTotals` in `./store-checkout.js` refuses three figures that do not add
  * up: the two are computed by different parts of Medusa, and a basket whose
  * lines do not account for its own goods figure has told a buyer something
- * untrue about at least one of them.
+ * untrue about at least one of them. The check stays over `unitAmount` alone,
+ * summed, unchanged since before 2026-08-29: `unitAmount` itself did not
+ * change meaning, only a second, net figure — `unitAmount` minus this
+ * addition's `taxAmount` — was added beside it.
  *
- * **A missing `total` is reported as what it is.** It means the request did not
- * ask for {@link STORE_CART_FIELDS}, which is a different fault from a cart
- * whose figures disagree, and it used to be reported as the latter — "does not
- * divide into a whole unit price", because `undefined / 1` is `NaN` and `NaN`
- * fails the divisibility test first. A reader given that message goes looking
- * at prices and rounding. The message below sends them to the request instead.
+ * **A missing `total` or `subtotal` is reported as what it is.** It means the
+ * request did not ask for {@link STORE_CART_FIELDS}, which is a different
+ * fault from a cart whose figures disagree, and it used to be reported as the
+ * latter — "does not divide into a whole unit price", because `undefined / 1`
+ * is `NaN` and `NaN` fails the divisibility test first. A reader given that
+ * message goes looking at prices and rounding. The message below sends them
+ * to the request instead.
  */
 export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
   const value = cart as {
@@ -121,6 +140,7 @@ export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
       id?: string;
       title?: string;
       total?: number;
+      subtotal?: number;
       quantity?: number;
       variant?: {
         id?: string;
@@ -145,7 +165,7 @@ export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
     ) {
       throw new Error("Medusa Store cart line is malformed");
     }
-    if (typeof line.total !== "number") {
+    if (typeof line.total !== "number" || typeof line.subtotal !== "number") {
       throw new Error(
         "Medusa Store cart line carries no total — the request must ask for " +
           `"${STORE_CART_FIELDS}"; see src/lib/store-cart.ts`,
@@ -153,7 +173,8 @@ export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
     }
     const quantity = line.quantity as number;
     const lineTotal = medusaMajorToMinor(line.total, currency);
-    if (lineTotal % quantity !== 0) {
+    const lineNet = medusaMajorToMinor(line.subtotal, currency);
+    if (lineTotal % quantity !== 0 || lineNet % quantity !== 0) {
       throw new Error("Medusa Store cart line does not divide into a whole unit price");
     }
     const variant = line.variant;
@@ -166,6 +187,10 @@ export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
       ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}),
       productName: line.title,
       unitAmount: lineTotal / quantity,
+      // The tax *contained in* `unitAmount`, per unit — not an addend to it.
+      // See `CartLine.taxAmount`'s doc comment in `./cart.js`: `unitAmount -
+      // taxAmount` is the net figure `cartTotals` nets out for its summary.
+      taxAmount: (lineTotal - lineNet) / quantity,
       currency: currency.toUpperCase(),
       quantity,
       availability: available ? "InStock" : "OutOfStock",

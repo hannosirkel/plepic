@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 import { returns } from "../../content/legal/returns.js";
 import { shipping } from "../../content/legal/shipping.js";
 import { terms } from "../../content/legal/terms.js";
-import { basket, checkout, unavailableFigure } from "../../content/shop.js";
+import { basket, checkout, unavailableFigure, COMPLIANT_ORDER_BUTTON_LABELS } from "../../content/shop.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
 import { destinationForCountryName } from "../src/lib/destination.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
@@ -250,14 +250,31 @@ describe("the checkout renders those sentences to a visitor", () => {
 /* ------------------------------------------------------------------------ */
 
 describe("Article 8(2) CRD: the button label", () => {
-  it("says that pressing it places an order with an obligation to pay", () => {
-    expect(checkout.orderButtonLabel).toBe("Order with obligation to pay");
+  it("is labelled 'Pay now' — operator instruction, 2026-08-29", () => {
+    expect(checkout.orderButtonLabel).toBe("Pay now");
   });
 
-  it("is not one of the labels the article exists to forbid", () => {
-    const forbidden = ["Order", "Buy", "Buy now", "Confirm", "Submit", "Continue", "Pay", "Place order"];
-    expect(forbidden).not.toContain(checkout.orderButtonLabel);
-    expect(checkout.orderButtonLabel.toLowerCase()).toContain("obligation to pay");
+  /**
+   * **Membership of the accepted set, not a substring pin.**
+   *
+   * This used to assert `checkout.orderButtonLabel.toLowerCase()).toContain(
+   * "obligation to pay")` — a guard that could only ever pass wording
+   * containing that exact phrase, so it would have refused "Pay now" exactly
+   * as readily as it would have refused "Confirm". Checking membership of
+   * {@link COMPLIANT_ORDER_BUTTON_LABELS} instead is what lets this file's
+   * wording move between the European Commission's own compliant
+   * formulations without weakening what the test protects: a future edit to
+   * "Confirm" or "Order now" still fails, because neither is a member.
+   */
+  it("is one of the formulations the European Commission's guidance accepts for Article 8(2) CRD", () => {
+    const compliant = COMPLIANT_ORDER_BUTTON_LABELS.map((label) => label.toLowerCase());
+    expect(compliant).toContain(checkout.orderButtonLabel.toLowerCase());
+    // And the guidance's named non-compliant formulations are never members —
+    // the property that makes the membership check a refusal rather than a
+    // tautology.
+    for (const rejected of ["register", "confirm", "order now"]) {
+      expect(compliant, rejected).not.toContain(rejected);
+    }
   });
 
   it("is the accessible name of a real submit button, not a link", () => {
@@ -902,18 +919,29 @@ describe("every figure comes from the mock catalogue and the declared shipping m
   });
 
   /**
-   * The **charged** shipping figure, not the quoted-before-tax rate.
-   * `declaredShippingMethod.rates` is what the operator froze and what the
-   * legal page describes as a rate; `ratesWithTax` is what a buyer pays, and
-   * the totals on the Article 8(2) screen must be what a buyer pays.
+   * The **net** shipping figure, since 2026-08-29 — `declaredShippingMethod.
+   * rates` is what the operator froze and what the legal page describes as a
+   * rate, and, since that date, what {@link CartTotals.shippingAmount} states
+   * directly; `ratesWithTax` is what a buyer pays, which {@link orderAmount}
+   * reaches by adding {@link CartTotals.taxAmount} rather than by
+   * {@link CartTotals.shippingAmount} already containing it.
    */
-  it("adds the zone's charged shipping figure to the goods, and nothing else", () => {
+  it("states the zone's net shipping rate beside the goods, with tax the addend that reaches the total", () => {
     const lines = [catalogueLine(2)];
     for (const zone of SHIPPING_ZONES) {
       const totals = cartTotals(lines, { deliveryZone: zone });
       expect(totals.goodsAmount).toBe(lines[0]!.unitAmount * 2);
-      expect(totals.shippingAmount).toBe(declaredShippingMethod.ratesWithTax[zone]);
-      expect(totals.orderAmount).toBe(totals.goodsAmount! + declaredShippingMethod.ratesWithTax[zone]);
+      expect(totals.shippingAmount).toBe(declaredShippingMethod.rates[zone]);
+      expect(totals.shippingTaxAmount).toBe(
+        declaredShippingMethod.ratesWithTax[zone] - declaredShippingMethod.rates[zone],
+      );
+      expect(totals.orderAmount).toBe(totals.goodsAmount! + totals.shippingAmount! + totals.taxAmount!);
+      // And the total itself is what it always was: the two grossed figures
+      // summed — see `assertedCartTotals`'s redundant check, kept over the
+      // same identity with its role swapped.
+      expect(totals.orderAmount).toBe(
+        lines[0]!.unitAmount * 2 + declaredShippingMethod.ratesWithTax[zone],
+      );
     }
   });
 
@@ -1254,7 +1282,9 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
 
     it("shows no shipping value and no total value, in either zone's amount", () => {
       for (const zone of SHIPPING_ZONES) {
-        const charge = formatAmount(declaredShippingMethod.ratesWithTax[zone], "EUR");
+        // Net since 2026-08-29 — see this describe block's own doc comment
+        // update below for why the shown figure moved.
+        const charge = formatAmount(declaredShippingMethod.rates[zone], "EUR");
         expect(text, `${charge} was disclosed without a delivery address`).not.toContain(charge);
         const total = formatAmount(
           catalogueLine(1).unitAmount + declaredShippingMethod.ratesWithTax[zone],
@@ -1289,17 +1319,28 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
          */
         const destination = destinationForCountryName(country);
         expect(destination, country).not.toBeNull();
-        const goods = catalogueLine(1, undefined, "lunar-base", destination!).unitAmount;
-        const charge = formatAmount(declaredShippingMethod.ratesWithTax[zone], "EUR");
-        const total = formatAmount(goods + declaredShippingMethod.ratesWithTax[zone], "EUR");
+        const line = catalogueLine(1, undefined, "lunar-base", destination!);
+        // `unitAmount` is still the charged, gross figure — unchanged by the
+        // 2026-08-29 decomposition change, see `src/lib/cart.ts`'s doc
+        // comment on `CartLine`. `goodsNet` is what the "Price of the goods"
+        // row now states instead.
+        const goodsGross = line.unitAmount;
+        const goodsTax = line.taxAmount ?? 0;
+        const goodsNet = goodsGross - goodsTax;
+        const shippingNet = declaredShippingMethod.rates[zone];
+        const shippingGross = declaredShippingMethod.ratesWithTax[zone];
+        const shippingTax = shippingGross - shippingNet;
+        const total = formatAmount(goodsGross + shippingGross, "EUR");
 
-        // 1 the goods, 2 the price of the goods.
+        // 1 the goods, 2 the price of the goods — net, the same figure this
+        // destination's basket and confirmation pages would state too.
         expect(text).toContain("Lunar Base × 1");
-        expect(text).toContain(formatAmount(goods, "EUR"));
-        // 3 the shipping charge, and it is this country's, not the other's.
+        expect(text).toContain(formatAmount(goodsNet, "EUR"));
+        // 3 the shipping charge — net — and it is this zone's, not the other's.
+        const charge = formatAmount(shippingNet, "EUR");
         expect(text, `${country} was not charged ${charge}`).toContain(charge);
         expect(text).not.toContain(
-          formatAmount(declaredShippingMethod.ratesWithTax[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
+          formatAmount(declaredShippingMethod.rates[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
         );
         /*
          * **And the qualification names this address's country, never the
@@ -1335,14 +1376,7 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
           resolveCatalogue(undefined, destination!),
         );
         if (zone === "europeanUnion") {
-          const tax = formatAmount(
-            goods -
-              catalogueLine(1, undefined, "lunar-base", destinationForCountryName("Norway")!)
-                .unitAmount +
-              declaredShippingMethod.ratesWithTax[zone] -
-              declaredShippingMethod.rates[zone],
-            "EUR",
-          );
+          const tax = formatAmount(goodsTax + shippingTax, "EUR");
           expect(text, `${country} states no VAT amount`).toContain(vatLabel);
           expect(text).toContain(tax);
         } else {

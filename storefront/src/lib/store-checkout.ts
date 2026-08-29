@@ -132,6 +132,15 @@ export interface ShippingOptionFigure {
 /** What "+ VAT" is written as when a net rate has to be shown as one. */
 export const NET_SHIPPING_SUFFIX = " + VAT";
 
+/**
+ * What the VAT row's own figure is prefixed with, since 2026-08-29 — a visual
+ * echo of {@link NET_SHIPPING_SUFFIX}'s "+", marking the row as an addend to
+ * the net goods and shipping rows above it rather than a breakdown of them.
+ * `CheckoutPageContent.tsx` and `StripePaymentReturn.tsx` are the two callers;
+ * see `content/shop.ts`'s `vatLabel` for the row's term.
+ */
+export const VAT_ADDEND_PREFIX = "+ ";
+
 /** What a zero-priced delivery method is written as. */
 export const FREE_SHIPPING_LABEL = "Free";
 
@@ -353,27 +362,25 @@ export async function prepareGuestShipping(
 }
 
 /**
- * Medusa's authoritative figures, read as the three the Article 8(2) disclosure
- * block actually states.
+ * Medusa's authoritative figures, read as the disclosure block actually
+ * states them.
  *
- * **`item_total`, not `subtotal`.** Medusa's `cart.subtotal` is
- * `item_subtotal + shipping_subtotal`, both **excluding** tax — so it is neither
- * "the price of the goods" nor a figure that adds up with the shipping charge
- * beside it. Prices are stored **net** and the destination's tax region is
- * applied automatically, which makes the difference visible rather than
- * theoretical: for the advertised goods price plus the European Union shipping
- * rate into Estonia, `subtotal` comes back as the two net amounts summed while
- * the buyer is charged both of them grossed, so the checkout stated a price of
- * the goods that was neither what the product page quotes an EU visitor nor
- * consistent with its own total. `content/legal/shipping.ts` says the figure it
- * quotes "is the figure you pay", and `cart.item_total` — line items after
- * discounts, **including** tax — is the field that is that.
+ * **`item_total` and `item_tax_total`, not `subtotal` and not `unit_price`.**
+ * Medusa's `cart.subtotal` is `item_subtotal + shipping_subtotal`, both
+ * **excluding** tax — a combined figure that is neither "the price of the
+ * goods" alone nor one that adds up with the shipping charge beside it.
+ * Prices are stored **net** and the destination's tax region is applied
+ * automatically, so `item_total` — line items after discounts, **including**
+ * tax — minus `item_tax_total` is what {@link CartTotals.goodsAmount} reads:
+ * the net price of the goods, the same figure for every destination, computed
+ * from the one field Medusa actually returns rather than from the stored
+ * `unit_price` a discount could have moved away from it.
  * `backend/tests/commerce-medusa-semantics.test.ts` carries the arithmetic, run
  * through Medusa's own `decorateCartTotals` rather than restated.
  *
  * `storefront/src/lib/store-payment.ts`'s `returnOrderDisclosure` already read
- * `item_total` for the same three figures on the order-confirmation path. This
- * is the checkout path agreeing with it.
+ * `item_total`/`item_tax_total` for the same figures on the order-confirmation
+ * path. This is the checkout path agreeing with it.
  */
 export function cartTotals(value: unknown): CartTotals {
   return assertedCartTotals((value as { cart?: unknown }).cart);
@@ -415,51 +422,78 @@ export function assertedCartTotals(value: unknown): CartTotals {
   ) {
     throw new ConfigError("Medusa returned malformed checkout totals");
   }
-  const goodsAmount = medusaMajorToMinor(cart.item_total, cart.currency_code);
-  const shippingAmount = medusaMajorToMinor(cart.shipping_total, cart.currency_code);
+  const goodsGrossAmount = medusaMajorToMinor(cart.item_total, cart.currency_code);
+  const shippingGrossAmount = medusaMajorToMinor(cart.shipping_total, cart.currency_code);
   const orderAmount = medusaMajorToMinor(cart.total, cart.currency_code);
   const taxAmount = medusaMajorToMinor(cart.tax_total, cart.currency_code);
   const goodsTaxAmount = medusaMajorToMinor(cart.item_tax_total, cart.currency_code);
   const shippingTaxAmount = medusaMajorToMinor(cart.shipping_tax_total, cart.currency_code);
   /*
-   * The disclosure block puts the figures on one screen, one above the other,
-   * immediately above the order button. A buyer reading a goods figure and a
-   * shipping figure that do not sum to the total they are asked to accept has
-   * been shown something untrue, and Article 8(2) CRD is a disclosure
-   * obligation rather than a pricing one — so a set that does not add up is
-   * refused here instead of being rendered.
-   *
-   * **This one still holds under net pricing, and that is the point of keeping
-   * it.** `item_total` and `shipping_total` both include their tax, so
-   * the grossed goods figure plus the grossed delivery figure is still the
-   * total. What changed is that there is now a seventh figure on the screen,
-   * and two more ways for the set to be wrong.
+   * **Net, since 2026-08-29 — operator instruction.** Before this date these
+   * two were `item_total`/`shipping_total` themselves: Medusa's gross figures,
+   * tax already inside them, and the VAT row beneath them was a breakdown of
+   * the two rather than an addend. The decomposition the disclosure block now
+   * states is the other way round: an invariant net price of the goods and
+   * net shipping charge — the same two figures for every destination — with
+   * the VAT a separate row adds to reach the total. `content/shop.ts`'s
+   * `vatLabel` changed from "Includes VAT at …" to "VAT at …" in the same
+   * change, and would be false against the old, grossed pair.
    */
-  if (goodsAmount + shippingAmount !== orderAmount) {
+  const goodsAmount = goodsGrossAmount - goodsTaxAmount;
+  const shippingAmount = shippingGrossAmount - shippingTaxAmount;
+  /*
+   * The disclosure block puts the figures on one screen, one above the other,
+   * immediately above the order button. A buyer reading a goods figure, a
+   * shipping figure and a VAT figure that do not sum to the total they are
+   * asked to accept has been shown something untrue, and Article 8(2) CRD is a
+   * disclosure obligation rather than a pricing one — so a set that does not
+   * add up is refused here instead of being rendered.
+   *
+   * **This is the replacement for the pre-2026-08-29 check, not a new one.**
+   * That check was `goodsAmount + shippingAmount === orderAmount` over the
+   * grossed pair, which is false by construction now that both are net — the
+   * two net figures alone are short of the total by exactly the tax. Adding
+   * `taxAmount` is what makes the invariant hold again, and it is the
+   * operator-mandated decomposition stated as arithmetic.
+   */
+  if (goodsAmount + shippingAmount + taxAmount !== orderAmount) {
     throw new ConfigError("Medusa returned checkout totals that do not add up");
   }
   /*
-   * The VAT row is a **breakdown of the two figures above it**, not a third
-   * addend, and it is worded as one ("Includes VAT at …"). These two refusals
-   * are what make that wording true rather than decorative.
-   *
-   * The first is the one that catches something the refusal above cannot: a
-   * tax total that is not exactly the tax on the goods plus the tax on the
-   * delivery accounts for something the screen does not show, and the row would
-   * then be a figure for nothing a reader can see.
-   *
-   * The second — the two figures net of their tax, plus that tax, are the
-   * total — is **algebraically implied by the other two, and is kept anyway**.
-   * It states the invariant from the other direction, so it survives somebody
-   * relaxing either of the others; `tests/store-checkout.test.ts` demonstrates
-   * the implication rather than pretending to a case that reaches it, which is
-   * the honest way to keep a redundant check.
+   * Unchanged by the 2026-08-29 decomposition change: this refusal never read
+   * `goodsAmount` or `shippingAmount` at all, only the three tax fields, so
+   * nothing about what those two mean touches it. It catches something the
+   * refusal above cannot — a tax total that is not exactly the tax on the
+   * goods plus the tax on the delivery accounts for something the screen does
+   * not show, and the VAT row would then be a figure for nothing a reader can
+   * see.
    */
   if (taxAmount !== goodsTaxAmount + shippingTaxAmount) {
     throw new ConfigError("Medusa returned a tax total that is not the tax on the goods and the delivery");
   }
-  if ((goodsAmount - goodsTaxAmount) + (shippingAmount - shippingTaxAmount) + taxAmount !== orderAmount) {
-    throw new ConfigError("Medusa returned checkout totals whose tax is not contained within them");
+  /*
+   * **The redundant check, carried over with its role exactly swapped.**
+   * Before 2026-08-29 this was the first check above — `goodsAmount +
+   * shippingAmount === orderAmount` over the *grossed* pair — kept as a
+   * restatement of the invariant from the other direction so it would survive
+   * somebody relaxing either of the other two. Now that `goodsAmount` and
+   * `shippingAmount` are net, that same grossed-pair equation is no longer
+   * what the first check states, so it moves here, stated over the net
+   * figures with their tax added back: `(goodsAmount + goodsTaxAmount) +
+   * (shippingAmount + shippingTaxAmount) === orderAmount`. It is still
+   * algebraically implied by the other two — substitute the second check's
+   * `taxAmount = goodsTaxAmount + shippingTaxAmount` into the first and this
+   * is what falls out — and `tests/store-checkout.test.ts` demonstrates the
+   * implication over random figures rather than pretending to a case that
+   * reaches it, which is the honest way to keep a redundant check. Preserving
+   * it, with its role swapped, is what stops a figure that is individually
+   * plausible and collectively wrong — the property the plain replacement of
+   * the first check alone would have quietly dropped.
+   */
+  if ((goodsAmount + goodsTaxAmount) + (shippingAmount + shippingTaxAmount) !== orderAmount) {
+    throw new ConfigError(
+      "Medusa returned checkout totals whose goods and delivery, taxed, do not sum to the total",
+    );
   }
   return {
     currency: cart.currency_code.toUpperCase(),
@@ -519,15 +553,26 @@ export async function addGuestShippingMethod(
     }),
   );
   const shown = shippingOptionFigure(option, vatApplies);
-  const charged = totals.shippingAmount;
-  if (charged === null) {
+  /*
+   * `totals.shippingAmount` is **net** since 2026-08-29 — see
+   * `assertedCartTotals`. `shippingOptionFigure`'s two kinds of claim are
+   * about what was *charged*, though, so this reconstructs the gross figure
+   * from the net one and its own tax before comparing: a **final** shown
+   * figure is the whole charge and must equal the gross reconstruction; a
+   * **net** figure marked "+ VAT" must equal the net figure directly, with no
+   * reconstruction needed at all now that the totals this function reads are
+   * already net of their own tax.
+   */
+  const netCharged = totals.shippingAmount;
+  if (netCharged === null) {
     throw new ConfigError("Medusa added the delivery method without charging for it");
   }
-  const comparable = shown.final ? charged : charged - (totals.shippingTaxAmount ?? 0);
+  const grossCharged = netCharged + (totals.shippingTaxAmount ?? 0);
+  const comparable = shown.final ? grossCharged : netCharged;
   if (comparable !== shown.amount) {
     throw new ConfigError(
       `The delivery charge shown (${shown.label}) is not the delivery charge Medusa applied ` +
-        `(${formatAmount(charged, totals.currency)}). Nothing has been ordered.`,
+        `(${formatAmount(grossCharged, totals.currency)}). Nothing has been ordered.`,
     );
   }
   return totals;

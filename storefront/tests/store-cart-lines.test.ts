@@ -30,6 +30,7 @@ describe("Medusa cart money boundary", () => {
         title: "Lunar Base",
         unit_price: 25,
         total: 31,
+        subtotal: 25,
         quantity: 1,
         variant: { id: "variant_example", manage_inventory: false },
       }],
@@ -38,6 +39,7 @@ describe("Medusa cart money boundary", () => {
       variantId: "variant_example",
       productName: "Lunar Base",
       unitAmount: 3100,
+      taxAmount: 600,
       currency: "EUR",
       quantity: 1,
       availability: "InStock",
@@ -53,11 +55,13 @@ describe("Medusa cart money boundary", () => {
         title: "Lunar Base",
         unit_price: 25,
         total: 93,
+        subtotal: 75,
         quantity: 3,
         variant: { id: "variant_example", manage_inventory: false },
       }],
     });
     expect(line?.unitAmount).toBe(3100);
+    expect(line?.taxAmount).toBe(600);
   });
 
   /**
@@ -74,7 +78,7 @@ describe("Medusa cart money boundary", () => {
       currency_code: "eur",
       item_total: 31.01,
       items: [{
-        id: "line_example", title: "Lunar Base", unit_price: 25, total: 31.01, quantity: 2,
+        id: "line_example", title: "Lunar Base", unit_price: 25, total: 31.01, subtotal: 25, quantity: 2,
         variant: { id: "variant_example", manage_inventory: false },
       }],
     })).toThrow(/whole unit price/);
@@ -85,7 +89,7 @@ describe("Medusa cart money boundary", () => {
       currency_code: "eur",
       item_total: 25,
       items: [{
-        id: "line_example", title: "Lunar Base", unit_price: 25, total: 31, quantity: 1,
+        id: "line_example", title: "Lunar Base", unit_price: 25, total: 31, subtotal: 25, quantity: 1,
         variant: { id: "variant_example", manage_inventory: false },
       }],
     })).toThrow(/goods figure/);
@@ -97,7 +101,7 @@ describe("real empty-basket analytics", () => {
     currency_code: "eur",
     item_total: 31,
     items: [{
-      id: "line_example", title: "Lunar Base", unit_price: 25, total: 31, quantity: 1,
+      id: "line_example", title: "Lunar Base", unit_price: 25, total: 31, subtotal: 25, quantity: 1,
       variant: { id: "variant_example", manage_inventory: false },
     }],
   };

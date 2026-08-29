@@ -11,10 +11,11 @@
  *
  * ## Article 8(2) CRD, which is what this layout is for
  *
- * > "The final button on the checkout page is labelled to say that pressing it
- * > places an order with an obligation to pay. Immediately above it you see,
- * > on one screen: the goods, the price of the goods, the shipping charge, the
- * > total, the delivery address and the delivery estimate."
+ * > "The final button on the checkout page is labelled 'Pay now' — one of the
+ * > unambiguous formulations the European Commission's guidance accepts for a
+ * > button that places an order with an obligation to pay. Immediately above
+ * > it you see, on one screen: the goods, the price of the goods, the shipping
+ * > charge, the total, the delivery address and the delivery estimate."
  *
  * The "Your order" section is exactly those six disclosures, in exactly that
  * order, in one block whose last elements are the price qualification, the
@@ -33,17 +34,19 @@
  * that sentence, so a third thing cannot arrive unnoticed. The **consent
  * line** is next, immediately above the control it describes.
  *
- * ## The seventh value, and why it is worded as a breakdown
+ * ## The seventh value, and why it is worded as an addend
  *
  * Article 8(2) names six disclosures. The VAT row is a seventh value between
- * the shipping charge and the total, and it is a **breakdown of the two figures
- * above it rather than an addend**: prices are net in storage but every figure
- * on this screen comes from Medusa with its tax already inside it, so the tax
- * is contained in the price of the goods and in the shipping charge, not added
- * to them. A row headed simply "VAT" in that position reads as something to
- * add, and the column would not sum. `content/shop.ts`'s `vatLabel` says
- * "Includes", and `src/lib/store-checkout.ts` refuses a set of totals in which
- * that word would be false.
+ * the shipping charge and the total, and it is an **addend, since
+ * 2026-08-29** — the opposite of what it was before that date. Prices are net
+ * in storage; before this change every figure on this screen was Medusa's
+ * gross one, tax already inside it, and the VAT row was a breakdown of the two
+ * above it, worded "Includes". The operator's instruction reversed the
+ * decomposition instead: the price of the goods and the shipping charge are
+ * now the **net** figures — the same for every destination — and this row is
+ * what the column needs added to reach the total. `content/shop.ts`'s
+ * `vatLabel` says "VAT at …", not "Includes", and `src/lib/store-checkout.ts`
+ * refuses a set of totals in which `goods + shipping + tax !== total`.
  *
  * It is **absent** for an order that attracts no VAT, not zero — the same
  * argument `src/lib/cart.ts` makes about formatted zeros. No EU VAT arises on
@@ -170,6 +173,7 @@ import {
   isParcelMachineOption,
   prepareGuestShipping,
   shippingOptionFigure,
+  VAT_ADDEND_PREFIX,
   type AddressBoundTotals,
   type GuestShippingOption,
 } from "../../lib/store-checkout.js";
@@ -1222,10 +1226,12 @@ export function CheckoutPageContent({
                   : formatAmount(totals.shippingAmount, totals.currency)}
               </dd>
             </div>
-            {/* The seventh value, and a **breakdown of the two above it**
-                rather than an addend — see `content/shop.ts`'s `vatLabel` and
-                the two refusals in `src/lib/store-checkout.ts` that make the
-                word "Includes" true.
+            {/* The seventh value, and an **addend to the two net rows above
+                it**, since 2026-08-29 — see `content/shop.ts`'s `vatLabel` and
+                the refusal in `src/lib/store-checkout.ts` that makes
+                `goods + shipping + tax === total` hold. The "+" prefix is the
+                same mark `shippingOptionFigure`'s "+ VAT" suffix already uses
+                for a net figure awaiting tax, read here as "add this".
 
                 Absent, not zero, when no VAT arises. `null` is "nobody has
                 been asked" (the mock layer, and the pre-address state); `0` is
@@ -1236,7 +1242,7 @@ export function CheckoutPageContent({
             {totals.taxAmount !== null && totals.taxAmount > 0 ? (
               <div className={styles.summaryRow}>
                 <dt>{qualification.vatLabel}</dt>
-                <dd>{formatAmount(totals.taxAmount, totals.currency)}</dd>
+                <dd>{VAT_ADDEND_PREFIX}{formatAmount(totals.taxAmount, totals.currency)}</dd>
               </div>
             ) : null}
             <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>

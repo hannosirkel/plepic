@@ -286,11 +286,17 @@ export function BasketPageContent() {
    * "Calculated at checkout", which is what `content/legal/shipping.ts` says
    * and is true of two rates rather than one.
    *
-   * The **goods** figure is a different matter and no longer comes from this
-   * call in the served application: every line reaching it was built by
-   * `cartLinesFromStore`, which prices each one off Medusa's tax-inclusive
-   * line total. `cartTotals` sums what it is given; what it is given is
-   * already the figure the buyer is charged.
+   * The **goods** figure is net, since 2026-08-29, on the served basket the
+   * same as everywhere else `CartTotals` is rendered — see `src/lib/cart.ts`'s
+   * doc comment on `CartTotals.goodsAmount`. In the served application every
+   * line reaching it was built by `cartLinesFromStore`, which now carries
+   * each line's per-unit tax alongside its charged (gross) `unitAmount`
+   * rather than only the charged figure; `cartTotals` is what nets it back
+   * out for this summary. The per-line "Price" and "Line total" columns below
+   * still read `unitAmount` directly and stay gross — this row and those
+   * columns are deliberately not the same figure for an EU destination
+   * any more, which is the same decomposition `/checkout` now states rather
+   * than a new inconsistency invented here.
    */
   const totals = cartTotals(lines, { deliveryZone: null });
   const blocked = lines.some((line) => !isAvailable(line));

@@ -389,38 +389,79 @@ export function zoneForCountryName(countryName: string): ShippingZone | null {
 export interface CartTotals {
   readonly currency: string;
   /**
-   * Sum of every line, in minor units — or `null` when the basket holds a line
-   * we cannot supply, because then there is no price that describes what is in
-   * it. See this module's doc comment.
+   * The price of the goods, in minor units, **before tax — the same figure
+   * for every destination.** `null` when the basket holds a line we cannot
+   * supply, because then there is no price that describes what is in it. See
+   * this module's doc comment.
+   *
+   * **Net since 2026-08-29, operator instruction — it was the gross,
+   * tax-inclusive figure before that date.** The change is the decomposition
+   * a screen states, not what a buyer is charged: {@link orderAmount} still
+   * ends at the same total, with {@link taxAmount} now the addend that gets
+   * it there instead of a quantity already folded into this field. Every
+   * caller that read this as "what the goods cost, tax included" moved in the
+   * same change — `storefront/src/components/shop/BasketPageContent.tsx`,
+   * `CheckoutPageContent.tsx`'s Article 8(2) block,
+   * `storefront/src/lib/store-payment.ts`'s `returnOrderDisclosure`, and
+   * `StripePaymentReturn.tsx` — because a caller left reading it the old way
+   * would show a buyer a different goods figure from every other screen for
+   * the same order.
    */
   readonly goodsAmount: number | null;
-  /** `null` until a delivery address exists — see this module's doc comment. */
+  /**
+   * The shipping charge, in minor units, **before tax — the same figure
+   * within its zone regardless of destination beyond that.** `null` until a
+   * delivery address exists — see this module's doc comment.
+   *
+   * **Net since 2026-08-29, for the same reason and in the same change as
+   * {@link goodsAmount}.** It was the grossed, tax-inclusive rate before that
+   * date.
+   */
   readonly shippingAmount: number | null;
-  /** `null` whenever {@link goodsAmount} or {@link shippingAmount} is. */
+  /**
+   * The total — unchanged by the 2026-08-29 decomposition change, and that is
+   * the point of it: what a buyer is charged does not move, only how the
+   * screen accounts for it. `null` whenever {@link goodsAmount},
+   * {@link shippingAmount} or {@link taxAmount} is, because all three are
+   * needed to state it now that the first two are net.
+   */
   readonly orderAmount: number | null;
   /**
-   * The VAT contained in {@link orderAmount}, or `null` when nobody has
-   * answered.
+   * The VAT that gets {@link goodsAmount} plus {@link shippingAmount} to
+   * {@link orderAmount}, or `null` when nobody has answered.
+   *
+   * **An addend since 2026-08-29, not a breakdown.** Before that date this
+   * value was already exactly this figure — nothing about *how much* tax
+   * there is changed — but it sat **inside** {@link goodsAmount} and
+   * {@link shippingAmount}, and the row that rendered it was worded
+   * "Includes". Now it is added to two net figures to reach the total, and
+   * `content/shop.ts`'s `vatLabel` was reworded from "Includes VAT at …" to
+   * "VAT at …" in the same change.
    *
    * **`null` and `0` mean different things and the screen says so.** `null` is
    * "no authority has been asked yet" — this module never computes tax and has
    * no rate to compute it with, so every total it builds itself carries `null`
    * here. `0` is Medusa's answer for a destination outside the EU, where no EU
-   * VAT arises at all. Neither renders a VAT row: there is nothing to break
-   * down, and a row stating a formatted zero claims a zero-rating this shop
-   * does not apply. The row appears only for a positive figure Medusa supplied.
+   * VAT arises at all. Neither renders a VAT row: there is nothing to add, and
+   * a row stating a formatted zero claims a zero-rating this shop does not
+   * apply. The row appears only for a positive figure Medusa supplied.
    *
-   * It is **inside** {@link goodsAmount} and {@link shippingAmount}, never
-   * added to them — see `./store-checkout.js`, which refuses a set of figures
-   * where that is not arithmetically true.
+   * `./store-checkout.js` refuses a set of figures where
+   * `goodsAmount + shippingAmount + taxAmount !== orderAmount` is not
+   * arithmetically true.
    */
   readonly taxAmount: number | null;
   /**
-   * The part of {@link taxAmount} that sits inside {@link shippingAmount}.
+   * The part of {@link taxAmount} that {@link shippingAmount}'s own tax
+   * accounts for — unchanged in meaning by the 2026-08-29 decomposition
+   * change, because it was always the *difference* between the shipping
+   * file's two rate tables rather than a quantity contained in
+   * {@link shippingAmount}.
    *
    * Carried so a delivery method's quoted figure can be checked against what
    * Medusa charged for it even when the quote was a net one — see
-   * `shippingOptionFigure` in `./store-checkout.js`.
+   * `shippingOptionFigure` and `addGuestShippingMethod` in
+   * `./store-checkout.js`.
    */
   readonly shippingTaxAmount: number | null;
 }
@@ -554,19 +595,30 @@ export function cartTotals(
    * doc comment. Summing only the available lines produced a figure that
    * described a different basket from the one the same screen was listing, and
    * a formatted zero is a statement about a price rather than its absence.
+   *
+   * `lineAmount` is per-unit **charged** amount times quantity — gross, tax
+   * already inside it where destination tax applies — never rewritten by this
+   * function. Every real per-line display (the basket's "Price" and "Line
+   * total" columns) keeps reading it directly, unchanged since before
+   * 2026-08-29; what changed that date is only {@link CartTotals.goodsAmount}
+   * below, which nets the tax back out of this sum rather than stating it.
    */
-  const goodsAmount = lines.every((line) => isAvailable(line))
+  const goodsGrossAmount = lines.every((line) => isAvailable(line))
     ? lines.reduce((sum, line) => sum + lineAmount(line), 0)
     : null;
 
   /*
-   * The **charged** figure, not the quoted-before-tax one. `rates` is what the
-   * operator froze and what the legal page describes as a rate; `ratesWithTax`
-   * is what a buyer pays, and this screen is the one Article 8(2) CRD requires
-   * to state what a buyer pays.
+   * `rates` is the **net** rate — what the operator froze and what the legal
+   * page describes as a rate — and, since 2026-08-29, what
+   * {@link CartTotals.shippingAmount} states: the same figure for every
+   * destination the zone allows, with its tax broken out as
+   * {@link CartTotals.shippingTaxAmount} rather than folded in. Before that
+   * date this read `ratesWithTax`, the grossed figure a buyer is actually
+   * charged; nothing about what a buyer is charged changed, only which of the
+   * two declared tables this field quotes.
    */
   const shippingAmount =
-    deliveryZone !== null && lines.length > 0 ? shipping.ratesWithTax[deliveryZone] : null;
+    deliveryZone !== null && lines.length > 0 ? shipping.rates[deliveryZone] : null;
   const shippingTaxAmount =
     deliveryZone !== null && lines.length > 0
       ? shipping.ratesWithTax[deliveryZone] - shipping.rates[deliveryZone]
@@ -582,13 +634,15 @@ export function cartTotals(
    * figures** — the catalogue's two amounts, and the shipping file's two rate
    * tables — never a rate applied to anything.
    *
-   * `null` where nobody has answered, and it stays `null` for a basket built
-   * from Medusa lines (which carry no per-line tax) and for any state without
-   * a delivery zone. That is the same distinction the rest of this module
-   * draws: "nothing has been asked" is not "nothing".
+   * `null` where nobody has answered — every line's {@link CartLine.taxAmount}
+   * must be known, which is why `src/lib/store-cart.ts`'s `cartLinesFromStore`
+   * populates it for a real Medusa line now too, rather than leaving it
+   * `undefined` and this figure permanently withheld on `/cart` for every real
+   * basket. That is the same distinction the rest of this module draws:
+   * "nothing has been asked" is not "nothing".
    */
   const goodsTaxAmount =
-    goodsAmount !== null && lines.every((line) => line.taxAmount !== undefined)
+    goodsGrossAmount !== null && lines.every((line) => line.taxAmount !== undefined)
       ? lines.reduce((sum, line) => sum + (line.taxAmount ?? 0) * line.quantity, 0)
       : null;
   const taxAmount =
@@ -596,12 +650,31 @@ export function cartTotals(
       ? null
       : goodsTaxAmount + shippingTaxAmount;
 
+  /*
+   * **Net, since 2026-08-29 — operator instruction.** `goodsGrossAmount` is
+   * what a buyer is charged for the goods; this is what the "Price of the
+   * goods" row now states instead, with {@link goodsTaxAmount} the addend a
+   * VAT row (where one is shown) accounts for. `null` whenever the gross sum
+   * or its tax is, for the same reason either alone withholds a figure.
+   */
+  const goodsAmount =
+    goodsGrossAmount === null || goodsTaxAmount === null ? null : goodsGrossAmount - goodsTaxAmount;
+
   return {
     currency: lines[0]?.currency ?? shipping.currency,
     goodsAmount,
     shippingAmount,
+    /*
+     * `goods + shipping + tax`, not `goods + shipping` — see
+     * `assertedCartTotals` in `./store-checkout.js` for the same replacement
+     * over Medusa's own figures. `taxAmount` must be known too now: two net
+     * figures alone are short of the total by exactly the tax, so a state that
+     * cannot state the tax cannot state the total either.
+     */
     orderAmount:
-      goodsAmount === null || shippingAmount === null ? null : goodsAmount + shippingAmount,
+      goodsAmount === null || shippingAmount === null || taxAmount === null
+        ? null
+        : goodsAmount + shippingAmount + taxAmount,
     taxAmount,
     shippingTaxAmount,
   };
