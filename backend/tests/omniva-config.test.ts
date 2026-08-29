@@ -76,8 +76,8 @@ describe("readOmnivaConfig: optional on total absence, refused on partial", () =
   });
 
   /**
-   * Ruling R17: presence is keyed on the four `OMNIVA_*` names only, not on
-   * the merchant sender facts -- `MERCHANT_PHONE_NUMBER` is already a
+   * Ruling R17: presence is keyed on the three secret `OMNIVA_*` names only,
+   * not on the merchant sender facts -- `MERCHANT_PHONE_NUMBER` is already a
    * storefront-required variable (`storefront/src/config/runtime-env.ts`,
    * CRD Art. 6(1)(c)) for a reason that has nothing to do with Omniva. This
    * is the scenario R17 exists for: a shared merchant `ConfigMap` handing the
@@ -95,5 +95,18 @@ describe("readOmnivaConfig: optional on total absence, refused on partial", () =
 
   it("returns null when only the sender's street is set and nothing else, per R17", () => {
     expect(readOmnivaConfig({ MERCHANT_SENDER_STREET: "Pihlaka tn 2" })).toBeNull();
+  });
+
+  /**
+   * This is the deployed test environment exactly: `hannosirkel/deploys`'
+   * `plepic/base/backend.yaml` and `worker.yaml` both set `OMNIVA_BASE_URL`
+   * unconditionally, in every environment, whether or not Omniva credentials
+   * have been provisioned. `OMNIVA_BASE_URL` carries the `OMNIVA_` prefix but
+   * is deployment furniture, not evidence of intent -- presence must be keyed
+   * on the three secrets alone, or an environment with no Omniva credentials
+   * wrongly reports "partly configured" instead of "not configured".
+   */
+  it("returns null when OMNIVA_BASE_URL is set but none of the three secrets are", () => {
+    expect(readOmnivaConfig({ OMNIVA_BASE_URL: "https://omx.omniva.eu" })).toBeNull();
   });
 });
