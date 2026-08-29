@@ -17,18 +17,25 @@ win.
 
 ## State
 
-| Repository | Branch | Commits | Worktree |
+| Repository | Branch | Head | Status as of 2026-08-29 |
 | --- | --- | --- | --- |
-| `plepic` | `feat/omniva-shipping` | 24 (`440d8af..d61ca12`) | `~/app/.worktrees/plepic/omniva-shipping` |
-| `orange` | `feat/omniva-secret` | 2 (`63ef3a7`, `6c490e1`) | `~/app/.worktrees/orange/omniva-secret` |
-| `deploys` | `feat/omniva-env` | 2 (`ca3ef8f`, `294e5ce`) | `~/app/.worktrees/deploys/omniva-env` |
+| `plepic` | `feat/omniva-shipping` | `9832334` | PR #49 open, `deploy-test` label assigned, deployed to test |
+| `orange` | `feat/omniva-secret` | `de389c4` | **merged** to main |
+| `deploys` | `feat/omniva-env` | — | **merged** to main (PR #29) |
+| `orange/inventory` (private) | `feat/omniva-sender-address` | — | PR #28 open — merchant sender profile only |
 
-All three working trees are clean. Nothing is pushed. No pull request exists.
-`deploys` needed no new commit: `plepic/base/{backend,worker}.yaml` already
-read a Secret named `plepic-omniva` with `optional: true` regardless of which
-namespace the base renders into, so orange's `feat/omniva-secret` test-side
-projection (below) targets that same name in `plepic-test` and nothing here
-had to change.
+Merging `plepic` #49 to main is a deployment (see
+[Effect gates](#effect-gates--read-before-merging-anything)); it needs its own
+explicit approval and has not been given one. The private inventory PR #28
+carries the real merchant sender address and fires no workflow when merged.
+
+`deploys` needed no manifest change for the Secret itself:
+`plepic/base/{backend,worker}.yaml` already read a Secret named
+`plepic-omniva` with `optional: true` regardless of which namespace the base
+renders into, so orange's test-side projection (below) targets that same name
+in `plepic-test`. It did need the eleventh `module-migrations` mount for
+`src/modules/omniva/migrations`, without which the predeploy Job crashed under
+`readOnlyRootFilesystem`.
 
 `bash scripts/validate` exits 0 in the plepic worktree: shellcheck, eslint,
 three typechecks, a real `medusa build` (backend **and** Admin frontend), and
@@ -166,6 +173,58 @@ train reviewers to ignore its failures.
    `plepic-test-omniva` (two separate operator runs — see above) and adding
    both to `argocd_openbao_enabled_optional_sources` in the **private
    inventory** are operator actions. No agent took them, deliberately.
+
+   Attempted on 2026-08-29 and blocked at a gate no agent can pass. Every
+   precondition is now verified green:
+
+   - `plepic-test-omniva` is allowlisted on `orange` main (PR #43, `de389c4`);
+   - both `.keys/plepic-omniva` and `.keys/plepic-test-omniva` exist at mode
+     `600` carrying exactly `apiUser`, `apiPassword`, `customerCode` — the
+     three fields the `omniva` parser in `openbao-admin` expects;
+   - the argocd projection contract already declares both `optional_source`
+     entries (`roles/argocd/defaults/main.yml`);
+   - OpenBao itself is reachable and unsealed over the WireGuard address.
+
+   The seed still fails, and the role's `no_log: true` hides why. The cause,
+   found by querying `auth/token/lookup-self` directly: **`~/.vault-token`
+   has expired** — it dates from 2026-08-23 and now returns `403 permission
+   denied`. `playbooks/openbao-seed.yml` authenticates with that short-lived
+   operator OIDC token helper, not with the controller AppRole, so it cannot
+   run without a fresh interactive login. That login needs a browser on
+   another machine (see `inventory/docs/operations.md`), which is why this
+   is an operator action and not an agent one.
+
+   The whole remaining sequence, in order — test first, verify, then live as
+   a separate gate:
+
+   ```bash
+   # 1. on the browser machine
+   ~/bin/openbao-tunnel client up
+
+   # 2. in ~/app/orange — open the printed URL on the browser machine
+   OPENBAO_ADDR=https://<orange-wireguard-address>:8061 \
+   BAO_TLS_SERVER_NAME=<openbao-hostname> \
+   scripts/openbao-login
+
+   # 3. seed test, verify, then live — never both in one command
+   .venv/bin/ansible-playbook playbooks/openbao-seed.yml \
+     -e '{"openbao_seed_sources":["plepic-test-omniva"]}'
+   .venv/bin/ansible-playbook playbooks/openbao-seed.yml \
+     -e '{"openbao_seed_sources":["plepic-omniva"]}'
+
+   # 4. on the browser machine
+   ~/bin/openbao-tunnel client down
+   ```
+
+   Both address values are in the private inventory; `scripts/openbao-login`
+   defaults to a placeholder host and will not work unbound. Only after each
+   seed succeeds does that environment's source name go into **both**
+   `argocd_openbao_enabled_optional_sources` and
+   `openbao_required_optional_sources` in the private inventory — the argocd
+   consumer contract asserts the two lists are equal — followed by the argocd
+   playbook so ESO renders the ExternalSecret. Enabling before seeding makes
+   the metadata required against a source that does not yet exist, and
+   ordinary reconciliation then fails closed.
 4. **A key-file name mismatch — found, and now resolved.**
    `orange/scripts/openbao-admin` looks a source's key up by its exact
    `source` name (`keys_directory / item.source`), and every other
