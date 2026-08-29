@@ -53,6 +53,30 @@ describe("validating a parcel machine choice", () => {
   });
 
   /**
+   * Every refusal in this file is written as a sentence for a shopper who is
+   * still on the checkout page and can choose again. That only works if the
+   * sentence reaches them: Medusa's HTTP error handler switches on
+   * `err.type || err.name`, and a bare `Error` has neither, so it is
+   * rewritten to "An unknown error occurred." and answered as a `500`. The
+   * message assertions above pass either way, which is precisely why this
+   * one asserts the `type` instead.
+   */
+  it("types its refusals so the shopper is shown the sentence, not a 500", async () => {
+    await expect(
+      providerFinding([KRISTIINE]).validateFulfillmentData(
+        { id: OMNIVA_PARCEL_MACHINE_OPTION_ID }, {}, ESTONIAN_CART,
+      ),
+    ).rejects.toMatchObject({ type: "invalid_data" });
+    await expect(
+      providerFinding([KRISTIINE]).validateFulfillmentData(
+        { id: OMNIVA_PARCEL_MACHINE_OPTION_ID },
+        { parcel_machine_zip: "00000" },
+        ESTONIAN_CART,
+      ),
+    ).rejects.toMatchObject({ type: "invalid_data" });
+  });
+
+  /**
    * A Latvian machine with an Estonian delivery address is a parcel the buyer
    * cannot collect. It is refused here rather than at the carrier, because here
    * the buyer is still on the page and can choose again.

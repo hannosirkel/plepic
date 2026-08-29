@@ -643,6 +643,65 @@ describe("createFulfillment: registering a real parcel, and the asymmetry after 
     });
 
     /**
+     * Every assertion above matches on the message, and a message assertion
+     * passes just as well when nobody ever sees that message. Medusa's HTTP
+     * error handler switches on `err.type || err.name`, and a bare `Error`
+     * has neither: it lands in the handler's `default:` branch, which
+     * replaces the message with "An unknown error occurred." and answers
+     * `500`. That is exactly what a merchant saw when OMX refused a real
+     * shipment on 2026-08-29 with "Invalid offload postcode" -- the one
+     * sentence that would have told them what to do, and the one thing that
+     * never reached them.
+     *
+     * So these assert the `type`, which is what decides whether the message
+     * survives at all, and they distinguish the two classes rather than
+     * merely requiring "some MedusaError": a clean refusal is the merchant's
+     * to act on (`invalid_data`, `400`), while an ambiguous failure means a
+     * parcel may already exist and must stay a logged `500`
+     * (`unexpected_state`). Collapsing them would file a real OMX outage as
+     * merchant input error.
+     */
+    it("gives a clean OMX refusal a type that keeps OMX's own sentence", async () => {
+      const omx = await stubOmx({
+        register: {
+          resultCode: "ERROR",
+          failedShipments: [
+            {
+              messageCode: "OffloadPostcodeIsValid",
+              message: "receiverAddressee.address - Invalid offload postcode",
+            },
+          ],
+        },
+      });
+      try {
+        const { service } = providerAgainst(omx);
+        await expect(
+          service.createFulfillment({}, ITEMS, ORDER, { id: STUB_FULFILLMENT_ID }),
+        ).rejects.toMatchObject({
+          type: "invalid_data",
+          message: "OffloadPostcodeIsValid: receiverAddressee.address - Invalid offload postcode",
+        });
+      } finally {
+        await omx.close();
+      }
+    });
+
+    it("gives an ambiguous registration failure the logged-500 type instead", async () => {
+      const omx = await stubOmx({
+        register: { developerMessage: "invalid customerCode" },
+        registerStatus: 500,
+      });
+      try {
+        const { service } = providerAgainst(omx);
+        await expect(
+          service.createFulfillment({}, ITEMS, ORDER, { id: STUB_FULFILLMENT_ID }),
+        ).rejects.toMatchObject({ type: "unexpected_state" });
+      } finally {
+        await omx.close();
+      }
+    });
+
+    /**
      * `client.ts:153-156`'s *inner* wrapper -- the `catch` around `fetch`
      * itself, before any HTTP response exists at all. Every other case in
      * this describe block gets a real response from `stubOmx` (a 500, a
@@ -701,6 +760,13 @@ describe("cancelFulfillment: OMX v1.7 has no shipment-cancellation endpoint", ()
     await expect(service.cancelFulfillment({ barcode: "CE123456789EE" })).rejects.toThrow(
       /e-service/i,
     );
+    // Typed, for the same reason as the registration refusals above: this
+    // message tells an operator to go and cancel the parcel in Omniva's
+    // e-service, which is useless advice they never see if the error handler
+    // rewrites it to "An unknown error occurred."
+    await expect(service.cancelFulfillment({ barcode: "CE123456789EE" })).rejects.toMatchObject({
+      type: "not_allowed",
+    });
   });
 
   it("still refuses, without a barcode to point at, when the fulfilment's data carries none", async () => {

@@ -1,4 +1,4 @@
-import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils";
+import { AbstractFulfillmentProviderService, MedusaError } from "@medusajs/framework/utils";
 import type {
   CreateFulfillmentResult,
   FulfillmentDTO,
@@ -16,7 +16,7 @@ import { PRODUCT } from "../../commerce/product-model";
 import { omnivaRedisCache } from "./redis-cache";
 import { OmnivaLocations } from "./locations";
 import type { OmnivaParcelMachine } from "./locations";
-import { OmnivaClient } from "./client";
+import { OmnivaClient, OmnivaRefusal } from "./client";
 import { readOmnivaConfig } from "./config";
 import { buildShipmentRegistration } from "./shipment";
 
@@ -232,14 +232,29 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
   ): Promise<Record<string, unknown>> {
     if (optionData.id !== OMNIVA_PARCEL_MACHINE_OPTION_ID) return data;
 
+    // Why every throw in this class is a `MedusaError` and not a bare
+    // `Error`: Medusa's HTTP error handler switches on `err.type || err.name`
+    // (`@medusajs/framework/dist/http/middlewares/error-handler.js`). A plain
+    // `Error` has neither a `type` nor a recognised `name`, so it falls to the
+    // handler's `default:` branch, which **replaces the message wholesale**
+    // with "An unknown error occurred." and answers `500`. Every sentence
+    // below is written for the person reading it — a shopper at checkout, an
+    // operator in the Admin — and as a bare `Error` not one of them ever
+    // arrived. `INVALID_DATA` and `NOT_ALLOWED` answer `400` with the message
+    // intact; `UNEXPECTED_STATE` answers `500` with the message intact and
+    // logs it at error level, which is what a genuine server-side fault
+    // should do.
     const zip = typeof data.parcel_machine_zip === "string" ? data.parcel_machine_zip.trim() : "";
     if (zip.length === 0) {
-      throw new Error("Choose an Omniva parcel machine before continuing");
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "Choose an Omniva parcel machine before continuing",
+      );
     }
 
     const machine = await this.locations.find(zip);
     if (machine === null) {
-      throw new Error(`${zip} is not an Omniva parcel machine`);
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `${zip} is not an Omniva parcel machine`);
     }
 
     const address = (context as { shipping_address?: { country_code?: unknown } }).shipping_address;
@@ -247,7 +262,8 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
       ? address.country_code.trim().toUpperCase()
       : "";
     if (country !== machine.countryCode) {
-      throw new Error(
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
         `${machine.name} is in ${machine.countryCode}, which is not the delivery address's country`,
       );
     }
@@ -310,7 +326,8 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
   ): Promise<CreateFulfillmentResult> {
     const config = readOmnivaConfig(process.env);
     if (config === null) {
-      throw new Error(
+      throw new MedusaError(
+        MedusaError.Types.UNEXPECTED_STATE,
         "Omniva is not configured: set OMNIVA_API_USER, OMNIVA_API_PASSWORD, " +
           "OMNIVA_CUSTOMER_CODE, OMNIVA_BASE_URL and the merchant sender variables " +
           "before an Omniva shipment can be registered",
@@ -328,7 +345,8 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
     // defensive check against a shape Medusa is not expected to send, not a
     // real-world branch this method has to accommodate.
     if (typeof fulfillment.id !== "string" || fulfillment.id.trim().length === 0) {
-      throw new Error(
+      throw new MedusaError(
+        MedusaError.Types.UNEXPECTED_STATE,
         "Cannot register an Omniva shipment for a fulfilment with no id; " +
           "partnerShipmentId would have nothing to link the parcel back to",
       );
@@ -374,7 +392,27 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
     // through so an ambiguous failure (see `registerShipment`'s own
     // docstring) names this fulfilment rather than leaving an operator to
     // work out which one from context.
-    const { barcode } = await client.registerShipment(registrationBody, fulfillmentId);
+    //
+    // The refusal still propagates — it must, so the fulfilment fails — but
+    // it propagates as a `MedusaError` so the sentence OMX wrote survives the
+    // error handler. An `OmnivaRefusal` means OMX answered cleanly and
+    // declined on the merits, so it is a `400` carrying that sentence
+    // verbatim: "Invalid offload postcode" tells the person fulfilling the
+    // order what to do, where "An unknown error occurred" told them nothing.
+    // Anything else is the ambiguous class `client.ts` documents — a parcel
+    // may already exist — which stays a `500`, logged at error level, so a
+    // real OMX outage is not filed away as merchant input error.
+    let barcode: string;
+    try {
+      ({ barcode } = await client.registerShipment(registrationBody, fulfillmentId));
+    } catch (error) {
+      throw new MedusaError(
+        error instanceof OmnivaRefusal
+          ? MedusaError.Types.INVALID_DATA
+          : MedusaError.Types.UNEXPECTED_STATE,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
 
     // Labelling: deliberately isolated in its own try/catch, and this is the
     // one place in this module where a failure does not propagate.
@@ -456,7 +494,8 @@ export default class OmnivaFulfillmentProviderService extends AbstractFulfillmen
     const barcode = typeof data.barcode === "string" && data.barcode.trim().length > 0
       ? data.barcode.trim()
       : null;
-    throw new Error(
+    throw new MedusaError(
+      MedusaError.Types.NOT_ALLOWED,
       barcode !== null
         ? `Omniva (OMX v1.7) has no shipment-cancellation endpoint. Parcel ${barcode} ` +
           "cannot be cancelled from Medusa -- cancel it in Omniva's e-service instead."

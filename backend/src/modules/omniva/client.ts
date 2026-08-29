@@ -136,6 +136,33 @@ function basicAuthorizationHeader(config: OmnivaConfig): string {
 }
 
 /**
+ * OMX answered the HTTP call cleanly and refused the shipment on its merits:
+ * a `resultCode` other than `"OK"`. Nothing was committed at Omniva, the
+ * reason is OMX's own words, and it is usually something the person
+ * fulfilling the order can act on — a parcel machine OMX does not recognise,
+ * an address it will not accept.
+ *
+ * It exists so `service.ts` can tell that case apart from the *ambiguous*
+ * one — a timeout, a reset, a non-2xx — without matching on message text.
+ * The two must reach a merchant differently: a refusal is a `400` carrying
+ * OMX's sentence verbatim, while an ambiguous failure is a `500` that says a
+ * parcel may already exist. Collapsing them would either hide a real outage
+ * behind a `400` or bury an actionable sentence behind "an unknown error
+ * occurred".
+ *
+ * Deliberately **not** thrown for the two `resultCode: "OK"` disagreements
+ * below (no barcode, or a `savedShipments` length other than one). Those are
+ * this client and OMX disagreeing about what happened, which is exactly the
+ * ambiguous case.
+ */
+export class OmnivaRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OmnivaRefusal";
+  }
+}
+
+/**
  * OMX, over HTTP — nothing else in this module is allowed to hold a `fetch`
  * call to `config.baseUrl`. Constructed fresh by `service.ts`'s
  * `createFulfillment` from whatever `readOmnivaConfig` returns; it carries no
@@ -262,9 +289,9 @@ export class OmnivaClient {
         ? (parsed.failedShipments[0] as FailedShipment | undefined)
         : undefined;
       if (failed !== undefined) {
-        throw new Error(`${text(failed.messageCode)}: ${text(failed.message)}`);
+        throw new OmnivaRefusal(`${text(failed.messageCode)}: ${text(failed.message)}`);
       }
-      throw new Error(
+      throw new OmnivaRefusal(
         `OMX refused the shipment registration (resultCode: ${JSON.stringify(parsed.resultCode)})`,
       );
     }
