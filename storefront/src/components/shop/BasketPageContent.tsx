@@ -88,6 +88,27 @@
  * yet. The complete set — goods, price, shipping, total, address, estimate —
  * appears on `/checkout`, immediately above the order button, which is where
  * Article 8(2) CRD requires it.
+ *
+ * ## But the goods' own VAT is not unknown, and the summary says so
+ *
+ * The 2026-08-29 decomposition made the goods row net and moved its VAT into
+ * `taxAmount`, which `cart.ts` never populates on this screen — it is `null`
+ * until a shipping zone exists, same as the shipping charge and the total.
+ * An operator caught what that combination actually put on screen for an EU
+ * buyer: a net goods figure, "Calculated at checkout" for shipping, and a
+ * sentence promising VAT is added — with no VAT stated anywhere. That is less
+ * information than the gross row this module replaced, which is the exact
+ * regression the decomposition existed to prevent.
+ *
+ * The goods' VAT is not actually unknown, though — every line on this screen
+ * carries its own {@link CartLine.taxAmount}, summed by `cartTotals` into
+ * {@link CartTotals.goodsTaxAmount} regardless of whether a shipping zone
+ * exists. So the summary states it, between the shipping row and the total,
+ * with `content/shop.ts`'s `checkout.order.vatLabel` — the same label the
+ * checkout's own VAT row uses, because "VAT at {vatRate}" makes no claim
+ * about completeness and is true of both figures. What is still genuinely unknown
+ * here is the shipping VAT and therefore the total, and the row for each of
+ * those is unchanged: "Calculated at checkout" and "Shown at checkout".
  */
 
 import { useId, useState } from "react";
@@ -286,11 +307,19 @@ export function BasketPageContent() {
    * "Calculated at checkout", which is what `content/legal/shipping.ts` says
    * and is true of two rates rather than one.
    *
-   * The **goods** figure is a different matter and no longer comes from this
-   * call in the served application: every line reaching it was built by
-   * `cartLinesFromStore`, which prices each one off Medusa's tax-inclusive
-   * line total. `cartTotals` sums what it is given; what it is given is
-   * already the figure the buyer is charged.
+   * The **goods** figure is net, since 2026-08-29, on the served basket the
+   * same as everywhere else `CartTotals` is rendered — see `src/lib/cart.ts`'s
+   * doc comment on `CartTotals.goodsAmount`. The per-line "Price" and "Line
+   * total" columns below read `unitAmount` and `lineAmount` directly, and
+   * since the basket-lines fix that followed 2026-08-29 they read **net**
+   * too: `cartLinesFromStore` prices `CartLine.unitAmount` from Medusa's
+   * `subtotal` now, not `total`, so this row is the direct sum of those same
+   * columns rather than a second, independently netted figure that could
+   * silently disagree with them. It briefly was exactly that — gross columns
+   * above a net row, so a multi-unit EU line read taxed above an untaxed
+   * "Price of the goods" row for the same units — which an operator caught
+   * and is the fix this comment now describes rather than the gap it used to
+   * justify.
    */
   const totals = cartTotals(lines, { deliveryZone: null });
   const blocked = lines.some((line) => !isAvailable(line));
@@ -375,6 +404,22 @@ export function BasketPageContent() {
                 <dt>{basket.summary.shippingLabel}</dt>
                 <dd>{basket.summary.shippingPending}</dd>
               </div>
+              {/* The VAT on the goods — the one part of this screen's tax
+                  that is not waiting on a delivery address. See
+                  `CartTotals.goodsTaxAmount`'s doc comment in `src/lib/cart.ts`
+                  for why this exists and why it is a distinct field from
+                  `taxAmount`, and `checkout.order.vatLabel`'s doc comment in
+                  `content/shop.ts` for why this row shares that label rather
+                  than carrying its own. `null` and `0` are both "no row", for
+                  the same reason as everywhere else in this module: `null` is
+                  unanswered, `0` is an export's genuine no-VAT, and neither
+                  is a figure to print. */}
+              {totals.goodsTaxAmount !== null && totals.goodsTaxAmount > 0 ? (
+                <div className={styles.summaryRow}>
+                  <dt>{resolve(checkoutCopy.order.vatLabel)}</dt>
+                  <dd>{formatAmount(totals.goodsTaxAmount, totals.currency)}</dd>
+                </div>
+              ) : null}
               <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>
                 <dt>{basket.summary.totalLabel}</dt>
                 <dd>{basket.summary.totalPending}</dd>

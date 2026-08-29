@@ -41,9 +41,32 @@
  * are recorded for the Admin and for a courier label rather than consulted by
  * any price. They are declared anyway because a product with no dimensions is a
  * product no fulfillment provider can quote if one is ever introduced.
+ *
+ * ## The customs facts, frozen 2026-08-26
+ *
+ * {@link ProductModel.customs} is the same kind of fact as the packaging: a
+ * property of the physical thing rather than of any order, declared here so
+ * there is exactly one place to freeze it. OMX requires all three whenever a
+ * shipment's destination is outside the EU and refuses the registration if
+ * they are absent or malformed — see {@link ProductCustoms} for the tariff
+ * code, the manufacturing origin, and why that origin's format was believed
+ * to be an exception to every other country code in this codebase until the
+ * live carrier proved otherwise. Nothing reads this block yet; a later task
+ * builds the customs declaration from it.
  */
 
-import { SHIPPING_CURRENCY } from "./shipping-model.js";
+// Extensionless on purpose, unlike the rest of `src/commerce/` (see
+// `tax-model.ts`'s own `./shipping-model.js` import for the ordinary form) --
+// this file is reachable from `medusa-config.ts` through ts-node by way of
+// `modules/omniva/service.ts`, which `../config/runtime.ts`'s own header
+// documents as evaluated literally, unable to map a `.js` suffix back onto
+// the `.ts` file beside it. A `.js` here fails `medusa build` with "Cannot
+// find module" for the same reason `runtime.ts` gives, and it did: this
+// import shipped with a `.js` suffix for as long as nothing on this branch
+// rebuilt the image, and only broke once something did.
+// `tests/omniva-extensionless-imports.test.ts` guards this specific file
+// from regressing the same way a second time.
+import { SHIPPING_CURRENCY } from "./shipping-model";
 
 /** The box the one copy ships in. Grams and millimetres. */
 export interface ProductPackaging {
@@ -51,6 +74,59 @@ export interface ProductPackaging {
   readonly lengthMillimetres: number;
   readonly widthMillimetres: number;
   readonly heightMillimetres: number;
+}
+
+/**
+ * What a customs declaration says about this product.
+ *
+ * Operator-frozen, 2026-08-26, and declared here beside the weight and the box
+ * because it is the same kind of fact: a property of the thing in the parcel
+ * rather than of any order. OMX requires all three whenever the destination is
+ * outside the EU, and refuses the registration if they are absent or
+ * malformed. Nothing consumes this block yet — a later task builds the
+ * customs declaration from it.
+ *
+ * `9504400000` is HS 9504.40 — playing cards. `CN` is where the game is
+ * manufactured, and OMX makes it mandatory for United States destinations
+ * specifically, because the landed cost cannot be calculated without it.
+ */
+export interface ProductCustoms {
+  /** HS code, digits only. */
+  readonly tariffNumber: string;
+  /**
+   * Country of manufacture, ISO 3166-1 **alpha-2** — confirmed against the
+   * live carrier, 2026-08-28, not read off the manual.
+   *
+   * The OMX API manual for customers, v1.7, gives `customs.shipmentItems[].originCountry`
+   * as `string(3)`, which every other reader of this codebase (including a
+   * prior version of this very comment) took to mean ISO 3166-1 **alpha-3**.
+   * **The manual is wrong.** Registering a US-bound shipment with
+   * `originCountry: "CHN"` against `test-omx.omniva.eu` answers `200` with
+   * `resultCode: "ERROR"` and a `failedShipments` entry carrying
+   * `{jakarta.validation.constraints.Size.message}: shipment.customs.shipmentItems[0].originCountry
+   * - size must be between {min} and {max}` — the same request with
+   * `originCountry: "CN"`, nothing else changed, answers `200` with
+   * `resultCode: "OK"` and a barcode. `string(3)` in the manual bounds the
+   * field's *length*, not its standard, and two of that bound's three
+   * characters are simply unused by every alpha-2 code.
+   *
+   * This is the third place in this module where the manual and the live API
+   * disagree — see `../modules/omniva/client.ts`'s header for the other two
+   * (`barcodes`, `fileData`) and the same warning: a future reader with the
+   * manual open, seeing `string(3)`, will otherwise "correct" this field
+   * straight back to alpha-3 and reintroduce a refusal on every non-EU order.
+   * `tests/commerce-product-seed.test.ts` asserts the alpha-2 shape for
+   * exactly this reason, and `tests/omniva-create-fulfillment.test.ts`'s stub
+   * OMX refuses an alpha-3 `originCountry` the way the real API does.
+   *
+   * Every other country code in this repository — `EU_MEMBER_STATE_CODES`,
+   * `PARCEL_MACHINE_COUNTRY_CODES`, `DELIVERABLE_COUNTRY_CODES` in
+   * `./shipping-model.js`, every delivery address Medusa carries — is also
+   * ISO 3166-1 alpha-2, so this field is no longer the exception it was
+   * believed to be; it is simply consistent with the rest of this codebase.
+   */
+  readonly originCountry: string;
+  readonly goodsCategoryCode: "SALE_OF_GOODS";
 }
 
 export interface ProductModel {
@@ -71,6 +147,8 @@ export interface ProductModel {
   readonly packaging: ProductPackaging;
   /** `false`: stock is a statement, never a count. See this file's header. */
   readonly manageInventory: boolean;
+  /** What a customs declaration says about this product. See {@link ProductCustoms}. */
+  readonly customs: ProductCustoms;
 }
 
 /** Operator-frozen. */
@@ -87,4 +165,9 @@ export const PRODUCT: ProductModel = {
     heightMillimetres: 40,
   },
   manageInventory: false,
+  customs: {
+    tariffNumber: "9504400000",
+    originCountry: "CN",
+    goodsCategoryCode: "SALE_OF_GOODS",
+  },
 };

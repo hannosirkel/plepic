@@ -92,7 +92,26 @@ export function HomepageMockup({
             <p className={styles.differentiator}>{differentiator.text}</p>
             <div className={styles.heroActions}>
               {homepageCallsToAction.map((action) => (
-                <CallToActionLink key={action.label} action={action} resolveLabel={resolve} />
+                <CallToActionLink
+                  key={action.label}
+                  action={action}
+                  resolveLabel={resolve}
+                  /*
+                   * "VAT included" beneath "Buy for {price}" only — identified
+                   * by its target's `buy` anchor rather than by its label text,
+                   * so a copy edit to the label does not silently stop the note
+                   * from reaching the right button. See
+                   * `ResolvedCatalogue.vatIncludedNote` in `src/lib/catalogue.ts`
+                   * for why the note itself can never disagree with `{price}`.
+                   */
+                  note={
+                    action.target.kind === "route" &&
+                    action.target.to === "lunarBase" &&
+                    action.target.anchor === "buy"
+                      ? catalogue.vatIncludedNote
+                      : undefined
+                  }
+                />
               ))}
             </div>
           </div>

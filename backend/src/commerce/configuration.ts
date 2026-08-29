@@ -23,7 +23,7 @@
  * section. It no longer seeds either: two writers of one price is a way for the
  * rates a buyer is charged to stop being the rates the operator froze, and the
  * export is the *old* shop's configuration rather than the model this repository
- * declares. The zones, the methods and their two flat rates are
+ * declares. The zones, the methods and their frozen amounts are
  * {@link ./shipping-model.js}'s; the VAT rate and the countries it applies in
  * are {@link ./tax-model.js}'s.
  *
@@ -47,8 +47,9 @@
  * nothing at all on a second run, because they compare before they write. The
  * region, the tax regions and the shipping options do not: they re-issue their
  * update whenever the row exists, so every promoted digest rewrites the region's
- * country list, all twenty-seven VAT rates and both flat prices, and emits
- * `region.updated` and `shipping_option.updated`. The end state is the same
+ * country list, all twenty-seven VAT rates and every shipping option's price —
+ * three flat and one free — and emits `region.updated` and
+ * `shipping_option.updated`. The end state is the same
  * either way, which is what idempotence means here — but a reader watching the
  * event bus will see them, and
  * `tests/commerce-medusa-semantics.test.ts` asserts the exact set so that this
@@ -57,21 +58,28 @@
  * ## The natural keys are display names, and renaming one in the Admin hurts
  *
  * {@link REGION_NAME}, {@link STOCK_LOCATION_NAME}, {@link FULFILLMENT_SET_NAME}
- * and the two zone names in {@link ./shipping-model.js} are both what the Admin
- * shows an operator *and* the key every upsert here addresses. An operator who
- * renames the region in the Admin does not rename this record: the next
- * predeploy finds no row called `Worldwide`, creates a **second** region, and
- * `storefront/src/lib/cart-store.tsx` — which lists regions with `limit: 2` and
- * refuses unless it finds exactly one — then answers every add-to-cart with
- * "Medusa Store catalogue is not ready". Renaming any of these five in the
+ * and the three zone names in {@link ./shipping-model.js} are both what the
+ * Admin shows an operator *and* the key every upsert here addresses. An
+ * operator who renames the region in the Admin does not rename this record: the
+ * next predeploy finds no row called `Worldwide`, creates a **second** region,
+ * and `storefront/src/lib/cart-store.tsx` — which lists regions with `limit: 2`
+ * and refuses unless it finds exactly one — then answers every add-to-cart with
+ * "Medusa Store catalogue is not ready". Renaming any of these six in the
  * Admin is therefore a change to this file, not a cosmetic edit.
  */
 
 import { STRIPE_PAYMENT_PROVIDER_ID } from "../config/payment.js";
 import {
+  OMNIVA_COURIER_OPTION_ID,
+  OMNIVA_PARCEL_MACHINE_OPTION_ID,
+} from "../modules/omniva/service.js";
+import {
   DELIVERABLE_COUNTRY_CODES,
+  MANUAL_FULFILLMENT_PROVIDER_ID,
+  OMNIVA_FULFILLMENT_PROVIDER_ID,
   SHIPPING_CURRENCY,
   SHIPPING_ZONES,
+  type ShippingMethodModel,
 } from "./shipping-model.js";
 import {
   ESTONIAN_STANDARD_VAT_PERCENT,
@@ -95,23 +103,23 @@ export const REGION_NAME = "Worldwide";
 /** The single physical origin every parcel is sent from. */
 export const STOCK_LOCATION_NAME = "Plepic Games";
 
-/** The fulfillment set the two service zones hang off. */
+/** The fulfillment set the three service zones hang off. */
 export const FULFILLMENT_SET_NAME = "Plepic Games delivery";
 export const FULFILLMENT_SET_TYPE = "shipping";
 
-/** The shipping profile the single product and both shipping options share. */
+/** The shipping profile the single product and every shipping option share. */
 export const SHIPPING_PROFILE_NAME = "Default";
 export const SHIPPING_PROFILE_TYPE = "default";
 
 /**
- * The fulfillment provider both options are served by.
- *
- * `manual_manual` is `@medusajs/medusa/fulfillment-manual`, which `defineConfig`
- * registers by default. It is the correct provider for a flat rate: it quotes
- * nothing and calls nothing, which is precisely what ADR `020` chose over a
- * carrier interface.
+ * Re-exported from {@link ./shipping-model.js} — see
+ * {@link MANUAL_FULFILLMENT_PROVIDER_ID} there for the full reasoning, which
+ * belongs on the declaration rather than here: a JSDoc block on a re-export
+ * is not what an editor surfaces on hover, so a copy here would be the wrong,
+ * shorter comment winning over the right one. Re-exported anyway, because
+ * every other caller in this file already imports from `./configuration.js`.
  */
-export const FULFILLMENT_PROVIDER_ID = "manual_manual";
+export { MANUAL_FULFILLMENT_PROVIDER_ID } from "./shipping-model.js";
 
 export type CommerceRecord =
   | {
@@ -228,7 +236,8 @@ export type CommerceRecord =
   | {
       /**
        * The `location_fulfillment_provider` link between the stock location and
-       * the provider both shipping options are served by.
+       * a provider a shipping option is served by. One such record per
+       * provider — `manual_manual` and, since 2026-08-26, `omniva_omniva`.
        *
        * Nothing else creates it. `createStockLocationsWorkflow` creates the
        * location, `createLocationFulfillmentSetWorkflow` creates the set and its
@@ -283,11 +292,48 @@ export type CommerceRecord =
       readonly currency: string;
       readonly amountMinor: number;
       readonly providerId: string;
+      /**
+       * What Medusa stores as `shipping_option.data` and hands back to the
+       * provider as `optionData` on every call — `getFulfillmentOptions`,
+       * `validateFulfillmentData`, `createFulfillment`. Absent for a method no
+       * carrier integration touches.
+       *
+       * This is not decoration. A later task's `validateFulfillmentData` guard
+       * reads `optionData.id` to decide whether a cart needs a parcel machine
+       * chosen before it can complete, and an option created with no `data`
+       * makes that guard unable to fire — every cart would sail through
+       * unvalidated, silently, because nothing here would be wrong in a way a
+       * unit test that hands `optionData` in directly could see.
+       */
+      readonly data?: Record<string, unknown>;
     };
 
 /** Applies one record by its natural key. Applying it twice is applying it once. */
 export interface CommerceConfigurationTarget {
   apply(record: CommerceRecord): Promise<void>;
+}
+
+/**
+ * The `shipping_option.data` a method's `omnivaChannel` becomes, or
+ * `undefined` for a method no carrier integration touches.
+ *
+ * The ids come from `service.ts` — `OMNIVA_PARCEL_MACHINE_OPTION_ID` and
+ * `OMNIVA_COURIER_OPTION_ID` — rather than being written again here, because
+ * `getFulfillmentOptions` is what Medusa actually calls to validate a
+ * `data.id` it is handed, and a second copy of that id is exactly the kind of
+ * value that silently stops matching the first.
+ */
+function omnivaOptionData(
+  omnivaChannel: ShippingMethodModel["omnivaChannel"],
+): Record<string, unknown> | undefined {
+  switch (omnivaChannel) {
+    case "PARCEL_MACHINE":
+      return { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, deliveryChannel: "PARCEL_MACHINE" };
+    case "COURIER":
+      return { id: OMNIVA_COURIER_OPTION_ID, deliveryChannel: "COURIER" };
+    case undefined:
+      return undefined;
+  }
 }
 
 /**
@@ -340,9 +386,20 @@ export function commerceRecords(): readonly CommerceRecord[] {
     { kind: "stock-location", key: STOCK_LOCATION_NAME, name: STOCK_LOCATION_NAME },
     {
       kind: "stock-location-fulfillment-provider",
-      key: `${STOCK_LOCATION_NAME}/${FULFILLMENT_PROVIDER_ID}`,
+      key: `${STOCK_LOCATION_NAME}/${MANUAL_FULFILLMENT_PROVIDER_ID}`,
       stockLocationName: STOCK_LOCATION_NAME,
-      providerId: FULFILLMENT_PROVIDER_ID,
+      providerId: MANUAL_FULFILLMENT_PROVIDER_ID,
+    },
+    {
+      // Without this, createShippingOptionsWorkflow refuses the parcel
+      // machine option with "Providers (omniva_omniva) are not enabled for
+      // the service location" and the predeploy Job dies on every
+      // environment — the same failure the manual link above exists to
+      // avoid, for the second provider.
+      kind: "stock-location-fulfillment-provider",
+      key: `${STOCK_LOCATION_NAME}/${OMNIVA_FULFILLMENT_PROVIDER_ID}`,
+      stockLocationName: STOCK_LOCATION_NAME,
+      providerId: OMNIVA_FULFILLMENT_PROVIDER_ID,
     },
     {
       kind: "fulfillment-set",
@@ -368,15 +425,18 @@ export function commerceRecords(): readonly CommerceRecord[] {
       name: zone.name,
       countryCodes: zone.countryCodes,
     })),
-    ...SHIPPING_ZONES.map<CommerceRecord>((zone) => ({
-      kind: "shipping-option",
-      key: `${zone.name}/${zone.optionName}`,
-      zoneName: zone.name,
-      optionName: zone.optionName,
-      currency: zone.currency,
-      amountMinor: zone.amountMinor,
-      providerId: FULFILLMENT_PROVIDER_ID,
-    })),
+    ...SHIPPING_ZONES.flatMap<CommerceRecord>((zone) =>
+      zone.methods.map<CommerceRecord>((method) => ({
+        kind: "shipping-option",
+        key: `${zone.name}/${method.name}`,
+        zoneName: zone.name,
+        optionName: method.name,
+        currency: method.currency,
+        amountMinor: method.amountMinor,
+        providerId: method.providerId,
+        data: omnivaOptionData(method.omnivaChannel),
+      })),
+    ),
   ];
 }
 

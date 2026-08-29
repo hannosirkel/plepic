@@ -19,6 +19,15 @@
  * deployment configuration, because `content/` may name no host. Do not write
  * the address into this file, and do not delete the link.
  *
+ * **The button-label sentence, updated 2026-08-29.** It used to quote the
+ * Article 8(2) CRD wording the button carried verbatim: `"is labelled to say
+ * that pressing it places an order with an obligation to pay"`. The operator
+ * replaced the button's own label with "Pay now" — one of the European
+ * Commission's own compliant formulations, see `content/shop.ts`'s
+ * `COMPLIANT_ORDER_BUTTON_LABELS` — so the sentence now names the actual label
+ * rather than paraphrasing the article, which is what keeps it a true
+ * description of the screen rather than a claim the checkout no longer makes.
+ *
  * **The link is an enhancement, and the sentence stands without it — decided by
  * the operator with the qualified reviewer's manual verification, 2026-08-10.**
  * Naming the Consumer Disputes Committee, without an access method, satisfies
@@ -53,7 +62,7 @@ export const terms: LegalPage = {
       covers: ["checkout-acknowledgement"],
       body: [
         "Placing an order is an offer to buy. The contract exists when we send you a dispatch confirmation, not when you press the button, and not when the payment is authorised.",
-        "The final button on the checkout page is labelled to say that pressing it places an order with an obligation to pay. Immediately above it you see, on one screen: the goods, the price of the goods, the shipping charge, the total, the delivery address and the delivery estimate.",
+        "The final button on the checkout page is labelled \"Pay now\" — one of the unambiguous formulations the European Commission's guidance accepts for a button that places an order with an obligation to pay. Immediately above it you see, on one screen: the goods, the price of the goods, the shipping charge, the total, the delivery address and the delivery estimate.",
         "By placing the order you confirm that you have read and accept these terms and the privacy notice, that you are buying as described on this site, and that you are at least 18 years old or ordering with the agreement of somebody who is.",
         "You will receive a confirmation by email containing the order, the total paid and these terms. Keep it — it is your copy of the contract.",
         "We accept cards, Apple Pay, Google Pay and PayPal through Stripe when Stripe makes them available for your device and location. We never see or store your card number. If the payment fails or is later reversed, the order does not proceed.",

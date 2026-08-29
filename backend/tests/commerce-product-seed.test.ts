@@ -120,6 +120,11 @@ describe("the product this shop sells", () => {
         widthMillimetres: 120,
         heightMillimetres: 40,
       },
+      customs: {
+        tariffNumber: "9504400000",
+        originCountry: "CN",
+        goodsCategoryCode: "SALE_OF_GOODS",
+      },
     });
   });
 
@@ -129,6 +134,35 @@ describe("the product this shop sells", () => {
    */
   it("is priced in the currency the shipping is priced in", () => {
     expect(PRODUCT.currency).toBe(SHIPPING_CURRENCY);
+  });
+
+  /**
+   * The customs facts OMX requires whenever a shipment's destination is
+   * outside the EU, and refuses the registration without — mandatory for
+   * United States destinations in particular, because the landed cost cannot
+   * be calculated without an origin. Nothing consumes these yet; a later task
+   * builds the declaration from them.
+   *
+   * The shape assertions are the ones that would actually catch a malformed
+   * edit — a **three**-letter `originCountry` typed by habit from the OMX
+   * manual's `string(3)`, which reads as ISO 3166-1 alpha-3 but is not (see
+   * `ProductCustoms.originCountry`'s own docstring in `product-model.ts` for
+   * the observed `Size` violation this would reintroduce), or a
+   * `tariffNumber` with a stray dot or currency-style formatting — rather
+   * than merely reading the constant back at itself.
+   */
+  it("declares the customs facts a shipment outside the EU cannot be registered without", () => {
+    expect(PRODUCT.customs.tariffNumber).toBe("9504400000");
+    expect(PRODUCT.customs.originCountry).toBe("CN");
+    expect(PRODUCT.customs.goodsCategoryCode).toBe("SALE_OF_GOODS");
+
+    // OMX takes an alpha-2 origin (confirmed against the live carrier -- the
+    // manual's `string(3)` misleads here, see product-model.ts's own
+    // docstring) and a numeric HS code. Both are operator declarations, and
+    // both are refused by the carrier if malformed -- at fulfilment, per
+    // order, which is the expensive place to find out.
+    expect(PRODUCT.customs.originCountry).toMatch(/^[A-Z]{2}$/);
+    expect(PRODUCT.customs.tariffNumber).toMatch(/^[0-9]{6,10}$/);
   });
 });
 

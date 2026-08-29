@@ -140,8 +140,8 @@ describe("redirect-based Stripe payment return", () => {
         initialDisclosure={{
           currency: "EUR",
           goods: "Lunar Base × 1",
-          goodsAmount: 3100,
-          shippingAmount: 868,
+          goodsAmount: 2500,
+          shippingAmount: 700,
           orderAmount: 3968,
           taxAmount: 768,
           countryCode: "ee",
@@ -185,8 +185,8 @@ describe("redirect-based Stripe payment return", () => {
         initialDisclosure={{
           currency: "EUR",
           goods: "Lunar Base × 1",
-          goodsAmount: 3100,
-          shippingAmount: 868,
+          goodsAmount: 2500,
+          shippingAmount: 700,
           orderAmount: 3968,
           taxAmount: 768,
           countryCode: "xx",
@@ -214,8 +214,8 @@ describe("redirect-based Stripe payment return", () => {
     const disclosure = {
       currency: "EUR",
       goods: "Lunar Base × 1",
-      goodsAmount: 3100,
-      shippingAmount: 868,
+      goodsAmount: 2500,
+      shippingAmount: 700,
       orderAmount: 3968,
       taxAmount: 768,
       countryCode: "ee",

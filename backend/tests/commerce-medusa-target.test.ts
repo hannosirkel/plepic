@@ -1,9 +1,14 @@
 import type { MedusaContainer } from "@medusajs/framework/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { commerceRecords } from "../src/commerce/configuration.js";
+import { commerceRecords, type CommerceRecord } from "../src/commerce/configuration.js";
 import { MedusaCommerceConfigurationTarget } from "../src/commerce/medusa-target.js";
-import { EU_MEMBER_STATE_CODES, SHIPPING_ZONES } from "../src/commerce/shipping-model.js";
+import {
+  EU_MEMBER_STATE_CODES,
+  PARCEL_MACHINE_ZONE_NAME,
+  SHIPPING_ZONES,
+} from "../src/commerce/shipping-model.js";
+import { OMNIVA_PARCEL_MACHINE_OPTION_ID } from "../src/modules/omniva/service.js";
 
 /**
  * The binding between the declared configuration and Medusa's own workflows.
@@ -476,15 +481,28 @@ describe("linking the default sales channel", () => {
 });
 
 describe("applying the service zones", () => {
+  /*
+   * Index 1: `SHIPPING_ZONES` puts "Estonia, Latvia and Lithuania" first
+   * since 2026-08-26, and these cases want the zone whose country set is
+   * `EU_MEMBER_STATE_CODES` — which is now the second zone declared, not the
+   * first.
+   */
+  const EUROPEAN_UNION_INDEX = 1;
+
   it("creates a zone with every country the model puts in it", async () => {
-    await targetOver({ fulfillment_set: [{ id: "fuset_01" }] }).apply(record("service-zone"));
+    await targetOver({ fulfillment_set: [{ id: "fuset_01" }] }).apply(
+      record("service-zone", EUROPEAN_UNION_INDEX),
+    );
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.workflow).toBe("createServiceZones");
     const [zone] = (calls[0]?.input as { data: Record<string, unknown>[] }).data;
     expect(zone).toMatchObject({ name: "European Union", fulfillment_set_id: "fuset_01" });
     expect(zone!.geo_zones).toEqual(
-      EU_MEMBER_STATE_CODES.map((code) => ({ type: "country", country_code: code.toLowerCase() })),
+      SHIPPING_ZONES[EUROPEAN_UNION_INDEX]!.countryCodes.map((code) => ({
+        type: "country",
+        country_code: code.toLowerCase(),
+      })),
     );
   });
 
@@ -495,10 +513,12 @@ describe("applying the service zones", () => {
         {
           id: "serzo_01",
           name: "European Union",
-          geo_zones: EU_MEMBER_STATE_CODES.map((code) => ({ country_code: code.toLowerCase() })),
+          geo_zones: SHIPPING_ZONES[EUROPEAN_UNION_INDEX]!.countryCodes.map((code) => ({
+            country_code: code.toLowerCase(),
+          })),
         },
       ],
-    }).apply(record("service-zone"));
+    }).apply(record("service-zone", EUROPEAN_UNION_INDEX));
 
     expect(calls).toEqual([]);
   });
@@ -509,10 +529,23 @@ describe("applying the service zones", () => {
       service_zone: [
         { id: "serzo_01", name: "European Union", geo_zones: [{ country_code: "ee" }] },
       ],
-    }).apply(record("service-zone"));
+    }).apply(record("service-zone", EUROPEAN_UNION_INDEX));
 
     expect(calls.map((call) => call.workflow)).toEqual(["updateServiceZones"]);
     expect(calls[0]?.input).toMatchObject({ selector: { id: "serzo_01" } });
+  });
+
+  it("creates the parcel machine zone with exactly EE, LV and LT", async () => {
+    await targetOver({ fulfillment_set: [{ id: "fuset_01" }] }).apply(record("service-zone", 0));
+
+    const [zone] = (calls[0]?.input as { data: Record<string, unknown>[] }).data;
+    expect(zone).toMatchObject({ name: PARCEL_MACHINE_ZONE_NAME, fulfillment_set_id: "fuset_01" });
+    expect(zone!.geo_zones).toEqual(
+      SHIPPING_ZONES[0]!.countryCodes.map((code) => ({
+        type: "country",
+        country_code: code.toLowerCase(),
+      })),
+    );
   });
 
   it("refuses to place a zone with no fulfillment set to place it on", async () => {
@@ -523,7 +556,15 @@ describe("applying the service zones", () => {
 });
 
 describe("applying the shipping options", () => {
+  /*
+   * `SHIPPING_ZONES` order since 2026-08-26: the parcel machine zone first
+   * (two methods), then European Union, then Rest of world — so the
+   * `shipping-option` records run 0: Estonia/LV/LT Standard delivery,
+   * 1: Estonia/LV/LT parcel machine, 2: European Union Standard delivery,
+   * 3: Rest of world Standard delivery.
+   */
   const zones = [
+    { id: "serzo_eelt", name: PARCEL_MACHINE_ZONE_NAME },
     { id: "serzo_eu", name: "European Union" },
     { id: "serzo_world", name: "Rest of world" },
   ];
@@ -532,11 +573,12 @@ describe("applying the shipping options", () => {
     await targetOver({
       service_zone: zones,
       shipping_profile: [{ id: "sp_02" }, { id: "sp_01" }],
-    }).apply(record("shipping-option", 1));
+    }).apply(record("shipping-option", 3));
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.workflow).toBe("createShippingOptions");
-    expect((calls[0]?.input as Record<string, unknown>[])[0]).toMatchObject({
+    const [input] = calls[0]?.input as Record<string, unknown>[];
+    expect(input).toMatchObject({
       name: "Standard delivery",
       service_zone_id: "serzo_world",
       // The lowest identifier, the same tie-break the catalogue import uses to
@@ -546,6 +588,66 @@ describe("applying the shipping options", () => {
       price_type: "flat",
       prices: [{ currency_code: "eur", amount: 12 }],
     });
+    // No carrier integration touches this method, so nothing is stored for
+    // `validateFulfillmentData` to read back as `optionData` — a manual
+    // option with a stray `data` key is exactly the kind of copy that could
+    // silently start disagreeing with what created it.
+    expect(input).not.toHaveProperty("data");
+  });
+
+  /**
+   * `optionData.id` is what a later task's `validateFulfillmentData` guard
+   * reads to decide whether a cart needs a parcel machine chosen before it
+   * can complete. An option created with no `data` makes that guard unable
+   * to fire — silently, because no unit test that hands `optionData` in
+   * directly would ever see the gap.
+   */
+  it("creates the free parcel machine option through the Omniva provider, carrying its optionData", async () => {
+    await targetOver({
+      service_zone: zones,
+      shipping_profile: [{ id: "sp_01" }],
+    }).apply(record("shipping-option", 1));
+
+    expect(calls).toHaveLength(1);
+    expect((calls[0]?.input as Record<string, unknown>[])[0]).toMatchObject({
+      name: "Omniva parcel machine",
+      service_zone_id: "serzo_eelt",
+      shipping_profile_id: "sp_01",
+      provider_id: "omniva_omniva",
+      price_type: "flat",
+      prices: [{ currency_code: "eur", amount: 0 }],
+      data: { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, deliveryChannel: "PARCEL_MACHINE" },
+    });
+  });
+
+  /**
+   * The update path re-issues on every promoted digest — see
+   * `configuration.ts`'s `data` docstring — so a parcel machine option
+   * created before this field existed must converge to carry it, not merely
+   * gain it on a create it will never see again.
+   */
+  it("converges a pre-existing parcel machine option to carry its optionData", async () => {
+    await targetOver({
+      service_zone: zones,
+      shipping_profile: [{ id: "sp_01" }],
+      shipping_option: [
+        { id: "so_eelt_pm", name: "Omniva parcel machine", service_zone_id: "serzo_eelt" },
+      ],
+    }).apply(record("shipping-option", 1));
+
+    expect(calls).toEqual([
+      {
+        workflow: "updateShippingOptions",
+        input: [
+          {
+            id: "so_eelt_pm",
+            name: "Omniva parcel machine",
+            prices: [{ currency_code: "eur", amount: 0 }],
+            data: { id: OMNIVA_PARCEL_MACHINE_OPTION_ID, deliveryChannel: "PARCEL_MACHINE" },
+          },
+        ],
+      },
+    ]);
   });
 
   it("reprices an existing option rather than creating a duplicate", async () => {
@@ -555,8 +657,10 @@ describe("applying the shipping options", () => {
       shipping_option: [
         { id: "so_eu", name: "Standard delivery", service_zone_id: "serzo_eu" },
       ],
-    }).apply(record("shipping-option", 0));
+    }).apply(record("shipping-option", 2));
 
+    // `toEqual` is exact: no `data` key here proves the manual method's
+    // update carries none, the same as its create.
     expect(calls).toEqual([
       {
         workflow: "updateShippingOptions",
@@ -571,14 +675,20 @@ describe("applying the shipping options", () => {
     ]);
   });
 
-  it("prices the two zones at exactly the frozen figures", async () => {
-    for (const [index, zone] of SHIPPING_ZONES.entries()) {
+  it("prices every zone's methods at exactly the frozen figures", async () => {
+    const shippingOptions = commerceRecords().filter(
+      (candidate): candidate is Extract<CommerceRecord, { kind: "shipping-option" }> =>
+        candidate.kind === "shipping-option",
+    );
+    expect(shippingOptions).toHaveLength(4);
+
+    for (const [index, option] of shippingOptions.entries()) {
       calls.length = 0;
       await targetOver({ service_zone: zones, shipping_profile: [{ id: "sp_01" }] }).apply(
         record("shipping-option", index),
       );
       expect((calls[0]?.input as Record<string, unknown>[])[0]).toMatchObject({
-        prices: [{ currency_code: "eur", amount: zone.amountMinor / 100 }],
+        prices: [{ currency_code: "eur", amount: option.amountMinor / 100 }],
       });
     }
   });

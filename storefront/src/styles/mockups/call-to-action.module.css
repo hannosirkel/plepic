@@ -71,3 +71,23 @@
   border-color: var(--button-quiet-border);
   padding-inline: var(--space-2xs);
 }
+
+/*
+ * Wraps a `.cta` and its secondary note, e.g. "VAT included" beneath "Buy for
+ * {price}". Only rendered when a note exists — see `CallToActionLink.tsx` —
+ * so no other call site's markup gains this wrapper or its layout.
+ */
+.ctaGroup {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3xs);
+}
+
+.note {
+  font-size: var(--step--1);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+}

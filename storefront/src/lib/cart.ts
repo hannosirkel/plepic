@@ -136,16 +136,35 @@ export interface CartLine {
   /** Minor units, as the catalogue holds them. */
   readonly unitAmount: number;
   /**
-   * The tax contained in {@link unitAmount}, per unit — `0` where none is,
-   * and **absent** where nobody has answered.
+   * The VAT {@link unitAmount} attracts, per unit, as an **addend** — `0`
+   * where none is due, and **absent** where nobody has answered.
    *
-   * The distinction is the one this module draws everywhere: `0` is "this
-   * destination attracts no VAT", which is true of every export, and absent is
-   * "no authority has been asked". A line built from the catalogue knows,
-   * because the catalogue holds the amount with tax and the amount without and
-   * the difference between two declared figures is not a computation of tax. A
-   * line from Medusa does not carry it, because on that path every figure the
-   * checkout renders comes from `./store-checkout.js` instead.
+   * **Addend since the basket-lines fix that followed 2026-08-29, not a
+   * quantity contained in `unitAmount`.** Before that fix `unitAmount` was
+   * gross for an EU destination and this field was the tax already folded
+   * into it; the basket's per-line "Price" and "Line total" columns kept
+   * reading the (gross) `unitAmount` directly while `cartTotals` netted this
+   * same figure back out for its own "Price of the goods" row — so the two
+   * rows on `/cart` stated two different accounts of the same line, which an
+   * operator flagged after `unitAmount` was left ungrossed by the summary
+   * change. `unitAmount` is now net on every path that builds a `CartLine`
+   * (see this field's neighbour), so `unitAmount + taxAmount` is what a buyer
+   * is actually charged per unit — the opposite direction from before — and
+   * every consumer that used to read `unitAmount` as "charged, tax already
+   * in" now has to add this back on to get the same number.
+   * {@link lineChargedAmount} does exactly that, and is the one place
+   * analytics reads it, on purpose — see that function's doc comment for why
+   * reported revenue stays exactly what it was rather than following the
+   * screen's net decomposition down by the tax rate.
+   *
+   * The distinction between `0` and absent is the one this module draws
+   * everywhere: `0` is "this destination attracts no VAT", which is true of
+   * every export, and absent is "no authority has been asked". A line built
+   * from the catalogue knows, because the catalogue holds the amount with tax
+   * and the amount without and the difference between two declared figures is
+   * not a computation of tax. A line from Medusa does not carry it, because on
+   * that path every figure the checkout renders comes from
+   * `./store-checkout.js` instead.
    */
   readonly taxAmount?: number;
   readonly currency: string;
@@ -184,8 +203,34 @@ export interface ShippingMethod {
   readonly ratesWithTax: Readonly<Record<ShippingZone, number>>;
 }
 
+/**
+ * The second delivery method, offered to three countries and priced at
+ * nothing — `storefront/mock/shipping.json`'s `parcelMachine` block.
+ *
+ * `name` is the string that crosses the boundary: the storefront cannot
+ * import `backend/src/commerce/shipping-model.ts`, so a later task that adds
+ * the machine picker recognises this method among the ones Medusa returns by
+ * comparing that method's display name to {@link ParcelMachineMethod.name}
+ * read from here — see `mock/shipping.json`'s `$comment`.
+ */
+export interface ParcelMachineMethod {
+  readonly id: string;
+  readonly name: string;
+  /** Minor units. Operator-frozen at `0` — see the JSON's `$comment`. */
+  readonly rate: number;
+  /** ISO 3166-1 alpha-2, the only zone this method is offered in. */
+  readonly countries: readonly string[];
+}
+
 interface ShippingFile {
   readonly method: ShippingMethod;
+  readonly parcelMachine: ParcelMachineMethod;
+  /**
+   * The four countries OMX does not require a receiver phone number for —
+   * see {@link declaredPhoneOptionalCountries} and `mock/shipping.json`'s
+   * `$comment`.
+   */
+  readonly phoneOptionalCountries: readonly string[];
 }
 
 /**
@@ -234,6 +279,106 @@ export const declaredShippingMethod: ShippingMethod = assertPriceable(
   (shippingSource as ShippingFile).method,
 );
 
+/**
+ * Refuses a parcel-machine block this checkout could not honestly offer.
+ *
+ * The same reasoning as {@link assertPriceable}, over a second method
+ * `mock/shipping.json` gained on 2026-08-26: it is edited by hand, by an
+ * operator, and a block nothing checks is exactly how a malformed `rate` or
+ * an empty `countries` list would reach a buyer's screen. Called at
+ * **import**, over a committed file — see {@link assertPriceable}'s doc
+ * comment for why that makes every branch below unreachable from a test that
+ * only imports this module, and why it is exported anyway.
+ */
+export function assertParcelMachine(method: ParcelMachineMethod): ParcelMachineMethod {
+  if (typeof method.name !== "string" || method.name.trim().length === 0) {
+    throw new Error(
+      `storefront/mock/shipping.json declares no usable parcel machine "name" (got ${JSON.stringify(method.name)}). ` +
+        "A method the checkout cannot name is a method it cannot offer.",
+    );
+  }
+  if (!Number.isInteger(method.rate) || method.rate < 0) {
+    throw new Error(
+      `storefront/mock/shipping.json declares no usable parcel machine "rate" (got ${String(method.rate)}). ` +
+        "It must be a whole number of minor units, zero or more, or the checkout would put a " +
+        "meaningless charge on the screen Article 8(2) CRD requires to be correct.",
+    );
+  }
+  if (!Array.isArray(method.countries) || method.countries.length === 0) {
+    throw new Error(
+      'storefront/mock/shipping.json declares no "countries" for the parcel machine method. ' +
+        "A method offered nowhere is a method that cannot be sold, and the checkout has no way to tell " +
+        "that apart from one nobody has configured yet.",
+    );
+  }
+  for (const code of method.countries) {
+    if (typeof code !== "string" || !/^[A-Z]{2}$/.test(code)) {
+      throw new Error(
+        `storefront/mock/shipping.json's parcel machine "countries" contains ${JSON.stringify(code)}, ` +
+          "which is not an ISO 3166-1 alpha-2 country code. A malformed code cannot be matched against " +
+          "a delivery address, so the method would silently never appear.",
+      );
+    }
+  }
+  return method;
+}
+
+/** The one declared parcel machine method — see `storefront/mock/shipping.json`. */
+export const declaredParcelMachineMethod: ParcelMachineMethod = assertParcelMachine(
+  (shippingSource as ShippingFile).parcelMachine,
+);
+
+/**
+ * Refuses a phone-optional-country list this checkout could not honestly act
+ * on.
+ *
+ * The same reasoning as {@link assertParcelMachine}, over the second carrier
+ * rule `mock/shipping.json` gained on 2026-08-27: it too is edited by hand,
+ * it is not an operator-supplied commercial fact but a fact about OMX's own
+ * API, and a block nothing checks is exactly how a malformed or empty country
+ * list would silently start asking every buyer for a phone number — or none
+ * at all. Called at **import**, over a committed file — see
+ * {@link assertPriceable}'s doc comment for why that makes every branch below
+ * unreachable from a test that only imports this module, and why it is
+ * exported anyway.
+ */
+export function assertPhoneOptionalCountries(codes: readonly string[]): readonly string[] {
+  if (!Array.isArray(codes) || codes.length === 0) {
+    throw new Error(
+      'storefront/mock/shipping.json declares no "phoneOptionalCountries". ' +
+        "A field the checkout cannot read is a field it cannot excuse anybody from, so every " +
+        "destination would be asked for a phone number OMX may not actually require.",
+    );
+  }
+  for (const code of codes) {
+    if (typeof code !== "string" || !/^[A-Z]{2}$/.test(code)) {
+      throw new Error(
+        `storefront/mock/shipping.json's "phoneOptionalCountries" contains ${JSON.stringify(code)}, ` +
+          "which is not an ISO 3166-1 alpha-2 country code. A malformed code cannot be matched against " +
+          "the country a buyer chooses, so the phone field would be asked for, or excused, on the " +
+          "wrong destination.",
+      );
+    }
+  }
+  return codes;
+}
+
+/**
+ * The four countries OMX does not require a receiver phone number for — see
+ * `storefront/mock/shipping.json`'s `phoneOptionalCountries` and its
+ * `$comment`.
+ *
+ * Read from here rather than written a second time in
+ * `storefront/src/lib/store-checkout.ts`: that is the one place a value
+ * crossing the storefront/backend boundary belongs, for the same reason
+ * {@link declaredParcelMachineMethod}'s `name` is read through this module
+ * rather than imported from JSON a second time — a second unvalidated read
+ * here would be a second thing that could silently accept a malformed file.
+ */
+export const declaredPhoneOptionalCountries: readonly string[] = assertPhoneOptionalCountries(
+  (shippingSource as ShippingFile).phoneOptionalCountries,
+);
+
 const COUNTRIES_BY_NAME: ReadonlyMap<string, DeliveryCountry> = new Map(
   deliveryCountries.map((country) => [country.name, country]),
 );
@@ -263,40 +408,130 @@ export function zoneForCountryName(countryName: string): ShippingZone | null {
 export interface CartTotals {
   readonly currency: string;
   /**
-   * Sum of every line, in minor units — or `null` when the basket holds a line
-   * we cannot supply, because then there is no price that describes what is in
-   * it. See this module's doc comment.
+   * The price of the goods, in minor units, **before tax — the same figure
+   * for every destination.** `null` when the basket holds a line we cannot
+   * supply, because then there is no price that describes what is in it. See
+   * this module's doc comment.
+   *
+   * **Net since 2026-08-29, operator instruction — it was the gross,
+   * tax-inclusive figure before that date.** The change is the decomposition
+   * a screen states, not what a buyer is charged: {@link orderAmount} still
+   * ends at the same total, with {@link taxAmount} now the addend that gets
+   * it there instead of a quantity already folded into this field. Every
+   * caller that read this as "what the goods cost, tax included" moved in the
+   * same change — `storefront/src/components/shop/BasketPageContent.tsx`,
+   * `CheckoutPageContent.tsx`'s Article 8(2) block,
+   * `storefront/src/lib/store-payment.ts`'s `returnOrderDisclosure`, and
+   * `StripePaymentReturn.tsx` — because a caller left reading it the old way
+   * would show a buyer a different goods figure from every other screen for
+   * the same order.
+   *
+   * **Equal to `sum(unitAmount × quantity)` over the available lines, by
+   * construction — see {@link cartTotals}.** That equality did not hold for
+   * one basket-lines fix's worth of time: `CartLine.unitAmount` stayed gross
+   * for an EU destination after this field went net, so the basket's per-line
+   * columns and this row stated two different accounts of the same order. Now
+   * that `unitAmount` is net everywhere (see its own doc comment), this field
+   * and the sum of the lines are the same number derived the same way, not
+   * two numbers an assertion has to keep in step.
    */
   readonly goodsAmount: number | null;
-  /** `null` until a delivery address exists — see this module's doc comment. */
+  /**
+   * The shipping charge, in minor units, **before tax — the same figure
+   * within its zone regardless of destination beyond that.** `null` until a
+   * delivery address exists — see this module's doc comment.
+   *
+   * **Net since 2026-08-29, for the same reason and in the same change as
+   * {@link goodsAmount}.** It was the grossed, tax-inclusive rate before that
+   * date.
+   */
   readonly shippingAmount: number | null;
-  /** `null` whenever {@link goodsAmount} or {@link shippingAmount} is. */
+  /**
+   * The total — unchanged by the 2026-08-29 decomposition change, and that is
+   * the point of it: what a buyer is charged does not move, only how the
+   * screen accounts for it. `null` whenever {@link goodsAmount},
+   * {@link shippingAmount} or {@link taxAmount} is, because all three are
+   * needed to state it now that the first two are net.
+   */
   readonly orderAmount: number | null;
   /**
-   * The VAT contained in {@link orderAmount}, or `null` when nobody has
-   * answered.
+   * The VAT that gets {@link goodsAmount} plus {@link shippingAmount} to
+   * {@link orderAmount}, or `null` when nobody has answered.
+   *
+   * **An addend since 2026-08-29, not a breakdown.** Before that date this
+   * value was already exactly this figure — nothing about *how much* tax
+   * there is changed — but it sat **inside** {@link goodsAmount} and
+   * {@link shippingAmount}, and the row that rendered it was worded
+   * "Includes". Now it is added to two net figures to reach the total, and
+   * `content/shop.ts`'s `vatLabel` was reworded from "Includes VAT at …" to
+   * "VAT at …" in the same change.
    *
    * **`null` and `0` mean different things and the screen says so.** `null` is
    * "no authority has been asked yet" — this module never computes tax and has
    * no rate to compute it with, so every total it builds itself carries `null`
    * here. `0` is Medusa's answer for a destination outside the EU, where no EU
-   * VAT arises at all. Neither renders a VAT row: there is nothing to break
-   * down, and a row stating a formatted zero claims a zero-rating this shop
-   * does not apply. The row appears only for a positive figure Medusa supplied.
+   * VAT arises at all. Neither renders a VAT row: there is nothing to add, and
+   * a row stating a formatted zero claims a zero-rating this shop does not
+   * apply. The row appears only for a positive figure Medusa supplied.
    *
-   * It is **inside** {@link goodsAmount} and {@link shippingAmount}, never
-   * added to them — see `./store-checkout.js`, which refuses a set of figures
-   * where that is not arithmetically true.
+   * `./store-checkout.js` refuses a set of figures where
+   * `goodsAmount + shippingAmount + taxAmount !== orderAmount` is not
+   * arithmetically true.
    */
   readonly taxAmount: number | null;
   /**
-   * The part of {@link taxAmount} that sits inside {@link shippingAmount}.
+   * The part of {@link taxAmount} that {@link shippingAmount}'s own tax
+   * accounts for — unchanged in meaning by the 2026-08-29 decomposition
+   * change, because it was always the *difference* between the shipping
+   * file's two rate tables rather than a quantity contained in
+   * {@link shippingAmount}.
    *
    * Carried so a delivery method's quoted figure can be checked against what
    * Medusa charged for it even when the quote was a net one — see
-   * `shippingOptionFigure` in `./store-checkout.js`.
+   * `shippingOptionFigure` and `addGuestShippingMethod` in
+   * `./store-checkout.js`.
    */
   readonly shippingTaxAmount: number | null;
+  /**
+   * The VAT {@link goodsAmount} attracts on its own — the part of
+   * {@link taxAmount} that does not wait on {@link shippingAmount}.
+   *
+   * **Added fixing the regression that followed the 2026-08-29 decomposition
+   * change, on `/cart` before a delivery address exists.** There
+   * {@link shippingAmount}, {@link taxAmount} and {@link orderAmount} are all
+   * `null` — nobody has said where this is going, so the shipping VAT and the
+   * total genuinely are unknown — but the goods figure and its tax are not:
+   * both come from lines already on screen, priced for the destination
+   * already chosen. Before this field existed the basket had no way to state
+   * that part, so an Estonian buyer saw a net goods row, "Calculated at
+   * checkout" for shipping, and a sentence promising VAT is added — with no
+   * VAT anywhere on the screen. That is *less* information than the gross row
+   * this module replaced, and it is the exact ambiguity the 2026-08-29 change
+   * existed to remove.
+   *
+   * **Not a substitute for {@link taxAmount}, and not read where
+   * {@link taxAmount} already is.** The checkout and the confirmation page
+   * have Medusa's full figure — goods tax plus shipping tax — the moment
+   * either is known, and this field would only be a second, partial name for
+   * part of that same number there. It exists because `/cart` is the one
+   * screen with a state {@link taxAmount} cannot describe at all: the goods
+   * priced, the shipping not yet asked about.
+   *
+   * **`sum(line.taxAmount × line.quantity)`** — literally the figure
+   * {@link cartTotals} already summed to build {@link taxAmount}, kept and
+   * returned here instead of only being added into that total and discarded.
+   * No new computation, and no rate: see {@link CartLine.taxAmount}'s own doc
+   * comment for where the number underneath it comes from.
+   *
+   * **`null` and `0` mean different things, exactly as {@link taxAmount}
+   * draws the same distinction.** `null` is "some line's tax has not been
+   * answered" — the same condition that leaves {@link taxAmount} `null`; `0`
+   * is every line's own answer that this destination attracts none, which is
+   * true of every export. Neither is a row: a formatted zero here would claim
+   * a zero-rating this shop does not apply to an export, the same defect this
+   * module already refuses for {@link goodsAmount} and {@link taxAmount}.
+   */
+  readonly goodsTaxAmount: number | null;
 }
 
 /** True when this line can actually be supplied today. */
@@ -314,16 +549,50 @@ export function lineAmount(line: CartLine): number {
 }
 
 /**
+ * The per-unit figure a buyer is actually charged — {@link CartLine.unitAmount}
+ * grossed back up by its own {@link CartLine.taxAmount}.
+ *
+ * **The one place that reconstructs the gross figure, and the one place
+ * analytics is allowed to.** The basket, the checkout and the confirmation
+ * page all render `unitAmount` as net now — see that field's doc comment —
+ * but `add_to_cart`, `begin_checkout` and `purchase` reported the
+ * tax-inclusive figure before the basket-lines fix and this function keeps
+ * them doing exactly that: `analyticsItemsFromCartLines` (`./analytics.js`)
+ * and `addStoreCatalogueLine` (`./cart-store.js`) both call this rather than
+ * reading `unitAmount` bare, so a European buyer's revenue does not appear to
+ * fall by the VAT rate on the day a screen's decomposition changed and no
+ * money actually moved. That is a deliberate choice, not the only one
+ * available — following the net display down would also be defensible, and
+ * would match GA4's own convention of a tax-exclusive item price beside a
+ * tax-inclusive order `value` — but it is the one that keeps a dashboard
+ * reading the same number today it read yesterday, which is the coupling this
+ * change would otherwise move silently. `0` where {@link CartLine.taxAmount}
+ * is absent: an unanswered tax is priced as none for analytics precisely as
+ * `cartTotals` prices it as none in the render it mirrors.
+ */
+export function lineChargedAmount(line: CartLine): number {
+  return line.unitAmount + (line.taxAmount ?? 0);
+}
+
+/**
  * Builds the single-product line the mock catalogue describes, **for a
  * destination**.
  *
- * `unitAmount` is the figure that destination is charged — the catalogue's
- * gross amount inside the EU and its net amount everywhere else. It is a
- * *choice between two amounts the catalogue holds*, exactly as
- * `./catalogue.js` makes it, and no tax is computed here either.
+ * **`unitAmount` is net, for every destination, since the basket-lines fix
+ * that followed 2026-08-29.** Before that fix this read the catalogue's gross
+ * amount inside the EU and its net amount everywhere else — a *choice between
+ * two amounts the catalogue holds* that matched what a buyer was charged, but
+ * left this line disagreeing with `cartTotals`' own "Price of the goods" row,
+ * which had already gone net-plus-addend for every destination in the
+ * decomposition change. Two rows on `/cart` stating two different accounts of
+ * the same basket is the defect an operator caught; `taxAmount` — still the
+ * difference between the catalogue's two declared figures, no rate — is what
+ * a VAT row now *adds* to this net figure rather than what used to be
+ * subtracted back out of a gross one. See {@link lineChargedAmount} for the
+ * one place that still needs the gross figure this used to state directly.
  *
  * A real basket line never comes from here: it comes from Medusa, through
- * `cartLinesFromStore` in `./cart-store.js`. This exists so the mock layer
+ * `cartLinesFromStore` in `./store-cart.js`. This exists so the mock layer
  * states the same commercial model the live one does — a mock that priced an
  * Estonian basket net would paint a screen no buyer can ever be shown, and the
  * qualification beside it would be the one thing on the page that was false.
@@ -337,7 +606,7 @@ export function catalogueLine(
   return {
     id,
     productName: product.name,
-    unitAmount: destination.euMember ? product.price.amountWithTax : product.price.amount,
+    unitAmount: product.price.amount,
     // The difference between two amounts the catalogue holds. No rate.
     taxAmount: destination.euMember ? product.price.amountWithTax - product.price.amount : 0,
     currency: product.price.currency,
@@ -358,8 +627,13 @@ export function catalogueLine(
  * In production this does not arise: once the address is complete and a method
  * is chosen, Medusa returns **every** figure priced against that address, goods
  * included. This is the mock layer doing the same thing with the one product it
- * has — a choice between the two amounts the catalogue holds, not a
- * computation.
+ * has.
+ *
+ * **`unitAmount` stays the catalogue's net figure regardless of the
+ * destination, since the basket-lines fix that followed 2026-08-29** — see
+ * {@link catalogueLine}'s doc comment for why. Only `taxAmount` moves with the
+ * destination, which is the one thing the destination is allowed to change
+ * about a re-priced line now that the price of the goods no longer does.
  */
 export function catalogueLinesForDestination(
   lines: readonly CartLine[],
@@ -368,7 +642,7 @@ export function catalogueLinesForDestination(
 ): readonly CartLine[] {
   return lines.map((line) => ({
     ...line,
-    unitAmount: destination.euMember ? product.price.amountWithTax : product.price.amount,
+    unitAmount: product.price.amount,
     taxAmount: destination.euMember ? product.price.amountWithTax - product.price.amount : 0,
   }));
 }
@@ -428,19 +702,41 @@ export function cartTotals(
    * doc comment. Summing only the available lines produced a figure that
    * described a different basket from the one the same screen was listing, and
    * a formatted zero is a statement about a price rather than its absence.
+   *
+   * **This *is* {@link CartTotals.goodsAmount}, since the basket-lines fix
+   * that followed 2026-08-29 — not a gross figure this function nets tax back
+   * out of.** `lineAmount` is per-unit `unitAmount` times quantity, and
+   * `unitAmount` is net on every `CartLine` a real basket can hold (see that
+   * field's doc comment in this module and `cartLinesFromStore` in
+   * `./store-cart.js`), so summing it *is* summing the net goods figure. That
+   * is what makes the basket's per-line "Price" and "Line total" columns —
+   * which read `unitAmount` and `lineAmount` directly and unchanged by this
+   * fix — reconcile with this same total by construction: there is exactly
+   * one figure called "what one unit costs" now, not a gross one the display
+   * reads and a net one the summary derives from a second, independent sum of
+   * it. Before this fix those were two different sums over the same lines,
+   * and an EU basket could show a taxed line total above an untaxed goods row
+   * for the same units — the defect this replaces.
+   * `tests/cart.test.ts` asserts the reconciliation directly, in both an EU
+   * and an export destination, and pins it against reverting either
+   * `catalogueLine`'s or `cartLinesFromStore`'s `unitAmount` back to gross.
    */
   const goodsAmount = lines.every((line) => isAvailable(line))
     ? lines.reduce((sum, line) => sum + lineAmount(line), 0)
     : null;
 
   /*
-   * The **charged** figure, not the quoted-before-tax one. `rates` is what the
-   * operator froze and what the legal page describes as a rate; `ratesWithTax`
-   * is what a buyer pays, and this screen is the one Article 8(2) CRD requires
-   * to state what a buyer pays.
+   * `rates` is the **net** rate — what the operator froze and what the legal
+   * page describes as a rate — and, since 2026-08-29, what
+   * {@link CartTotals.shippingAmount} states: the same figure for every
+   * destination the zone allows, with its tax broken out as
+   * {@link CartTotals.shippingTaxAmount} rather than folded in. Before that
+   * date this read `ratesWithTax`, the grossed figure a buyer is actually
+   * charged; nothing about what a buyer is charged changed, only which of the
+   * two declared tables this field quotes.
    */
   const shippingAmount =
-    deliveryZone !== null && lines.length > 0 ? shipping.ratesWithTax[deliveryZone] : null;
+    deliveryZone !== null && lines.length > 0 ? shipping.rates[deliveryZone] : null;
   const shippingTaxAmount =
     deliveryZone !== null && lines.length > 0
       ? shipping.ratesWithTax[deliveryZone] - shipping.rates[deliveryZone]
@@ -456,10 +752,16 @@ export function cartTotals(
    * figures** — the catalogue's two amounts, and the shipping file's two rate
    * tables — never a rate applied to anything.
    *
-   * `null` where nobody has answered, and it stays `null` for a basket built
-   * from Medusa lines (which carry no per-line tax) and for any state without
-   * a delivery zone. That is the same distinction the rest of this module
-   * draws: "nothing has been asked" is not "nothing".
+   * `null` where nobody has answered — every line's {@link CartLine.taxAmount}
+   * must be known, which is why `src/lib/store-cart.ts`'s `cartLinesFromStore`
+   * populates it for a real Medusa line now too, rather than leaving it
+   * `undefined` and this figure permanently withheld on `/cart` for every real
+   * basket. That is the same distinction the rest of this module draws:
+   * "nothing has been asked" is not "nothing".
+   *
+   * Returned below as {@link CartTotals.goodsTaxAmount} as well as folded into
+   * {@link taxAmount} — see that field's own doc comment for why the basket
+   * needs it under its own name rather than only inside the total.
    */
   const goodsTaxAmount =
     goodsAmount !== null && lines.every((line) => line.taxAmount !== undefined)
@@ -474,10 +776,20 @@ export function cartTotals(
     currency: lines[0]?.currency ?? shipping.currency,
     goodsAmount,
     shippingAmount,
+    /*
+     * `goods + shipping + tax`, not `goods + shipping` — see
+     * `assertedCartTotals` in `./store-checkout.js` for the same replacement
+     * over Medusa's own figures. `taxAmount` must be known too now: two net
+     * figures alone are short of the total by exactly the tax, so a state that
+     * cannot state the tax cannot state the total either.
+     */
     orderAmount:
-      goodsAmount === null || shippingAmount === null ? null : goodsAmount + shippingAmount,
+      goodsAmount === null || shippingAmount === null || taxAmount === null
+        ? null
+        : goodsAmount + shippingAmount + taxAmount,
     taxAmount,
     shippingTaxAmount,
+    goodsTaxAmount,
   };
 }
 
@@ -513,19 +825,81 @@ export function cartTotals(
  * "this basket has no price". Article 8(2) is a disclosure obligation, so
  * refusing the placement without withholding the figure leaves a false
  * statement on the screen, which is exactly what shipped.
+ *
+ * ## The parcel machine method adds a seventh refusal
+ *
+ * Task 5 gave the Omniva parcel machine method a second control: the
+ * delivery method alone does not name a collectible destination, a specific
+ * machine does. `orderMayBePlaced` cannot know Medusa's option list or
+ * `isParcelMachineOption` itself — that would import `store-checkout.ts`,
+ * which already imports **this** module for {@link ShippingZone}, and a
+ * circular import between the two is a defect nothing here should have to
+ * survive. So the caller decides, and states the answer as the one thing
+ * this function needs: whether a selected method is that one with nothing
+ * chosen yet. `CheckoutPageContent` computes it from the selection it
+ * already holds, exactly as it already computes {@link addressComplete}
+ * from the form rather than handing this function the form itself.
+ *
+ * ## An eighth refusal, added fixing the Task 8 regression: the phone
+ *
+ * `addressComplete` names the **postal** address only — country, street,
+ * postcode, city, name, email — and has done since the fix on 2026-08-29.
+ * Before that fix it also required a valid phone number wherever OMX needs
+ * one, which was the defect an operator reported: the phone has no bearing
+ * on which delivery methods exist or what they cost, but requiring it before
+ * `addressComplete` went true blocked the delivery method `<select>` itself
+ * from ever loading outside Estonia, Finland, Lithuania and Latvia, and a
+ * buyer typing an ordinary local number (no leading `+`) stayed blocked
+ * forever. `CheckoutPageContent.tsx`'s `isPostalAddressComplete` is what
+ * `addressComplete` is fed from now, and it does not look at the phone at
+ * all.
+ *
+ * That does not make the phone optional — Omniva still refuses to register a
+ * shipment for a country it requires one for and gets none, and a fulfilment
+ * refusal after payment is a strictly worse outcome than refusing the order
+ * first. `phoneIncomplete` is where that requirement moved to: **placement**,
+ * not method selection. Defaults to `false` so every caller that predates the
+ * phone field — every pre-Task-8 test in `tests/shop-pages.test.tsx` among
+ * them — keeps its existing meaning unchanged. `CheckoutPageContent.tsx`
+ * computes it with `checkout-address.ts`'s `isPhoneComplete`, negated, the
+ * same way it already computes `parcelMachineNeedsZip` from the selection it
+ * holds rather than handing this function the form.
  */
 export function orderMayBePlaced({
   lines,
   addressComplete,
   totals,
+  parcelMachineNeedsZip = false,
+  phoneIncomplete = false,
 }: {
   readonly lines: readonly CartLine[];
   readonly addressComplete: boolean;
   readonly totals: CartTotals;
+  /**
+   * True when the buyer has selected the Omniva parcel machine method but not
+   * yet chosen a specific machine — a selected method with no collectable
+   * destination, which `addGuestShippingMethod` in `./store-checkout.js`
+   * refuses to add for the same reason. Defaults to `false` so every caller
+   * that predates the parcel machine method — every test in
+   * `tests/shop-pages.test.tsx` among them — keeps its existing meaning
+   * unchanged.
+   */
+  readonly parcelMachineNeedsZip?: boolean;
+  /**
+   * True when OMX requires a receiver phone number for the chosen country and
+   * the buyer has not given one that starts with `+` — see this function's
+   * doc comment above. Defaults to `false`: a caller that never asks about
+   * the phone (every pre-Task-8 test, and any future caller with no phone
+   * field of its own) gets the pre-Task-8 behaviour rather than a silent new
+   * refusal it did not opt into.
+   */
+  readonly phoneIncomplete?: boolean;
 }): boolean {
   if (lines.length === 0) return false;
   if (lines.some((line) => !isAvailable(line))) return false;
   if (!addressComplete) return false;
+  if (parcelMachineNeedsZip) return false;
+  if (phoneIncomplete) return false;
   return (
     totals.goodsAmount !== null && totals.shippingAmount !== null && totals.orderAmount !== null
   );

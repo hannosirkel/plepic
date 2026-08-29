@@ -62,10 +62,15 @@ The Plepic Games storefront and Medusa backend monorepo.
   quietly stops disclosing something.
 
   Article 8(2) CRD is what the checkout's layout is for: the final control is
-  labelled **"Order with obligation to pay"**, and immediately above it, in one
-  block, are the six disclosures the legal page lists — the goods, the price of
-  the goods, the shipping charge, the total, the delivery address and the
-  delivery estimate. Two things sit between the last of them and the button:
+  labelled **"Pay now"** — one of the European Commission's own compliant
+  formulations, see `content/shop.ts`'s `COMPLIANT_ORDER_BUTTON_LABELS` — and
+  immediately above it, in one block, are the six disclosures the legal page
+  lists — the goods, the price of the goods, the shipping charge, the total,
+  the delivery address and the delivery estimate. Since 2026-08-29 the price of
+  the goods and the shipping charge are both net — the same figures for every
+  destination — with a seventh row adding VAT where it is due, rather than the
+  two figures above it being grossed with VAT broken out of them. Two things
+  sit between the last of them and the button:
   the catalogue's price qualification, which qualifies the two figures directly
   above it, and then the consent line. Everything a buyer must be told **before
   being bound** sits above that block. One paragraph is below the button — the
@@ -1370,9 +1375,13 @@ within that figure rather than added to it"*, and that rewording it, rendering
 the VAT line and grossing the shipping-option display were blocked on the
 operator. All three have since landed, in the change that added the destination
 selector. The page now says the tax is **added** for a delivery address in the
-European Union and added nowhere else, the checkout renders a seventh value
-breaking the tax out of the two figures above it, and a delivery option is never
-shown as a bare pre-tax rate.
+European Union and added nowhere else, and a delivery option is never shown as a
+bare pre-tax rate. The checkout's own seventh value has moved again since:
+until 2026-08-29 it broke the tax out of two grossed figures above it; the goods
+and shipping rows are net now, the same figures for every destination, and the
+seventh value is the addend that gets them to the total — see
+`content/shop.ts`'s `vatLabel` and `assertedCartTotals` in
+`storefront/src/lib/store-checkout.ts`.
 `backend/tests/commerce-configuration.test.ts` no longer records a
 disagreement: it asserts the new wording against the two price preferences that
 make it true, and refuses the superseded claims anywhere a reader would meet

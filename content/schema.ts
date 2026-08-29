@@ -334,6 +334,22 @@ export const PLACEHOLDERS = {
    * `storefront/tests/catalogue.test.ts` went in the same change, so no guard
    * was weakened to let one of the three go first. The tax presentation the
    * catalogue does still carry is `priceQualifiers`, which is qualified.
+   *
+   * **This is not that claim, reinstated — read the distinction before
+   * re-litigating it from this comment alone.** `ResolvedCatalogue.vatIncludedNote`
+   * (2026-08-29) is the secondary "VAT included" text under the homepage's
+   * "Buy for {price}" call to action, and it is not `taxNote` wearing a new
+   * name: `taxNote` rendered **regardless of destination**, which is exactly
+   * what made it false on an export. `vatIncludedNote` is derived from
+   * `vatApplies` — the same boolean that already chooses whether `price` is
+   * the gross or the net figure — so it is structurally tied to the figure it
+   * sits beside rather than a second, independently-settable flag: it cannot
+   * render "VAT included" beside a net figure, because the one thing that
+   * makes the figure net (`vatApplies` false) is the same thing that makes
+   * the note resolve to `""`. It is not a placeholder — nothing composes it
+   * into prose — so it is not declared in {@link PLACEHOLDERS} here; it lives
+   * on `ResolvedCatalogue` beside `price` itself. See
+   * `storefront/src/lib/catalogue.ts`.
    */
   productName: {
     source: "catalogue",

@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 import { returns } from "../../content/legal/returns.js";
 import { shipping } from "../../content/legal/shipping.js";
 import { terms } from "../../content/legal/terms.js";
-import { basket, checkout, unavailableFigure } from "../../content/shop.js";
+import { basket, checkout, unavailableFigure, COMPLIANT_ORDER_BUTTON_LABELS } from "../../content/shop.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../src/lib/catalogue.js";
 import { destinationForCountryName } from "../src/lib/destination.js";
 import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
@@ -49,7 +49,9 @@ import {
   cartTotals,
   catalogueLine,
   clampQuantity,
+  assertParcelMachine,
   assertPriceable,
+  declaredParcelMachineMethod,
   declaredShippingMethod,
   deliveryCountries,
   formatAmount,
@@ -90,9 +92,9 @@ function visibleText(html: string): string {
     .replaceAll(/\s+/g, " ");
 }
 
-function renderBasket(scenario: MockScenario | null): string {
+function renderBasket(scenario: MockScenario | null, destinationCode?: string): string {
   return renderToStaticMarkup(
-    <CartProvider scenario={scenario} latencyMs={0}>
+    <CartProvider scenario={scenario} latencyMs={0} destinationCode={destinationCode}>
       <BasketPageContent />
     </CartProvider>,
   );
@@ -118,6 +120,13 @@ function renderCheckout(scenario: MockScenario | null): string {
  * changes what anybody is charged. No invented person exists here; every value
  * but the country is the same obviously-fake token the served form uses as a
  * validation example.
+ *
+ * `phone` is filled the same way, for a country that does not need it as much
+ * as for one that does: `phoneRequiredForCountryName` decides whether the
+ * field is asked for from the country alone, so a fixed, always-valid value
+ * here is what keeps this helper producing a *complete* address for every
+ * country a caller passes, rather than one that is complete for some and
+ * silently incomplete for others.
  */
 function addressIn(country: string): Readonly<Record<string, string>> {
   return {
@@ -127,6 +136,7 @@ function addressIn(country: string): Readonly<Record<string, string>> {
     city: "Town",
     country,
     email: "example@example.com",
+    phone: "+0000000000",
   };
 }
 
@@ -240,14 +250,31 @@ describe("the checkout renders those sentences to a visitor", () => {
 /* ------------------------------------------------------------------------ */
 
 describe("Article 8(2) CRD: the button label", () => {
-  it("says that pressing it places an order with an obligation to pay", () => {
-    expect(checkout.orderButtonLabel).toBe("Order with obligation to pay");
+  it("is labelled 'Pay now' — operator instruction, 2026-08-29", () => {
+    expect(checkout.orderButtonLabel).toBe("Pay now");
   });
 
-  it("is not one of the labels the article exists to forbid", () => {
-    const forbidden = ["Order", "Buy", "Buy now", "Confirm", "Submit", "Continue", "Pay", "Place order"];
-    expect(forbidden).not.toContain(checkout.orderButtonLabel);
-    expect(checkout.orderButtonLabel.toLowerCase()).toContain("obligation to pay");
+  /**
+   * **Membership of the accepted set, not a substring pin.**
+   *
+   * This used to assert `checkout.orderButtonLabel.toLowerCase()).toContain(
+   * "obligation to pay")` — a guard that could only ever pass wording
+   * containing that exact phrase, so it would have refused "Pay now" exactly
+   * as readily as it would have refused "Confirm". Checking membership of
+   * {@link COMPLIANT_ORDER_BUTTON_LABELS} instead is what lets this file's
+   * wording move between the European Commission's own compliant
+   * formulations without weakening what the test protects: a future edit to
+   * "Confirm" or "Order now" still fails, because neither is a member.
+   */
+  it("is one of the formulations the European Commission's guidance accepts for Article 8(2) CRD", () => {
+    const compliant = COMPLIANT_ORDER_BUTTON_LABELS.map((label) => label.toLowerCase());
+    expect(compliant).toContain(checkout.orderButtonLabel.toLowerCase());
+    // And the guidance's named non-compliant formulations are never members —
+    // the property that makes the membership check a refusal rather than a
+    // tautology.
+    for (const rejected of ["register", "confirm", "order now"]) {
+      expect(compliant, rejected).not.toContain(rejected);
+    }
   });
 
   it("is the accessible name of a real submit button, not a link", () => {
@@ -400,6 +427,134 @@ describe("empty is the default state", () => {
   });
 });
 
+/**
+ * The phone field OMX conditionally *requires* — see
+ * `phoneRequiredForCountryName` in `src/components/shop/checkout-address.ts`
+ * and `phoneRequiredForCountry` in `src/lib/store-checkout.ts`. Since
+ * 2026-08-29 it is no longer conditionally *shown*: every destination gets
+ * the field, because a buyer choosing an Omniva parcel machine (offered only
+ * in Estonia, Latvia and Lithuania — three of the four countries below) needs
+ * the chance to volunteer a number even though OMX does not strictly require
+ * one there. See `checkout-address.ts`'s doc comment ("The phone field is
+ * always shown, and this is deliberate policy") for the full reasoning and
+ * the live evidence it rests on.
+ *
+ * Everything here is a static-render assertion, like every other test in this
+ * file: `storefront/` has no DOM in its test environment, so nothing
+ * simulates typing into the field. What *is* testable, and is the load-bearing
+ * half of this feature, is that `addressComplete` — and with it the whole
+ * Article 8(2) block — is computed straight from `values` at render, with no
+ * client event needed to see it react to a country that newly requires a
+ * phone number, or to one that is missing or malformed.
+ *
+ * **Fixed 2026-08-29.** `addressComplete` used to require a valid phone
+ * number too, wherever OMX asks for one, which meant the Article 8(2) block
+ * — and, in the served app, the delivery method `<select>` itself — could
+ * not settle outside Estonia, Finland, Lithuania and Latvia until a
+ * `+`-prefixed phone number was typed. `checkout-address.ts`'s
+ * `isPostalAddressComplete` now ignores the phone entirely, so the six
+ * disclosures below react to the *postal* address alone; `isPhoneComplete`
+ * is where the requirement moved to, feeding `orderMayBePlaced`'s
+ * `phoneIncomplete` (pinned directly in the ARTICLE 8(2) INVARIANT describe
+ * block further down, since a static render cannot observe a submit-time
+ * refusal). `tests/checkout-address.test.ts` drives both functions directly.
+ */
+describe("the phone field, where OMX requires one", () => {
+  /** Not one of the four OMX exempts. */
+  const REQUIRING_COUNTRY = "Germany";
+
+  function addressWithPhone(
+    country: string,
+    phone: string | undefined,
+  ): Readonly<Record<string, string>> {
+    const filled = addressIn(country);
+    if (phone === undefined) {
+      return Object.fromEntries(
+        Object.entries(filled).filter(([name]) => name !== "phone"),
+      );
+    }
+    return { ...filled, phone };
+  }
+
+  function renderWith(country: string, phone: string | undefined): string {
+    return renderToStaticMarkup(
+      <CartProvider scenario="filled" latencyMs={0}>
+        <CheckoutPageContent
+          turnstileSiteKey={null}
+          nonce={undefined}
+          scenario="filled"
+          latencyMs={0}
+          initialAddress={addressWithPhone(country, phone)}
+        />
+      </CartProvider>,
+    );
+  }
+
+  it("appears, labelled and required, for a country OMX needs a phone number for", () => {
+    const html = renderWith(REQUIRING_COUNTRY, "+49 30 1234567");
+    expect(html).toContain('name="phone"');
+    expect(visibleText(html)).toContain(checkout.address.phone.label);
+    expect(visibleText(html)).toContain(checkout.address.phone.hint);
+    const field = /<input[^>]*\sname="phone"[^>]*\/>/.exec(html)?.[0] ?? "";
+    expect(field, "the phone field was not found").not.toBe("");
+    expect(field).toMatch(/\srequired(?:=""|\s|>)/);
+  });
+
+  /**
+   * Shown, but not required — the opposite of this test's pre-2026-08-29
+   * name. A buyer choosing an Omniva parcel machine (only offered in three of
+   * these four countries) needs the chance to volunteer a phone number even
+   * though OMX does not strictly require one, so the field appears with its
+   * label; only the HTML `required` attribute is absent, which is what tells
+   * a browser's own validation UI and assistive tech that it may be skipped.
+   */
+  it("appears, but is not required, for any of the four countries OMX exempts", () => {
+    for (const country of ["Estonia", "Finland", "Lithuania", "Latvia"]) {
+      const html = renderWith(country, undefined);
+      expect(html, country).toContain('name="phone"');
+      expect(visibleText(html), country).toContain(checkout.address.phone.label);
+      const field = /<input[^>]*\sname="phone"[^>]*\/>/.exec(html)?.[0] ?? "";
+      expect(field, `${country}: the phone field was not found`).not.toBe("");
+      expect(field, country).not.toMatch(/\srequired(?:=""|\s|>)/);
+    }
+  });
+
+  /**
+   * **The regression, pinned the way the operator reported it.** The postal
+   * address is complete; the phone is not. Before the 2026-08-29 fix this
+   * left the shipping charge and the total as instructions, exactly like a
+   * wholly empty form — which is what blocked the delivery method
+   * `<select>` from ever loading in the served app, since the phone has no
+   * bearing on which delivery methods exist or what they cost. Now the
+   * postal address alone settles them.
+   */
+  it("does not withhold the shipping charge or the total while the phone is missing", () => {
+    const text = visibleText(renderWith(REQUIRING_COUNTRY, undefined));
+    expect(text).not.toContain(checkout.delivery.chargePending);
+    expect(text).not.toContain(checkout.order.totalPending);
+  });
+
+  /**
+   * Same fix, over the storefront's other phone rule: presence and a leading
+   * `+`, nothing more (`isPhoneComplete`'s doc comment explains why the rest
+   * is OMX's to refuse at fulfilment). A malformed phone still leaves the
+   * order unplaceable — see `orderMayBePlaced`'s `phoneIncomplete` refusal,
+   * pinned in the ARTICLE 8(2) INVARIANT block below — but it must not hide
+   * figures that do not depend on it.
+   */
+  it("does not withhold them for a phone number with no leading country code either", () => {
+    const text = visibleText(renderWith(REQUIRING_COUNTRY, "030 1234567"));
+    expect(text).not.toContain(checkout.order.totalPending);
+    expect(text).not.toContain(checkout.delivery.chargePending);
+  });
+
+  it("shows the settled figures once a phone number with a leading + is given", () => {
+    const text = visibleText(renderWith(REQUIRING_COUNTRY, "+49 30 1234567"));
+    expect(text).not.toContain(checkout.order.totalPending);
+    expect(text).not.toContain(checkout.delivery.chargePending);
+  });
+});
+
 describe("the loading state", () => {
   it("marks the line busy and says what is happening while a quantity updates", () => {
     const html = renderBasket("updating");
@@ -439,7 +594,11 @@ describe("the loading state", () => {
     const html = renderCheckout("placing");
     expect(html).toContain('aria-busy="true"');
     expect(visibleText(html)).toContain(checkout.placingLabel);
-    expect(html.match(/<(?:input|select)[^>]*\sdisabled(?:=""|\s|>)/g)?.length).toBe(6);
+    // FIELDS (5) plus the phone field, which — since 2026-08-29 — renders
+    // unconditionally rather than only once a country needing one is typed.
+    // See `checkout-address.ts`'s doc comment ("The phone field is always
+    // shown, and this is deliberate policy").
+    expect(html.match(/<(?:input|select)[^>]*\sdisabled(?:=""|\s|>)/g)?.length).toBe(7);
   });
 });
 
@@ -693,6 +852,32 @@ describe("every figure comes from the mock catalogue and the declared shipping m
   });
 
   /**
+   * The parcel machine method's own import-time refusals, reached the same
+   * way {@link assertPriceable}'s are, and for the same reason: a block the
+   * storefront trusts and nothing checks is how a malformed rate or an empty
+   * country list would reach a buyer's screen without anything going red.
+   */
+  it("refuses a parcel machine file that cannot be sold", () => {
+    const usable = declaredParcelMachineMethod;
+    expect(assertParcelMachine(usable)).toBe(usable);
+
+    for (const [label, broken] of [
+      ["a blank name", { ...usable, name: "  " }],
+      ["a negative rate", { ...usable, rate: -1 }],
+      ["a non-integer rate", { ...usable, rate: 0.5 }],
+      ["no countries at all", { ...usable, countries: [] }],
+      ["a country code that is not ISO 3166-1 alpha-2", { ...usable, countries: ["Estonia"] }],
+    ] as const) {
+      expect(() => assertParcelMachine(broken), label).toThrow(/shipping\.json/);
+    }
+  });
+
+  it("prices the parcel machine method at exactly nothing, for exactly three countries", () => {
+    expect(declaredParcelMachineMethod.rate).toBe(0);
+    expect([...declaredParcelMachineMethod.countries].sort()).toEqual(["EE", "LT", "LV"]);
+  });
+
+  /**
    * **"Nothing has been asked" is not "nothing", for the tax as for the price.**
    *
    * A line from Medusa carries no per-line tax — on that path every figure the
@@ -734,18 +919,29 @@ describe("every figure comes from the mock catalogue and the declared shipping m
   });
 
   /**
-   * The **charged** shipping figure, not the quoted-before-tax rate.
-   * `declaredShippingMethod.rates` is what the operator froze and what the
-   * legal page describes as a rate; `ratesWithTax` is what a buyer pays, and
-   * the totals on the Article 8(2) screen must be what a buyer pays.
+   * The **net** shipping figure, since 2026-08-29 — `declaredShippingMethod.
+   * rates` is what the operator froze and what the legal page describes as a
+   * rate, and, since that date, what {@link CartTotals.shippingAmount} states
+   * directly; `ratesWithTax` is what a buyer pays, which {@link orderAmount}
+   * reaches by adding {@link CartTotals.taxAmount} rather than by
+   * {@link CartTotals.shippingAmount} already containing it.
    */
-  it("adds the zone's charged shipping figure to the goods, and nothing else", () => {
+  it("states the zone's net shipping rate beside the goods, with tax the addend that reaches the total", () => {
     const lines = [catalogueLine(2)];
     for (const zone of SHIPPING_ZONES) {
       const totals = cartTotals(lines, { deliveryZone: zone });
       expect(totals.goodsAmount).toBe(lines[0]!.unitAmount * 2);
-      expect(totals.shippingAmount).toBe(declaredShippingMethod.ratesWithTax[zone]);
-      expect(totals.orderAmount).toBe(totals.goodsAmount! + declaredShippingMethod.ratesWithTax[zone]);
+      expect(totals.shippingAmount).toBe(declaredShippingMethod.rates[zone]);
+      expect(totals.shippingTaxAmount).toBe(
+        declaredShippingMethod.ratesWithTax[zone] - declaredShippingMethod.rates[zone],
+      );
+      expect(totals.orderAmount).toBe(totals.goodsAmount! + totals.shippingAmount! + totals.taxAmount!);
+      // And the total itself is what it always was: the two grossed figures
+      // summed — see `assertedCartTotals`'s redundant check, kept over the
+      // same identity with its role swapped.
+      expect(totals.orderAmount).toBe(
+        lines[0]!.unitAmount * 2 + declaredShippingMethod.ratesWithTax[zone],
+      );
     }
   });
 
@@ -789,6 +985,45 @@ describe("every figure comes from the mock catalogue and the declared shipping m
     expect(text).toContain(formatAmount(catalogueLine(1).unitAmount, "EUR"));
     expect(text).toContain(basket.summary.shippingPending);
     expect(text).toContain(basket.summary.totalPending);
+  });
+
+  /**
+   * **The regression this pins.** The 2026-08-29 decomposition made the
+   * basket's goods row net and moved its VAT into `taxAmount`, which
+   * `cart.ts` never populates before a delivery zone exists — same as
+   * `shippingAmount` and `orderAmount`. An operator caught what that left an
+   * Estonian buyer looking at: a net goods figure, "Calculated at checkout"
+   * for shipping, and a sentence promising VAT is added, with no VAT stated
+   * anywhere on the screen — strictly less than the gross row this
+   * decomposition replaced.
+   *
+   * The fix states the one figure the basket page actually knows —
+   * `CartTotals.goodsTaxAmount` — with the same `checkout.order.vatLabel`
+   * term the checkout's own VAT row already uses. Both directions: present
+   * for the EU destination the operator reported, absent for the site's
+   * default (non-EU) destination, where it would otherwise claim a VAT this
+   * shop does not charge.
+   */
+  it("states the goods' own VAT on the basket for an EU destination, and none for the default one", () => {
+    const eu = catalogueLine(1, undefined, "lunar-base", destinationForCountryName("Estonia")!);
+    const eur = visibleText(renderBasket("filled", "EE"));
+    const vatLabel = resolveCataloguePlaceholders(
+      checkout.order.vatLabel,
+      resolveCatalogue(undefined, destinationForCountryName("Estonia")!),
+    );
+    expect(eur, "an Estonian destination states no VAT amount on the basket").toContain(vatLabel);
+    expect(eur).toContain(formatAmount(eu.taxAmount!, "EUR"));
+
+    // The default destination is not in the EU (see `defaultDestination` in
+    // `src/lib/destination.ts`), so no VAT is due and the row must not
+    // appear — a formatted figure here would claim a zero-rating this shop
+    // does not apply, the same reasoning `cart.ts` states for every other
+    // figure on this screen.
+    const defaultDestinationText = visibleText(renderBasket("filled"));
+    expect(
+      defaultDestinationText,
+      "the site's default (non-EU) destination states a VAT amount where none is due",
+    ).not.toContain(vatLabel);
   });
 
   it("shows the checkout that the charge and the total wait on the address", () => {
@@ -1086,7 +1321,9 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
 
     it("shows no shipping value and no total value, in either zone's amount", () => {
       for (const zone of SHIPPING_ZONES) {
-        const charge = formatAmount(declaredShippingMethod.ratesWithTax[zone], "EUR");
+        // Net since 2026-08-29 — see this describe block's own doc comment
+        // update below for why the shown figure moved.
+        const charge = formatAmount(declaredShippingMethod.rates[zone], "EUR");
         expect(text, `${charge} was disclosed without a delivery address`).not.toContain(charge);
         const total = formatAmount(
           catalogueLine(1).unitAmount + declaredShippingMethod.ratesWithTax[zone],
@@ -1121,17 +1358,28 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
          */
         const destination = destinationForCountryName(country);
         expect(destination, country).not.toBeNull();
-        const goods = catalogueLine(1, undefined, "lunar-base", destination!).unitAmount;
-        const charge = formatAmount(declaredShippingMethod.ratesWithTax[zone], "EUR");
-        const total = formatAmount(goods + declaredShippingMethod.ratesWithTax[zone], "EUR");
+        const line = catalogueLine(1, undefined, "lunar-base", destination!);
+        // `unitAmount` is net since the basket-lines fix that followed the
+        // 2026-08-29 decomposition change — see `src/lib/cart.ts`'s doc
+        // comment on `CartLine.unitAmount`. `goodsGross` is reconstructed for
+        // the total below, which is still the charged figure.
+        const goodsNet = line.unitAmount;
+        const goodsTax = line.taxAmount ?? 0;
+        const goodsGross = goodsNet + goodsTax;
+        const shippingNet = declaredShippingMethod.rates[zone];
+        const shippingGross = declaredShippingMethod.ratesWithTax[zone];
+        const shippingTax = shippingGross - shippingNet;
+        const total = formatAmount(goodsGross + shippingGross, "EUR");
 
-        // 1 the goods, 2 the price of the goods.
+        // 1 the goods, 2 the price of the goods — net, the same figure this
+        // destination's basket and confirmation pages would state too.
         expect(text).toContain("Lunar Base × 1");
-        expect(text).toContain(formatAmount(goods, "EUR"));
-        // 3 the shipping charge, and it is this country's, not the other's.
+        expect(text).toContain(formatAmount(goodsNet, "EUR"));
+        // 3 the shipping charge — net — and it is this zone's, not the other's.
+        const charge = formatAmount(shippingNet, "EUR");
         expect(text, `${country} was not charged ${charge}`).toContain(charge);
         expect(text).not.toContain(
-          formatAmount(declaredShippingMethod.ratesWithTax[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
+          formatAmount(declaredShippingMethod.rates[zone === "europeanUnion" ? "restOfWorld" : "europeanUnion"], "EUR"),
         );
         /*
          * **And the qualification names this address's country, never the
@@ -1167,14 +1415,7 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
           resolveCatalogue(undefined, destination!),
         );
         if (zone === "europeanUnion") {
-          const tax = formatAmount(
-            goods -
-              catalogueLine(1, undefined, "lunar-base", destinationForCountryName("Norway")!)
-                .unitAmount +
-              declaredShippingMethod.ratesWithTax[zone] -
-              declaredShippingMethod.rates[zone],
-            "EUR",
-          );
+          const tax = formatAmount(goodsTax + shippingTax, "EUR");
           expect(text, `${country} states no VAT amount`).toContain(vatLabel);
           expect(text).toContain(tax);
         } else {
@@ -1224,6 +1465,47 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
         totals: cartTotals(unavailable, { deliveryZone: "europeanUnion" }),
       }),
     ).toBe(false);
+    // The Omniva parcel machine method chosen, but no machine yet: a
+    // delivery method with no collectable destination. Every other
+    // disclosure is a value, and the order is still unplaceable.
+    expect(
+      orderMayBePlaced({
+        lines,
+        addressComplete: true,
+        totals: euTotals,
+        parcelMachineNeedsZip: true,
+      }),
+    ).toBe(false);
+  });
+
+  /**
+   * **The Task 8 regression, fixed 2026-08-29, pinned directly on the
+   * invariant.** `addressComplete` is postal-only now (see
+   * `checkout-address.ts`'s `isPostalAddressComplete`), so it no longer
+   * refuses a placement OMX needs a phone number for — `phoneIncomplete`
+   * does that instead. This is the state the postal-only split makes newly
+   * reachable: every one of the six Article 8(2) values is a value (postal
+   * address complete, a real zone, a real total) and the order is still
+   * unplaceable, because the phone the chosen country needs was never given.
+   */
+  it("refuses a placement OMX needs a phone number for, even with every other disclosure a value", () => {
+    const totals = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    expect(
+      orderMayBePlaced({ lines, addressComplete: true, totals, phoneIncomplete: true }),
+    ).toBe(false);
+  });
+
+  /**
+   * The default keeps every caller that predates the phone field — every
+   * other assertion in this describe block among them — meaning what it
+   * always meant: omitting `phoneIncomplete` is not a silent new refusal.
+   */
+  it("keeps placing an order when the phone is complete, or the question was never asked", () => {
+    const totals = cartTotals(lines, { deliveryZone: "europeanUnion" });
+    expect(
+      orderMayBePlaced({ lines, addressComplete: true, totals, phoneIncomplete: false }),
+    ).toBe(true);
+    expect(orderMayBePlaced({ lines, addressComplete: true, totals })).toBe(true);
   });
 
   /**

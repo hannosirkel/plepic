@@ -7,6 +7,7 @@ import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import { forgetMedusaCartId, storedMedusaCartId } from "../../lib/cart-store.js";
 import { createMedusaStoreClient } from "../../lib/medusa-client.js";
 import { completeStripeOrder, returnOrderDisclosure, type CompletedStoreOrder, type ReturnOrderDisclosure } from "../../lib/store-payment.js";
+import { VAT_ADDEND_PREFIX } from "../../lib/store-checkout.js";
 import { formatAmount } from "../../lib/cart.js";
 import { confirmationPriceQualification } from "../../lib/price-qualification.js";
 import { checkout } from "../../../../content/shop.js";
@@ -171,13 +172,14 @@ export function StripePaymentReturn({
           <div className={styles.summaryRow}><dt>{checkout.order.goodsLabel}</dt><dd>{disclosure.goods}</dd></div>
           <div className={styles.summaryRow}><dt>{checkout.order.goodsPriceLabel}</dt><dd>{formatAmount(disclosure.goodsAmount, disclosure.currency)}</dd></div>
           <div className={styles.summaryRow}><dt>{checkout.order.shippingLabel}</dt><dd>{formatAmount(disclosure.shippingAmount, disclosure.currency)}</dd></div>
-          {/* The same seventh value the checkout renders, on the same terms: a
-              breakdown of the two figures above it rather than an addend, and
-              absent rather than zero for an order that attracts no EU VAT. */}
+          {/* The same seventh value the checkout renders, on the same terms:
+              an addend to the two net figures above it, not a breakdown of
+              them, and absent rather than zero for an order that attracts no
+              EU VAT. */}
           {disclosure.taxAmount > 0 ? (
             <div className={styles.summaryRow}>
               <dt>{qualification.vatLabel}</dt>
-              <dd>{formatAmount(disclosure.taxAmount, disclosure.currency)}</dd>
+              <dd>{VAT_ADDEND_PREFIX}{formatAmount(disclosure.taxAmount, disclosure.currency)}</dd>
             </div>
           ) : null}
           <div className={styles.summaryRow}><dt>{checkout.order.totalLabel}</dt><dd>{formatAmount(disclosure.orderAmount, disclosure.currency)}</dd></div>

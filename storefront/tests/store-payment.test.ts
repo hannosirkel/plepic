@@ -70,7 +70,7 @@ describe("Stripe payment session Store operations", () => {
         shipping_methods: [{ amount: 7, is_tax_inclusive: true, shipping_option_id: "so_standard" }],
       },
     }, "cart_example")).toEqual({
-      currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 3100, shippingAmount: 868,
+      currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 2500, shippingAmount: 700,
       orderAmount: 3968, taxAmount: 768, countryCode: "ee",
       address: "Ada, Moon Street 1, 10101, Tallinn, EE",
       analyticsItems: [{ variantId: "variant_example", name: "Lunar Base", unitAmount: 2500, currency: "EUR", quantity: 1 }],
@@ -109,7 +109,11 @@ describe("Stripe payment session Store operations", () => {
     ],
     [
       "a tax total that is not the tax on the goods and the delivery",
-      { item_total: 31, item_tax_total: 6, shipping_total: 8.68, shipping_tax_total: 1.68, tax_total: 5, total: 39.68 },
+      // `total` is 37, not 39.68: goods and shipping are net since 2026-08-29
+      // (25 + 7), so the first check (`goods + shipping + tax === total`)
+      // must pass on the *stated* tax_total of 5 for this fixture to reach
+      // the second check at all — 25 + 7 + 5 = 37.
+      { item_total: 31, item_tax_total: 6, shipping_total: 8.68, shipping_tax_total: 1.68, tax_total: 5, total: 37 },
       /tax on the goods and the delivery/,
     ],
     [

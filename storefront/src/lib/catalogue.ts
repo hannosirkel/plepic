@@ -243,6 +243,44 @@ export interface ResolvedCatalogue {
   readonly priceQualifiers: string;
   /** The full line the checkout-facing copy quotes: the price and its qualifiers together. */
   readonly priceLine: string;
+  /**
+   * "VAT included", or `""` when {@link price} does not include VAT.
+   *
+   * **Derived from {@link vatApplies} — the same value that already decides
+   * whether {@link price} is the gross or the net figure — and from nothing
+   * else.** That is deliberate, not a convenience: `content/schema.ts`
+   * records that a `taxNote` placeholder resolving to a bare "VAT included"
+   * was removed on 2026-08-10 because it rendered regardless of destination,
+   * which stated something false on an export. A separate flag a later edit
+   * could set independently of `vatApplies` would be exactly that defect
+   * again, one property away. Composed here, beside `price` itself, so it is
+   * structurally impossible for the two to disagree — there is no path that
+   * produces a net {@link price} and a non-empty {@link vatIncludedNote}
+   * together, because both read the one boolean.
+   *
+   * The operator's instruction this answers is the opposite of the claim that
+   * was removed: not "always say VAT is included", but "say so when it
+   * genuinely is" — see `content/publisher.ts`'s `homepageCallsToAction`,
+   * whose "Buy for {price}" entry is the one surface that renders this today.
+   *
+   * **That one surface is English-only, so `TAX_VOCABULARY.et`'s
+   * `vatIncludedNote` ("Käibemaks sisaldub") is currently unreachable.**
+   * `HomepageMockup` and `CallToActionLink` — the only renderers of this field
+   * — import `content/publisher.ts` directly rather than taking a `locale`,
+   * which `src/app/localized-routes.tsx`'s own doc comment records as
+   * deliberate and out of this module's authority to change; no call site
+   * ever resolves the catalogue with `locale: "et"` for a component that
+   * renders `vatIncludedNote`. The Estonian string was added for
+   * completeness with `en` — {@link TaxVocabulary} makes it a required field
+   * of both — but it has **not** had the qualified reader's confirmation
+   * `content/legal/et/*` records for its Estonian text (see e.g.
+   * `content/legal/et/shipping.ts`'s header for that pattern), because
+   * nothing has ever put it in front of a reader. Do not wire a locale into
+   * `HomepageMockup` on the strength of this comment alone: get that
+   * confirmation on the Estonian wording first, the same as any other
+   * Estonian copy this shop ships.
+   */
+  readonly vatIncludedNote: string;
   readonly availability: CatalogueAvailability;
   /** True when {@link availability} is `"InStock"` — the only state this catalogue is ever seeded with today. */
   readonly inStock: boolean;
@@ -322,6 +360,14 @@ interface TaxVocabulary {
   /** The qualification for a destination that does not. */
   readonly noVatAdded: (destination: string) => string;
   /**
+   * The secondary "VAT included" text under a price that includes it — see
+   * {@link ResolvedCatalogue.vatIncludedNote}. Not composed from
+   * {@link vatAdded}: that sentence names the destination ("VAT added,
+   * delivering to Estonia") and belongs beside a headline price with room for
+   * a full clause, where this is a short label beneath a button.
+   */
+  readonly vatIncludedNote: string;
+  /**
    * The shipping and duties sentence — the operator's unemphasised second
    * line. The same words for every destination, because it describes a rule
    * rather than a figure: shipping is quoted before tax, VAT is added to it
@@ -348,6 +394,7 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
   en: {
     vatAdded: (destination) => `VAT added, delivering to ${destination}`,
     noVatAdded: (destination) => `No VAT added, delivering to ${destination}`,
+    vatIncludedNote: "VAT included",
     shippingNote:
       "Shipping is calculated at checkout, and VAT is added to it for delivery inside the " +
       "European Union. Non-EU taxes and duties, if any, are not included.",
@@ -360,6 +407,10 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
     vatAdded: (destination) => `käibemaks lisatud, kättetoimetamisel sihtkohta ${destination}`,
     noVatAdded: (destination) =>
       `käibemaksu ei lisata, kättetoimetamisel sihtkohta ${destination}`,
+    // Unreachable and unreviewed — see `ResolvedCatalogue.vatIncludedNote`'s
+    // doc comment above before wiring this anywhere or treating it as
+    // confirmed Estonian copy.
+    vatIncludedNote: "Käibemaks sisaldub",
     shippingNote:
       "Saatekulu arvutatakse tellimuse vormistamisel ja Euroopa Liidu sisese kättetoimetamise " +
       "puhul lisandub sellele käibemaks. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, " +
@@ -429,6 +480,12 @@ export function resolveCatalogue(
   const priceHeadline = `${price}${PRICE_HEADLINE_SEPARATOR}${taxQualifier}`;
   const priceLine = words.line(price, priceQualifiers);
   const inStock = product.availability === "InStock";
+  /*
+   * The one boolean, read once, for both `price` above and this note — see
+   * {@link ResolvedCatalogue.vatIncludedNote}. `words.vatIncludedNote` is
+   * per-locale for the same reason every other word in this table is.
+   */
+  const vatIncludedNote = vatApplies ? words.vatIncludedNote : "";
 
   return {
     productName: product.name,
@@ -446,6 +503,7 @@ export function resolveCatalogue(
     priceHeadline,
     priceQualifiers,
     priceLine,
+    vatIncludedNote,
     availability: product.availability,
     inStock,
     availabilityLabel: inStock ? "In stock" : "Out of stock",

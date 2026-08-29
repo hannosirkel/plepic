@@ -206,6 +206,7 @@ function cartBody(id: string, withLineTotals: boolean) {
   const country = state.address?.country_code ?? null;
   const vat = euMember(country);
   const goods = state.lined ? (vat ? GOODS.withTax : GOODS.beforeTax) : 0;
+  const goodsNet = state.lined ? GOODS.beforeTax : 0;
   const goodsTax = state.lined ? goods - GOODS.beforeTax : 0;
   const rate = vat ? SHIPPING.europeanUnion : SHIPPING.restOfWorld;
   const shipping = state.shipped ? (vat ? rate.withTax : rate.beforeTax) : 0;
@@ -239,8 +240,15 @@ function cartBody(id: string, withLineTotals: boolean) {
              * 47 browser tests passed while the buy button was broken in every
              * real environment: the storefront read a figure the real Medusa
              * was never asked for and never sent.
+             *
+             * `subtotal` joined `total` on 2026-08-29, under the identical
+             * condition: `cartLinesFromStore` now reads both, `subtotal` being
+             * the line's own net figure `unitAmount`'s tax addend is computed
+             * from. `goodsNet` is the same declared `beforeTax` amount either
+             * zone uses — the goods line has no VAT-inclusive "subtotal", only
+             * `total` moves with the destination.
              */
-            ...(withLineTotals ? { total: goods } : {}),
+            ...(withLineTotals ? { total: goods, subtotal: goodsNet } : {}),
             quantity: 1,
           },
         ]

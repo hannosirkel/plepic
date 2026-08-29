@@ -6,6 +6,21 @@ export interface CallToActionLinkProps {
   readonly action: CallToAction;
   /** Resolves a `{token}` placeholder, e.g. `{price}`. Optional — an unresolved label renders the literal placeholder text, which is correct for a mockup with no live catalogue behind it. */
   readonly resolveLabel?: (text: string) => string;
+  /**
+   * Smaller secondary text rendered beneath the label — today, only "VAT
+   * included" under the homepage's "Buy for {price}" call to action, and only
+   * when {@link ResolvedCatalogue.vatIncludedNote} in `src/lib/catalogue.ts`
+   * is non-empty.
+   *
+   * Absent or `""` renders nothing at all: no empty element, no reserved
+   * space that shifts layout, and every other call site on this codebase
+   * passes neither, so this is additive rather than a change to how the
+   * component already renders. Folded into the accessible name too — see this
+   * file's doc comment on WCAG 2.5.3 — because a note that is visible but
+   * unannounced leaves exactly the ambiguity this exists to remove in place
+   * for the people least able to resolve it themselves.
+   */
+  readonly note?: string;
 }
 
 /**
@@ -41,26 +56,49 @@ export interface CallToActionLinkProps {
  *    plain `<a>` with no `aria-label` has the accessible name browsers
  *    compute from its content, which is exactly its visible text.
  */
-export function CallToActionLink({ action, resolveLabel }: CallToActionLinkProps) {
+export function CallToActionLink({ action, resolveLabel, note }: CallToActionLinkProps) {
   const href = resolveLinkHref(action.target);
   const resolve = resolveLabel ?? ((text: string) => text);
   const label = resolve(action.label);
   const resolvedAccessibleLabel = action.accessibleLabel ? resolve(action.accessibleLabel) : undefined;
   // See "WCAG 2.5.3 Label in Name, fixed" above: only honour the richer
   // accessible label when the visible label is genuinely contained in it.
-  const accessibleLabel =
+  const accessibleLabelBase =
     resolvedAccessibleLabel !== undefined && resolvedAccessibleLabel.includes(label)
       ? resolvedAccessibleLabel
       : undefined;
+  const hasNote = note !== undefined && note.length > 0;
+  /*
+   * The note reaches the accessible name too — see this prop's doc comment —
+   * and this is why the fallback matters rather than only applying beside an
+   * existing `accessibleLabel`. `content/publisher.ts`'s own "Buy Lunar Base
+   * for {price}" does **not** contain the resolved visible label "Buy for
+   * {price}" as a substring (see the WCAG 2.5.3 fix above), so
+   * `accessibleLabelBase` is `undefined` for the one call site this note is
+   * written for today. Building the `aria-label` from `label` in that case,
+   * rather than leaving it unset, is what stops the note from being visible
+   * and silently unannounced on exactly the button it was added for.
+   */
+  const accessibleLabel = hasNote ? `${accessibleLabelBase ?? label}, ${note}` : accessibleLabelBase;
   const className = `${styles.cta} ${styles[action.emphasis]}`;
 
-  if (href === undefined) {
-    return <span className={className}>{label}</span>;
-  }
+  const control =
+    href === undefined ? (
+      <span className={className}>{label}</span>
+    ) : (
+      <a className={className} href={href} aria-label={accessibleLabel}>
+        {label}
+      </a>
+    );
+
+  // No wrapper, no extra markup, when there is no note — every call site that
+  // predates this prop renders exactly what it always rendered.
+  if (!hasNote) return control;
 
   return (
-    <a className={className} href={href} aria-label={accessibleLabel}>
-      {label}
-    </a>
+    <span className={styles.ctaGroup}>
+      {control}
+      <span className={styles.note}>{note}</span>
+    </span>
   );
 }

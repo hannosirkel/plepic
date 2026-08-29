@@ -1,4 +1,4 @@
-import type { CartLine } from "./cart.js";
+import { lineChargedAmount, type CartLine } from "./cart.js";
 
 export type AnalyticsItem = Readonly<{
   variantId: string;
@@ -56,18 +56,31 @@ function emit(name: "view_item" | "add_to_cart" | "begin_checkout" | "purchase" 
   }
 }
 
-/** Maps only complete, supplyable Store lines; cart and line ids never leave this boundary. */
+/**
+ * Maps only complete, supplyable Store lines; cart and line ids never leave
+ * this boundary.
+ *
+ * **Reports {@link lineChargedAmount}, not `line.unitAmount`.** `unitAmount`
+ * is net since the basket-lines fix that followed 2026-08-29 — see
+ * `CartLine.unitAmount`'s doc comment in `./cart.js` — but `add_to_cart`,
+ * `begin_checkout` and `purchase` reported the tax-inclusive figure before
+ * that fix and keep doing so here: reported revenue must not appear to drop
+ * by the VAT rate for every EU visitor on the day a screen's decomposition
+ * changed, when no money actually moved. See {@link lineChargedAmount}'s doc
+ * comment for the reasoning and the alternative this rejects.
+ */
 export function analyticsItemsFromCartLines(lines: readonly CartLine[]): readonly AnalyticsItem[] | null {
   try {
     if (lines.length === 0) return null;
     const result: AnalyticsItem[] = [];
     let currency: string | null = null;
     for (const line of lines) {
+      const charged = lineChargedAmount(line);
       if (
         line.availability !== "InStock" ||
         typeof line.variantId !== "string" || line.variantId.length === 0 ||
         typeof line.productName !== "string" || line.productName.length === 0 ||
-        !Number.isInteger(line.unitAmount) || !Number.isInteger(line.quantity) || line.quantity < 1 ||
+        !Number.isInteger(charged) || !Number.isInteger(line.quantity) || line.quantity < 1 ||
         typeof line.currency !== "string" || line.currency.length === 0
       ) return null;
       const normalizedCurrency = line.currency.toUpperCase();
@@ -76,7 +89,7 @@ export function analyticsItemsFromCartLines(lines: readonly CartLine[]): readonl
       result.push({
         variantId: line.variantId,
         name: line.productName,
-        unitAmount: line.unitAmount,
+        unitAmount: charged,
         currency: normalizedCurrency,
         quantity: line.quantity,
       });

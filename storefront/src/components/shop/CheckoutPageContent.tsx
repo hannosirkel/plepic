@@ -11,10 +11,11 @@
  *
  * ## Article 8(2) CRD, which is what this layout is for
  *
- * > "The final button on the checkout page is labelled to say that pressing it
- * > places an order with an obligation to pay. Immediately above it you see,
- * > on one screen: the goods, the price of the goods, the shipping charge, the
- * > total, the delivery address and the delivery estimate."
+ * > "The final button on the checkout page is labelled 'Pay now' — one of the
+ * > unambiguous formulations the European Commission's guidance accepts for a
+ * > button that places an order with an obligation to pay. Immediately above
+ * > it you see, on one screen: the goods, the price of the goods, the shipping
+ * > charge, the total, the delivery address and the delivery estimate."
  *
  * The "Your order" section is exactly those six disclosures, in exactly that
  * order, in one block whose last elements are the price qualification, the
@@ -33,17 +34,19 @@
  * that sentence, so a third thing cannot arrive unnoticed. The **consent
  * line** is next, immediately above the control it describes.
  *
- * ## The seventh value, and why it is worded as a breakdown
+ * ## The seventh value, and why it is worded as an addend
  *
  * Article 8(2) names six disclosures. The VAT row is a seventh value between
- * the shipping charge and the total, and it is a **breakdown of the two figures
- * above it rather than an addend**: prices are net in storage but every figure
- * on this screen comes from Medusa with its tax already inside it, so the tax
- * is contained in the price of the goods and in the shipping charge, not added
- * to them. A row headed simply "VAT" in that position reads as something to
- * add, and the column would not sum. `content/shop.ts`'s `vatLabel` says
- * "Includes", and `src/lib/store-checkout.ts` refuses a set of totals in which
- * that word would be false.
+ * the shipping charge and the total, and it is an **addend, since
+ * 2026-08-29** — the opposite of what it was before that date. Prices are net
+ * in storage; before this change every figure on this screen was Medusa's
+ * gross one, tax already inside it, and the VAT row was a breakdown of the two
+ * above it, worded "Includes". The operator's instruction reversed the
+ * decomposition instead: the price of the goods and the shipping charge are
+ * now the **net** figures — the same for every destination — and this row is
+ * what the column needs added to reach the total. `content/shop.ts`'s
+ * `vatLabel` says "VAT at …", not "Includes", and `src/lib/store-checkout.ts`
+ * refuses a set of totals in which `goods + shipping + tax !== total`.
  *
  * It is **absent** for an order that attracts no VAT, not zero — the same
  * argument `src/lib/cart.ts` makes about formatted zeros. No EU VAT arises on
@@ -147,7 +150,6 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
 import { checkout, unavailableFigure } from "../../../../content/shop.js";
-import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { destinationForCode, destinationForCountryName } from "../../lib/destination.js";
 import { checkoutPriceQualification } from "../../lib/price-qualification.js";
 import {
@@ -167,11 +169,24 @@ import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import {
   addGuestShippingMethod,
   currentAddressTotals,
+  defaultShippingOptionId,
+  isParcelMachineOption,
   prepareGuestShipping,
   shippingOptionFigure,
+  VAT_ADDEND_PREFIX,
   type AddressBoundTotals,
   type GuestShippingOption,
 } from "../../lib/store-checkout.js";
+import {
+  EMPTY_ADDRESS,
+  FIELDS,
+  guestAddress,
+  isPhoneComplete,
+  isPostalAddressComplete,
+  phoneRequiredForCountryName,
+  validate,
+  type AddressValues,
+} from "./checkout-address.js";
 import {
   createSerialPaymentInitializer,
   completeStripeOrder,
@@ -192,7 +207,9 @@ import { CallToActionLink } from "../mockups/CallToActionLink.js";
 import { resolveLinkHref } from "../mockups/link-target.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { ParcelMachinePicker } from "./ParcelMachinePicker.js";
 import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
+import { useParcelMachineSelection } from "./useParcelMachineSelection.js";
 import {
   StripePaymentElement,
   type StripePaymentElementHandle,
@@ -208,61 +225,12 @@ import {
 } from "./checkout-terms.js";
 import styles from "../../styles/pages/shop.module.css";
 
-const FIELDS: readonly AddressFieldCopy[] = checkout.address.fields;
-
-type AddressValues = Readonly<Record<string, string>>;
-
-const EMPTY_ADDRESS: AddressValues = Object.fromEntries(FIELDS.map((field) => [field.name, ""]));
-
 function browserRuntimeConfig(): ClientRuntimeConfig {
   const element = document.getElementById("plepic-runtime-config");
   if (element === null || element.textContent === null) {
     throw new Error("Store runtime configuration is unavailable");
   }
   return JSON.parse(element.textContent) as ClientRuntimeConfig;
-}
-
-function guestAddress(values: AddressValues) {
-  return {
-    fullName: values.fullName ?? "",
-    streetAddress: values.streetAddress ?? "",
-    postalCode: values.postalCode ?? "",
-    city: values.city ?? "",
-    country: values.country ?? "",
-    email: values.email ?? "",
-  };
-}
-
-/** Deliberately permissive: enough to catch a typo, never enough to reject a real address. */
-function isPlausibleEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function validate(values: AddressValues): Readonly<Record<string, string>> {
-  const errors: Record<string, string> = {};
-
-  for (const field of FIELDS) {
-    const value = (values[field.name] ?? "").trim();
-    if (value.length === 0) {
-      // "Enter country" is an instruction nobody can follow in front of a
-      // dropdown, so a chosen field asks to be chosen.
-      const prefix =
-        field.control === "country"
-          ? checkout.errors.missingSelectionPrefix
-          : checkout.errors.missingFieldPrefix;
-      errors[field.name] = `${prefix}${field.label.toLowerCase()}.`;
-      continue;
-    }
-    if (field.type === "email" && !isPlausibleEmail(value)) {
-      errors[field.name] = checkout.errors.invalidEmail;
-    }
-  }
-
-  return errors;
-}
-
-function isComplete(values: AddressValues): boolean {
-  return Object.keys(validate(values)).length === 0;
 }
 
 export interface CheckoutPageContentProps {
@@ -363,7 +331,15 @@ export function CheckoutPageContent({
     }));
   }, [lines, scenario]);
 
-  const addressComplete = isComplete(values);
+  /*
+   * The **postal** address alone — country, street, postcode, city, name,
+   * email — with no regard to the phone. See `checkout-address.ts`'s doc
+   * comment for the defect this split fixes: gating this on the phone too
+   * (Task 8's mistake) blocked the delivery method `<select>` from ever
+   * loading outside Estonia, Finland, Lithuania and Latvia, because the
+   * phone has no bearing on which delivery methods exist or what they cost.
+   */
+  const addressComplete = isPostalAddressComplete(values);
   const addressRevision = addressComplete ? JSON.stringify(guestAddress(values)) : null;
   /*
    * The zone, and therefore the charge, is a function of the chosen country
@@ -433,7 +409,70 @@ export function CheckoutPageContent({
   );
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
-  const errorList = FIELDS.filter((field) => errors[field.name] !== undefined);
+  /*
+   * Field **names**, not `AddressFieldCopy` objects: `phone` is not one of
+   * `FIELDS` (see this file's doc comment on `phoneRequiredForCountryName`),
+   * but its error belongs in the same summary as every other field's, or a
+   * reader who presses the order button with the phone field newly required
+   * and empty would get no link to it at all.
+   */
+  const errorList = [...FIELDS.map((field) => field.name), "phone"].filter(
+    (name) => errors[name] !== undefined,
+  );
+  /*
+   * Whether the phone is *required* for the country currently typed in —
+   * not whether the field is shown, which is unconditional now (see
+   * `checkout-address.ts`'s doc comment, "The phone field is always shown,
+   * and this is deliberate policy"). Read once here — rather than recomputed
+   * at each of its call sites below — so the render and (via `errors`) the
+   * validation that already ran can never see two different answers for the
+   * same values. Drives only the input's HTML `required` attribute and the
+   * hint text below; it does not gate rendering, and there is no longer a
+   * reset effect that clears the field when a country stops requiring one —
+   * the field is never hidden now, so a value a buyer typed voluntarily is
+   * never silently discarded out from under them.
+   */
+  const phoneRequiredNow = phoneRequiredForCountryName(values.country ?? "");
+
+  /*
+   * The chosen delivery method. Read here rather than only inside the hook
+   * below, because `selectShippingOption` needs it too — deriving it once,
+   * from `selectedShippingOption`, is what keeps the method `<select>` and
+   * the machine picker unable to disagree about which method is chosen.
+   */
+  const selectedShippingOptionRecord = shippingOptions.find(
+    (option) => option.id === selectedShippingOption,
+  );
+  /*
+   * The Omniva parcel machine method's second control — the fetched machine
+   * list, the chosen zip, and `selectParcelMachine` — lives in this hook
+   * rather than in this component. See `useParcelMachineSelection.ts`'s doc
+   * comment for why. `addSelectedShippingMethod`, defined below, is the one
+   * thing it does not own: both this component's `selectShippingOption` and
+   * the hook's `selectParcelMachine` end in that same call.
+   */
+  const {
+    selectedIsParcelMachine,
+    parcelMachines,
+    parcelMachineZip,
+    parcelMachineState,
+    selectParcelMachine,
+    resetParcelMachineSelection,
+  } = useParcelMachineSelection({
+    selectedOption: selectedShippingOptionRecord,
+    shippingOptionsAddress,
+    addressRevision,
+    countryName: values.country ?? "",
+    attemptInFlight,
+    shippingRequest,
+    clearTotals: () => setStoreTotals(null),
+    addMethod: addSelectedShippingMethod,
+    // A factory, not a client: `createMedusaStoreClient` throws when
+    // `window` is undefined, and this component still renders once on the
+    // server for the initial HTML. See `useParcelMachineSelection.ts`'s doc
+    // comment on `createClient` for the `/checkout` 500 this replaces.
+    createClient: () => createMedusaStoreClient(browserRuntimeConfig().medusa),
+  });
   const payableRevision =
     scenario === null &&
     addressRevision !== null &&
@@ -453,6 +492,17 @@ export function CheckoutPageContent({
     setShippingOptionsAddress(null);
     setSelectedShippingOption("");
     setStoreTotals(null);
+    /*
+     * A machine chosen for the address that just changed is a machine chosen
+     * for an address that no longer exists. Reset here, synchronously, for
+     * the same effect/event-gap reason the four resets above already are —
+     * without it a buyer who backs out to a new country would keep a
+     * previous country's zip selected underneath a picker that no longer
+     * shows it. `resetParcelMachineSelection` is `useParcelMachineSelection`'s
+     * own reset, stable across renders, so it is safe to call unconditionally
+     * here without appearing in this effect's dependency list.
+     */
+    resetParcelMachineSelection();
     if (scenario !== null || !addressComplete) {
       setShippingState("idle");
       return;
@@ -476,7 +526,19 @@ export function CheckoutPageContent({
           if (!active || request !== shippingRequest.current || addressRevision !== JSON.stringify(guestAddress(values))) return;
           setShippingOptions(options);
           setShippingOptionsAddress(addressRevision);
-          setSelectedShippingOption("");
+          /*
+           * Operator instruction, 2026-08-29: EE/LV/LT starts on the Omniva
+           * parcel machine method; every other address starts unchosen, as
+           * it always has. `defaultShippingOptionId` decides which — see its
+           * doc comment in `src/lib/store-checkout.ts` — and this is its one
+           * call site, reached exactly once per address each time a fetch
+           * for that address actually settles. It does not call
+           * `addSelectedShippingMethod`: a machine has not been chosen, so
+           * nothing is added to the cart yet, exactly as picking the method
+           * by hand with no zip already does not (see `selectShippingOption`
+           * below).
+           */
+          setSelectedShippingOption(defaultShippingOptionId(options));
           setShippingState("idle");
         },
         () => {
@@ -539,17 +601,60 @@ export function CheckoutPageContent({
       shippingOptionsAddress !== addressRevision ||
       addressRevision === null
     ) return;
-    const selectedAddressRevision = addressRevision;
-    const request = ++shippingRequest.current;
+    // Invalidates a response already in flight for the previous selection,
+    // even in the branch below that issues no new request of its own.
+    ++shippingRequest.current;
+    const chosen = shippingOptions.find((option) => option.id === optionId);
+    /*
+     * Choosing the Omniva parcel machine method with no machine chosen yet
+     * must not call the Store API — `addGuestShippingMethod` refuses to add
+     * a method with nowhere to collect the parcel from, and failing on a
+     * choice that is not wrong yet, only incomplete, is the wrong response
+     * to it. The selection is recorded and the method waits; `<select>`'s
+     * `selectedIsParcelMachine` render below is what makes the machine
+     * picker appear, and `selectParcelMachine` is what actually adds the
+     * method, once a zip exists for it to carry.
+     */
+    if (chosen !== undefined && isParcelMachineOption(chosen) && parcelMachineZip === "") {
+      setSelectedShippingOption(optionId);
+      setStoreTotals(null);
+      return;
+    }
     setSelectedShippingOption(optionId);
     setStoreTotals(null);
     if (optionId === "") return;
-    const chosen = shippingOptions.find((option) => option.id === optionId);
-    const cartId = storedMedusaCartId();
-    if (chosen === undefined || cartId === null) {
+    if (chosen === undefined) {
       setShippingState("error");
       return;
     }
+    addSelectedShippingMethod(chosen, isParcelMachineOption(chosen) ? parcelMachineZip : undefined);
+  }
+
+  /**
+   * The Store API call both `selectShippingOption` above and
+   * `useParcelMachineSelection`'s `selectParcelMachine` end in: add exactly
+   * the chosen method, carrying a parcel machine zip when there is one to
+   * carry.
+   *
+   * Factored out because the two are different decisions about *whether* to
+   * add a method — one over the method itself, one over the machine a method
+   * it already carries needs — that converge on the same request once the
+   * decision is "yes". Keeping the request in one place is what keeps the
+   * shown-versus-charged guard inside `addGuestShippingMethod` wired to a
+   * single call site instead of two that could drift. It stays in this
+   * component rather than moving into the hook alongside
+   * `selectParcelMachine`, because `selectShippingOption` needs it too, and a
+   * function two callers share belongs where both can reach it without one
+   * importing the other.
+   */
+  function addSelectedShippingMethod(chosen: GuestShippingOption, zip: string | undefined): void {
+    const selectedAddressRevision = addressRevision;
+    const cartId = storedMedusaCartId();
+    if (selectedAddressRevision === null || cartId === null) {
+      setShippingState("error");
+      return;
+    }
+    const request = ++shippingRequest.current;
     setShippingState("loading");
     /*
      * `addGuestShippingMethod` takes the whole option, not its id, because it
@@ -564,6 +669,7 @@ export function CheckoutPageContent({
       cartId,
       chosen,
       deliveryZone === "europeanUnion",
+      zip,
     ).then(
       (nextTotals) => {
         if (request !== shippingRequest.current) return;
@@ -605,8 +711,34 @@ export function CheckoutPageContent({
      * complete-looking address whose country yields no zone leaves the shipping
      * charge and the total unshown, and nobody may be bound by a screen that
      * has not shown them the total.
+     *
+     * `parcelMachineNeedsZip` is the seventh: the Omniva parcel machine method
+     * selected with no machine chosen carries every one of the six values —
+     * the method's own charge included, since it is priced at zero and Free
+     * is a value — and would otherwise be placeable with no collectable
+     * destination.
+     *
+     * `phoneIncomplete` is the eighth, added fixing the Task 8 regression:
+     * `addressComplete` above is postal-only now, so it is this flag, not
+     * that one, that keeps an order unplaceable while OMX needs a phone
+     * number for the chosen country and none valid has been given —
+     * `nextErrors` just refused the same submission on the same ground, so by
+     * the time this runs `isPhoneComplete(values)` is already true whenever
+     * it matters; this is the belt this codebase's other invariants wear
+     * beside their braces (see `assertedCartTotals`'s doc comment in
+     * `src/lib/store-checkout.ts` for the same kind of redundant check kept
+     * on purpose), so the refusal survives even if a future edit removes the
+     * earlier one.
      */
-    if (!orderMayBePlaced({ lines, addressComplete, totals })) return;
+    if (
+      !orderMayBePlaced({
+        lines,
+        addressComplete,
+        totals,
+        parcelMachineNeedsZip: selectedIsParcelMachine && parcelMachineZip === "",
+        phoneIncomplete: !isPhoneComplete(values),
+      })
+    ) return;
     if (
       typeof turnstileToken !== "string" ||
       turnstileToken.trim().length === 0 ||
@@ -762,9 +894,9 @@ export function CheckoutPageContent({
           <div className={styles.error} ref={errorSummaryRef} tabIndex={-1}>
             <h2 className={styles.errorHeading}>{checkout.errors.heading}</h2>
             <ul>
-              {errorList.map((field) => (
-                <li key={field.name}>
-                  <a href={`#${baseId}-${field.name}`}>{errors[field.name]}</a>
+              {errorList.map((name) => (
+                <li key={name}>
+                  <a href={`#${baseId}-${name}`}>{errors[name]}</a>
                 </li>
               ))}
             </ul>
@@ -864,6 +996,52 @@ export function CheckoutPageContent({
                 </div>
               );
             })}
+            {/* Not one of `FIELDS`, and — since 2026-08-29 — shown for every
+                destination rather than only outside Estonia, Finland,
+                Lithuania and Latvia. See `checkout-address.ts`'s doc comment
+                ("The phone field is always shown, and this is deliberate
+                policy") for why: a buyer choosing an Omniva parcel machine
+                needs the chance to volunteer a number even though OMX does
+                not strictly require one there. `required` still follows
+                `phoneRequiredNow`, so the browser's own validation UI and
+                assistive tech both still say "optional" inside those four
+                countries and "required" everywhere else — only *presence* is
+                relaxed, never the field's existence on screen. */}
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel} htmlFor={`${baseId}-phone`}>
+                {checkout.address.phone.label}
+              </label>
+              <p id={`${baseId}-phone-hint`} className={styles.fieldHint}>
+                {checkout.address.phone.hint}
+              </p>
+              <input
+                id={`${baseId}-phone`}
+                name="phone"
+                type="tel"
+                required={phoneRequiredNow}
+                autoComplete={checkout.address.phone.autoComplete}
+                value={values.phone ?? ""}
+                disabled={placing}
+                aria-invalid={errors.phone !== undefined}
+                aria-describedby={[
+                  `${baseId}-phone-hint`,
+                  errors.phone === undefined ? null : `${baseId}-phone-error`,
+                ]
+                  .filter((id): id is string => id !== null)
+                  .join(" ")}
+                onChange={(event) => {
+                  if (attemptInFlight.current) return;
+                  const next = event.currentTarget.value;
+                  setValues((current) => ({ ...current, phone: next }));
+                }}
+                className={styles.field}
+              />
+              {errors.phone === undefined ? null : (
+                <p id={`${baseId}-phone-error`} className={styles.fieldError}>
+                  {errors.phone}
+                </p>
+              )}
+            </div>
           </div>
         </section>
 
@@ -876,29 +1054,55 @@ export function CheckoutPageContent({
               <dt>{checkout.delivery.methodLabel}</dt>
               <dd>
                 {scenario === null ? (
-                  <select
-                    className={`${styles.field} ${styles.select}`}
-                    aria-label={checkout.delivery.methodLabel}
-                    value={selectedShippingOption}
-                    disabled={
-                      shippingState === "loading" ||
-                      placing ||
-                      shippingOptions.length === 0 ||
-                      shippingOptionsAddress !== addressRevision
-                    }
-                    onChange={(event) => selectShippingOption(event.currentTarget.value)}
-                  >
-                    <option value="">Choose a delivery method</option>
-                    {/* Never a bare `option.amount`. That is the net rate, and
-                        rendering it unmarked beside a summary charging the
-                        gross one is two prices for one delivery — see
-                        `shippingOptionFigure`. */}
-                    {shippingOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      className={`${styles.field} ${styles.select}`}
+                      aria-label={checkout.delivery.methodLabel}
+                      value={selectedShippingOption}
+                      disabled={
+                        shippingState === "loading" ||
+                        placing ||
+                        shippingOptions.length === 0 ||
+                        shippingOptionsAddress !== addressRevision
+                      }
+                      onChange={(event) => selectShippingOption(event.currentTarget.value)}
+                    >
+                      <option value="">Choose a delivery method</option>
+                      {/* Never a bare `option.amount`. That is the net rate, and
+                          rendering it unmarked beside a summary charging the
+                          gross one is two prices for one delivery — see
+                          `shippingOptionFigure`. */}
+                      {shippingOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.name} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
+                        </option>
+                      ))}
+                    </select>
+                    {/* The second control the Omniva parcel machine method
+                        needs: a specific machine. Beneath the method select,
+                        inside the same row, so the two read as one choice
+                        made in two steps rather than two separate rows. */}
+                    {selectedIsParcelMachine ? (
+                      <ParcelMachinePicker
+                        label={checkout.delivery.parcelMachineLabel}
+                        prompt={checkout.delivery.parcelMachinePrompt}
+                        machines={parcelMachines}
+                        value={parcelMachineZip}
+                        loading={
+                          parcelMachineState === "loading"
+                            ? checkout.delivery.parcelMachineLoading
+                            : null
+                        }
+                        errorMessage={
+                          parcelMachineState === "error"
+                            ? checkout.delivery.parcelMachineUnavailable
+                            : null
+                        }
+                        disabled={shippingState === "loading" || placing || parcelMachineState === "loading"}
+                        onChange={selectParcelMachine}
+                      />
+                    ) : null}
+                  </>
                 ) : declaredShippingMethod.name}
               </dd>
             </div>
@@ -1022,10 +1226,12 @@ export function CheckoutPageContent({
                   : formatAmount(totals.shippingAmount, totals.currency)}
               </dd>
             </div>
-            {/* The seventh value, and a **breakdown of the two above it**
-                rather than an addend — see `content/shop.ts`'s `vatLabel` and
-                the two refusals in `src/lib/store-checkout.ts` that make the
-                word "Includes" true.
+            {/* The seventh value, and an **addend to the two net rows above
+                it**, since 2026-08-29 — see `content/shop.ts`'s `vatLabel` and
+                the refusal in `src/lib/store-checkout.ts` that makes
+                `goods + shipping + tax === total` hold. The "+" prefix is the
+                same mark `shippingOptionFigure`'s "+ VAT" suffix already uses
+                for a net figure awaiting tax, read here as "add this".
 
                 Absent, not zero, when no VAT arises. `null` is "nobody has
                 been asked" (the mock layer, and the pre-address state); `0` is
@@ -1036,7 +1242,7 @@ export function CheckoutPageContent({
             {totals.taxAmount !== null && totals.taxAmount > 0 ? (
               <div className={styles.summaryRow}>
                 <dt>{qualification.vatLabel}</dt>
-                <dd>{formatAmount(totals.taxAmount, totals.currency)}</dd>
+                <dd>{VAT_ADDEND_PREFIX}{formatAmount(totals.taxAmount, totals.currency)}</dd>
               </div>
             ) : null}
             <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>

@@ -6,8 +6,8 @@ import {
   readNewsletterRuntimeConfig,
 } from "../../../config/runtime.js";
 import {
-  BoundedRedisEvalClient,
   RedisFixedWindowNewsletterRateLimiter,
+  boundedRedisEvalClient,
   type NewsletterRateLimiter,
 } from "../../../newsletter/rate-limit.js";
 import { subscribeToNewsletter } from "../../../newsletter/subscribe.js";
@@ -31,18 +31,7 @@ function getRateLimiter(): NewsletterRateLimiter {
   redis.on("error", () => undefined);
 
   rateLimiter = new RedisFixedWindowNewsletterRateLimiter(
-    new BoundedRedisEvalClient(
-      {
-        get isReady() { return redis.isReady; },
-        connect: () => redis.connect(),
-        destroy: () => redis.destroy(),
-        eval: (script, options) => redis.eval(script, {
-          keys: [...options.keys],
-          arguments: [...options.arguments],
-        }),
-      },
-      2_000,
-    ),
+    boundedRedisEvalClient(redis, 2_000),
     config.maximum,
     config.windowSeconds,
   );

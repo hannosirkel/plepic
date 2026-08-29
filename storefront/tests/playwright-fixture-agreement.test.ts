@@ -140,6 +140,7 @@ describe("the browser suite's Medusa fixture", () => {
         variantId: "variant_lunar_base",
         productName: mockCatalogue.name,
         unitAmount: mockCatalogue.price.amount,
+        taxAmount: 0,
         currency: mockCatalogue.price.currency,
         quantity: 1,
         availability: "InStock",
@@ -151,7 +152,12 @@ describe("the browser suite's Medusa fixture", () => {
       `/store/carts/cart_add_fixture${FIELDS}`,
       JSON.stringify({ shipping_address: { country_code: "ee" } }),
     ) as { cart: unknown };
-    expect(cartLinesFromStore(insideTheUnion.cart)[0]?.unitAmount).toBe(mockCatalogue.price.amountWithTax);
+    const euLine = cartLinesFromStore(insideTheUnion.cart)[0];
+    // `unitAmount` is net — the same figure for every destination — since the
+    // basket-lines fix that followed 2026-08-29; `taxAmount` is the addend
+    // that reaches the charged figure, unchanged in magnitude by that fix.
+    expect(euLine?.unitAmount).toBe(mockCatalogue.price.amount);
+    expect(euLine?.taxAmount).toBe(mockCatalogue.price.amountWithTax - mockCatalogue.price.amount);
   });
 
   /**
@@ -180,22 +186,26 @@ describe("the browser suite's Medusa fixture", () => {
    * applies the checkout's three totals refusals, so a fake whose VAT row did
    * not account for the tax inside the two figures above it would fail here.
    *
-   * The delivery figures are the shipping contract's own: `ratesWithTax` for
-   * the European Union, and the VAT inside it is the difference between the two
-   * declared rate tables. No rate is applied anywhere in this file.
+   * The delivery figures are the shipping contract's own: `rates` (net) for
+   * the European Union — since 2026-08-29, see `assertedCartTotals` in
+   * `src/lib/store-checkout.ts` — and the VAT is the difference between the
+   * two declared rate tables. No rate is applied anywhere in this file.
    */
   it("serves a confirmed Estonian cart the return page's disclosure accepts", () => {
     const cartId = "cart_return_agreement";
     const { cart } = ask("GET", `/store/carts/${cartId}`) as { cart: unknown };
     const disclosure = returnOrderDisclosure({ cart }, cartId);
 
+    const shippingNet = declaredShippingMethod.rates.europeanUnion;
     const shippingWithTax = declaredShippingMethod.ratesWithTax.europeanUnion;
-    const shippingVat = shippingWithTax - declaredShippingMethod.rates.europeanUnion;
+    const shippingVat = shippingWithTax - shippingNet;
     const goodsVat = mockCatalogue.price.amountWithTax - mockCatalogue.price.amount;
 
-    expect(disclosure.goodsAmount).toBe(mockCatalogue.price.amountWithTax);
-    expect(disclosure.shippingAmount).toBe(shippingWithTax);
+    expect(disclosure.goodsAmount).toBe(mockCatalogue.price.amount);
+    expect(disclosure.shippingAmount).toBe(shippingNet);
     expect(disclosure.taxAmount).toBe(goodsVat + shippingVat);
+    // The total is unchanged by the decomposition — what a buyer is charged
+    // does not move.
     expect(disclosure.orderAmount).toBe(mockCatalogue.price.amountWithTax + shippingWithTax);
     expect(disclosure.countryCode).toBe("ee");
     expect(disclosure.currency).toBe(mockCatalogue.price.currency);

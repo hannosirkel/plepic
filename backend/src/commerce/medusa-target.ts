@@ -541,6 +541,7 @@ export class MedusaCommerceConfigurationTarget implements CommerceConfigurationT
               code: "standard",
             },
             prices,
+            ...(record.data !== undefined ? { data: record.data } : {}),
           },
         ],
       });
@@ -548,7 +549,18 @@ export class MedusaCommerceConfigurationTarget implements CommerceConfigurationT
     }
 
     await updateShippingOptionsWorkflow(this.container).run({
-      input: [{ id: existing.id, name: record.optionName, prices }],
+      input: [
+        {
+          id: existing.id,
+          name: record.optionName,
+          prices,
+          // Re-issued on every promoted digest, same as `prices` below it —
+          // an Omniva option created before `data` existed on this record
+          // must converge to carry it, not merely gain it on a create it will
+          // never see again.
+          ...(record.data !== undefined ? { data: record.data } : {}),
+        },
+      ],
     });
   }
 }

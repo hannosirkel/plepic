@@ -212,7 +212,7 @@ for (const refusal of ["above-max", "cleared", "negative"] as const) {
 test("Article 8(2) invariant: no order placement succeeds where all six Article 8(2) values are not displayed as values", async ({ page }) => {
   await page.goto("/checkout?mock=filled");
   await dismissConsentForInteraction(page);
-  const order = page.getByRole("button", { name: "Order with obligation to pay" });
+  const order = page.getByRole("button", { name: "Pay now" });
 
   await expect(order).toBeVisible();
   // Goods, their price and the delivery estimate have values; the delivery
@@ -232,19 +232,20 @@ test("Article 8(2) invariant: no order placement succeeds where all six Article 
   await completeAddress(page);
   const orderSummary = page.getByRole("heading", { name: "Your order" }).locator("..");
   /*
-   * Estonia is an EU delivery address, so **every** figure in the disclosure is
-   * the taxed one: the EUR 25.00 net goods at EUR 31.00, the EUR 7.00 net
-   * delivery rate at EUR 8.68, and the VAT inside the two of them stated
-   * separately, as `content/legal/shipping.ts` promises it will be. The figures
-   * this replaces (EUR 7.00 and EUR 32.00) are the pre-VAT ones and describe a
-   * bill no EU buyer is sent.
+   * Estonia is an EU delivery address, so **every** figure in the disclosure
+   * carries what the tax does to it, since 2026-08-29 as an invariant net
+   * pair plus an addend rather than as two grossed figures with a breakdown:
+   * the EUR 25.00 net price of the goods, the EUR 7.00 net delivery rate, and
+   * the EUR 7.68 of VAT the two of them attract, added as its own row rather
+   * than contained in either. The figures this replaces (EUR 31.00 and
+   * EUR 8.68, the grossed pair) are what the checkout stated before that date.
    *
    * The whole set is asserted rather than the total alone, because the total is
    * the one figure that could stay right while the rows above it went wrong.
    */
-  await expect(orderSummary.getByText("€31.00", { exact: true })).toBeVisible();
-  await expect(orderSummary.getByText("€8.68", { exact: true })).toBeVisible();
-  await expect(orderSummary.getByText("€7.68", { exact: true })).toBeVisible();
+  await expect(orderSummary.getByText("€25.00", { exact: true })).toBeVisible();
+  await expect(orderSummary.getByText("€7.00", { exact: true })).toBeVisible();
+  await expect(orderSummary.getByText("+ €7.68", { exact: true })).toBeVisible();
   await expect(orderSummary.getByText("€39.68", { exact: true })).toBeVisible();
   await supplyTurnstileResponse(page, "synthetic-checkout-token");
   await order.click();
@@ -281,22 +282,23 @@ test("payment return renews Turnstile and completes only on Medusa order", async
   /*
    * The fixture's cart carries a confirmed **Estonian** delivery address, so
    * Medusa priced it with VAT and this screen — the last one before the buyer
-   * is charged — states the four figures that follow from that: the goods, the
-   * delivery, the VAT contained in both, and the total.
+   * is charged — states the four figures that follow from that: the net price
+   * of the goods, the net delivery charge, the VAT the two of them attract
+   * (an addend since 2026-08-29, marked with "+"), and the total.
    */
-  await expect(page.getByText("€31.00", { exact: true })).toBeVisible();
-  await expect(page.getByText("€8.68", { exact: true })).toBeVisible();
-  await expect(page.getByText("€7.68", { exact: true })).toBeVisible();
+  await expect(page.getByText("€25.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("€7.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("+ €7.68", { exact: true })).toBeVisible();
   await expect(page.getByText("€39.68", { exact: true })).toBeVisible();
   const form = page.locator("form");
   await expect(form).toHaveAttribute("method", "post");
   await expect(form).toHaveAttribute("action", "/checkout/payment-return/order");
   await expect(form.locator('[name="cf-turnstile-response"]')).toHaveValue("");
-  await page.getByRole("button", { name: "Order with obligation to pay" }).click();
+  await page.getByRole("button", { name: "Pay now" }).click();
   await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: [] });
   await expect.poll(() => commerceEvents(page)).toEqual([]);
   await supplyTurnstileResponse(page, "synthetic-return-token-one");
-  await page.getByRole("button", { name: "Order with obligation to pay" }).dblclick();
+  await page.getByRole("button", { name: "Pay now" }).dblclick();
   await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: ["synthetic-return-token-one"] });
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("plepic.medusa.cart-id"))).toBe(cartId);
   // The order's own total, which is the taxed one; `price` below stays the
@@ -306,7 +308,7 @@ test("payment return renews Turnstile and completes only on Medusa order", async
   }]]);
   await expect(form.locator('[name="cf-turnstile-response"]')).toHaveValue("");
   await supplyTurnstileResponse(page, "synthetic-return-token-two");
-  await page.getByRole("button", { name: "Order with obligation to pay" }).click();
+  await page.getByRole("button", { name: "Pay now" }).click();
   await expect.poll(async () => (await page.request.get(`http://127.0.0.1:3199/inspect/${cartId}`)).json()).toEqual({ tokens: ["synthetic-return-token-one", "synthetic-return-token-two"] });
   await expect(page.getByText("Order confirmed")).toBeVisible();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("plepic.medusa.cart-id"))).toBeNull();
