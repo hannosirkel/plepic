@@ -65,7 +65,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-import type { CartLine } from "./cart.js";
+import { lineChargedAmount, type CartLine } from "./cart.js";
 import { DEFAULT_DESTINATION_CODE, destinationForCode } from "./destination.js";
 import { createMedusaStoreClient } from "./medusa-client.js";
 import { reportCartFailure, type CartOperation } from "./cart-diagnostics.js";
@@ -136,10 +136,14 @@ export async function addStoreCatalogueLine(
   const lines = await addStoreLine(sdk, cartId, variantId);
   const acceptedLine = lines.find((line) => line.variantId === variantId);
   if (acceptedLine !== undefined) {
+    // The tax-inclusive figure, via `lineChargedAmount` — `unitAmount` alone
+    // is net since the basket-lines fix that followed 2026-08-29, and
+    // reported revenue must not appear to fall by the VAT rate when no money
+    // moved. See `lineChargedAmount`'s doc comment in `./cart.js`.
     emitAddToCart({
       variantId,
       name: acceptedLine.productName,
-      unitAmount: acceptedLine.unitAmount,
+      unitAmount: lineChargedAmount(acceptedLine),
       currency: acceptedLine.currency,
       quantity: 1,
     });

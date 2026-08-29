@@ -105,6 +105,33 @@ describe("purchase funnel analytics", () => {
     }]]);
   });
 
+  /**
+   * **`unitAmount` is net on a real `CartLine` since the basket-lines fix
+   * that followed 2026-08-29 — analytics still reports the charged figure.**
+   * `analyticsItemsFromCartLines` adds `taxAmount` back on via
+   * `lineChargedAmount` (`src/lib/cart.ts`) rather than passing the net
+   * figure through, so a European buyer's reported revenue does not appear
+   * to fall by the VAT rate on a display-only change where no money moved.
+   * See `lineChargedAmount`'s doc comment for the reasoning.
+   */
+  it("reports the tax-inclusive figure for a net Store line, via lineChargedAmount", async () => {
+    const emitter = await analytics();
+    const line = {
+      id: "line_private_to_cart",
+      variantId: "variant_example",
+      productName: "Lunar Base",
+      unitAmount: 2500,
+      taxAmount: 600,
+      currency: "EUR",
+      quantity: 1,
+      availability: "InStock" as const,
+    };
+    expect(emitter.analyticsItemsFromCartLines([line])).toEqual([{
+      variantId: "variant_example", name: "Lunar Base", unitAmount: 3100,
+      currency: "EUR", quantity: 1,
+    }]);
+  });
+
   it("reads frozen cart facts without mutation and returns null instead of throwing on malformed access", async () => {
     const emitter = await analytics();
     const line = Object.freeze({

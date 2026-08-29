@@ -11,17 +11,21 @@ afterEach(() => {
 
 describe("Medusa cart money boundary", () => {
   /**
-   * **The line total, not `unit_price`.** The stored price is net, so a basket
-   * built from `unit_price` stated the figure before tax for goods Medusa
-   * charges the figure after it for — on the screen whose figures feed the
-   * Article 8(2) disclosure block on `/checkout`. `cart.item_total` is line
-   * items after discounts **including** tax, which is what `store-checkout.ts`
-   * argues for at length and what `store-payment.ts` already read on the
-   * confirmation path.
+   * **`subtotal`, not the stored `unit_price` and not `total` either.** The
+   * stored `unit_price` is net for the wrong reason — it never asked Medusa's
+   * tax engine anything — while `subtotal` is Medusa's own computed net
+   * figure for this line, requested alongside `total` and `tax_total` via
+   * {@link STORE_CART_FIELDS}. `unitAmount` reads it since the basket-lines
+   * fix that followed 2026-08-29, so it agrees with `cartTotals`' "Price of
+   * the goods" row for the same basket rather than restating the gross
+   * `total` the basket's own "Price" and "Line total" columns used to show
+   * above that now-net row. `taxAmount` is unchanged: `total` minus
+   * `subtotal`, still the VAT on this line — now an addend onto `unitAmount`
+   * rather than a quantity inside it.
    *
    * The fixture is a European cart: net 25, taxed to 31.
    */
-  it("prices each line from Medusa's tax-inclusive line total, not the stored unit price", () => {
+  it("prices each line from Medusa's net line subtotal, not the stored unit price or the tax-inclusive total", () => {
     expect(cartLinesFromStore({
       currency_code: "eur",
       item_total: 31,
@@ -38,7 +42,7 @@ describe("Medusa cart money boundary", () => {
       id: "line_example",
       variantId: "variant_example",
       productName: "Lunar Base",
-      unitAmount: 3100,
+      unitAmount: 2500,
       taxAmount: 600,
       currency: "EUR",
       quantity: 1,
@@ -60,7 +64,7 @@ describe("Medusa cart money boundary", () => {
         variant: { id: "variant_example", manage_inventory: false },
       }],
     });
-    expect(line?.unitAmount).toBe(3100);
+    expect(line?.unitAmount).toBe(2500);
     expect(line?.taxAmount).toBe(600);
   });
 
@@ -148,8 +152,11 @@ describe("real empty-basket analytics", () => {
       { variant_id: "variant_example", quantity: 1 },
       { fields: STORE_CART_FIELDS },
     );
-    // The measured value is the tax-inclusive one, because that is what the
-    // buyer is charged and what every other surface now states.
+    // The measured value is the tax-inclusive one — via `lineChargedAmount`,
+    // not the now-net `unitAmount` — because that is what the buyer is
+    // actually charged, and analytics stays on it deliberately rather than
+    // following the basket's net display down. See `lineChargedAmount`'s doc
+    // comment in `src/lib/cart.ts`.
     expect(Array.from(dataLayer[0] as ArrayLike<unknown>)).toEqual(["event", "add_to_cart", {
       currency: "EUR", value: 31,
       items: [{ item_id: "variant_example", item_name: "Lunar Base", price: 31, quantity: 1 }],

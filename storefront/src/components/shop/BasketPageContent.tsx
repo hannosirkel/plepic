@@ -288,15 +288,17 @@ export function BasketPageContent() {
    *
    * The **goods** figure is net, since 2026-08-29, on the served basket the
    * same as everywhere else `CartTotals` is rendered — see `src/lib/cart.ts`'s
-   * doc comment on `CartTotals.goodsAmount`. In the served application every
-   * line reaching it was built by `cartLinesFromStore`, which now carries
-   * each line's per-unit tax alongside its charged (gross) `unitAmount`
-   * rather than only the charged figure; `cartTotals` is what nets it back
-   * out for this summary. The per-line "Price" and "Line total" columns below
-   * still read `unitAmount` directly and stay gross — this row and those
-   * columns are deliberately not the same figure for an EU destination
-   * any more, which is the same decomposition `/checkout` now states rather
-   * than a new inconsistency invented here.
+   * doc comment on `CartTotals.goodsAmount`. The per-line "Price" and "Line
+   * total" columns below read `unitAmount` and `lineAmount` directly, and
+   * since the basket-lines fix that followed 2026-08-29 they read **net**
+   * too: `cartLinesFromStore` prices `CartLine.unitAmount` from Medusa's
+   * `subtotal` now, not `total`, so this row is the direct sum of those same
+   * columns rather than a second, independently netted figure that could
+   * silently disagree with them. It briefly was exactly that — gross columns
+   * above a net row, so a multi-unit EU line read taxed above an untaxed
+   * "Price of the goods" row for the same units — which an operator caught
+   * and is the fix this comment now describes rather than the gap it used to
+   * justify.
    */
   const totals = cartTotals(lines, { deliveryZone: null });
   const blocked = lines.some((line) => !isAvailable(line));

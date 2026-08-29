@@ -38,7 +38,7 @@
  * the defect: the first pins what we send, the second pins what comes back.
  */
 
-import type { CartLine } from "./cart.js";
+import { lineChargedAmount, type CartLine } from "./cart.js";
 import { medusaMajorToMinor } from "./store-money.js";
 import type { createMedusaStoreClient } from "./medusa-client.js";
 
@@ -82,49 +82,63 @@ export const STORE_CART_FIELDS =
 const CART_QUERY = { fields: STORE_CART_FIELDS } as const;
 
 /**
- * The basket's lines, priced the way the buyer will be charged.
+ * The basket's lines, priced net — the same account `cartTotals` states for
+ * this same basket's "Price of the goods" row.
  *
- * **`item_total` and each line's `total`, never `unit_price`.** `unit_price` is
- * the stored price, and the stored price is **net**: a basket built from it
- * stated the net figure for goods Medusa charges the gross one for, on the
- * screen whose figures feed the Article 8(2) disclosure block on `/checkout`.
- * Medusa's `cart.item_total` is line items after discounts **including** tax,
- * which is what `./store-checkout.js` argues for at length on the checkout path
- * and what `./store-payment.js` already read on the confirmation path. This is
- * the basket agreeing with both.
+ * **`total` and `subtotal`, never `unit_price`.** `unit_price` is the stored
+ * price, and the stored price is net for the wrong reason: it never asked
+ * Medusa's tax engine anything, so a discount or a future per-region price
+ * would move it away from what this basket is actually being quoted. `total`
+ * (line items after discounts, **including** tax) and `subtotal` (the same,
+ * **excluding** it) are both Medusa's own computed answers, requested via
+ * {@link STORE_CART_FIELDS}, and the difference between them is this line's
+ * real per-unit tax rather than a rate applied to anything here.
  *
- * {@link CartLine.unitAmount} stays this — the **charged**, tax-inclusive
- * figure — unchanged by the 2026-08-29 decomposition change: it is what the
- * basket's own "Price" and "Line total" columns state, and what
- * `emitAddToCart` reports, and neither of those moved. What moved is
- * {@link CartLine.taxAmount}, added in the same change: each line's own
- * `subtotal` — Medusa's net figure for that line, requested via the same
- * {@link STORE_CART_FIELDS} — subtracted from `total` and divided by
- * quantity. It exists so `cartTotals` in `./cart.js` can net the tax back out
- * of its **summary** "Goods" total the same way it already could for a
- * mock-catalogue line, which is what makes that summary agree with
- * `/checkout`'s now-net "Price of the goods" row for the same basket, rather
- * than the two screens stating two different figures for the goods in the
- * same cart.
+ * **{@link CartLine.unitAmount} is `subtotal` divided by quantity — net —
+ * since the basket-lines fix that followed 2026-08-29.** It read `total`
+ * (gross) from the decomposition change up to that fix, on the theory that it
+ * was "what the basket's own columns state, unchanged" — true of the columns,
+ * false of `cartTotals`' summary two rows below them, which had already gone
+ * net that same change. A multi-unit EU line rendered its per-unit price and
+ * line total taxed, above a "Price of the goods" row that was the untaxed
+ * figure for the same units: the columns and the summary told two different
+ * stories about the same order, which is worse than the all-gross screen the
+ * decomposition change set out to fix. `unitAmount` is net now so there is exactly one
+ * figure called "what one unit costs" on this basket, and `cartTotals`'
+ * goods row is the direct sum of it — see `lineAmount` and `cartTotals` in
+ * `./cart.js`. {@link CartLine.taxAmount} is `total` minus `subtotal`,
+ * divided by quantity: the same subtraction as before this fix, but now an
+ * **addend** onto a net `unitAmount` rather than a quantity already folded
+ * into a gross one — see that field's doc comment in `./cart.js`.
  *
- * The per-unit figure the basket's price column shows is each line's own
- * `total` divided by its quantity, and a division that is not exact is
- * **refused** rather than rounded. A rounded unit price beside an unrounded
- * line total is two answers to "what does one cost?", and this shop's one
- * product divides exactly at every quantity a basket may hold. If a future
- * catalogue does not, that is a presentation decision somebody has to make on
- * purpose — a column showing "from" pricing, or no unit column — rather than a
- * cent this function invented. The same divisibility refusal now applies to
- * `subtotal`, for the identical reason applied to the identical figure.
+ * **Analytics reads the gross figure back through {@link lineChargedAmount}
+ * (`./cart.js`), not `unitAmount`.** `emitAddToCart` here and
+ * `analyticsItemsFromCartLines` in `./analytics.js` both call it, so reported
+ * revenue is exactly what it was before this fix — see that function's doc
+ * comment for why decoupling analytics from the display's net decomposition
+ * was the deliberate choice.
  *
- * The line totals are then checked to sum to `item_total`, for the same reason
- * `cartTotals` in `./store-checkout.js` refuses three figures that do not add
- * up: the two are computed by different parts of Medusa, and a basket whose
- * lines do not account for its own goods figure has told a buyer something
- * untrue about at least one of them. The check stays over `unitAmount` alone,
- * summed, unchanged since before 2026-08-29: `unitAmount` itself did not
- * change meaning, only a second, net figure — `unitAmount` minus this
- * addition's `taxAmount` — was added beside it.
+ * The per-unit figure is each line's own `total` (or `subtotal`) divided by
+ * its quantity, and a division that is not exact is **refused** rather than
+ * rounded. A rounded unit price beside an unrounded line total is two answers
+ * to "what does one cost?", and this shop's one product divides exactly at
+ * every quantity a basket may hold. If a future catalogue does not, that is a
+ * presentation decision somebody has to make on purpose — a column showing
+ * "from" pricing, or no unit column — rather than a cent this function
+ * invented. The divisibility refusal applies to `total` and `subtotal`
+ * equally, for the identical reason applied to the identical figure.
+ *
+ * **The line totals are then checked against `item_total` — Medusa's own
+ * gross figure — reconstructed gross rather than compared net.** The
+ * decomposition and the tax division are two separate arithmetical claims
+ * about the same lines, and this check must not depend on the second to
+ * validate the first: it reconstructs each line's charged amount as
+ * `unitAmount + taxAmount` and sums that, the way `lineChargedAmount` does,
+ * so the same comparison this check has always made — do the lines account
+ * for Medusa's own goods figure? — survives `unitAmount`'s meaning swapping
+ * from gross to net. Comparing the **net** sum against `item_total` would
+ * always fail for an EU basket by exactly the tax, which is not the defect
+ * this check exists to catch.
  *
  * **A missing `total` or `subtotal` is reported as what it is.** It means the
  * request did not ask for {@link STORE_CART_FIELDS}, which is a different
@@ -186,10 +200,13 @@ export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
       id: line.id,
       ...(typeof variant?.id === "string" && variant.id.length > 0 ? { variantId: variant.id } : {}),
       productName: line.title,
-      unitAmount: lineTotal / quantity,
-      // The tax *contained in* `unitAmount`, per unit — not an addend to it.
-      // See `CartLine.taxAmount`'s doc comment in `./cart.js`: `unitAmount -
-      // taxAmount` is the net figure `cartTotals` nets out for its summary.
+      // Net, since the basket-lines fix that followed 2026-08-29 — see this
+      // function's doc comment. `subtotal`, not `total`.
+      unitAmount: lineNet / quantity,
+      // The VAT `unitAmount` now has *added* to it, per unit — not a
+      // quantity contained inside it. See `CartLine.taxAmount`'s doc comment
+      // in `./cart.js`: `unitAmount + taxAmount` is the charged figure
+      // `lineChargedAmount` reconstructs for analytics.
       taxAmount: (lineTotal - lineNet) / quantity,
       currency: currency.toUpperCase(),
       quantity,
@@ -197,7 +214,7 @@ export function cartLinesFromStore(cart: unknown): readonly CartLine[] {
     } satisfies CartLine;
   });
   if (
-    lines.reduce((sum, line) => sum + line.unitAmount * line.quantity, 0) !==
+    lines.reduce((sum, line) => sum + lineChargedAmount(line) * line.quantity, 0) !==
     medusaMajorToMinor(value.item_total, currency)
   ) {
     throw new Error("Medusa Store cart lines do not add up to the cart's own goods figure");

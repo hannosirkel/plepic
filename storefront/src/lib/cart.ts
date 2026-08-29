@@ -136,16 +136,35 @@ export interface CartLine {
   /** Minor units, as the catalogue holds them. */
   readonly unitAmount: number;
   /**
-   * The tax contained in {@link unitAmount}, per unit — `0` where none is,
-   * and **absent** where nobody has answered.
+   * The VAT {@link unitAmount} attracts, per unit, as an **addend** — `0`
+   * where none is due, and **absent** where nobody has answered.
    *
-   * The distinction is the one this module draws everywhere: `0` is "this
-   * destination attracts no VAT", which is true of every export, and absent is
-   * "no authority has been asked". A line built from the catalogue knows,
-   * because the catalogue holds the amount with tax and the amount without and
-   * the difference between two declared figures is not a computation of tax. A
-   * line from Medusa does not carry it, because on that path every figure the
-   * checkout renders comes from `./store-checkout.js` instead.
+   * **Addend since the basket-lines fix that followed 2026-08-29, not a
+   * quantity contained in `unitAmount`.** Before that fix `unitAmount` was
+   * gross for an EU destination and this field was the tax already folded
+   * into it; the basket's per-line "Price" and "Line total" columns kept
+   * reading the (gross) `unitAmount` directly while `cartTotals` netted this
+   * same figure back out for its own "Price of the goods" row — so the two
+   * rows on `/cart` stated two different accounts of the same line, which an
+   * operator flagged after `unitAmount` was left ungrossed by the summary
+   * change. `unitAmount` is now net on every path that builds a `CartLine`
+   * (see this field's neighbour), so `unitAmount + taxAmount` is what a buyer
+   * is actually charged per unit — the opposite direction from before — and
+   * every consumer that used to read `unitAmount` as "charged, tax already
+   * in" now has to add this back on to get the same number.
+   * {@link lineChargedAmount} does exactly that, and is the one place
+   * analytics reads it, on purpose — see that function's doc comment for why
+   * reported revenue stays exactly what it was rather than following the
+   * screen's net decomposition down by the tax rate.
+   *
+   * The distinction between `0` and absent is the one this module draws
+   * everywhere: `0` is "this destination attracts no VAT", which is true of
+   * every export, and absent is "no authority has been asked". A line built
+   * from the catalogue knows, because the catalogue holds the amount with tax
+   * and the amount without and the difference between two declared figures is
+   * not a computation of tax. A line from Medusa does not carry it, because on
+   * that path every figure the checkout renders comes from
+   * `./store-checkout.js` instead.
    */
   readonly taxAmount?: number;
   readonly currency: string;
@@ -406,6 +425,15 @@ export interface CartTotals {
    * `StripePaymentReturn.tsx` — because a caller left reading it the old way
    * would show a buyer a different goods figure from every other screen for
    * the same order.
+   *
+   * **Equal to `sum(unitAmount × quantity)` over the available lines, by
+   * construction — see {@link cartTotals}.** That equality did not hold for
+   * one basket-lines fix's worth of time: `CartLine.unitAmount` stayed gross
+   * for an EU destination after this field went net, so the basket's per-line
+   * columns and this row stated two different accounts of the same order. Now
+   * that `unitAmount` is net everywhere (see its own doc comment), this field
+   * and the sum of the lines are the same number derived the same way, not
+   * two numbers an assertion has to keep in step.
    */
   readonly goodsAmount: number | null;
   /**
@@ -481,16 +509,50 @@ export function lineAmount(line: CartLine): number {
 }
 
 /**
+ * The per-unit figure a buyer is actually charged — {@link CartLine.unitAmount}
+ * grossed back up by its own {@link CartLine.taxAmount}.
+ *
+ * **The one place that reconstructs the gross figure, and the one place
+ * analytics is allowed to.** The basket, the checkout and the confirmation
+ * page all render `unitAmount` as net now — see that field's doc comment —
+ * but `add_to_cart`, `begin_checkout` and `purchase` reported the
+ * tax-inclusive figure before the basket-lines fix and this function keeps
+ * them doing exactly that: `analyticsItemsFromCartLines` (`./analytics.js`)
+ * and `addStoreCatalogueLine` (`./cart-store.js`) both call this rather than
+ * reading `unitAmount` bare, so a European buyer's revenue does not appear to
+ * fall by the VAT rate on the day a screen's decomposition changed and no
+ * money actually moved. That is a deliberate choice, not the only one
+ * available — following the net display down would also be defensible, and
+ * would match GA4's own convention of a tax-exclusive item price beside a
+ * tax-inclusive order `value` — but it is the one that keeps a dashboard
+ * reading the same number today it read yesterday, which is the coupling this
+ * change would otherwise move silently. `0` where {@link CartLine.taxAmount}
+ * is absent: an unanswered tax is priced as none for analytics precisely as
+ * `cartTotals` prices it as none in the render it mirrors.
+ */
+export function lineChargedAmount(line: CartLine): number {
+  return line.unitAmount + (line.taxAmount ?? 0);
+}
+
+/**
  * Builds the single-product line the mock catalogue describes, **for a
  * destination**.
  *
- * `unitAmount` is the figure that destination is charged — the catalogue's
- * gross amount inside the EU and its net amount everywhere else. It is a
- * *choice between two amounts the catalogue holds*, exactly as
- * `./catalogue.js` makes it, and no tax is computed here either.
+ * **`unitAmount` is net, for every destination, since the basket-lines fix
+ * that followed 2026-08-29.** Before that fix this read the catalogue's gross
+ * amount inside the EU and its net amount everywhere else — a *choice between
+ * two amounts the catalogue holds* that matched what a buyer was charged, but
+ * left this line disagreeing with `cartTotals`' own "Price of the goods" row,
+ * which had already gone net-plus-addend for every destination in the
+ * decomposition change. Two rows on `/cart` stating two different accounts of
+ * the same basket is the defect an operator caught; `taxAmount` — still the
+ * difference between the catalogue's two declared figures, no rate — is what
+ * a VAT row now *adds* to this net figure rather than what used to be
+ * subtracted back out of a gross one. See {@link lineChargedAmount} for the
+ * one place that still needs the gross figure this used to state directly.
  *
  * A real basket line never comes from here: it comes from Medusa, through
- * `cartLinesFromStore` in `./cart-store.js`. This exists so the mock layer
+ * `cartLinesFromStore` in `./store-cart.js`. This exists so the mock layer
  * states the same commercial model the live one does — a mock that priced an
  * Estonian basket net would paint a screen no buyer can ever be shown, and the
  * qualification beside it would be the one thing on the page that was false.
@@ -504,7 +566,7 @@ export function catalogueLine(
   return {
     id,
     productName: product.name,
-    unitAmount: destination.euMember ? product.price.amountWithTax : product.price.amount,
+    unitAmount: product.price.amount,
     // The difference between two amounts the catalogue holds. No rate.
     taxAmount: destination.euMember ? product.price.amountWithTax - product.price.amount : 0,
     currency: product.price.currency,
@@ -525,8 +587,13 @@ export function catalogueLine(
  * In production this does not arise: once the address is complete and a method
  * is chosen, Medusa returns **every** figure priced against that address, goods
  * included. This is the mock layer doing the same thing with the one product it
- * has — a choice between the two amounts the catalogue holds, not a
- * computation.
+ * has.
+ *
+ * **`unitAmount` stays the catalogue's net figure regardless of the
+ * destination, since the basket-lines fix that followed 2026-08-29** — see
+ * {@link catalogueLine}'s doc comment for why. Only `taxAmount` moves with the
+ * destination, which is the one thing the destination is allowed to change
+ * about a re-priced line now that the price of the goods no longer does.
  */
 export function catalogueLinesForDestination(
   lines: readonly CartLine[],
@@ -535,7 +602,7 @@ export function catalogueLinesForDestination(
 ): readonly CartLine[] {
   return lines.map((line) => ({
     ...line,
-    unitAmount: destination.euMember ? product.price.amountWithTax : product.price.amount,
+    unitAmount: product.price.amount,
     taxAmount: destination.euMember ? product.price.amountWithTax - product.price.amount : 0,
   }));
 }
@@ -596,14 +663,25 @@ export function cartTotals(
    * described a different basket from the one the same screen was listing, and
    * a formatted zero is a statement about a price rather than its absence.
    *
-   * `lineAmount` is per-unit **charged** amount times quantity — gross, tax
-   * already inside it where destination tax applies — never rewritten by this
-   * function. Every real per-line display (the basket's "Price" and "Line
-   * total" columns) keeps reading it directly, unchanged since before
-   * 2026-08-29; what changed that date is only {@link CartTotals.goodsAmount}
-   * below, which nets the tax back out of this sum rather than stating it.
+   * **This *is* {@link CartTotals.goodsAmount}, since the basket-lines fix
+   * that followed 2026-08-29 — not a gross figure this function nets tax back
+   * out of.** `lineAmount` is per-unit `unitAmount` times quantity, and
+   * `unitAmount` is net on every `CartLine` a real basket can hold (see that
+   * field's doc comment in this module and `cartLinesFromStore` in
+   * `./store-cart.js`), so summing it *is* summing the net goods figure. That
+   * is what makes the basket's per-line "Price" and "Line total" columns —
+   * which read `unitAmount` and `lineAmount` directly and unchanged by this
+   * fix — reconcile with this same total by construction: there is exactly
+   * one figure called "what one unit costs" now, not a gross one the display
+   * reads and a net one the summary derives from a second, independent sum of
+   * it. Before this fix those were two different sums over the same lines,
+   * and an EU basket could show a taxed line total above an untaxed goods row
+   * for the same units — the defect this replaces.
+   * `tests/cart.test.ts` asserts the reconciliation directly, in both an EU
+   * and an export destination, and pins it against reverting either
+   * `catalogueLine`'s or `cartLinesFromStore`'s `unitAmount` back to gross.
    */
-  const goodsGrossAmount = lines.every((line) => isAvailable(line))
+  const goodsAmount = lines.every((line) => isAvailable(line))
     ? lines.reduce((sum, line) => sum + lineAmount(line), 0)
     : null;
 
@@ -642,23 +720,13 @@ export function cartTotals(
    * "nothing has been asked" is not "nothing".
    */
   const goodsTaxAmount =
-    goodsGrossAmount !== null && lines.every((line) => line.taxAmount !== undefined)
+    goodsAmount !== null && lines.every((line) => line.taxAmount !== undefined)
       ? lines.reduce((sum, line) => sum + (line.taxAmount ?? 0) * line.quantity, 0)
       : null;
   const taxAmount =
     goodsTaxAmount === null || shippingTaxAmount === null
       ? null
       : goodsTaxAmount + shippingTaxAmount;
-
-  /*
-   * **Net, since 2026-08-29 — operator instruction.** `goodsGrossAmount` is
-   * what a buyer is charged for the goods; this is what the "Price of the
-   * goods" row now states instead, with {@link goodsTaxAmount} the addend a
-   * VAT row (where one is shown) accounts for. `null` whenever the gross sum
-   * or its tax is, for the same reason either alone withholds a figure.
-   */
-  const goodsAmount =
-    goodsGrossAmount === null || goodsTaxAmount === null ? null : goodsGrossAmount - goodsTaxAmount;
 
   return {
     currency: lines[0]?.currency ?? shipping.currency,

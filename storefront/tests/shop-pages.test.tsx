@@ -1320,13 +1320,13 @@ describe("ARTICLE 8(2) INVARIANT: no order placement succeeds unless all six val
         const destination = destinationForCountryName(country);
         expect(destination, country).not.toBeNull();
         const line = catalogueLine(1, undefined, "lunar-base", destination!);
-        // `unitAmount` is still the charged, gross figure — unchanged by the
-        // 2026-08-29 decomposition change, see `src/lib/cart.ts`'s doc
-        // comment on `CartLine`. `goodsNet` is what the "Price of the goods"
-        // row now states instead.
-        const goodsGross = line.unitAmount;
+        // `unitAmount` is net since the basket-lines fix that followed the
+        // 2026-08-29 decomposition change — see `src/lib/cart.ts`'s doc
+        // comment on `CartLine.unitAmount`. `goodsGross` is reconstructed for
+        // the total below, which is still the charged figure.
+        const goodsNet = line.unitAmount;
         const goodsTax = line.taxAmount ?? 0;
-        const goodsNet = goodsGross - goodsTax;
+        const goodsGross = goodsNet + goodsTax;
         const shippingNet = declaredShippingMethod.rates[zone];
         const shippingGross = declaredShippingMethod.ratesWithTax[zone];
         const shippingTax = shippingGross - shippingNet;

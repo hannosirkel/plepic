@@ -153,9 +153,10 @@ describe("the browser suite's Medusa fixture", () => {
       JSON.stringify({ shipping_address: { country_code: "ee" } }),
     ) as { cart: unknown };
     const euLine = cartLinesFromStore(insideTheUnion.cart)[0];
-    // `unitAmount` — the charged, tax-inclusive figure — is unchanged by the
-    // 2026-08-29 decomposition change; `taxAmount` is what it added.
-    expect(euLine?.unitAmount).toBe(mockCatalogue.price.amountWithTax);
+    // `unitAmount` is net — the same figure for every destination — since the
+    // basket-lines fix that followed 2026-08-29; `taxAmount` is the addend
+    // that reaches the charged figure, unchanged in magnitude by that fix.
+    expect(euLine?.unitAmount).toBe(mockCatalogue.price.amount);
     expect(euLine?.taxAmount).toBe(mockCatalogue.price.amountWithTax - mockCatalogue.price.amount);
   });
 
