@@ -3,6 +3,91 @@ import { ConfigError } from "../config/env.js";
 const ALLOWED_PREFIXES = new Set(["store", "hooks", "static"]);
 
 /**
+ * The provider identifiers `backend/src/config/payment.ts` registers Stripe
+ * under, duplicated here rather than imported.
+ *
+ * The boundary is the Docker build, not the workspace structure: a relative
+ * import needs no npm dependency between the two `package.json`s, and
+ * `storefront/tests/seeded-product-agreement.test.ts` imports
+ * `backend/src/commerce/product-model.js` today and passes. What actually
+ * blocks it for anything this file ships is `storefront/Dockerfile.dockerignore:61`,
+ * which excludes `backend` from the build context (re-including only
+ * `backend/package.json`, so `npm ci` can still resolve the workspace), and
+ * `storefront/Dockerfile:44-46`, which copies only `content/`, `design/` and
+ * `storefront/` into the build stage. A source-level import of
+ * `backend/src/config/payment.ts` would fail `npm run build --workspace
+ * storefront` with the file missing from the image; the test-only import
+ * above survives only because `storefront/Dockerfile.dockerignore` also
+ * excludes every `tests` directory and every file matching `*.test.ts`, so it
+ * never reaches that build step.
+ *
+ * `backend/src/config/payment.ts` derives `STRIPE_WEBHOOK_PATH` as
+ * `` `/hooks/payment/${identifier}_${instanceId}` `` from these same two
+ * names; the constants below are composed the same way so that a change to
+ * either identifier moves the path admitted here without anyone editing this
+ * file.
+ *
+ * Duplicating the value does not, by itself, notice the backend's value
+ * changing instead. `backend/tests/stripe-webhook-endpoint.test.ts:61` pins
+ * backend's own derivation to the literal `/hooks/payment/stripe_stripe`, so
+ * an edit to backend's identifiers that does not also update that literal
+ * goes red there — but a coherent rename that updates every backend pin,
+ * including that literal, together, passes with this file's constants
+ * untouched: the live webhook would 404 and no test names this file. The
+ * source-reading test at `backend/tests/stripe-webhook-endpoint.test.ts:76-84`
+ * does not help either: it asserts only that `hooks` is a member of
+ * `ALLOWED_PREFIXES`, never that the admitted segment matches backend's
+ * identifier. That gap is real and unclosed; there is no cross-repository
+ * test that would catch a coherent rename on both sides.
+ */
+const STRIPE_PROVIDER_IDENTIFIER = "stripe";
+const STRIPE_PROVIDER_INSTANCE_ID = "stripe";
+
+/** The provider segment Medusa's `PaymentModuleService.getWebhookActionAndData` resolves this registration to. */
+const STRIPE_WEBHOOK_PROVIDER_SEGMENT = `${STRIPE_PROVIDER_IDENTIFIER}_${STRIPE_PROVIDER_INSTANCE_ID}`;
+
+/** The one path admitted under `hooks` — see the comparison rule below. */
+const STRIPE_WEBHOOK_PATH = `/hooks/payment/${STRIPE_WEBHOOK_PROVIDER_SEGMENT}`;
+
+/**
+ * The only path admitted under the `hooks` namespace, matched
+ * segment-by-segment against the incoming path (see the call site below).
+ *
+ * `hooks` exists in `ALLOWED_PREFIXES` for exactly one route:
+ * `POST /hooks/payment/:provider`, the Medusa-core handler
+ * (`backend/node_modules/@medusajs/medusa/dist/api/hooks/payment/[provider]/route.js`)
+ * that queues a webhook event before verifying anything about the request,
+ * including `:provider` against a registered provider. `isRefusedSegment`
+ * above already refuses a dot segment or an embedded separator in *every*
+ * namespace — it is not namespace-scoped, unlike `REFUSED_STATIC_SEGMENTS` —
+ * but admitting `hooks` and stopping there would still forward
+ * `/hooks/payment/<anything>` to that handler, enqueuing a job from an
+ * unauthenticated body. So `hooks` gets an allowlist of its own: not a
+ * refused segment, an admitted one.
+ *
+ * The two variable segments are compared two different ways, and that
+ * asymmetry is deliberate rather than an oversight:
+ *
+ * - The second segment (`payment`) is compared **undecoded**. It is a literal
+ *   route segment, not a route parameter, and nothing in this repository
+ *   observes how (or whether) Express decodes a literal segment before
+ *   matching it — so admitting an encoded spelling here would be a guess, not
+ *   a proven equivalence, and it is refused instead.
+ * - The third segment (the provider) is compared **decoded**, against
+ *   {@link STRIPE_WEBHOOK_PROVIDER_SEGMENT}. Express 4.22.2 resolves
+ *   `req.params.provider` with `decodeURIComponent` — the same function
+ *   `decodeSegment` uses — so every admitted spelling of this segment reaches
+ *   the handler as the identical string. The encoding variance is not a
+ *   bypass; it is two spellings of one request, and refusing it would refuse
+ *   traffic the handler treats as the real webhook.
+ *
+ * `resolveStoreApiPath` returns {@link STRIPE_WEBHOOK_PATH} — the canonical
+ * spelling — rather than the caller's, so an upstream access log or any
+ * log-based alerting keyed on the path sees one string regardless of how the
+ * caller encoded it.
+ */
+
+/**
  * The one path segment under `/store-api/static/*` that is never product media.
  *
  * The catalogue-import Job stages `catalogue.tar.gz` on the assets PVC under
@@ -149,6 +234,16 @@ export function resolveStoreApiPath(pathname: string): string | null {
     segments.some((segment) => REFUSED_STATIC_SEGMENTS.has(decodeSegment(segment).toLowerCase()))
   ) {
     return null;
+  }
+  if (namespace === "hooks") {
+    if (
+      segments.length !== 3 ||
+      segments[1] !== "payment" ||
+      decodeSegment(segments[2] ?? "") !== STRIPE_WEBHOOK_PROVIDER_SEGMENT
+    ) {
+      return null;
+    }
+    return STRIPE_WEBHOOK_PATH;
   }
 
   // Belt and braces over the segment refusals above: whatever the parser does

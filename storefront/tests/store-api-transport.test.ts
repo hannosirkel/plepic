@@ -153,6 +153,115 @@ describe("no encoding of a dot segment reaches the Admin surface", () => {
   });
 });
 
+/**
+ * The `hooks` namespace exists for exactly one route —
+ * `POST /hooks/payment/:provider`, which Medusa core queues a webhook job from
+ * before verifying anything, including `:provider` against a registered
+ * provider
+ * (`backend/node_modules/@medusajs/medusa/dist/api/hooks/payment/[provider]/route.js`).
+ * Admitting the namespace and stopping there would forward any same-depth
+ * sibling or nested path to that handler, so this suite asserts the property
+ * rather than one hardcoded string: under `hooks`, the path resolves **if and
+ * only if** the second segment is exactly `payment` — compared undecoded,
+ * because it is a literal route segment rather than a route parameter — and
+ * the third segment *decodes* to exactly `stripe_stripe`, the pair
+ * `backend/src/config/payment.ts` composes `STRIPE_WEBHOOK_PATH` from.
+ * "Decodes to" is not a looser check than exact equality: Express resolves
+ * `:provider` with the same `decodeURIComponent` this module's `decodeSegment`
+ * uses, so an encoded spelling of the provider segment is the same request,
+ * at the same handler, as the plain one — see the dedicated cases below.
+ */
+describe("the hooks namespace admits exactly the registered webhook path", () => {
+  const REAL_PATH = "/store-api/hooks/payment/stripe_stripe";
+
+  it("resolves the real webhook path", () => {
+    expect(resolveStoreApiPath(REAL_PATH)).toBe("/hooks/payment/stripe_stripe");
+  });
+
+  /**
+   * A cross product over plain-ASCII combinations, proving the shape of the
+   * match: every pair but the one real one is refused, including case
+   * variants of both segments and near misses of the provider segment (a
+   * prefix of it, and a same-depth sibling that extends it). None of these
+   * strings need percent-decoding to evaluate — that half of the mechanism,
+   * the one behaviour distinguishing this check from a naive `===`, is
+   * exercised separately below.
+   */
+  it("resolves only the exact (payment, stripe_stripe) pair, and refuses every other combination", () => {
+    const secondSegments = ["payment", "Payment", "PAYMENT", "payments", "refunds", "hooks"];
+    const thirdSegments = [
+      "stripe_stripe",
+      "Stripe_Stripe",
+      "STRIPE_STRIPE",
+      "stripe_stripeEVIL",
+      "stripe_strip",
+      "anything",
+      "paypal_paypal",
+    ];
+
+    for (const second of secondSegments) {
+      for (const third of thirdSegments) {
+        const pathname = `/store-api/hooks/${second}/${third}`;
+        const expected =
+          second === "payment" && third === "stripe_stripe" ? "/hooks/payment/stripe_stripe" : null;
+        expect(resolveStoreApiPath(pathname), pathname).toBe(expected);
+      }
+    }
+  });
+
+  it("refuses a nested path past the real one and a bare prefix of it", () => {
+    for (const pathname of [
+      `${REAL_PATH}/extra`,
+      `${REAL_PATH}/`,
+      "/store-api/hooks/payment",
+      "/store-api/hooks",
+    ]) {
+      expect(resolveStoreApiPath(pathname), pathname).toBeNull();
+    }
+  });
+
+  /**
+   * The provider segment is compared decoded, on purpose: Express decodes
+   * `:provider` with `decodeURIComponent` before the handler sees it, so an
+   * encoded spelling that decodes to the registered identifier reaches the
+   * exact same handler call as the plain spelling. Refusing it would refuse
+   * traffic Medusa itself treats as the real webhook. Each admitted spelling
+   * below also resolves to the *canonical* path, not the caller's — the log
+   * line an upstream alert reads must not depend on how the caller encoded
+   * the request.
+   */
+  it("admits an encoded spelling of the provider segment that decodes to the registered one", () => {
+    for (const encodedProvider of ["stripe%5Fstripe", "%73tripe_stripe", "%73tripe%5Fstripe"]) {
+      const pathname = `/store-api/hooks/payment/${encodedProvider}`;
+      expect(resolveStoreApiPath(pathname), pathname).toBe("/hooks/payment/stripe_stripe");
+    }
+  });
+
+  /**
+   * Double-encoding does not resolve: `decodeSegment` decodes exactly once,
+   * so `%2573tripe_stripe` decodes to the literal text `%73tripe_stripe`,
+   * which is not the registered identifier. A second decode is not performed
+   * on the assumption that no router downstream performs one either — the
+   * same reasoning `isRefusedSegment`'s docstring gives for double-encoded
+   * dot segments.
+   */
+  it("refuses a double-encoded provider segment", () => {
+    expect(resolveStoreApiPath("/store-api/hooks/payment/%2573tripe_stripe")).toBeNull();
+  });
+
+  /**
+   * The `payment` segment is compared **undecoded**, unlike the provider
+   * segment above: it is a literal route segment, not a route parameter, and
+   * nothing in this repository observes how Express matches an encoded
+   * literal segment. `%70ayment` decodes to `payment`, but that is not a
+   * proven equivalence the way the provider segment's decoding is, so it is
+   * refused rather than admitted on a guess.
+   */
+  it("refuses an encoded spelling of the fixed payment segment", () => {
+    expect(resolveStoreApiPath("/store-api/hooks/%70ayment/stripe_stripe")).toBeNull();
+  });
+});
+
 async function listen(server: Server): Promise<URL> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
