@@ -1,0 +1,1015 @@
+{
+  "tasks": [
+    {
+      "id": "T001",
+      "milestone": "M1",
+      "title": "All languages: document today's locale behaviour and this plan's decisions",
+      "description": "Stand the documents up before any code changes. Create `docs/current/locales.md` from the README section Locales and from the code as it is: two editions `en` and `et`, `et` legal-only, the registries, the catch-all route, canonical, `hreflang`, sitemap, the footer switcher, and that nothing negotiates a locale. Correct what the README gets wrong (it says one locale). Replace the README section Locales with a short paragraph and a link to the new file. Create `docs/decisions/0001-locale-chosen-by-url.md` (the rules of plan section How a locale is chosen, with questions Q1, Q2 and Q5) and `docs/decisions/0002-translated-rulebook-pdf.md` (the pipeline of plan section The rulebook PDF and the trial on sheet 10). Change no code and no test. Files: `docs/current/locales.md`, two files under `docs/decisions/`, `README.md`.",
+      "acceptance": [
+        "`docs/current/locales.md` names every locale-keyed registry that `grep -rn 'Record<Locale\\|LocalizedContent<' content storefront/src` finds outside tests",
+        "`README.md` no longer says the site is published in one locale and links to `docs/current/locales.md`",
+        "`markdownlint-cli2 'docs/**/*.md' README.md` and `lychee --config lychee.toml './docs/**/*.md'` exit 0",
+        "`git diff --stat` against the base shows only Markdown files"
+      ],
+      "needs": [],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-the-site-is-today",
+        "docs/working/site-translation/plan.md#how-a-locale-is-chosen"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T002",
+      "milestone": "M1",
+      "title": "Site: per-edition site copy registry and the structure mirror test",
+      "description": "Add `content/editions.ts` exporting `SiteCopy` (the shape of the English modules `publisher`, `lunarBase`, `proof`, `support`, `shop`, `pages` and the new `interface`) and `siteCopyByLocale: LocalizedContent<SiteCopy | null>` with `en` built from the English modules and `et` set to `null`. Add `siteCopyFor(locale)` that throws for a `null` edition. Add `content/interface.ts` with its type and no strings yet beyond what this task's tests need. Add `content/mirror.test.ts`: for every directory under `content/` other than `legal` and `glossary`, and every directory under `content/legal/`, registered as a locale or not, each module must have the English module's export names, list lengths, anchors, ids, source ids, link targets and placeholders; only prose may differ. Prove the test with fixtures under a temporary directory, not with real translations. Export the registry from `content/index.ts`. Do not edit the English copy modules. Files: `content/editions.ts`, `content/interface.ts`, `content/schema.ts`, `content/index.ts`, `content/mirror.test.ts`, `content/content.test.ts`, `content/README.md`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`git diff` against the base is empty for `content/publisher.ts`, `content/lunar-base.ts`, `content/proof.ts`, `content/support.ts`, `content/shop.ts` and `content/legal/`",
+        "The mirror test fails on a fixture module with one export removed, one list item removed, one changed anchor and one changed placeholder, each named in the failure",
+        "Removing the `et` key from `siteCopyByLocale` fails `npm run typecheck`"
+      ],
+      "needs": [
+        "T001"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T003",
+      "milestone": "M1",
+      "title": "Site: home page and shared sections read copy by edition",
+      "description": "Make the home page locale-aware. `HomepageMockup`, `ProofStripSection`, `ReviewComposite`, `TeamPhotoSection`, `NewsletterForm` and the footer tagline in `SiteFooter` take a `locale` prop (default `DEFAULT_LOCALE`) and read `siteCopyFor(locale)` in place of importing English modules. Move every reader-facing literal in these components into `content/interface.ts`. Add a `HomeRoute` view to `LOCALIZED_ROUTE_VIEWS` in `storefront/src/app/localized-routes.tsx` and render it from `app/(site)/page.tsx`, so both editions share one renderer. Update `storefront/tests/locale-routing.test.ts` where it pins the view table to the legal set. English HTML must not change. Files: the six components, `content/interface.ts`, `localized-routes.tsx`, `app/(site)/page.tsx`, one test file.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "A test renders the home page with a fixture `SiteCopy` whose every string is wrapped in marker characters and finds no unmarked sentence in the output",
+        "The existing home page tests pass without edits to their expected English text",
+        "`grep -n 'content/publisher.js\\|content/proof.js\\|content/lunar-base.js' storefront/src/components/mockups/HomepageMockup.tsx` prints nothing"
+      ],
+      "needs": [
+        "T002"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#routes"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T004",
+      "milestone": "M1",
+      "title": "Site: Lunar Base page reads copy by edition",
+      "description": "Make the product page locale-aware, as T003 did for the home page. `LunarBaseMockup`, `FeatureSpecStrip`, `PurchasePanelMockup`, `ProductSafetyBlock`, `VideoEmbed` and `AddToCartButton` take a `locale` and read `siteCopyFor(locale)`. Move their literals (section headings such as \"Four ways to win\", button states such as \"Adding to basket\") into `content/interface.ts`. `storefront/src/lib/product-jsonld.ts` takes the edition's product name and description. Add a `LunarBaseRoute` view to `LOCALIZED_ROUTE_VIEWS` and render it from `app/(site)/games/lunar-base/page.tsx`. `FeatureSpecStrip` keys its icons by English label today; key them by a stable id so a translated label keeps its icon. English HTML must not change. Files: the six components, `product-jsonld.ts`, `content/interface.ts`, `localized-routes.tsx`, the page file.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "A test renders the product page with the marker fixture of T003 and finds no unmarked sentence, including in the JSON-LD script",
+        "Every specification item renders its icon under the marker fixture",
+        "Existing product page tests pass without edits to their expected English text"
+      ],
+      "needs": [
+        "T003"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#routes"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T005",
+      "milestone": "M1",
+      "title": "Site: support page, rulebook page and forms read copy by edition",
+      "description": "Make the support group locale-aware. `SupportPageContent`, `RulebookPageContent`, `ContactForm` and `TurnstileWidget` take a `locale`. Move the rulebook page's English sentences and every form label, status and error literal into `content/interface.ts`. The server actions in `storefront/src/components/forms/public-form-actions.ts` receive the locale as a hidden form field, validate it with `isLocale`, fall back to the default edition for any other value, and answer in that edition. Add `SupportRoute` and `RulebookRoute` views and render them from the two `(site)` pages. English HTML must not change. Files: four components, `public-form-actions.ts`, `content/interface.ts`, `localized-routes.tsx`, two page files, one test file.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "With the marker fixture, the support page, the rulebook page and both forms' success and error states render no unmarked sentence",
+        "A form post carrying a locale value that is not a declared locale is answered in English and does not throw",
+        "Existing support, rulebook and form tests pass without edits to their expected English text"
+      ],
+      "needs": [
+        "T004"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#routes"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T006",
+      "milestone": "M1",
+      "title": "Site: basket by edition, price format per edition, robots for prefixed paths",
+      "description": "Make the basket locale-aware. `BasketPageContent`, `ShopPageShell`, `DestinationSelector` and `storefront/src/lib/price-qualification.ts` take a `locale` and read `siteCopyFor(locale).shop` and `.interface`. Add `numberFormatTag` to `LocaleDefinition` in `content/routes.ts` (`en-IE` for `en` and `et-EE` for `et`) and use it in the two `formatPrice` functions (`storefront/src/lib/catalogue.ts`, `storefront/src/lib/cart.ts`) in place of the literal `en-IE`. Add a `BasketRoute` view; thread `searchParams` through the catch-all page for `?mock=`. Extend `robots-contract.ts` so every non-default edition's basket and checkout paths are disallowed, computed from `LOCALES`. Changing the delivery destination must not change the edition, and the reverse. English HTML must not change. Files: three components, `price-qualification.ts`, `catalogue.ts`, `cart.ts`, `content/routes.ts`, `robots-contract.ts`, `localized-routes.tsx`, the catch-all page.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`robots-contract.test.ts` expects `/et/cart` and `/et/checkout` in the disallow list and derives them from `LOCALES`",
+        "A test formats one amount under each locale's `numberFormatTag` and the English result equals today's string",
+        "With the marker fixture the filled and the empty basket render no unmarked sentence",
+        "A test posts a destination change from a prefixed basket and the response stays under the same prefix"
+      ],
+      "needs": [
+        "T005"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#routes",
+        "docs/working/site-translation/plan.md#how-a-locale-is-chosen"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T007",
+      "milestone": "M1",
+      "title": "Site: checkout and payment return by edition",
+      "description": "Make the checkout locale-aware. `CheckoutPageContent`, `StripePaymentElement`, `StripePaymentReturn`, `ParcelMachinePicker`, `checkout-address.ts` and `checkout-terms.ts` take a `locale`. `checkout-terms.ts` reads the edition's legal pages through `legalPagesByLocale`, not the English files. Move the literals in the Stripe components into `content/interface.ts`. Add `checkoutReturn` to `ROUTE_PATHS` for the existing path `/checkout/payment-return`, mark it non-indexable and never in the sitemap, and build Stripe's `return_url` and every checkout link with `localizedPath`, so a visitor who paid from `/et/checkout` returns under `/et`. Add `CheckoutRoute` and `CheckoutReturnRoute` views. The two order route handlers stay unprefixed; they return data, not words. Do not change what is sent to Medusa or Stripe apart from the return address. English HTML must not change. `CheckoutPageContent.tsx` is 1,320 lines: change only imports, props and literals. Files: four components, two helpers, `content/routes.ts`, `content/interface.ts`, `localized-routes.tsx`, one test file.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "A test builds the return address for each locale and gets `/checkout/payment-return` for `en` and `/et/checkout/payment-return` for `et`",
+        "With the marker fixture the checkout form, its validation messages, the terms acknowledgement and all three payment-return states render no unmarked sentence",
+        "`sitemap-contract.test.ts` shows no checkout or payment-return entry in any edition",
+        "Existing checkout tests pass without edits to their expected English text"
+      ],
+      "needs": [
+        "T006"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#routes"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T008",
+      "milestone": "M1",
+      "title": "Site: consent banner, 404 and document metadata by edition; Klingon case guard",
+      "description": "Finish the mechanism outside the page bodies. `ConsentManager` takes the locale from `SiteDocument` and reads its strings from `content/interface.ts`; the stored consent tokens stay as they are. `not-found-content.tsx` reads its title, sentence and link label per edition; on a prefixed path it uses that edition, otherwise English. `buildPageMetadata` in `storefront/src/lib/seo.ts` already takes a locale: confirm title, description, `og:locale` and image `alt` come from the edition and add the test. Add to `storefront/src/styles/global.css` a rule that sets `text-transform: none` on `:lang(tlh)`, and a test that fails when any stylesheet under `storefront/src/styles` applies `text-transform` without that guard being present. Klingon spelling is case-sensitive, so capitalising it changes the letters. Files: `ConsentManager.tsx`, `site-document.tsx`, `not-found-content.tsx`, `seo.ts`, `content/interface.ts`, `global.css`, two test files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "With the marker fixture the consent banner and the 404 body render no unmarked sentence",
+        "The case-guard test fails when the `:lang(tlh)` rule is removed from `global.css`",
+        "A 404 still carries no canonical and no alternates (`build-and-serve.test.ts` unchanged and passing)"
+      ],
+      "needs": [
+        "T007"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#metadata-and-sitemap",
+        "docs/working/site-translation/plan.md#tests"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T009",
+      "milestone": "M1",
+      "title": "Site: language selector in the header and the footer",
+      "description": "Add `storefront/src/components/LanguageSelector.tsx`: a `<nav>` labelled by `CHROME_STRINGS[locale].languageNavLabel`, with one entry per edition that publishes the current route. Each other edition is a link to the same route there (`localizedPath`), named in its own language, with `lang` and `hreflang`. The current edition is shown with `aria-current=\"true\"` and is not a link. No script, no cookie, no form. Change `LANGUAGE_SWITCHER_LABELS` to language names (`English`, `Eesti`). Render the component in `SiteHeader` (inside the navigation sheet on a narrow viewport) and in `SiteFooter`, replacing the footer's inline switcher. `SiteHeader` gains the `route` prop the footer already has; pass it from every route view. On the 404 page the entries link to each edition's home page. Refresh the existing screenshot baselines with the pinned Playwright image as `README.md` section Browser screenshots describes; if Docker is not available, say so in the hand-over note and leave the baselines untouched. Files: the new component and its CSS module, `SiteHeader.tsx`, `SiteFooter.tsx`, `chrome-strings.ts`, `locale-navigation.test.tsx`, `site-chrome.test.tsx`, the Playwright spec; baselines are generated files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "On `/legal/imprint` the header and the footer each list English as current and `Eesti` linking to `/et/legal/imprint` with `lang=\"et\"` and `hreflang=\"et\"`",
+        "On `/games/lunar-base`, which `et` does not publish yet, the selector offers no `et` entry",
+        "The rendered selector contains no `<script>`, `<form>`, `<select>` or `<button>`",
+        "The Playwright spec gains a test that opens `/legal/imprint`, follows the selector to Estonian and back, and checks `<html lang>` each time",
+        "The pull request body names the refreshed baseline files, or states that they were not refreshed and why"
+      ],
+      "needs": [
+        "T008"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#the-selector",
+        "docs/working/site-translation/plan.md#tests"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T010",
+      "milestone": "M1",
+      "title": "Site: guards that no locale is negotiated and no English leaks into an edition",
+      "description": "Add the guards the later tasks rely on. (1) `storefront/tests/locale-selection.test.ts`: a source scan over `storefront/src` that fails on any read of `accept-language`, `x-forwarded-for`, `x-real-ip`, `cf-ipcountry`, `cf-connecting-ip` or a `geo` property of the request, with an allow-list that is empty today; and a unit test that `parseLocalizedPath` is the only function that yields a `Locale` from a request. (2) In `storefront/tests/build-and-serve.test.ts`: request `/` and `/games/lunar-base` with `Accept-Language: de,et;q=0.9`, a destination cookie for Germany and a forwarded address, and expect status 200, no redirect, `<html lang=\"en\">` and the English heading. (3) `storefront/tests/edition-leak.test.tsx`: for every non-default edition and every route it publishes, render the route and fail when a string of four or more words from the English `SiteCopy` or English legal set appears, except strings on a named exemption list (proper nouns, strings a translation keeps identical, each with a reason). (4) Extend `sitemap-contract.test.ts` and `seo.test.ts` so their expectations are computed for however many editions `LOCALES` holds. Files: three test files new or extended, `sitemap-contract.test.ts`, `seo.test.ts`, a small exemption module.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Adding `request.headers.get(\"accept-language\")` to `storefront/src/proxy.ts` makes the source scan fail and name the file",
+        "The served test fails when `/` is made to redirect by `Accept-Language` (shown once in the pull request body, then reverted)",
+        "The leak test fails when one sentence of an Estonian legal page is replaced with its English source"
+      ],
+      "needs": [
+        "T009"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-locale-is-chosen",
+        "docs/working/site-translation/plan.md#tests",
+        "docs/working/site-translation/plan.md#metadata-and-sitemap"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T011",
+      "milestone": "M1",
+      "title": "All languages: glossary model and the consistency check",
+      "description": "Build the glossary every language fills in. `content/glossary/terms.ts`: a closed list of term ids with the English term and its class (`as-printed`, `translated-with-original`, `translated`). Seed it from the rulebook and the site: Station, Agent, Influence, Module, Credit, Credit Counter, Supply, Base, Orb, Shuttle, colonist, scientific achievement, Main Action, the action names (Draft, Draw, Discard, Resell, Build, Flip), deck, hand, discard pile, victory condition, Terran Outpost and the other Station names, Lunar Base, Plepic Games, rulebook, basket, checkout, parcel machine, withdrawal. `content/glossary/schema.ts`: per locale, per term, `term`, `forms` (allowed inflected forms or stems), `forbidden` (variants that must not appear) and `note`; a `Partial<Record<Locale, ...>>` so a language registers when its glossary lands. `content/glossary.test.ts`: for every registered glossary, walk each translated string of the locale's site copy and legal set together with the English string at the same key. Fail when a forbidden variant appears, when the English string has a term and the translation has none of its forms, or when an `as-printed` term is altered. Exceptions live in a named list with reasons. Leave a hook for rulebook text, which arrives in M2. The glossary is not exported from `content/index.ts`. Document the three classes in `content/README.md`. Files: three under `content/glossary/`, `content/glossary.test.ts`, `content/README.md`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The check is proven on fixture data: one forbidden variant, one missing term and one altered `as-printed` term each fail with the key and the term named",
+        "`grep -n glossary content/index.ts` prints nothing",
+        "Every seeded term id appears at least once in the English site copy or in the rulebook transcription, shown by a test or listed in the pull request body"
+      ],
+      "needs": [
+        "T010"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#glossary"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T012",
+      "milestone": "M2",
+      "title": "Rulebook: frame map and English text extracted from the published PDF",
+      "description": "Create the `rulebook/` directory (not a workspace; add it to the root `tsconfig.json`, the root Vitest include and the table in `AGENTS.md` outside the managed block). Add `pdfjs-dist` as a root devDependency. `rulebook/extract.ts` reads `storefront/public/documents/lunar-base-rulebook.pdf` and writes `rulebook/layout/frames.ts`: for each of the 25 sheets its size, and for each text frame an id (`s10.f03`), box in points, font family, weight, style, size, colour, alignment, and the English text. Lines of one paragraph merge into one frame. The file is generated: mark it so in its header and exclude it from the size count in the pull request body. `rulebook/README.md` states the prerequisites and the command. Add `rulebook/frames.test.ts`: 25 sheets, unique ids, every box inside its sheet, and the words of all frames of a sheet equal the words `pdfjs-dist` returns for that sheet. Files: `rulebook/extract.ts`, `rulebook/layout/frames.ts` (generated), `rulebook/README.md`, `rulebook/frames.test.ts`, `package.json`, `tsconfig.json`, `vitest.config.ts`, `AGENTS.md`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`npm run rulebook:extract` rewrites `rulebook/layout/frames.ts` with no diff",
+        "The frame map has 25 sheets; sheet 1 is 283.5 pt square and sheets 2 to 24 are 566.9 by 283.5 pt",
+        "Sheet 10 has a frame whose text starts `CHECK FOR ARRIVING SHUTTLES` at about x 28 pt, y 21 pt"
+      ],
+      "needs": [
+        "T011"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#sources",
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T013",
+      "milestone": "M2",
+      "title": "Rulebook: English frames corrected by hand, with roles and reading order",
+      "description": "Extraction cannot know meaning. Add `rulebook/layout/overrides.ts`, applied on top of the generated frame map: merge or split frames the extractor grouped wrongly, set each frame's role (`h1`, `h2`, `p`, `ol`, `ul`, `caption`, `page-number`, `label`), the reading order within a sheet, and inline emphasis (a small markup: `**bold**`, `_italic_`, blank line for a new paragraph, `1.` for a list item). Cross-check every sheet's text against the transcription at `~/gascity/rigs/lunar-base/docs/inputs/rulebook.md` (read it; do not copy it into this repository) and fix extraction errors. Add `rulebook/layout/residual-english.md`: every piece of English that is not live text and is not on a card face, per sheet, with a decision: patch and new frame, or stays and why. Export `FrameId` as a union type and `RulebookText = Record<FrameId, string>`; add `rulebook/text/en.ts` as the reviewed English text. Extend `rulebook/frames.test.ts`: every frame has a role, reading order is a permutation, the markup parses. Files: `rulebook/layout/overrides.ts`, `rulebook/layout/residual-english.md`, `rulebook/text/en.ts`, `rulebook/text/schema.ts`, `rulebook/frames.test.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every sheet has exactly one `h1` or `h2` frame first in its reading order, except those listed with a reason",
+        "`rulebook/layout/residual-english.md` has a row for the cover words and one for each diagram label that is not live text, or states that none exist on that sheet",
+        "Removing one key from `rulebook/text/en.ts` fails `npm run typecheck`"
+      ],
+      "needs": [
+        "T012"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T014",
+      "milestone": "M2",
+      "title": "Rulebook: build a PDF from artwork underlays and frame text",
+      "description": "Add `rulebook/build.ts`, run as `npm run rulebook:build -- <locale>`. Steps: (1) Ghostscript with `-dFILTERTEXT` writes the text-free sheets to an ignored work directory. (2) `pdftocairo -svg` turns each sheet into an underlay. (3) `rulebook/template.ts` writes one HTML document: `<html lang>` from the locale's language tag, a `<title>`, `@page` sized per sheet, one `<section>` per sheet with the underlay as background and each frame an absolutely positioned element of its role, in reading order. Fonts load through `@font-face` from the directory named by `RULEBOOK_FONT_DIR` (MADE Evolve Sans OTF in the read-only input); Lato and Josefin Sans come from `@fontsource` devDependencies. No font file is copied into the repository. (4) Playwright's Chromium prints a tagged PDF with explicit page sizes to `storefront/public/documents/lunar-base-rulebook-<locale>.pdf`. The fit ladder: set each frame at its English size; if it overflows, step the size down to 90 % and never below 6 pt, leading to 95 %; record the scale used. For a sheet whose vector underlay differs from the stripped source by more than the set pixel ratio, use a 300 dpi raster underlay and record that. The build fails with a clear message when Ghostscript, poppler or the font directory is missing. Build English into the ignored work directory only: the published English PDF is never replaced. Files: `rulebook/build.ts`, `rulebook/template.ts`, `rulebook/underlay.ts`, `rulebook/fit.ts`, a unit test for the template and the fit ladder, `package.json`, `.gitignore`, `rulebook/README.md`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`RULEBOOK_FONT_DIR=<fonts> npm run rulebook:build -- en` writes a 25-sheet PDF to the ignored work directory, and `pdfinfo` reports it tagged",
+        "`pdftotext` of that PDF returns the text of every frame of sheet 10",
+        "`git status` after the build shows no font file and no change to `storefront/public/documents/lunar-base-rulebook.pdf`",
+        "Running the build with `RULEBOOK_FONT_DIR` unset exits non-zero and names the variable"
+      ],
+      "needs": [
+        "T013"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#sources"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T015",
+      "milestone": "M2",
+      "title": "Rulebook: layout check, sheet comparison images and the source manifest",
+      "description": "Add `rulebook/check.ts`, run as `npm run rulebook:check -- <locale>`, implementing every row of plan section How the layout is checked: sheet count and size within 1 pt; artwork pixel ratio against the stripped English sheet; fit within the ladder's floors; no new frame collisions; every frame's text returned by `pdftotext` with no replacement character and every font embedded; tagged and with the edition's language; at most 16 MB. It writes one image per sheet, the built sheet beside the English sheet, into the ignored work directory for the reviewer. Run it on the English build of T014 and tune the thresholds so English passes and a deliberately broken build fails; put the thresholds in `rulebook/thresholds.ts` with the measured values beside them. Add `rulebook/manifest.json` (per committed PDF: hashes of its text files, the frame map, the overrides and the English PDF, and the PDF's own hash) written by the build, and `rulebook/manifest.test.ts`, which runs in `scripts/validate` and fails when a recorded hash differs from the current file or a committed translated PDF has no entry. Files: `rulebook/check.ts`, `rulebook/thresholds.ts`, `rulebook/manifest.ts`, `rulebook/manifest.json`, `rulebook/manifest.test.ts`, `rulebook/build.ts`, `package.json`, `rulebook/README.md`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`npm run rulebook:check -- en` exits 0 on the English build and prints one line per check",
+        "The check exits non-zero and names the frame when one English frame's text is doubled in length",
+        "The check exits non-zero when a frame's font is replaced by one lacking a used glyph",
+        "The English build differs from the published English PDF by less than the recorded pixel ratio on every sheet; the pull request body gives the worst sheet and its value",
+        "The manifest test fails when a hash in `rulebook/manifest.json` is edited"
+      ],
+      "needs": [
+        "T014"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-the-layout-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T016",
+      "milestone": "M2",
+      "title": "Rulebook: the rulebook page offers the PDF of its own edition",
+      "description": "Add `rulebookDocuments: LocalizedContent<RulebookDocument | null>` to `content/support.ts` or a sibling module: per edition the file name under `/documents/`, its size in megabytes and its sheet count; `en` describes the existing file, every other edition is `null` for now. `RulebookPageContent` links the edition's own PDF and states its size from this record in place of the constant `RULEBOOK_MEGABYTES`. An edition whose entry is `null` links the English PDF and says, in its own language, that the rulebook is in English; that sentence is a string in `content/interface.ts`. Add a test: every non-null entry names a file that exists under `storefront/public/documents/`, its stated size equals the file's size to one decimal, and its sheet count is 25. The link carries `hreflang` of the PDF's language. Files: the content module, `content/interface.ts`, `RulebookPageContent.tsx`, `rulebook-page.test.tsx`, one new test.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The English rulebook page renders the same link and the same `8.9 MB` sentence as before",
+        "The test fails when the stated size is changed to a wrong value",
+        "With a fixture edition whose entry is `null`, the page links the English PDF with `hreflang=\"en\"` and shows the marked notice string"
+      ],
+      "needs": [
+        "T015"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#the-rulebook-pdf",
+        "docs/working/site-translation/plan.md#routes"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T017",
+      "milestone": "M3",
+      "title": "German: glossary of game terms and conventions",
+      "description": "Fill the glossary for `de`. `content/glossary/de.ts`: for every term id of `terms.ts` the German term, its allowed inflected forms or stems, the variants that must not appear, and a note where the choice needs one. Terms of class `as-printed` map to themselves. For class `translated-with-original` pick the word a German board-game player expects and keep the English word for the bracket at first use. Register the glossary in the check of T011. Write `docs/working/site-translation/de.md`: the form of address (plan section Conventions per language), quotation marks, number and date style, how card names and actions are written in running text, and five example sentences from the rulebook translated with the glossary applied. Files: `content/glossary/de.ts`, `content/glossary/schema.ts` or its index, `content/glossary.test.ts`, one document.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every term id of `content/glossary/terms.ts` has a `de` entry with at least one allowed form",
+        "No two term ids share a translated term, or the note of each says why",
+        "`docs/working/site-translation/de.md` has the five example sentences and each uses the glossary's forms"
+      ],
+      "needs": [
+        "T016"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#conventions-per-language"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T018",
+      "milestone": "M3",
+      "title": "German: legal pages translation (imprint, terms, shipping, returns, privacy)",
+      "description": "Translate the five legal pages into German as `content/legal/de/imprint.ts`, `terms.ts`, `shipping.ts`, `returns.ts` and `privacy.ts`, modelled on `content/legal/et/`. Each mirrors its English page exactly: same route, anchors, `covers`, section order, placeholders, link targets and cookie-table shape; only prose differs. Keep company name, addresses and product names as they are. Set `reviewStatus` to `operator-approved`: the operator approved every translation of this job in advance on 2026-10-10, legal pages included; say so in a comment at the top of each file. The files are staged: do not add the locale to `LOCALES` or to `legalPagesByLocale` in this task. The mirror test of T002 and the content scans read them from disk. Use the formal address and the legal vocabulary a consumer in that language expects. Files: five under `content/legal/de/`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports all five `content/legal/de/` modules equal in structure to English",
+        "`git diff` against the base is empty for `content/routes.ts` and `content/legal/index.ts`",
+        "The review notes record a back-translation of every section and each difference found",
+        "The glossary check passes over all five files"
+      ],
+      "needs": [
+        "T017"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T019",
+      "milestone": "M3",
+      "title": "German: register the edition, chrome labels, legal routes go live",
+      "description": "Make `de` an edition. In `content/routes.ts` add `de` to `LOCALES` and to `LOCALE_DEFINITIONS` with language tag `de`, prefix `/de` and `numberFormatTag` `de-DE` and update the comment that says there are exactly two locales. The type checker now names every registry to fill: `legalPagesByLocale` (the staged pages), `pagesByLocale` (the legal set, as `et` did), `siteCopyByLocale` (`null` for now), `rulebookDocuments` (`null`), `CHROME_STRINGS` and `LANGUAGE_SWITCHER_LABELS` (`Deutsch`), `TAX_VOCABULARY` in `catalogue.ts`, the label and marker tables in `configuration-placeholders.ts`, and `COOKIE_TABLE_LANGUAGE` in `content/content.test.ts`. Translate those table entries into German with the glossary. Update the test that pins the list of locales. After this task `/de/legal/*` is served; every other link on those pages crosses to English with `hreflang`. Files: `content/routes.ts`, `content/legal/index.ts`, `content/index.ts`, `content/editions.ts`, `chrome-strings.ts`, `catalogue.ts`, `configuration-placeholders.ts`, `content/content.test.ts`, the rulebook documents module, one storefront test.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`resolveLocalizedRoute(\"de\", [\"legal\", \"imprint\"])` resolves; `resolveLocalizedRoute(\"de\", [\"games\", \"lunar-base\"])` is `null`",
+        "The sitemap entries for `de` are exactly the five legal routes, and each legal route's `hreflang` set now includes `de`",
+        "The selector on `/legal/imprint` offers `Deutsch` with `lang=\"de\"`",
+        "The English-leak test passes over the five new routes"
+      ],
+      "needs": [
+        "T018"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-locale-is-chosen",
+        "docs/working/site-translation/plan.md#metadata-and-sitemap"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T020",
+      "milestone": "M3",
+      "title": "German: publisher, proof, support and page metadata translation",
+      "description": "Translate into German, staged under `content/de/`: `publisher.ts` (publisher sentence, story, team, newsletter), `proof.ts` (proof strip and quotations), `support.ts` (intro, rules FAQ, rulebook link, contact) and `pages.ts` (title and description per route; unique within the edition). Each mirrors its English module: same exports, ids, source ids, anchors, link targets and placeholders. A quotation from a named reviewer is translated and keeps its source id; add nothing the English edition does not say. Rules answers in `support.ts` use the glossary's terms, because they will be read beside the rulebook. Do not register anything. Files: four under `content/de/`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports the four `content/de/` modules equal in structure to English",
+        "The glossary check passes over the new files",
+        "Titles and descriptions in `pages.ts` are unique, and each description is at most 160 characters",
+        "The review notes record the back-translation sample and each difference found"
+      ],
+      "needs": [
+        "T019"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T021",
+      "milestone": "M3",
+      "title": "German: Lunar Base product copy translation",
+      "description": "Translate `content/lunar-base.ts` into German as `content/de/lunar-base.ts`, staged: pitch, differentiator, featured description, how it plays, the four ways to win, what is in the box, specifications, purchase panel, product safety block and product FAQ. Mirror the English module exactly, placeholders such as `{price}` included. Game terms follow the glossary; terms of class `translated-with-original` carry the English word in brackets at first use on the page. Component names and counts must equal the English ones. Do not register anything. Files: `content/de/lunar-base.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports `content/de/lunar-base.ts` equal in structure to English",
+        "The glossary check passes over the new files",
+        "Every number in a translated string equals the number in the English string at the same key (reviewer's check, recorded in the review notes)"
+      ],
+      "needs": [
+        "T020"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#glossary"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T022",
+      "milestone": "M3",
+      "title": "German: interface, basket and checkout copy translation",
+      "description": "Translate into German, staged: `content/de/interface.ts` (section headings, button states, form labels, statuses and errors, consent banner, 404, rulebook page) and `content/de/shop.ts` (basket, checkout, address fields, validation messages, payment return). Mirror the English modules exactly. Error and status messages must tell the visitor the same thing to do as the English ones. Shop words (basket, checkout, parcel machine, withdrawal) follow the glossary and agree with the German legal pages. Do not register anything. Files: two under `content/de/`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports both `content/de/` modules equal in structure to English",
+        "The glossary check passes over the new files",
+        "Each shop term used in `content/de/shop.ts` is the term the `de` legal pages use, shown by the glossary check"
+      ],
+      "needs": [
+        "T021"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T023",
+      "milestone": "M3",
+      "title": "German: publish every route of the edition",
+      "description": "Turn the German edition on in full. Set `siteCopyByLocale.de` to the seven staged modules and `pagesByLocale.de` to the edition's `pages.ts` joined with its legal set, so home, Lunar Base, support, rulebook, basket, checkout and payment return are served under `/de`. Fix what full rendering shows: a label that overflows its control at 320 px, a string the leak test finds, a link that crosses to English. Add `/de` routes to the Playwright spec as functional tests (status, `<html lang=\"de\">`, the translated heading, the selector moving to English and back, add to basket and reach the checkout); add no screenshot baseline. Update the comments in `content/index.ts` and `content/routes.ts` that describe what the edition publishes. Files: `content/editions.ts`, `content/index.ts`, `content/routes.ts`, the Playwright spec, `locale-routing.test.ts`, `locale-navigation.test.tsx`, and the translated modules that need a fix.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`resolveLocalizedRoute` serves every route id under `de` that it serves for English, `about` excepted as retired",
+        "The sitemap has one `de` entry per indexable route, none for basket, checkout or payment return, and each `hreflang` set includes `de`",
+        "The English-leak test passes over every `de` route",
+        "`locale-navigation.test.tsx` shows no anchor on any `de` page crossing to another edition, the selector's own entries excepted",
+        "With `de` selected, a request for `/` still answers in English (the served test of T010)"
+      ],
+      "needs": [
+        "T022"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#routes",
+        "docs/working/site-translation/plan.md#metadata-and-sitemap",
+        "docs/working/site-translation/plan.md#tests"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T024",
+      "milestone": "M3",
+      "title": "German: rulebook text translation, sheets 1 to 13",
+      "description": "Translate the rulebook frames of sheets 1 to 13 into German as `rulebook/text/de/part1.ts`: one string per frame id, in the frame markup of T013. Work from `rulebook/text/en.ts`. Rules must mean exactly what the English says: same numbers, same conditions, same order of steps, same cross-references to page numbers. Game terms follow the glossary, with the English word in brackets at first use on a sheet for class `translated-with-original`. Card titles and Station names stay as printed. Keep sentences near the English length; the fit check comes with the PDF task, and a frame that is half again as long as its source will not fit. Add `rulebook/text/de/index.ts` typed as a partial record for now. Register the files with the glossary check's rulebook hook. Files: one or two under `rulebook/text/de/`, `content/glossary.test.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every frame id of sheets 1 to 13 has a non-empty German string, and the markup of each parses",
+        "The glossary check passes over the new rulebook text",
+        "A test shows each translated frame holds the same digits, in the same order, as its English frame, or the frame is on a named exception list with a reason",
+        "The review notes record a back-translation of every rules frame and each difference found"
+      ],
+      "needs": [
+        "T023"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T025",
+      "milestone": "M3",
+      "title": "German: rulebook text translation, sheets 14 to 25",
+      "description": "Translate the rulebook frames of sheets 14 to 25 into German as `rulebook/text/de/part2.ts`: one string per frame id, in the frame markup of T013. Work from `rulebook/text/en.ts`. Rules must mean exactly what the English says: same numbers, same conditions, same order of steps, same cross-references to page numbers. Game terms follow the glossary, with the English word in brackets at first use on a sheet for class `translated-with-original`. Card titles and Station names stay as printed. Keep sentences near the English length; the fit check comes with the PDF task, and a frame that is half again as long as its source will not fit. Complete `rulebook/text/de/index.ts` and type it as the total `RulebookText`, so a missing frame fails the type check. Register the files with the glossary check's rulebook hook. Files: one or two under `rulebook/text/de/`, `content/glossary.test.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every frame id of sheets 14 to 25 has a non-empty German string, and the markup of each parses",
+        "The glossary check passes over the new rulebook text",
+        "A test shows each translated frame holds the same digits, in the same order, as its English frame, or the frame is on a named exception list with a reason",
+        "The review notes record a back-translation of every rules frame and each difference found",
+        "Removing one key from `rulebook/text/de/part2.ts` fails `npm run typecheck`"
+      ],
+      "needs": [
+        "T024"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T026",
+      "milestone": "M3",
+      "title": "German: rulebook PDF built, layout checked and published",
+      "description": "Build and publish the German rulebook. Run `npm run rulebook:build -- de` and `npm run rulebook:check -- de`. For each frame the check names, shorten the translation without changing the rule, or widen the frame in a `de` entry of `rulebook/layout/overrides.ts` where the sheet has room; do not go below the fit floors. Apply the patches that `residual-english.md` decided on. Look at all 25 sheet pairs the check writes and record per sheet what was seen. Commit `storefront/public/documents/lunar-base-rulebook-de.pdf` and the updated `rulebook/manifest.json`. Set `rulebookDocuments.de` to the file, its size and sheet count, and translate the rulebook page's sentence that says what the file is. The PDF is a generated file: name it and its size in the pull request body. Files: the PDF, `rulebook/manifest.json`, `rulebook/layout/overrides.ts`, text files that were shortened, the rulebook documents module, `content/de/interface.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`npm run rulebook:check -- de` exits 0; its output is in the pull request body",
+        "`pdfinfo` reports 25 pages and `Tagged: yes` for `lunar-base-rulebook-de.pdf`, and the file is at most 16 MB",
+        "`pdftotext` of the PDF contains the German heading of sheet 10 exactly as in `rulebook/text/de/`",
+        "`/de/support/lunar-base/rulebook` links `lunar-base-rulebook-de.pdf` with `hreflang=\"de\"` and states its size",
+        "The review notes hold a line per sheet from the reviewer's own look at the 25 sheet pairs",
+        "`git status` shows no font file added"
+      ],
+      "needs": [
+        "T025"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-the-layout-is-checked",
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T027",
+      "milestone": "M4",
+      "title": "Estonian: glossary of game terms and conventions",
+      "description": "Fill the glossary for `et`. `content/glossary/et.ts`: for every term id of `terms.ts` the Estonian term, its allowed inflected forms or stems, the variants that must not appear, and a note where the choice needs one. Terms of class `as-printed` map to themselves. For class `translated-with-original` pick the word a Estonian board-game player expects and keep the English word for the bracket at first use. Register the glossary in the check of T011. Write `docs/working/site-translation/et.md`: the form of address (plan section Conventions per language), quotation marks, number and date style, how card names and actions are written in running text, and five example sentences from the rulebook translated with the glossary applied. The five Estonian legal pages already exist and are approved: take their terms (`ostukorv`, `müügitingimused`, `tagastamine`, and the like) as given, and where the glossary and a legal page disagree, the legal page wins and the glossary follows. Do not edit `content/legal/et/`. Files: `content/glossary/et.ts`, `content/glossary/schema.ts` or its index, `content/glossary.test.ts`, one document.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every term id of `content/glossary/terms.ts` has a `et` entry with at least one allowed form",
+        "No two term ids share a translated term, or the note of each says why",
+        "`docs/working/site-translation/et.md` has the five example sentences and each uses the glossary's forms",
+        "`git diff` against the base is empty for `content/legal/et/`; the glossary check passes over the existing Estonian legal pages"
+      ],
+      "needs": [
+        "T026"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#conventions-per-language"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T028",
+      "milestone": "M4",
+      "title": "Estonian: publisher, proof, support and page metadata translation",
+      "description": "Translate into Estonian, staged under `content/et/`: `publisher.ts` (publisher sentence, story, team, newsletter), `proof.ts` (proof strip and quotations), `support.ts` (intro, rules FAQ, rulebook link, contact) and `pages.ts` (title and description per route; unique within the edition). Each mirrors its English module: same exports, ids, source ids, anchors, link targets and placeholders. A quotation from a named reviewer is translated and keeps its source id; add nothing the English edition does not say. Rules answers in `support.ts` use the glossary's terms, because they will be read beside the rulebook. Do not register anything. Files: four under `content/et/`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports the four `content/et/` modules equal in structure to English",
+        "The glossary check passes over the new files",
+        "Titles and descriptions in `pages.ts` are unique, and each description is at most 160 characters",
+        "The review notes record the back-translation sample and each difference found"
+      ],
+      "needs": [
+        "T027"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T029",
+      "milestone": "M4",
+      "title": "Estonian: Lunar Base product copy translation",
+      "description": "Translate `content/lunar-base.ts` into Estonian as `content/et/lunar-base.ts`, staged: pitch, differentiator, featured description, how it plays, the four ways to win, what is in the box, specifications, purchase panel, product safety block and product FAQ. Mirror the English module exactly, placeholders such as `{price}` included. Game terms follow the glossary; terms of class `translated-with-original` carry the English word in brackets at first use on the page. Component names and counts must equal the English ones. Do not register anything. Files: `content/et/lunar-base.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports `content/et/lunar-base.ts` equal in structure to English",
+        "The glossary check passes over the new files",
+        "Every number in a translated string equals the number in the English string at the same key (reviewer's check, recorded in the review notes)"
+      ],
+      "needs": [
+        "T028"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#glossary"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T030",
+      "milestone": "M4",
+      "title": "Estonian: interface, basket and checkout copy translation",
+      "description": "Translate into Estonian, staged: `content/et/interface.ts` (section headings, button states, form labels, statuses and errors, consent banner, 404, rulebook page) and `content/et/shop.ts` (basket, checkout, address fields, validation messages, payment return). Mirror the English modules exactly. Error and status messages must tell the visitor the same thing to do as the English ones. Shop words (basket, checkout, parcel machine, withdrawal) follow the glossary and agree with the Estonian legal pages. Do not register anything. Files: two under `content/et/`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports both `content/et/` modules equal in structure to English",
+        "The glossary check passes over the new files",
+        "Each shop term used in `content/et/shop.ts` is the term the `et` legal pages use, shown by the glossary check"
+      ],
+      "needs": [
+        "T029"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T031",
+      "milestone": "M4",
+      "title": "Estonian: publish every route of the edition",
+      "description": "Turn the Estonian edition on in full. Set `siteCopyByLocale.et` to the seven staged modules and `pagesByLocale.et` to the edition's `pages.ts` joined with its legal set, so home, Lunar Base, support, rulebook, basket, checkout and payment return are served under `/et`. Fix what full rendering shows: a label that overflows its control at 320 px, a string the leak test finds, a link that crosses to English. Add `/et` routes to the Playwright spec as functional tests (status, `<html lang=\"et\">`, the translated heading, the selector moving to English and back, add to basket and reach the checkout); add no screenshot baseline. Update the comments in `content/index.ts` and `content/routes.ts` that describe what the edition publishes. Files: `content/editions.ts`, `content/index.ts`, `content/routes.ts`, the Playwright spec, `locale-routing.test.ts`, `locale-navigation.test.tsx`, and the translated modules that need a fix.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`resolveLocalizedRoute` serves every route id under `et` that it serves for English, `about` excepted as retired",
+        "The sitemap has one `et` entry per indexable route, none for basket, checkout or payment return, and each `hreflang` set includes `et`",
+        "The English-leak test passes over every `et` route",
+        "`locale-navigation.test.tsx` shows no anchor on any `et` page crossing to another edition, the selector's own entries excepted",
+        "With `et` selected, a request for `/` still answers in English (the served test of T010)"
+      ],
+      "needs": [
+        "T030"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#routes",
+        "docs/working/site-translation/plan.md#metadata-and-sitemap",
+        "docs/working/site-translation/plan.md#tests"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T032",
+      "milestone": "M4",
+      "title": "Estonian: rulebook text translation, sheets 1 to 13",
+      "description": "Translate the rulebook frames of sheets 1 to 13 into Estonian as `rulebook/text/et/part1.ts`: one string per frame id, in the frame markup of T013. Work from `rulebook/text/en.ts`. Rules must mean exactly what the English says: same numbers, same conditions, same order of steps, same cross-references to page numbers. Game terms follow the glossary, with the English word in brackets at first use on a sheet for class `translated-with-original`. Card titles and Station names stay as printed. Keep sentences near the English length; the fit check comes with the PDF task, and a frame that is half again as long as its source will not fit. Add `rulebook/text/et/index.ts` typed as a partial record for now. Register the files with the glossary check's rulebook hook. Files: one or two under `rulebook/text/et/`, `content/glossary.test.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every frame id of sheets 1 to 13 has a non-empty Estonian string, and the markup of each parses",
+        "The glossary check passes over the new rulebook text",
+        "A test shows each translated frame holds the same digits, in the same order, as its English frame, or the frame is on a named exception list with a reason",
+        "The review notes record a back-translation of every rules frame and each difference found"
+      ],
+      "needs": [
+        "T031"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T033",
+      "milestone": "M4",
+      "title": "Estonian: rulebook text translation, sheets 14 to 25",
+      "description": "Translate the rulebook frames of sheets 14 to 25 into Estonian as `rulebook/text/et/part2.ts`: one string per frame id, in the frame markup of T013. Work from `rulebook/text/en.ts`. Rules must mean exactly what the English says: same numbers, same conditions, same order of steps, same cross-references to page numbers. Game terms follow the glossary, with the English word in brackets at first use on a sheet for class `translated-with-original`. Card titles and Station names stay as printed. Keep sentences near the English length; the fit check comes with the PDF task, and a frame that is half again as long as its source will not fit. Complete `rulebook/text/et/index.ts` and type it as the total `RulebookText`, so a missing frame fails the type check. Register the files with the glossary check's rulebook hook. Files: one or two under `rulebook/text/et/`, `content/glossary.test.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every frame id of sheets 14 to 25 has a non-empty Estonian string, and the markup of each parses",
+        "The glossary check passes over the new rulebook text",
+        "A test shows each translated frame holds the same digits, in the same order, as its English frame, or the frame is on a named exception list with a reason",
+        "The review notes record a back-translation of every rules frame and each difference found",
+        "Removing one key from `rulebook/text/et/part2.ts` fails `npm run typecheck`"
+      ],
+      "needs": [
+        "T032"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T034",
+      "milestone": "M4",
+      "title": "Estonian: rulebook PDF built, layout checked and published",
+      "description": "Build and publish the Estonian rulebook. Run `npm run rulebook:build -- et` and `npm run rulebook:check -- et`. For each frame the check names, shorten the translation without changing the rule, or widen the frame in a `et` entry of `rulebook/layout/overrides.ts` where the sheet has room; do not go below the fit floors. Apply the patches that `residual-english.md` decided on. Look at all 25 sheet pairs the check writes and record per sheet what was seen. Commit `storefront/public/documents/lunar-base-rulebook-et.pdf` and the updated `rulebook/manifest.json`. Set `rulebookDocuments.et` to the file, its size and sheet count, and translate the rulebook page's sentence that says what the file is. The PDF is a generated file: name it and its size in the pull request body. Files: the PDF, `rulebook/manifest.json`, `rulebook/layout/overrides.ts`, text files that were shortened, the rulebook documents module, `content/et/interface.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`npm run rulebook:check -- et` exits 0; its output is in the pull request body",
+        "`pdfinfo` reports 25 pages and `Tagged: yes` for `lunar-base-rulebook-et.pdf`, and the file is at most 16 MB",
+        "`pdftotext` of the PDF contains the Estonian heading of sheet 10 exactly as in `rulebook/text/et/`",
+        "`/et/support/lunar-base/rulebook` links `lunar-base-rulebook-et.pdf` with `hreflang=\"et\"` and states its size",
+        "The review notes hold a line per sheet from the reviewer's own look at the 25 sheet pairs",
+        "`git status` shows no font file added"
+      ],
+      "needs": [
+        "T033"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-the-layout-is-checked",
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T035",
+      "milestone": "M5",
+      "title": "Klingon: lexicon, glossary of game terms and the word check",
+      "description": "Fill the glossary for `tlh` and build the guard against invented words. `content/glossary/tlh-lexicon.ts`: every root this job uses, each with word class, English gloss and source (`TKD` for The Klingon Dictionary, `KGT` for Klingon for the Galactic Traveler, `KLI` for a later word list of the Klingon Language Institute, or `coined`). `content/glossary/tlh.ts`: a translation for every term id of `terms.ts`, with the construction written out for each coined compound or phrase, and loans named as loans. `scripts/klingon-words.ts`: split a string into words; accept proper nouns and loans from a named list; check that each other word is a sequence of valid Klingon syllables (the 21 consonants including `tlh`, `ch`, `gh`, `ng`, the glottal stop, five vowels, and the final clusters `w'`, `y'`, `rgh`); strip the closed sets of verb prefixes, verb suffixes and noun suffixes and require the rest to be a lexicon root. `scripts/klingon-words.test.ts` proves it on known good and bad words and then runs it over every `tlh` string in `content/` and `rulebook/text/tlh/`; with no such string yet, the run must report zero strings, not pass silently. Write the conventions in `docs/working/site-translation/klingon.md`: Latin spelling with exact case, no pIqaD, how to coin, when to loan. Start the lexicon with the roots the glossary needs; translation tasks add roots as they use them. Files: two under `content/glossary/`, two under `scripts/`, `content/glossary.test.ts`, one document.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The word check accepts `tlhIngan`, `Hol`, `maleghlaH` and `qo'mey` and rejects `klingon`, `Qapla` without its final glottal stop, and a well-formed word whose root is not in the lexicon",
+        "Every term id of `content/glossary/terms.ts` has a `tlh` entry; an `as-printed` term maps to itself",
+        "Every lexicon entry has a source; each `coined` entry has a construction naming roots that are themselves in the lexicon",
+        "The pull request body lists the coined terms and the loans"
+      ],
+      "needs": [
+        "T034"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#klingon",
+        "docs/working/site-translation/plan.md#glossary"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T036",
+      "milestone": "M5",
+      "title": "Klingon: legal pages translation (imprint, terms, shipping, returns, privacy)",
+      "description": "Translate the five legal pages into Klingon as `content/legal/tlh/imprint.ts`, `terms.ts`, `shipping.ts`, `returns.ts` and `privacy.ts`, modelled on `content/legal/et/`. Each mirrors its English page exactly: same route, anchors, `covers`, section order, placeholders, link targets and cookie-table shape; only prose differs. Keep company name, addresses and product names as they are. Set `reviewStatus` to `operator-approved`: the operator approved every translation of this job in advance on 2026-10-10, legal pages included; say so in a comment at the top of each file. The files are staged: do not add the locale to `LOCALES` or to `legalPagesByLocale` in this task. The mirror test of T002 and the content scans read them from disk. Legal vocabulary Klingon lacks is coined or loaned by the rules of `docs/working/site-translation/klingon.md`; add the roots to the lexicon in this task. Files: five under `content/legal/tlh/`, `content/glossary/tlh-lexicon.ts`, `content/glossary/tlh.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports all five `content/legal/tlh/` modules equal in structure to English",
+        "`git diff` against the base is empty for `content/routes.ts` and `content/legal/index.ts`",
+        "The review notes record a back-translation of every section and each difference found",
+        "The word check passes over all five files and reports how many words it read"
+      ],
+      "needs": [
+        "T035"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T037",
+      "milestone": "M5",
+      "title": "Klingon: register the edition, chrome labels, legal routes go live",
+      "description": "Make `tlh` an edition. In `content/routes.ts` add `tlh` to `LOCALES` and to `LOCALE_DEFINITIONS` with language tag `tlh`, prefix `/tlh` and `numberFormatTag` `en-IE`, because ICU has no Klingon data, and update the comment that says there are exactly two locales. The type checker now names every registry to fill: `legalPagesByLocale` (the staged pages), `pagesByLocale` (the legal set, as `et` did), `siteCopyByLocale` (`null` for now), `rulebookDocuments` (`null`), `CHROME_STRINGS` and `LANGUAGE_SWITCHER_LABELS` (`tlhIngan Hol`), `TAX_VOCABULARY` in `catalogue.ts`, the label and marker tables in `configuration-placeholders.ts`, and `COOKIE_TABLE_LANGUAGE` in `content/content.test.ts`. Translate those table entries into Klingon with the glossary. Update the test that pins the list of locales. After this task `/tlh/legal/*` is served; every other link on those pages crosses to English with `hreflang`. Files: `content/routes.ts`, `content/legal/index.ts`, `content/index.ts`, `content/editions.ts`, `chrome-strings.ts`, `catalogue.ts`, `configuration-placeholders.ts`, `content/content.test.ts`, the rulebook documents module, one storefront test.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`resolveLocalizedRoute(\"tlh\", [\"legal\", \"imprint\"])` resolves; `resolveLocalizedRoute(\"tlh\", [\"games\", \"lunar-base\"])` is `null`",
+        "The sitemap entries for `tlh` are exactly the five legal routes, and each legal route's `hreflang` set now includes `tlh`",
+        "The selector on `/legal/imprint` offers `tlhIngan Hol` with `lang=\"tlh\"`",
+        "The English-leak test passes over the five new routes"
+      ],
+      "needs": [
+        "T036"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-locale-is-chosen",
+        "docs/working/site-translation/plan.md#metadata-and-sitemap"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T038",
+      "milestone": "M5",
+      "title": "Klingon: publisher, proof, support and page metadata translation",
+      "description": "Translate into Klingon, staged under `content/tlh/`: `publisher.ts` (publisher sentence, story, team, newsletter), `proof.ts` (proof strip and quotations), `support.ts` (intro, rules FAQ, rulebook link, contact) and `pages.ts` (title and description per route; unique within the edition). Each mirrors its English module: same exports, ids, source ids, anchors, link targets and placeholders. A quotation from a named reviewer is translated and keeps its source id; add nothing the English edition does not say. Rules answers in `support.ts` use the glossary's terms, because they will be read beside the rulebook. Do not register anything. Add any new root to the lexicon in this task. Files: four under `content/tlh/`, lexicon and glossary files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports the four `content/tlh/` modules equal in structure to English",
+        "The word check and the glossary check pass over the new files",
+        "Titles and descriptions in `pages.ts` are unique, and each description is at most 160 characters",
+        "The review notes record the back-translation sample and each difference found"
+      ],
+      "needs": [
+        "T037"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T039",
+      "milestone": "M5",
+      "title": "Klingon: Lunar Base product copy translation",
+      "description": "Translate `content/lunar-base.ts` into Klingon as `content/tlh/lunar-base.ts`, staged: pitch, differentiator, featured description, how it plays, the four ways to win, what is in the box, specifications, purchase panel, product safety block and product FAQ. Mirror the English module exactly, placeholders such as `{price}` included. Game terms follow the glossary; terms of class `translated-with-original` carry the English word in brackets at first use on the page. Component names and counts must equal the English ones. Do not register anything. Add any new root to the lexicon in this task. Files: `content/tlh/lunar-base.ts`, lexicon and glossary files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports `content/tlh/lunar-base.ts` equal in structure to English",
+        "The word check and the glossary check pass over the new files",
+        "Every number in a translated string equals the number in the English string at the same key (reviewer's check, recorded in the review notes)"
+      ],
+      "needs": [
+        "T038"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#glossary"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T040",
+      "milestone": "M5",
+      "title": "Klingon: interface, basket and checkout copy translation",
+      "description": "Translate into Klingon, staged: `content/tlh/interface.ts` (section headings, button states, form labels, statuses and errors, consent banner, 404, rulebook page) and `content/tlh/shop.ts` (basket, checkout, address fields, validation messages, payment return). Mirror the English modules exactly. Error and status messages must tell the visitor the same thing to do as the English ones. Shop words (basket, checkout, parcel machine, withdrawal) follow the glossary and agree with the Klingon legal pages. Do not register anything. Add any new root to the lexicon in this task. Files: two under `content/tlh/`, lexicon and glossary files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "The mirror test reports both `content/tlh/` modules equal in structure to English",
+        "The word check and the glossary check pass over the new files",
+        "Each shop term used in `content/tlh/shop.ts` is the term the `tlh` legal pages use, shown by the glossary check"
+      ],
+      "needs": [
+        "T039"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T041",
+      "milestone": "M5",
+      "title": "Klingon: publish every route of the edition",
+      "description": "Turn the Klingon edition on in full. Set `siteCopyByLocale.tlh` to the seven staged modules and `pagesByLocale.tlh` to the edition's `pages.ts` joined with its legal set, so home, Lunar Base, support, rulebook, basket, checkout and payment return are served under `/tlh`. Fix what full rendering shows: a label that overflows its control at 320 px, a string the leak test finds, a link that crosses to English. Add `/tlh` routes to the Playwright spec as functional tests (status, `<html lang=\"tlh\">`, the translated heading, the selector moving to English and back, add to basket and reach the checkout); add no screenshot baseline. Update the comments in `content/index.ts` and `content/routes.ts` that describe what the edition publishes. Files: `content/editions.ts`, `content/index.ts`, `content/routes.ts`, the Playwright spec, `locale-routing.test.ts`, `locale-navigation.test.tsx`, and the translated modules that need a fix.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`resolveLocalizedRoute` serves every route id under `tlh` that it serves for English, `about` excepted as retired",
+        "The sitemap has one `tlh` entry per indexable route, none for basket, checkout or payment return, and each `hreflang` set includes `tlh`",
+        "The English-leak test passes over every `tlh` route",
+        "`locale-navigation.test.tsx` shows no anchor on any `tlh` page crossing to another edition, the selector's own entries excepted",
+        "With `tlh` selected, a request for `/` still answers in English (the served test of T010)"
+      ],
+      "needs": [
+        "T040"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#routes",
+        "docs/working/site-translation/plan.md#metadata-and-sitemap",
+        "docs/working/site-translation/plan.md#tests"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T042",
+      "milestone": "M5",
+      "title": "Klingon: rulebook text translation, sheets 1 to 13",
+      "description": "Translate the rulebook frames of sheets 1 to 13 into Klingon as `rulebook/text/tlh/part1.ts`: one string per frame id, in the frame markup of T013. Work from `rulebook/text/en.ts`. Rules must mean exactly what the English says: same numbers, same conditions, same order of steps, same cross-references to page numbers. Game terms follow the glossary, with the English word in brackets at first use on a sheet for class `translated-with-original`. Card titles and Station names stay as printed. Keep sentences near the English length; the fit check comes with the PDF task, and a frame that is half again as long as its source will not fit. Add `rulebook/text/tlh/index.ts` typed as a partial record for now. Register the files with the glossary check's rulebook hook. Add any new root to the lexicon in this task. Files: one or two under `rulebook/text/tlh/`, `content/glossary.test.ts`, lexicon and glossary files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every frame id of sheets 1 to 13 has a non-empty Klingon string, and the markup of each parses",
+        "The word check and the glossary check pass over the new rulebook text",
+        "A test shows each translated frame holds the same digits, in the same order, as its English frame, or the frame is on a named exception list with a reason",
+        "The review notes record a back-translation of every rules frame and each difference found"
+      ],
+      "needs": [
+        "T041"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T043",
+      "milestone": "M5",
+      "title": "Klingon: rulebook text translation, sheets 14 to 25",
+      "description": "Translate the rulebook frames of sheets 14 to 25 into Klingon as `rulebook/text/tlh/part2.ts`: one string per frame id, in the frame markup of T013. Work from `rulebook/text/en.ts`. Rules must mean exactly what the English says: same numbers, same conditions, same order of steps, same cross-references to page numbers. Game terms follow the glossary, with the English word in brackets at first use on a sheet for class `translated-with-original`. Card titles and Station names stay as printed. Keep sentences near the English length; the fit check comes with the PDF task, and a frame that is half again as long as its source will not fit. Complete `rulebook/text/tlh/index.ts` and type it as the total `RulebookText`, so a missing frame fails the type check. Register the files with the glossary check's rulebook hook. Add any new root to the lexicon in this task. Files: one or two under `rulebook/text/tlh/`, `content/glossary.test.ts`, lexicon and glossary files.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Every frame id of sheets 14 to 25 has a non-empty Klingon string, and the markup of each parses",
+        "The word check and the glossary check pass over the new rulebook text",
+        "A test shows each translated frame holds the same digits, in the same order, as its English frame, or the frame is on a named exception list with a reason",
+        "The review notes record a back-translation of every rules frame and each difference found",
+        "Removing one key from `rulebook/text/tlh/part2.ts` fails `npm run typecheck`"
+      ],
+      "needs": [
+        "T042"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced",
+        "docs/working/site-translation/plan.md#glossary",
+        "docs/working/site-translation/plan.md#how-quality-is-checked"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T044",
+      "milestone": "M5",
+      "title": "Klingon: rulebook PDF built, layout checked and published",
+      "description": "Build and publish the Klingon rulebook. Run `npm run rulebook:build -- tlh` and `npm run rulebook:check -- tlh`. For each frame the check names, shorten the translation without changing the rule, or widen the frame in a `tlh` entry of `rulebook/layout/overrides.ts` where the sheet has room; do not go below the fit floors. Apply the patches that `residual-english.md` decided on. Look at all 25 sheet pairs the check writes and record per sheet what was seen. Commit `storefront/public/documents/lunar-base-rulebook-tlh.pdf` and the updated `rulebook/manifest.json`. Set `rulebookDocuments.tlh` to the file, its size and sheet count, and translate the rulebook page's sentence that says what the file is. The PDF is a generated file: name it and its size in the pull request body. Files: the PDF, `rulebook/manifest.json`, `rulebook/layout/overrides.ts`, text files that were shortened, the rulebook documents module, `content/tlh/interface.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "`npm run rulebook:check -- tlh` exits 0; its output is in the pull request body",
+        "`pdfinfo` reports 25 pages and `Tagged: yes` for `lunar-base-rulebook-tlh.pdf`, and the file is at most 16 MB",
+        "`pdftotext` of the PDF contains the Klingon heading of sheet 10 exactly as in `rulebook/text/tlh/`",
+        "`/tlh/support/lunar-base/rulebook` links `lunar-base-rulebook-tlh.pdf` with `hreflang=\"tlh\"` and states its size",
+        "The review notes hold a line per sheet from the reviewer's own look at the 25 sheet pairs",
+        "`git status` shows no font file added"
+      ],
+      "needs": [
+        "T043"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#how-the-layout-is-checked",
+        "docs/working/site-translation/plan.md#how-a-translated-pdf-is-produced"
+      ],
+      "implementer": "claude-lead"
+    },
+    {
+      "id": "T045",
+      "milestone": "M6",
+      "title": "All languages: require full copy and a rulebook from every edition",
+      "description": "Close the gaps the staging needed. Change `siteCopyByLocale` to `LocalizedContent<SiteCopy>` and `rulebookDocuments` to `LocalizedContent<RulebookDocument>`: remove `| null`, the throwing branch of `siteCopyFor` and the \"rulebook is in English\" notice with its string in every edition. Change the glossary registry from partial to total. Add a test that every edition publishes the same route ids as English. Run the glossary check once across site copy and rulebook text of each language together and fix any term that differs between the two. Update the pinned list of locales and the comments that still describe `et` as legal-only. Files: `content/editions.ts`, the rulebook documents module, `content/glossary/` index, `content/interface.ts` and its three translations, `RulebookPageContent.tsx`, `content/content.test.ts`.",
+      "acceptance": [
+        "`bash scripts/validate` exits 0",
+        "Removing one module from `siteCopyByLocale.de` fails `npm run typecheck`",
+        "A test shows `en`, `de`, `et` and `tlh` publish the same set of route ids",
+        "Every `hreflang` set in the sitemap has exactly `en`, `de`, `et`, `tlh` and `x-default`",
+        "`grep -rn 'SiteCopy | null\\|RulebookDocument | null' content storefront/src` prints nothing"
+      ],
+      "needs": [
+        "T044"
+      ],
+      "tier": "important",
+      "docs": [
+        "docs/working/site-translation/plan.md#where-translated-copy-lives",
+        "docs/working/site-translation/plan.md#tests"
+      ],
+      "implementer": "codex"
+    },
+    {
+      "id": "T046",
+      "milestone": "M6",
+      "title": "All languages: current-state documents updated and the working plan retired",
+      "description": "Describe the result and retire the plan. Rewrite `docs/current/locales.md` for four full editions: how a locale is chosen, the selector, where copy lives, how to add a string, how to add a language. Add `docs/current/rulebook.md`: sources, prerequisites, build and check commands, the fit floors, the manifest, and why the English PDF is never rebuilt. Move the language conventions from `docs/working/site-translation/` (`de.md`, `et.md`, `klingon.md`) to `docs/current/translation/`. Update `content/README.md` (the Files table, the glossary) and the Architecture table in `AGENTS.md` outside the managed block. Record every open item as a file under `docs/issues/`: screenshot baselines for translated routes, order e-mails in English, and any question of plan section Questions the operator has not answered. Then delete `docs/working/site-translation/`. Note in the pull request body that `notable_local_work` in the `architecture` repository needs the matching update; that is another repository and not part of this pull request. Files: documents only.",
+      "acceptance": [
+        "`markdownlint-cli2 '**/*.md'` and `lychee --config lychee.toml './**/*.md'` exit 0",
+        "`docs/working/site-translation/` no longer exists and no file links to it",
+        "`docs/current/locales.md` names all four editions and states that nothing negotiates a locale",
+        "Each unanswered question of the plan has a file under `docs/issues/`",
+        "`git diff --stat` against the base shows only Markdown files"
+      ],
+      "needs": [
+        "T045"
+      ],
+      "tier": "routine",
+      "docs": [
+        "docs/working/site-translation/plan.md#questions",
+        "docs/working/site-translation/plan.md#out-of-scope"
+      ],
+      "implementer": "claude-lead"
+    }
+  ]
+}
