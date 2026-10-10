@@ -75,8 +75,14 @@ drift from the first.
 
 ## Consequences
 
-- One URL has one answer, for every visitor. A response does not vary by
-  header, address or cookie, so a cache or a crawler sees what a visitor sees.
+- One URL has one language, for every visitor. The edition does not vary by
+  header, address or cookie, so a crawler is offered the edition a visitor
+  gets.
+- This decision is about the language only. The rest of a response can differ
+  between visitors: the delivery-destination cookie changes the price figures
+  a page states, on the legal pages too
+  (`storefront/src/app/localized-routes.tsx`). A response is not cacheable by
+  its URL alone.
 - A link to an edition is stable and can be shared. The prefix is the whole
   state.
 - A first-time visitor is not routed to a matching language. The selector must
