@@ -45,3 +45,61 @@ These are the things the review step asked for, with how each was checked.
 | Size guidance | Task sizes measured against the English modules: the five legal pages are 695 lines in English and 478 in Estonian, so T018 and T036 sit inside the 800-line gate; T020 is about 490 lines of source, T021 476, T022 about 750 (`shop.ts` is 613 lines before comments are dropped) and is the one to watch; the rulebook text halves are balanced (about 8,000 and 8,600 characters of English) |
 | Acceptance criteria are checkable | Every task ends in commands or observable states; the exceptions are noted in F16, and the back-translation and sheet-pair review rows, which are reviewer records by design |
 | Read-only inputs stay read-only | The build reads the font directory through `RULEBOOK_FONT_DIR` and writes only inside the repository; the transcription is read, not copied |
+
+## Dispositions
+
+Recorded on 2026-10-10 by the step that resolves this review. The findings
+above are unchanged. Every must-fix finding is resolved in `plan.md` and
+`tasks.json`; the stack is still 46 tasks in one line, 23 for each
+implementer, and no task was renumbered.
+
+### Must-fix findings
+
+| # | Disposition | What changed |
+| --- | --- | --- |
+| F1 | Resolved as proposed | The return address is no longer a route id. T007 declares `CHECKOUT_RETURN_PATH` once in `content/routes.ts`, beside `ROUTE_PATHS` and outside it, and builds Stripe's `return_url` with `localizedPath`. `content/pages.ts`, `seo.ts` and `OG_IMAGE_PATHS` stay untouched, and T007 and T008 assert that. Without a route id the prefixed return page needs its own way to be served, and that would have been an eleventh file in T007. It moved to T008: `resolveLocalizedRoute` resolves the path to the `checkout` route with the payment-return view, for an edition that publishes `checkout`. `plan.md` section Routes says so |
+| F2 | Resolved as proposed, with two changes | Country names: T007 labels the checkout's options with `destinationNameIn` and keeps the submitted value. The basket's `DestinationSelector` renders the same English names (`DestinationSelector.tsx` line 134), which the finding did not list; T006 now translates them the same way. Delivery method names: the strings are `deliveryMethodNames` in `content/interface.ts`, not a new key in `content/shop.ts`, because `shop.ts` is an English module the plan does not edit. T022, T030 and T040 name them among the strings to translate. T010 seeds the leak test with every country name and both method names, matched whole against option and summary text; a four-word threshold would never see `Germany`. `plan.md` gained two rows under Where translated copy lives, and the Out of scope row is narrowed |
+| F3 | Resolved by another mechanism than proposed | The guard is `:lang(tlh) { text-transform: none !important; }` in `global.css`, with a source scan and a browser check. Reasons for not routing each rule through a custom property: it edits seven module stylesheets, which puts the task over the ten-file gate; and it does not cover a Klingon element inside an English parent that is transformed, since the child inherits the parent's computed value. That is the case of the `tlhIngan Hol` selector entry on every page of another edition. An important declaration on every element `:lang(tlh)` matches wins at any specificity and any stylesheet order, and covers that case. The scan fails on the two ways past it: another `text-transform` marked `!important`, and a pseudo-element rule that declares `text-transform`. The browser check asked for is in T010, which sets `lang="tlh"` on a live page before the edition exists, and in T041 on a real `/tlh` page. The guard moved from T008 to T010 to make room for F1. The count in the finding is off by one: there are seven `uppercase` declarations and one `none`, in seven files |
+| F4 | Resolved as proposed, first option | `plan.md` section Sources lists the three families with origin and licence. T014 takes Lato 2.0 from the `lato-font` package, version 3.0.0, whose file list holds the Medium Italic and Heavy Italic the published PDF uses (checked with `npm pack --dry-run`; `@fontsource/lato` has weights 100, 300, 400, 700 and 900 only), and Josefin Sans Bold from `@fontsource/josefin-sans`. `rulebook/fonts.ts` maps each font name of the published PDF to one file; a missing file is an error, never a substitution. T015 fails on a font name outside that set. The package's licence field reads "MIT AND OFL-1.1"; T014's implementer confirms the font files carry the OFL text before adding it |
+| F5 | Resolved as proposed | T016 names `content/rulebook-documents.ts`, exported from `content/index.ts`. The `content/support.ts` option is gone, and an acceptance row holds its diff empty. T019, T026, T034, T037, T044 and T045 name the file where they said "the rulebook documents module" |
+
+### Optional findings
+
+An optional finding was taken where the text was being rewritten for a
+must-fix finding anyway, and otherwise left for the dispatcher.
+
+| # | Disposition | Note |
+| --- | --- | --- |
+| F6 | Not taken | T002 lists `content/schema.ts`; the existing test names the offender if the function lands elsewhere |
+| F7 | Taken in part | Q11 states the exact outcome. The schema is in the `lunar-base` rig and was not changed |
+| F8 | Taken in part | T010 removes the locale-list pin from `seo.test.ts`, so `content/content.test.ts` holds the only one. T019 and T037 still say "one storefront test" and sit at ten files |
+| F9 | Not taken | It adds a test file to T006, which already lists ten files. See the note below |
+| F10 | Not taken | It changes what the visitor sees in Stripe and Turnstile; that is a decision for the operator |
+| F11 | Not taken | |
+| F12 | Not taken | |
+| F13 | Not taken | |
+| F14 | Taken | T014 and `plan.md` name Playwright's Chromium among the prerequisites |
+| F15 | Not taken | Downsampling changes what the artwork check compares; it needs a measurement first |
+| F16 | Taken | T010 replaces the claim with a second source scan over a named list of files |
+| F17 | Not taken | |
+
+### Noticed while resolving
+
+| Item | State |
+| --- | --- |
+| T006 lists ten files and no test file, though its acceptance needs at least two tests | Not changed. It was so before this review. The task is over the ten-file gate as written, and the dispatcher should split it or grant the override |
+| T007, T008 and T010 after the changes | Nine, ten and nine files as listed |
+
+### Validator
+
+`bash ~/gascity/rigs/lunar-base/scripts/validate-tasks.sh docs/working/site-translation/tasks.json`
+was run again after the changes. It exits 1 with 23 errors, all "implementer
+must be claude or codex", one per `claude-lead` task. That is finding F7 and
+question Q11: the formula requires `claude-lead` and the schema does not know
+it. With that value read as `claude`, the validator prints "46 tasks valid"
+and exits 0.
+
+`markdownlint-cli2` and `lychee --offline` pass on the three files.
+`habit-hooks` did not complete on this machine: its `jscpd` sensor is not
+installed, so its result is not a pass. `bash scripts/validate` was not run:
+it does not cover documents, and this checkout has no `node_modules`.

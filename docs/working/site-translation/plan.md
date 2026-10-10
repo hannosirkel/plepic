@@ -61,6 +61,15 @@ empty, as it did when `et` was added.
 | Page titles and descriptions | `content/pages.ts` | `content/<locale>/pages.ts` |
 | Strings now written inside components | new `content/interface.ts` | `content/<locale>/interface.ts` |
 | Header and footer labels | `storefront/src/lib/chrome-strings.ts` (unchanged home) | a new key in the same table |
+| Delivery method names | `deliveryMethodNames` in `content/interface.ts`, keyed by method id | the same key in `content/<locale>/interface.ts` |
+| Country names in the basket and the checkout | `storefront/mock/countries.json` | no file: `destinationNameIn` asks ICU for the edition's name |
+
+The last two rows are labels that reach the page from data, not from
+`content/`: Medusa returns a delivery method's name in English, and the
+country list holds English names. A visitor reads them all the same, so each
+is translated or kept on purpose (T006, T007). The forms still submit the
+English value, and the storefront still recognises a method by the name
+Medusa returns.
 
 One new registry, `content/editions.ts`, holds
 `siteCopyByLocale: LocalizedContent<SiteCopy | null>`. `SiteCopy` is the shape
@@ -148,8 +157,15 @@ translated path would need a second table.
 | Lunar Base | T004 | Product structured data follows the edition's language |
 | Support, rulebook page, forms | T005 | Server actions answer in the form's edition |
 | Basket | T006 | `robots.txt` also disallows `/de/cart`, `/et/cart`, `/tlh/cart` and the checkout paths |
-| Checkout, payment return | T007 | The Stripe return address keeps the edition's prefix |
-| Consent banner, 404, document | T008 | |
+| Checkout | T007 | Country and delivery method names follow the edition. The Stripe return address keeps the edition's prefix |
+| Payment return, consent banner, 404, document | T008 | The return page is served under the `checkout` route |
+
+The payment-return address `/checkout/payment-return` is not a thirteenth
+route id. A route id must have a `Page` in `content/pages.ts` and a share
+image, and the return page has neither: it borrows the checkout route's
+metadata today. The path is declared once, as `CHECKOUT_RETURN_PATH` beside
+`ROUTE_PATHS`, and the catch-all route serves it for an edition that
+publishes `checkout`.
 
 `/en/...` stays a 404. Redirects keep carrying no locale.
 
@@ -181,14 +197,14 @@ All of these run in `bash scripts/validate` unless the row says otherwise.
 | --- | --- | --- |
 | Mirror | A translated module differs from English in structure | T002 |
 | Content scans (existing) | A translated file holds a hostname, an absolute URL, a price, or exports a function | existing; cover new directories by construction |
-| English leak | A page of a non-default edition renders a sentence of the English edition. Proper nouns and listed identical strings are exempt | T010 |
+| English leak | A page of a non-default edition renders a sentence of the English edition, or an English country or delivery method name where the edition has its own. Proper nouns and listed identical strings are exempt | T010 |
 | No negotiation | Anything reads a language, address or location header to pick a locale | T010 |
 | Routing (existing) | An edition publishes a route with no locale-aware renderer | existing |
 | Glossary | A translated string uses a forbidden variant, or lacks the agreed term where the English string at the same key has it | T011 |
 | Klingon words | A Klingon word is not built from the lexicon and the affix tables | T035 |
-| Case | A rule applies `text-transform` to Klingon text. Klingon spelling is case-sensitive | T008 |
+| Case | The `:lang(tlh)` rule that forbids a case change is missing, or a stylesheet holds a rule that could get past it. Klingon spelling is case-sensitive | T010 |
 | Rulebook manifest | A committed rulebook PDF was built from text or layout that has since changed | T015 |
-| Browser suite (CI only) | A translated route fails to render, or the selector fails to move between editions | T009, each publish task |
+| Browser suite (CI only) | A translated route fails to render, the selector fails to move between editions, or Klingon text is shown in changed case | T009, T010, each publish task |
 
 Screenshot baselines may be made only in the pinned Playwright image
 (`README.md`, Browser screenshots). T009 changes the header on every page, so
@@ -266,12 +282,25 @@ difference found.
 | --- | --- |
 | `storefront/public/documents/lunar-base-rulebook.pdf` | The artwork and the layout. Its text is live, so positions, fonts and sizes can be read from it |
 | `~/gascity/rigs/lunar-base/docs/inputs/rulebook.md` | A transcription, used to cross-check the extracted English text and its reading order. It belongs to another project and is only read |
-| `~/lunarfiles/Web/Elements/Font/Fonts/` | MADE Evolve Sans in OTF. They cover ä, ö, ü, ß, õ, š and ž (measured). Their desktop licence allows embedding in a read-only PDF |
 | `Lunar-production.zip` | Not used. Its rulebook has outlined text and no editable source |
 
-The fonts are read from the read-only input at build time. They are never
-copied into the repository: it is public, and the licence forbids
-distributing the files.
+The published PDF sets its text in three families (`pdffonts`). The build
+uses the same three and no other.
+
+| Family | Where the PDF uses it | Origin | Licence |
+| --- | --- | --- | --- |
+| MADE Evolve Sans: Regular, Regular EVO, Light, Medium, Bold | Headings and body text | `~/lunarfiles/Web/Elements/Font/Fonts/`, OTF. The files cover ä, ö, ü, ß, õ, š and ž (measured) | Desktop licence: embedding in a read-only PDF is allowed, distributing the files is not |
+| Lato 2.0: Italic, Medium Italic, Bold Italic, Heavy Italic | The "Note:" callouts and labels such as "New Cards", on ten sheets | The `lato-font` package. The Google Fonts build that `@fontsource/lato` packages has no Medium and no Heavy weight | SIL Open Font License 1.1 |
+| Josefin Sans: Bold | The list bullets, on four sheets. MADE Evolve Sans has no bullet glyph | The `@fontsource/josefin-sans` package | SIL Open Font License 1.1 |
+
+The MADE Evolve Sans files are read from the read-only input at build time.
+They are never copied into the repository: it is public, and the licence
+forbids distributing the files. The other two families arrive as
+devDependencies, which their licence allows. One Minion Pro glyph on sheet 6
+is a space and is dropped.
+
+The build does not substitute. A weight it cannot load is an error, and the
+layout check fails on any font name outside this table (T014, T015).
 
 ### How a translated PDF is produced
 
@@ -307,8 +336,9 @@ reason to stay.
 The English PDF is never rebuilt or replaced. It remains the file "exactly as
 printed".
 
-The build needs Ghostscript, poppler and the font directory, so it runs on a
-worker's machine, not in CI. Its output is committed.
+The build needs Ghostscript, poppler, Playwright's Chromium
+(`npx playwright install chromium`) and the MADE Evolve Sans directory, so it
+runs on a worker's machine, not in CI. Its output is committed.
 
 ### How the layout is checked
 
@@ -320,7 +350,7 @@ worker's machine, not in CI. Its output is committed.
 | Artwork | Each sheet rendered without its text differs from the stripped English sheet by less than a set pixel ratio |
 | Fit | Every frame's text fits its box. Type may shrink to 90 % of the English size and never below 6 pt; leading to 95 %. Past that the check names the frame and the translator shortens the text |
 | Collisions | No two frames' ink overlaps, unless they overlap in English |
-| Glyphs | `pdftotext` of each sheet returns every frame's text; no replacement character; every font is embedded |
+| Glyphs | `pdftotext` of each sheet returns every frame's text; no replacement character; every font is embedded and is one of the three families under [Sources](#sources) |
 | Structure | The PDF is tagged and its language is the edition's |
 | Size | The file is at most 16 MB |
 
@@ -393,14 +423,14 @@ not wait for an answer.
 | Q8 | Country names in the Klingon edition? | As the shop names them in English. A carrier needs the real name |
 | Q9 | Is the Estonian legal set translated again? | No. The five `et` pages exist and are approved. T027 only aligns the glossary with them |
 | Q10 | Can a worker run the pinned Playwright image to refresh screenshots? | T009 tries. If it cannot, it says so in its hand-over and the browser suite stays red on that branch until the baselines are refreshed |
-| Q11 | The task schema allows `claude` or `codex` as implementer; the dispatcher routes to `claude-lead` or `codex` | `tasks.json` uses `claude-lead` and `codex`, as the dispatch procedure needs. The validator's one complaint is that value |
+| Q11 | The task schema allows `claude` or `codex` as implementer; the dispatcher routes to `claude-lead` or `codex` | `tasks.json` uses `claude-lead` and `codex`, as the dispatch procedure needs. `validate-tasks.sh` therefore prints 23 errors, one per `claude-lead` task and all of the kind "implementer must be claude or codex", and exits 1. Nothing else fails: with that value read as `claude` the file is valid. The schema belongs to the `lunar-base` rig and is not changed here |
 
 ## Out of scope
 
 | Item | Why |
 | --- | --- |
 | `backend/` | Q3 |
-| Translating product data held in Medusa | The site's product copy comes from `content/`, not from Medusa |
+| Translating product data held in Medusa | The site's product copy comes from `content/`, not from Medusa. This is not a licence to show English: every label from Medusa or the country list that a visitor reads is translated or kept on purpose, see [Where translated copy lives](#where-translated-copy-lives) |
 | New photography, reviews or awards | Forbidden by `AGENTS.md`; translated editions reuse the existing evidence ids |
 | Screenshot baselines for translated routes | They need the pinned image; functional browser checks cover the routes |
 | The print-ready rulebook | The translated PDF is for reading on screen, like the published English one |
