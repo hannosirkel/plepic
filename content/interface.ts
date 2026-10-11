@@ -170,6 +170,31 @@ export interface InterfaceCopy {
     readonly standard: string;
     readonly "omniva-parcel-machine": string;
   };
+  readonly paymentReturn: {
+    readonly heading: string;
+    readonly loading: string;
+    readonly loadFailedBeforeLink: string;
+    readonly loadFailedAfterLink: string;
+    readonly returnToCheckout: string;
+    readonly verificationInstruction: string;
+    readonly completing: string;
+    readonly completionFailed: string;
+  };
+  readonly consent: {
+    readonly reopenLabel: string;
+    readonly choicesLabel: string;
+    readonly dialogLabel: string;
+    readonly introduction: string;
+    readonly privacyLink: string;
+    readonly conclusion: string;
+    readonly agree: string;
+    readonly decline: string;
+  };
+  readonly notFound: {
+    readonly title: string;
+    readonly body: string;
+    readonly homeLink: string;
+  };
 }
 
 export const interfaceCopy: InterfaceCopy = {
@@ -271,5 +296,30 @@ export const interfaceCopy: InterfaceCopy = {
   deliveryMethodNames: {
     standard: "Standard delivery",
     "omniva-parcel-machine": "Omniva parcel machine",
+  },
+  paymentReturn: {
+    heading: "Complete your order",
+    loading: "Loading your order details…",
+    loadFailedBeforeLink: "We could not load your current order details. ",
+    loadFailedAfterLink: " before trying again.",
+    returnToCheckout: "Return to checkout",
+    verificationInstruction: "Complete a fresh verification challenge to finish your order.",
+    completing: "Completing order…",
+    completionFailed: "Check your basket before trying again. An order is shown only after the shop confirms it.",
+  },
+  consent: {
+    reopenLabel: "Change your privacy choices",
+    choicesLabel: "Privacy choices",
+    dialogLabel: "Cookie and analytics consent",
+    introduction: "We use Google Analytics to see how the site is used, and only once you agree. See the",
+    privacyLink: "privacy page",
+    conclusion: "for the lawful basis and every processor involved.",
+    agree: "Agree",
+    decline: "Decline",
+  },
+  notFound: {
+    title: "Page not found",
+    body: "That address does not match a page on this site.",
+    homeLink: "Go to the home page",
   },
 };

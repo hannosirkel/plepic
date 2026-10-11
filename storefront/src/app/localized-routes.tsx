@@ -53,6 +53,7 @@ import { DestinationSelector } from "../components/shop/DestinationSelector.js";
 import { BasketPageContent } from "../components/shop/BasketPageContent.js";
 import { isOrderNotPlaced, ORDER_OUTCOME_PARAM } from "../components/shop/checkout-order-post.js";
 import { CheckoutPageContent } from "../components/shop/CheckoutPageContent.js";
+import { StripePaymentReturn } from "../components/shop/StripePaymentReturn.js";
 import { ShopPageShell } from "../components/shop/ShopPageShell.js";
 import { CartProvider } from "../lib/cart-store.js";
 import { isMockLayerEnabled, MOCK_SCENARIO_PARAM, parseMockScenario } from "../lib/mock-cart-actions.js";
@@ -63,7 +64,7 @@ import { SupportPageContent } from "../components/pages/SupportPageContent.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
 import { legalPagesByLocale } from "../../../content/legal/index.js";
 import { siteCopyFor } from "../../../content/editions.js";
-import { ROUTE_PATHS } from "../../../content/routes.js";
+import { CHECKOUT_RETURN_PATH, ROUTE_PATHS } from "../../../content/routes.js";
 import { contentFor, type LegalPage } from "../../../content/schema.js";
 import type { Locale, RouteId } from "../../../content/routes.js";
 import { mockCatalogue, resolveCatalogue } from "../lib/catalogue.js";
@@ -145,6 +146,18 @@ export async function CheckoutRoute({ routeId, locale, searchParams }: Localized
           unhydratedOrderAttempt={isOrderNotPlaced(params[ORDER_OUTCOME_PARAM])}
         />
       </CartProvider>
+    </ShopPageShell>
+  );
+}
+
+/** The payment provider's return, borrowing checkout's page and metadata. */
+export async function CheckoutReturnRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+  const nonce = await getRequestNonce();
+  const runtimeConfig = getRuntimeConfig();
+  return (
+    <ShopPageShell locale={locale} route="checkout" externalTargets={runtimeConfig.externalTargets}>
+      <StripePaymentReturn locale={locale} turnstileSiteKey={runtimeConfig.turnstile.siteKey} nonce={nonce} />
     </ShopPageShell>
   );
 }
@@ -332,6 +345,7 @@ export const LOCALIZED_ROUTE_VIEWS: Partial<
 export interface ResolvedLocalizedRoute {
   readonly locale: Locale;
   readonly routeId: RouteId;
+  readonly view?: "checkoutReturn";
 }
 
 /**
@@ -355,7 +369,14 @@ export function resolveLocalizedRoute(
   const locale = localeForPathSegment(localeSegment);
   if (locale === undefined) return null;
 
-  const routeId = routeIdForPath(`/${(segments ?? []).join("/")}`);
+  const path = `/${(segments ?? []).join("/")}`;
+  if (path === CHECKOUT_RETURN_PATH) {
+    return lookupPage("checkout", locale) === undefined
+      ? null
+      : { locale, routeId: "checkout", view: "checkoutReturn" };
+  }
+
+  const routeId = routeIdForPath(path);
   if (routeId === undefined) return null;
 
   if (lookupPage(routeId, locale) === undefined) return null;

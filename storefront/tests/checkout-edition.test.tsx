@@ -50,6 +50,10 @@ import {
   type AddressValues,
 } from "../src/components/shop/checkout-address.js";
 import { CHECKOUT_ORDER_POST_PATH } from "../src/components/shop/checkout-order-post.js";
+import { ConsentBanner } from "../src/components/analytics/ConsentManager.js";
+import { NotFoundContent } from "../src/app/not-found-content.js";
+import { generateMetadata as localizedMetadata } from "../src/app/[locale]/[[...segments]]/page.js";
+import { StripePaymentReturn } from "../src/components/shop/StripePaymentReturn.js";
 import { checkoutTermsFor, type CheckoutTerms } from "../src/components/shop/checkout-terms.js";
 import {
   CheckoutConfirmation,
@@ -1141,6 +1145,74 @@ describe("the fixture", () => {
       expect(copy.interface.deliveryMethodNames["omniva-parcel-machine"]).toBe(
         markedFor(locale, english.interface.deliveryMethodNames["omniva-parcel-machine"]),
       );
+    }
+  });
+});
+
+
+describe("payment return, consent, and 404 under the marker fixture", () => {
+  for (const locale of NON_DEFAULT_LOCALES) {
+    it(`uses ${locale} copy for the payment return's loading, confirmation, and disclosure states`, () => {
+      const common = { locale, turnstileSiteKey: "synthetic-site-key", nonce: "nonce" };
+      const loading = renderToStaticMarkup(<StripePaymentReturn {...common} />);
+      const confirmed = renderToStaticMarkup(
+        <StripePaymentReturn {...common} initialOrder={{ orderId: "order-test", displayId: 42 }} />,
+      );
+      const disclosure = renderToStaticMarkup(
+        <StripePaymentReturn {...common} initialDisclosure={{
+          currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 2500,
+          shippingAmount: 700, orderAmount: 3968, taxAmount: 768,
+          countryCode: "EE", address: "Test address", analyticsItems: null,
+        }} />,
+      );
+      expect(loading).toContain(markedFor(locale, english.interface.paymentReturn.loading));
+      expect(unmarkedText(loading, [])).toEqual([]);
+      expect(confirmed).toContain(markedFor(locale, english.interface.checkout.confirmedHeading));
+      expect(unmarkedText(confirmed, ["Leave this field empty"])).toEqual([]);
+      expect(disclosure).toContain(markedFor(locale, english.interface.paymentReturn.verificationInstruction));
+      expect(unmarkedText(disclosure, [
+        ...Object.values(legalSentences(locale)), "Lunar Base", "Test address",
+        ...Object.values(resolveCatalogue(undefined, destinationForCountryName("Estonia")!, locale))
+          .filter((value): value is string => typeof value === "string"),
+      ])).toEqual([]);
+      for (const html of [loading, confirmed, disclosure]) {
+        expect(editionsMarkedIn(html)).toEqual([locale]);
+        expect(html).not.toContain(">Loading your order details…<");
+        expect(html).not.toContain(">Complete a fresh verification challenge to finish your order.<");
+      }
+    });
+
+    it(`uses ${locale} copy for consent and the 404 body`, async () => {
+      const banner = renderToStaticMarkup(
+        <ConsentBanner locale={locale} onAccept={() => {}} onDecline={() => {}} />,
+      );
+      const missing = renderToStaticMarkup(await NotFoundContent({ locale }));
+      expect(editionsMarkedIn(banner)).toEqual([locale]);
+      expect(editionsMarkedIn(missing)).toEqual([locale]);
+      expect(banner).toContain(markedFor(locale, english.interface.consent.introduction));
+      expect(missing).toContain(markedFor(locale, english.interface.notFound.body));
+      expect(missing).toContain(`href="/${locale}"`);
+      expect(unmarkedText(banner, [])).toEqual([]);
+      expect(unmarkedText(missing, [])).toEqual([]);
+      const metadata = await localizedMetadata({
+        params: Promise.resolve({ locale, segments: ["not-a-route"] }),
+      });
+      expect(metadata.title).toBe(markedFor(locale, english.interface.notFound.title));
+      expect(metadata.alternates).toBeUndefined();
+    });
+  }
+
+  it("serves a published checkout return without adding a route id", async () => {
+    const route = resolveLocalizedRoute("et", ["checkout", "payment-return"]);
+    expect(route).toEqual({ locale: "et", routeId: "checkout", view: "checkoutReturn" });
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    const published = pages.et;
+    const actual = await vi.importActual<typeof import("../../content/index.js")>("../../content/index.js");
+    pages.et = actual.pagesByLocale.et;
+    try {
+      expect(resolveLocalizedRoute("et", ["checkout", "payment-return"])).toBeNull();
+    } finally {
+      pages.et = published;
     }
   });
 });

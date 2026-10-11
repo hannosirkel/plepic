@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_LOCALE, LOCALES, ROUTE_PATHS } from "../../content/routes.js";
+import { CHECKOUT_RETURN_PATH, DEFAULT_LOCALE, LOCALES, ROUTE_PATHS } from "../../content/routes.js";
 import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import { canonicalUrl, localizedPath } from "../src/lib/urls.js";
@@ -28,6 +28,16 @@ describe("buildSitemapEntries: the sitemap contract", () => {
         const path = localizedPath(locale, ROUTE_PATHS[route]);
         expect(entries.some((entry) => entry.path === path)).toBe(false);
       }
+    }
+  });
+
+  it("keeps payment return outside route ids and every edition's sitemap", () => {
+    expect(Object.keys(ROUTE_PATHS)).toEqual([
+      "home", "lunarBase", "about", "support", "rulebook", "cart", "checkout",
+      "legalImprint", "legalTerms", "legalPrivacy", "legalShipping", "legalReturns",
+    ]);
+    for (const locale of LOCALES) {
+      expect(entries.some((entry) => entry.path === localizedPath(locale, CHECKOUT_RETURN_PATH))).toBe(false);
     }
   });
 

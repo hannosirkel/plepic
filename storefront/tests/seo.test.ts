@@ -41,6 +41,22 @@ describe("buildPageMetadata on a live host", () => {
     }
   });
 
+  it("uses each edition's title, description, language tag, and image alt", () => {
+    for (const locale of LOCALES) {
+      for (const page of pagesIn(locale)) {
+        const metadata = buildPageMetadata(page.route, {
+          baseUrl: BASE_URL, isTestHost: false, locale,
+        });
+        expect(metadata.title).toBe(page.title);
+        expect(metadata.description).toBe(page.description);
+        expect(metadata.openGraph?.locale).toBe(LOCALE_DEFINITIONS[locale].languageTag);
+        expect(metadata.openGraph?.images).toEqual([
+          expect.objectContaining({ alt: page.title }),
+        ]);
+      }
+    }
+  });
+
   it("marks every indexable route index, follow", () => {
     const indexable = defaultPages.filter((page) => page.indexable);
     expect(indexable.length).toBeGreaterThan(0);

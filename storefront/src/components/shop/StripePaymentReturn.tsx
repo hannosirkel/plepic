@@ -10,9 +10,11 @@ import { completeStripeOrder, returnOrderDisclosure, type CompletedStoreOrder, t
 import { VAT_ADDEND_PREFIX } from "../../lib/store-checkout.js";
 import { formatAmount } from "../../lib/cart.js";
 import { confirmationPriceQualification } from "../../lib/price-qualification.js";
-import { checkout } from "../../../../content/shop.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, ROUTE_PATHS, type Locale } from "../../../../content/routes.js";
+import { localizedPath } from "../../lib/urls.js";
 import { PAYMENT_RETURN_ORDER_POST_PATH } from "./checkout-order-post.js";
-import { CONFIRMATION_PROMISE, CONSENT_LINE, DELIVERY_ESTIMATE } from "./checkout-terms.js";
+import { checkoutTermsFor } from "./checkout-terms.js";
 import styles from "../../styles/pages/shop.module.css";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
@@ -30,9 +32,12 @@ function browserRuntimeConfig(): ClientRuntimeConfig {
 export function StripePaymentReturn({
   turnstileSiteKey,
   nonce,
+  locale = DEFAULT_LOCALE,
   initialDisclosure = null,
+  initialOrder = null,
 }: {
   readonly turnstileSiteKey: string | null;
+  readonly locale?: Locale;
   readonly nonce: string | undefined;
   /**
    * The order disclosure this page starts with. **A test seam, and the route
@@ -49,8 +54,15 @@ export function StripePaymentReturn({
    * nowhere, which is what a source-level pin had been standing in for.
    */
   readonly initialDisclosure?: ReturnOrderDisclosure | null;
+  readonly initialOrder?: CompletedStoreOrder | null;
 }) {
-  const [order, setOrder] = useState<CompletedStoreOrder | null>(null);
+  const { shop, interface: interfaceContent } = siteCopyFor(locale);
+  const { checkout } = shop;
+  const checkoutCopy = interfaceContent.checkout;
+  const returnCopy = interfaceContent.paymentReturn;
+  const terms = checkoutTermsFor(locale);
+  const checkoutPath = localizedPath(locale, ROUTE_PATHS.checkout);
+  const [order, setOrder] = useState<CompletedStoreOrder | null>(initialOrder);
   const [failed, setFailed] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [challengeRevision, setChallengeRevision] = useState(0);
@@ -120,11 +132,12 @@ export function StripePaymentReturn({
   if (order !== null) {
     return (
       <section className={styles.card} aria-labelledby="payment-return-heading">
-        <h1 id="payment-return-heading" className={styles.heading}>Order confirmed</h1>
+        <h1 id="payment-return-heading" className={styles.heading}>{checkoutCopy.confirmedHeading}</h1>
         <p className={styles.body}>
-          Your order number is {String(order.displayId)}. A confirmation will be sent by email.
+          {checkoutCopy.confirmedBody.replace("%orderNumber%", String(order.displayId))}
         </p>
         <PostPurchaseNewsletterForm
+          locale={locale}
           defaultEmail=""
           turnstileSiteKey={turnstileSiteKey}
           nonce={nonce}
@@ -136,10 +149,10 @@ export function StripePaymentReturn({
   if (disclosure === null) {
     return (
       <section className={styles.card} aria-labelledby="payment-return-heading">
-        <h1 id="payment-return-heading" className={styles.heading}>Complete your order</h1>
+        <h1 id="payment-return-heading" className={styles.heading}>{returnCopy.heading}</h1>
         {disclosureFailed ? (
-          <p className={styles.error} role="alert">We could not load your current order details. <a href="/checkout">Return to checkout</a> before trying again.</p>
-        ) : <p className={styles.body} role="status">Loading your order details…</p>}
+          <p className={styles.error} role="alert">{returnCopy.loadFailedBeforeLink}<a href={checkoutPath}>{returnCopy.returnToCheckout}</a>{returnCopy.loadFailedAfterLink}</p>
+        ) : <p className={styles.body} role="status">{returnCopy.loading}</p>}
       </section>
     );
   }
@@ -153,25 +166,26 @@ export function StripePaymentReturn({
    * default: defaulting it would put "No VAT added" over an order that was
    * taxed, which is the defect this replaced wearing a different hat.
    */
-  const qualification = confirmationPriceQualification(disclosure.countryCode);
+  const qualification = confirmationPriceQualification(disclosure.countryCode, locale);
 
   return (
     <section className={styles.card} aria-labelledby="payment-return-heading">
-      <h1 id="payment-return-heading" className={styles.heading}>Complete your order</h1>
-      <p className={styles.body}>Complete a fresh verification challenge to finish your order.</p>
+      <h1 id="payment-return-heading" className={styles.heading}>{returnCopy.heading}</h1>
+      <p className={styles.body}>{returnCopy.verificationInstruction}</p>
       <form method="post" action={PAYMENT_RETURN_ORDER_POST_PATH} onSubmit={handleSubmit} noValidate>
         <div className={styles.turnstile}>
           <TurnstileWidget
             siteKey={turnstileSiteKey}
             nonce={nonce}
             formName="checkout-return"
+            locale={locale}
             resetKey={challengeRevision}
           />
         </div>
         <dl className={styles.summary}>
           <div className={styles.summaryRow}><dt>{checkout.order.goodsLabel}</dt><dd>{disclosure.goods}</dd></div>
-          <div className={styles.summaryRow}><dt>{checkout.order.goodsPriceLabel}</dt><dd>{formatAmount(disclosure.goodsAmount, disclosure.currency)}</dd></div>
-          <div className={styles.summaryRow}><dt>{checkout.order.shippingLabel}</dt><dd>{formatAmount(disclosure.shippingAmount, disclosure.currency)}</dd></div>
+          <div className={styles.summaryRow}><dt>{checkout.order.goodsPriceLabel}</dt><dd>{formatAmount(disclosure.goodsAmount, disclosure.currency, locale)}</dd></div>
+          <div className={styles.summaryRow}><dt>{checkout.order.shippingLabel}</dt><dd>{formatAmount(disclosure.shippingAmount, disclosure.currency, locale)}</dd></div>
           {/* The same seventh value the checkout renders, on the same terms:
               an addend to the two net figures above it, not a breakdown of
               them, and absent rather than zero for an order that attracts no
@@ -179,26 +193,26 @@ export function StripePaymentReturn({
           {disclosure.taxAmount > 0 ? (
             <div className={styles.summaryRow}>
               <dt>{qualification.vatLabel}</dt>
-              <dd>{VAT_ADDEND_PREFIX}{formatAmount(disclosure.taxAmount, disclosure.currency)}</dd>
+              <dd>{VAT_ADDEND_PREFIX}{formatAmount(disclosure.taxAmount, disclosure.currency, locale)}</dd>
             </div>
           ) : null}
-          <div className={styles.summaryRow}><dt>{checkout.order.totalLabel}</dt><dd>{formatAmount(disclosure.orderAmount, disclosure.currency)}</dd></div>
+          <div className={styles.summaryRow}><dt>{checkout.order.totalLabel}</dt><dd>{formatAmount(disclosure.orderAmount, disclosure.currency, locale)}</dd></div>
           <div className={styles.summaryRow}><dt>{checkout.order.addressLabel}</dt><dd>{disclosure.address}</dd></div>
-          <div className={styles.summaryRow}><dt>{checkout.order.estimateLabel}</dt><dd>{DELIVERY_ESTIMATE}</dd></div>
+          <div className={styles.summaryRow}><dt>{checkout.order.estimateLabel}</dt><dd>{terms.deliveryEstimate}</dd></div>
         </dl>
         <p className={styles.note}>{qualification.text}</p>
-        <p className={styles.consentLine}>{CONSENT_LINE}</p>
+        <p className={styles.consentLine}>{terms.consentLine}</p>
         <button type="submit" className={styles.orderButton} disabled={completing}>
-          {completing ? "Completing order…" : checkout.orderButtonLabel}
+          {completing ? returnCopy.completing : checkout.orderButtonLabel}
         </button>
-        <p className={styles.note}>{CONFIRMATION_PROMISE}</p>
+        <p className={styles.note}>{terms.confirmationPromise}</p>
       </form>
       {failed ? (
         <>
           <p className={styles.error} role="alert">
-            Check your basket before trying again. An order is shown only after the shop confirms it.
+            {returnCopy.completionFailed}
           </p>
-          <p><a href="/checkout">Return to checkout</a></p>
+          <p><a href={checkoutPath}>{returnCopy.returnToCheckout}</a></p>
         </>
       ) : null}
     </section>
