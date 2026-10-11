@@ -12,11 +12,17 @@ export function fitSizes(englishSize: number): number[] {
 
 export async function fitFrame(
   englishSize: number,
+  englishLeading: number,
   fits: (size: number, leading: number) => boolean | Promise<boolean>,
-): Promise<{ size: number; scale: number; leading: number }> {
+): Promise<{ size: number; scale: number; leading: number; leadingScale: number }> {
   for (const size of fitSizes(englishSize)) {
-    const leading = Math.round(size * 0.95 * 100) / 100;
-    if (await fits(size, leading)) return { size, scale: Math.round(size / englishSize * 10000) / 100, leading };
+    for (let percent = 100; percent >= 95; percent -= 1) {
+      const leading = Math.round(englishLeading * size / englishSize * percent) / 100;
+      if (await fits(size, leading)) return {
+        size, scale: Math.round(size / englishSize * 10000) / 100,
+        leading, leadingScale: percent,
+      };
+    }
   }
   throw new Error(`Text does not fit at 90% of ${englishSize} pt or the 6 pt floor`);
 }

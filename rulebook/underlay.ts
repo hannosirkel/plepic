@@ -35,15 +35,23 @@ export async function makeUnderlays(source: string, work: string, sheets: readon
     await page.goto(`file://${svg}`, { waitUntil: "load" });
     await page.screenshot({ path: vectorPng });
     await page.close();
-    let ratio = 1;
+    // A small blur removes renderer-specific edge antialiasing; fuzz ignores
+    // soft shadow colour changes while still detecting displaced artwork.
+    const sourceBlur = join(work, `sheet-${index}-source-blur.png`);
+    const vectorBlur = join(work, `sheet-${index}-vector-blur.png`);
+    await command("magick", [sourcePng, "-blur", "0x1", sourceBlur]);
+    await command("magick", [vectorPng, "-blur", "0x1", vectorBlur]);
+    let difference: number;
     try {
-      const { stdout, stderr } = await run("magick", ["compare", "-metric", "AE", sourcePng, vectorPng, "null:"], { maxBuffer: 1024 * 1024 });
-      ratio = Number((stderr || stdout).trim());
+      const { stderr } = await run("magick", ["compare", "-fuzz", "20%", "-metric", "AE", sourceBlur, vectorBlur, "null:"], { maxBuffer: 1024 * 1024 });
+      difference = Number(stderr.trim());
     } catch (error) {
-      const stderr = (error as { stderr?: string }).stderr ?? "";
-      ratio = Number(stderr.trim().split(/\s+/).at(-1));
+      const failure = error as { code?: string | number; stderr?: string };
+      if (failure.code !== 1) throw new Error(`magick compare failed or is missing: ${String(error)}`, { cause: error });
+      difference = Number(failure.stderr?.trim());
     }
-    ratio = Number.isFinite(ratio) ? ratio / (Math.round(sheet.width) * Math.round(sheet.height)) : 1;
+    if (!Number.isFinite(difference)) throw new Error(`magick compare returned no pixel count for sheet ${sheet.sheet}`);
+    const ratio = difference / (Math.round(sheet.width) * Math.round(sheet.height));
     if (ratio > maxPixelRatio) {
       const raster = join(work, `sheet-${index}-300.jpg`);
       await command("pdftoppm", ["-f", String(sheet.sheet), "-l", String(sheet.sheet), "-r", "300", "-jpeg", "-jpegopt", "quality=90", "-singlefile", stripped, raster.slice(0, -4)]);

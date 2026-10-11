@@ -64,11 +64,16 @@ command, browser or mapped font file stops the build with an error.
 The build strips live text with Ghostscript, makes SVG artwork underlays with
 Poppler, and chooses a 300 dpi raster underlay whenever the vector render
 exceeds a 0.5% pixel difference from the stripped PDF. The choice and ratio
-are recorded in `rulebook/.work/<locale>/underlays.json`. The HTML uses the
+are recorded in `rulebook/.work/<locale>/underlays.json`. The comparison
+blurs both renders by one pixel and allows a 20% colour tolerance so edge
+antialiasing and soft shadows do not force a raster underlay. The HTML uses the
 reviewed frame order and roles. A frame starts at its English size and can
-shrink to 90%, with leading at 95% and a 6 pt minimum. Frames already
-smaller than 6 pt in the published English layout keep their original size. Selected sizes are
-recorded in `fit.json`. Chromium prints a tagged PDF at the sheet sizes.
+shrink to 90%, with measured English line spacing that can shrink to 95%
+at each size step and a 6 pt minimum. Paragraphs and list items have spacing
+between blocks. Frames already smaller than 6 pt in the published English
+layout keep their original size. Selected sizes and line-spacing scales are
+recorded in `fit.json`. Chromium prints a tagged
+PDF at the sheet sizes.
 
 The PDF uses exactly three font families:
 

@@ -6,6 +6,7 @@ import { reviewedSheets } from "./layout/overrides.js";
 import { en } from "./text/en.js";
 import { fontSpecs, requireFonts } from "./fonts.js";
 import { fitFrame } from "./fit.js";
+import { sourceLeading } from "./leading.js";
 import { makeUnderlays } from "./underlay.js";
 import { renderRulebookHtml } from "./template.js";
 
@@ -23,6 +24,7 @@ const work = resolve(root, "rulebook/.work", locale);
 await mkdir(work, { recursive: true });
 const source = resolve(root, "storefront/public/documents/lunar-base-rulebook.pdf");
 await access(source);
+const englishLeading = await sourceLeading(source, reviewedSheets);
 const underlays = await makeUnderlays(source, work, reviewedSheets);
 const html = await renderRulebookHtml({ locale, languageTag: edition.tag, title: edition.title, sheets: reviewedSheets, text: edition.text, underlays, fonts: specs });
 await writeFile(join(work, "rulebook.html"), html);
@@ -33,10 +35,10 @@ try {
   const page = await browser.newPage();
   await page.goto(`file://${join(work, "rulebook.html")}`, { waitUntil: "load" });
   await page.evaluate("document.fonts.ready");
-  const fits: Record<string, { size: number; scale: number; leading: number }> = {};
+  const fits: Record<string, { size: number; scale: number; leading: number; leadingScale: number }> = {};
   for (const sheet of reviewedSheets) for (const frame of sheet.frames) {
     try {
-      fits[frame.id] = await fitFrame(frame.fontSize, async (size, leading) => page.locator(`[id="${frame.id}"]`).evaluate((element, value) => {
+      fits[frame.id] = await fitFrame(frame.fontSize, englishLeading[frame.id] ?? frame.fontSize * 1.25, async (size, leading) => page.locator(`[id="${frame.id}"]`).evaluate((element, value) => {
         const node = element as typeof element & { style: { fontSize: string; lineHeight: string }; scrollHeight: number; clientHeight: number; scrollWidth: number; clientWidth: number };
         node.style.fontSize = `${value.size}pt`;
         node.style.lineHeight = `${value.leading}pt`;

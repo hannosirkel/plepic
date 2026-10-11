@@ -67,8 +67,8 @@ ${faces.join("\n")}
 @page spread{size:566.93pt 283.46pt;margin:0}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{color:#15244d}
 .sheet{position:relative;background-size:100% 100%;background-repeat:no-repeat;break-after:page;overflow:hidden}.sheet.cover{page:cover}.sheet.spread{page:spread}.sheet:last-child{break-after:auto}
-.frame{position:absolute;display:block;overflow:visible;white-space:normal;line-height:.95;margin:0;padding:0;font-synthesis:none}
-.frame p,.frame div,.frame li{margin:0;padding:0}.frame.role-ul,.frame.role-ol{list-style:none;margin:0;padding:0}.frame.nowrap,.role-page-number{white-space:nowrap}.frame strong{font-family:var(--bold-font);font-weight:normal}.frame em{font-style:italic}
+.frame{position:absolute;display:block;overflow:visible;white-space:normal;line-height:1.25;margin:0;padding:0;font-synthesis:none}
+.frame p,.frame div,.frame li{margin:0;padding:0}.frame p:not(:last-child),.frame li:not(:last-child){margin-bottom:.25em}.frame.role-ul,.frame.role-ol{list-style:none;margin:0;padding:0}.frame.nowrap,.role-page-number{white-space:nowrap}.frame strong{font-family:var(--bold-font);font-weight:normal}.frame em{font-style:italic}
 .list-item{position:relative;padding-left:var(--indent,12pt)!important}.list-item span{position:absolute;left:0}.bullet span{font-family:'JosefinSans-Bold'}
 </style></head><body>${pages.join("\n")}</body></html>`;
 }
