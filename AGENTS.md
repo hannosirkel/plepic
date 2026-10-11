@@ -91,7 +91,7 @@ the storefront workspace chooses its own TypeScript version when it lands (see
 | --- | --- |
 | `storefront/` | workspace: the Next.js App Router site — routes under `src/app/(site)/`, the localized catch-all under `src/app/[locale]/`, and the same-origin `/store-api` proxy |
 | `backend/` | workspace: the Medusa v2 backend — Store API routes, commerce configuration and seeding, catalogue import, the Stripe payment session, the SMTP notification provider, and the Redis preflight |
-| `content/`, `design/`, `scripts/` | not workspaces: typed site copy, `tokens.css`, and the tooling `scripts/validate` runs |
+| `content/`, `design/`, `rulebook/`, `scripts/` | not workspaces: typed site copy, `tokens.css`, the rulebook frame map and extractor, and the tooling `scripts/validate` runs |
 
 `compose.yaml` stands the whole stack up locally. See [`README.md`](./README.md).
 Current-state documents live in [`docs/current/`](./docs/current/).
