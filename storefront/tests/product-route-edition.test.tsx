@@ -38,7 +38,7 @@ vi.mock("../src/config/hosts.js", () => ({ loadSiteHostConfig: () => ({ baseUrl:
 vi.mock("../src/lib/nonce.js", () => ({ getRequestNonce: async () => undefined }));
 vi.mock("../src/lib/destination-request.js", () => ({ getRequestDestination: async () => destinationForCode("EE") }));
 vi.mock("../src/lib/store-product.js", () => ({
-  loadStoreProduct: async () => ({ catalogue: mockCatalogue, variantId: "variant_test", analyticsVariantId: "variant_test", imageUrls: [] }),
+  loadStoreProduct: async () => ({ catalogue: { ...mockCatalogue, name: "Lunar Base Deluxe" }, variantId: "variant_test", analyticsVariantId: "variant_test", imageUrls: [] }),
 }));
 // This control needs Next's mounted router. Its labels belong to the delivery UI.
 vi.mock("../src/components/shop/DestinationSelector.js", () => ({ DestinationSelector: () => null }));
@@ -59,15 +59,16 @@ describe("the served product page", () => {
       const script = /<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/s.exec(html)?.[1];
       expect(script).toBeDefined();
       const jsonLd = JSON.parse(script!) as Record<string, unknown>;
-      expect(jsonLd.name).toBe(markedFor(locale, english.interface.product.productName));
+      expect(jsonLd.name).toBe("Lunar Base Deluxe");
       expect(jsonLd.description).toBe(markedFor(locale, english.pages.marketingPages[1]!.description));
       expect(jsonLd.url).toBe(`https://example.com${LOCALE_DEFINITIONS[locale].pathPrefix}/games/lunar-base`);
       expect(editionsMarkedIn(html)).toEqual([locale]);
-      const catalogue = resolveCatalogue(mockCatalogue, destinationForCode("EE"), locale);
+      const catalogue = resolveCatalogue({ ...mockCatalogue, name: "Lunar Base Deluxe" }, destinationForCode("EE"), locale);
+      expect(html).toMatch(new RegExp(`<p class="[^"]*productName[^"]*">[^<]*${catalogue.productName}[^<]*</p>`));
       const outsideCopy = [
         ...stringsIn(CHROME_STRINGS[locale]),
         ...Object.values(catalogue).filter((value): value is string => typeof value === "string"),
-        "Plepic Games", "Instagram", "Facebook",
+        mockCatalogue.name, "Plepic Games", "Instagram", "Facebook",
       ].filter(Boolean);
       expect(unmarkedText(html, outsideCopy)).toEqual([]);
     });

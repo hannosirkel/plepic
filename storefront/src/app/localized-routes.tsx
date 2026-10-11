@@ -179,9 +179,9 @@ export async function LunarBaseRoute({ routeId, locale }: LocalizedRouteProps) {
   const catalogue = resolveCatalogue(store.catalogue, destination, locale);
   const analyticsProduct = store.catalogue;
   const copy = siteCopyFor(locale);
+  // Keep the crawler's product name tied to the Store name shown on this page.
   const jsonLd = buildProductJsonLd({
     product: store.catalogue,
-    name: copy.interface.product.productName,
     url: absoluteUrl(loadSiteHostConfig().baseUrl, localizedPath(locale, ROUTE_PATHS.lunarBase)),
     description: page.description,
   });

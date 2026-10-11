@@ -63,8 +63,6 @@ export interface ProductJsonLdInput {
   readonly product?: CatalogueProduct;
   readonly url: string;
   readonly description: string;
-  /** The product name in the served edition; defaults to the Store name. */
-  readonly name?: string;
 }
 
 export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, unknown> {
@@ -80,7 +78,7 @@ export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, un
   return {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: input.name ?? product.name,
+    name: product.name,
     description: input.description,
     url: input.url,
     offers: {

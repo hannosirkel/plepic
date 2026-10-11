@@ -5,7 +5,7 @@ import { DEFAULT_LOCALE, LOCALES } from "../../content/routes.js";
 import { LunarBaseMockup } from "../src/components/mockups/LunarBaseMockup.js";
 import { FeatureSpecStrip } from "../src/components/FeatureSpecStrip.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
-import { resolveCatalogue } from "../src/lib/catalogue.js";
+import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { CHROME_STRINGS } from "../src/lib/chrome-strings.js";
 import { editionsMarkedIn, markedFor, unmarkedText } from "./helpers/marker-site-copy.js";
 
@@ -63,10 +63,9 @@ describe("the product page under the marker fixture", () => {
     it(`puts its product copy in JSON-LD in ${locale}`, () => {
       const data = buildProductJsonLd({
         url: "https://example.com/games/lunar-base",
-        name: markedFor(locale, english.interface.product.productName),
         description: markedFor(locale, english.pages.marketingPages[1]!.description),
       });
-      expect(data.name).toBe(markedFor(locale, english.interface.product.productName));
+      expect(data.name).toBe(mockCatalogue.name);
       expect(data.description).toBe(markedFor(locale, english.pages.marketingPages[1]!.description));
     });
   }

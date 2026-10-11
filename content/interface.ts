@@ -43,7 +43,6 @@ export interface InterfaceCopy {
   };
   /** Copy written by the product page's presentation components. */
   readonly product: {
-    readonly productName: string;
     readonly boxImageAlt: string;
     readonly victoryHeading: string;
     readonly boxHeading: string;
@@ -90,7 +89,6 @@ export const interfaceCopy: InterfaceCopy = {
     emailInvalid: "Enter a valid email address.",
   },
   product: {
-    productName: "Lunar Base",
     boxImageAlt: "The Lunar Base box open on a plain background, its lid raised behind the empty tray, with a squared stack of cards topped by the Shackleton main-action card, a small card tuck box, the rulebook standing open, and several round scoring discs arranged in front.",
     victoryHeading: "Four ways to win",
     boxHeading: "What is in the box",
