@@ -90,6 +90,8 @@ carries the load alone.
 | `editions.ts` | Total site-copy registry. `null` means an edition has legal pages but no published site copy yet. `siteCopyFor` rejects that case. |
 | `interface.ts` | Typed home for reader-facing interface strings as page groups become locale-aware. |
 | `mirror.test.ts` | Compares every staged edition directory with English modules, including editions not yet registered for publication. |
+| `glossary/` | The term list (`terms.ts`), the per-language model (`schema.ts`) and the registry and exception list (`index.ts`). **Not re-exported from `index.ts`** — its forbidden variants are words the site must not show |
+| `glossary.test.ts` | The glossary check: every translated string of a registered language, beside the English string at the same key |
 
 ## Adding or changing copy
 
@@ -102,6 +104,46 @@ carries the load alone.
 3. Run `bash scripts/validate`.
 4. If the copy changes what a page claims, update `content-document.md` in the
    same commit. That document is what the editorial gate reads.
+
+## The glossary
+
+One glossary serves the site and the rulebook, so a reader meets the same word
+on the product page, in the basket and in the rules. `glossary/terms.ts` is the
+closed list of terms. Each has one of three classes:
+
+| Class | Rule | Examples |
+|---|---|---|
+| `as-printed` | Never translated. The translation carries the English term letter for letter | Lunar Base, Plepic Games, Terran Outpost and the other Station names |
+| `translated-with-original` | Translated, always the same way. The English word follows in brackets at first use on a page or sheet, because the cards carry it | Agent, Module, Influence, Shuttle, Orb, Credit, Supply, Main Action, and the action names such as Draft |
+| `translated` | Translated freely, but always the same way | deck, hand, discard pile, colonist, victory condition, basket, checkout, parcel machine |
+
+The cards are printed in English and stay so. That is why the second class
+exists: a German reader must be able to match the rulebook's word to the word
+on the card.
+
+A language registers in `glossary/index.ts` with a sibling `<locale>.ts`. For
+every term it gives the translation, the forms a string may use, the variants
+that must not appear, and a note where the choice needs one. `glossary/schema.ts`
+describes the form syntax. From then on `glossary.test.ts` fails a translated
+string on any of three findings, and names the key and the term:
+
+| Finding | Fails when |
+|---|---|
+| Forbidden variant | The string uses a variant the glossary forbids |
+| Missing term | The English string at the same key has a term, and the translation has none of its forms |
+| Altered as-printed term | The English string has an as-printed term, and the translation does not have it letter for letter |
+
+A string that must stand as written goes on `glossaryExceptions` with a reason.
+An exception that suppresses nothing fails the test.
+
+Two things the check does not do. It does not look for the bracketed English
+word of the second class: "first use on a page" is a property of a page, not of
+a string, and the reviewer checks it. And it skips a string equal to its English
+original, which is an identifier the mirror test pins, or untranslated prose the
+English-leak guard reports.
+
+Rulebook text joins the same check when it lands, through `rulebookPairs` in
+`glossary.test.ts`.
 
 ## Routes and the router
 
