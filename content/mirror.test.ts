@@ -15,8 +15,10 @@ const fixedKeys = new Set([
   "source", "src", "to", "type", "url", "youTubeId",
 ]);
 
+// Both token syntaxes copy is written with: `{token}` for what `schema.ts` declares,
+// `%token%` for what a component fills in. Repeats are kept, so a count is compared too.
 function placeholders(value: string): string[] {
-  return [...value.matchAll(/\{[A-Za-z][A-Za-z0-9]*\}/g)].map(([token]) => token).sort();
+  return [...value.matchAll(/\{[A-Za-z][A-Za-z0-9]*\}|%[A-Za-z][A-Za-z0-9]*%/g)].map(([token]) => token).sort();
 }
 
 function compareStructure(english: unknown, translated: unknown, path: string): string[] {
@@ -113,6 +115,34 @@ describe("edition structure mirror", () => {
       expect(failures.join("\n")).toContain("list length");
       expect(failures.join("\n")).toContain("anchor");
       expect(failures.join("\n")).toContain("placeholders");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a percent token dropped from, repeated in or renamed in a translated sentence", async () => {
+    const { downloadNote } = (await import("./interface")).interfaceCopy.rulebook;
+    expect(downloadNote).toContain("%megabytes%");
+    const root = mkdtempSync(join(tmpdir(), "plepic-mirror-percent-"));
+    try {
+      const { mkdirSync } = await import("node:fs");
+      const moduleOf = (note: string) => `export const rulebook = { downloadNote: ${JSON.stringify(note)} };\n`;
+      writeFileSync(join(root, "sample.mjs"), moduleOf(downloadNote));
+      // One edition directory per translation: a module is cached by its URL.
+      const failuresFor = async (edition: string, translated: string) => {
+        mkdirSync(join(root, edition));
+        writeFileSync(join(root, edition, "sample.mjs"), moduleOf(translated));
+        return (await compareEdition(join(root, edition), ["sample"], ".mjs")).join("\n");
+      };
+      expect(await failuresFor("kept", downloadNote.replace("It is a", "See on"))).toBe("");
+      for (const [edition, translated] of [
+        ["dropped", downloadNote.replace("%megabytes% ", "")],
+        ["repeated", downloadNote.replace("%megabytes%", "%megabytes% or %megabytes%")],
+        ["renamed", downloadNote.replace("%megabytes%", "%megabaiti%")],
+      ] as const) {
+        expect(translated).not.toBe(downloadNote);
+        expect(await failuresFor(edition, translated), edition).toContain("rulebook.downloadNote: placeholders changed");
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
