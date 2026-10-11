@@ -54,18 +54,22 @@ import { resolveLocalizedRoute } from "../src/app/localized-routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
 import { localizedHrefFor, localizedLinkFor, pagesIn } from "../src/lib/seo.js";
 import { localizedPath, parseLocalizedPath, routeIdForPath } from "../src/lib/urls.js";
+import { NotFoundContent } from "../src/app/not-found-content.js";
+import { LanguageSelector } from "../src/components/LanguageSelector.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
+import { SiteFooter } from "../src/components/SiteFooter.js";
+import { SiteHeader } from "../src/components/SiteHeader.js";
 
 const ROUTE_IDS = Object.keys(ROUTE_PATHS) as readonly RouteId[];
 
 /**
- * The switcher labels, as literals. `SiteFooter` renders
- * `LANGUAGE_SWITCHER_LABELS[target]`; asserting against that constant would
- * let it be edited to anything with the suite green.
+ * The name of each edition's language, as literals. `LanguageSelector`
+ * renders `LANGUAGE_SWITCHER_LABELS[edition]`; asserting against that
+ * constant would let it be edited to anything with the suite green.
  */
 const EXPECTED_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
-  en: "In English",
-  et: "Eesti keeles",
+  en: "English",
+  et: "Eesti",
 };
 
 /** Every anchor tag in `html` that points into this site, with its href. */
@@ -281,6 +285,117 @@ describe("every non-default edition has inbound links, via the language switcher
       });
     }
   }
+});
+
+/**
+ * The selector itself: what it lists, where each entry leads, and that it is
+ * markup and nothing else. The expectations are literals, or are built from
+ * the page registry and `localizedPath`, never read back from the component.
+ */
+describe("the language selector", () => {
+  const SELECTOR = /<nav[^>]*aria-label="(?:Language|Keel)"[^>]*>[\s\S]*?<\/nav>/g;
+  /** Every selector in `html`, in document order. */
+  const selectorsIn = (html: string): readonly string[] => [...html.matchAll(SELECTOR)].map((match) => match[0]);
+  /** The first `<header>` or `<footer>` element of `html`, whole. */
+  const partOf = (html: string, part: "header" | "footer"): string =>
+    new RegExp(`<${part}\\b[\\s\\S]*?</${part}>`).exec(html)?.[0] ?? "";
+  /** Each entry of one selector: its label, and where it leads when it is a link. */
+  const entriesOf = (selector: string): readonly { label: string; href?: string }[] =>
+    [...selector.matchAll(/<(a|span)\b([^>]*)>([^<]*)<\/\1>/g)].map((match) => ({
+      label: match[3] ?? "",
+      href: /href="([^"]*)"/.exec(match[2] ?? "")?.[1],
+    }));
+
+  for (const part of ["header", "footer"] as const) {
+    it(`/legal/imprint: the ${part} shows English as current and links Eesti to /et/legal/imprint`, () => {
+      const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
+      expect(selectors, `the ${part} must hold exactly one selector`).toHaveLength(1);
+      const selector = selectors[0] ?? "";
+
+      expect(selector).toMatch(/<span[^>]* lang="en" aria-current="true">English<\/span>/);
+      expect(selector).toMatch(/<a[^>]* href="\/et\/legal\/imprint" lang="et" hrefLang="et">Eesti<\/a>/);
+      expect(selector, "the current edition must not be a link").not.toMatch(/<a[^>]*>English/);
+    });
+
+    it(`/et/legal/imprint: the ${part} shows Eesti as current and links English to /legal/imprint`, () => {
+      const selectors = selectorsIn(partOf(renderedPage("et", "legalImprint"), part));
+      expect(selectors, `the ${part} must hold exactly one selector`).toHaveLength(1);
+      const selector = selectors[0] ?? "";
+
+      expect(selector).toMatch(/<span[^>]* lang="et" aria-current="true">Eesti<\/span>/);
+      expect(selector).toMatch(/<a[^>]* href="\/legal\/imprint" lang="en" hrefLang="en">English<\/a>/);
+      expect(selector, "the current edition must not be a link").not.toMatch(/<a[^>]*>Eesti/);
+    });
+  }
+
+  /*
+   * `et` does not publish the product page today. The task that publishes it
+   * replaces this expectation with the link.
+   */
+  it("/games/lunar-base: offers no Estonian entry, in the header or in the footer", () => {
+    expect(pagesIn("et").some((page) => page.route === "lunarBase")).toBe(false);
+
+    for (const html of [
+      renderToStaticMarkup(<SiteHeader wordmark="dark" route="lunarBase" />),
+      renderToStaticMarkup(<SiteFooter route="lunarBase" />),
+    ]) {
+      const selectors = selectorsIn(html);
+      expect(selectors).toHaveLength(1);
+      expect(entriesOf(selectors[0] ?? "")).toEqual([{ label: "English", href: undefined }]);
+      expect(html).not.toContain("/et");
+    }
+  });
+
+  it("lists the edition being read and each other edition that publishes the route, at its own URL", () => {
+    let links = 0;
+
+    for (const locale of LOCALES) {
+      for (const page of pagesIn(locale)) {
+        const expected = LOCALES.filter(
+          (edition) => edition === locale || pagesIn(edition).some((other) => other.route === page.route),
+        ).map((edition) => ({
+          label: EXPECTED_SWITCHER_LABELS[edition],
+          href: edition === locale ? undefined : localizedPath(edition, ROUTE_PATHS[page.route]),
+        }));
+        links += expected.length - 1;
+
+        expect(
+          entriesOf(renderToStaticMarkup(<LanguageSelector locale={locale} route={page.route} />)),
+          `${locale}:${page.route}`,
+        ).toEqual(expected);
+      }
+    }
+
+    expect(links, "no page offered another edition, so no link was checked").toBeGreaterThan(0);
+  });
+
+  it("on the 404, which is no route, links each edition's home page", async () => {
+    // `et` publishes no home page yet, so the English 404 offers no way to one.
+    expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="en" />))).toEqual([
+      { label: "English", href: undefined },
+    ]);
+    expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="et" />))).toEqual([
+      { label: "English", href: "/" },
+      { label: "Eesti", href: undefined },
+    ]);
+
+    const missing = selectorsIn(renderToStaticMarkup(await NotFoundContent({ locale: "et" })));
+    expect(missing, "the 404 page must hold the selector").toHaveLength(1);
+    expect(entriesOf(missing[0] ?? "")).toEqual([
+      { label: "English", href: "/" },
+      { label: "Eesti", href: undefined },
+    ]);
+  });
+
+  it("is plain markup: no script, form, select, button or event handler", () => {
+    for (const locale of LOCALES) {
+      for (const route of [undefined, ...ROUTE_IDS]) {
+        const html = renderToStaticMarkup(<LanguageSelector locale={locale} route={route} />);
+        expect(html, `${locale}:${route ?? "404"}`).toMatch(/^<nav[^>]*>.*<\/nav>$/s);
+        expect(html, `${locale}:${route ?? "404"}`).not.toMatch(/<(?:script|form|select|button|input)\b|\son\w+=/i);
+      }
+    }
+  });
 });
 
 /**

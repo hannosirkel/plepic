@@ -39,7 +39,7 @@ Every table keyed by locale is a total `Record<Locale, T>`. A new member of
 | `legalPagesByLocale` | `content/legal/index.ts` | The legal pages each edition carries | `LegalRoute` in `storefront/src/app/localized-routes.tsx` |
 | `siteCopyByLocale` | `content/editions.ts` | The site copy of each edition, or `null` for an edition that has none yet (`et`) | `HomepageMockup`, `LunarBaseMockup`, `SupportPageContent`, `RulebookPageContent` and what they compose, through `siteCopyFor`; the footer tagline in `SiteFooter`; the Server Functions that answer the public forms |
 | `CHROME_STRINGS` | `storefront/src/lib/chrome-strings.ts` | Header and footer labels, the draft note, the incompleteness notice | `SiteHeader`, `SiteFooter`, `LegalPageContent` |
-| `LANGUAGE_SWITCHER_LABELS` | `storefront/src/lib/chrome-strings.ts` | The switcher label of each target edition, in its own language | `SiteFooter` |
+| `LANGUAGE_SWITCHER_LABELS` | `storefront/src/lib/chrome-strings.ts` | The name of each edition's language, in that language | `LanguageSelector` |
 | `TAX_VOCABULARY` | `storefront/src/lib/catalogue.ts` | The VAT qualification phrases and the shipping note | `resolveCatalogue` |
 | `LABELS` | `storefront/src/lib/configuration-placeholders.ts` | The reader-facing name of each merchant detail | The gap marker and the incompleteness notice on a legal page |
 | `MARKER_WORDS` | `storefront/src/lib/configuration-placeholders.ts` | The framing word of the gap marker | The gap marker on a legal page |
@@ -196,21 +196,32 @@ emitted: it is a valid set, and it keeps the mechanism in use on every page.
 An edition that does not publish a route is never named as an alternate for
 it. `/cart` and `/checkout` are never in the sitemap.
 
-## The footer language switcher
+## The language selector
 
-`SiteFooter` renders a language switcher when it is given the route of its
-page and another edition publishes that route.
+`LanguageSelector` in `storefront/src/components/LanguageSelector.tsx` is how
+a reader moves between editions. `SiteHeader` and `SiteFooter` each render it,
+and so does the 404 page.
 
 | Property | Behaviour |
 | --- | --- |
-| Entries | One link per other edition that publishes the route. The current edition is not listed |
+| Form | A `<nav>` of plain links, labelled by `languageNavLabel` in `CHROME_STRINGS`. No script, no form and no cookie |
+| Entries | The edition being read, and each other edition that publishes the route. An edition that does not publish the route is not listed |
+| Current edition | Text marked `aria-current="true"`. It is not a link |
 | Target | The same route in the target edition |
-| Label | From `LANGUAGE_SWITCHER_LABELS`, in the target's own language: "In English", "Eesti keeles" |
-| Attributes | `lang` and `hreflang`, both the target's language tag |
-| Form | Plain links in a `<nav>`. No script and no cookie |
+| Label | From `LANGUAGE_SWITCHER_LABELS`, in the edition's own language: "English", "Eesti" |
+| Attributes | `lang` on every entry and `hreflang` on every link, both the entry's language tag |
+| Narrow viewport | The header's selector is inside the navigation sheet |
+| 404 page | No route is given, so each link leads to its edition's home page |
 
-Only `LegalPageContent` passes the route. The switcher is therefore on the ten
-legal pages and on no other page. The header has no switcher.
+Every route view passes its route to the header and to the footer;
+`storefront/tests/site-chrome.test.tsx` fails when one does not. The payment
+return page passes `checkout`, the route it is served under, so its selector
+leads to the checkout of the other edition and not to that edition's return
+page.
+
+Today the selector offers a second edition on the ten legal pages only. On
+every other page it shows the current edition alone, because `et` publishes
+nothing else. On the Estonian 404 it links the English home page.
 
 ## Redirects
 

@@ -41,7 +41,7 @@ export default async function CartPage({
     : null;
 
   return (
-    <ShopPageShell externalTargets={getRuntimeConfig().externalTargets}>
+    <ShopPageShell route="cart" externalTargets={getRuntimeConfig().externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
         <BasketPageContent />
       </CartProvider>

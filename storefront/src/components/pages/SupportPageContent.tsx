@@ -67,7 +67,7 @@ export function SupportPageContent({
 
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" locale={locale} />
+      <SiteHeader wordmark="primary" locale={locale} route="support" />
 
       <main className={styles.main}>
         <div className={styles.intro}>
@@ -154,7 +154,7 @@ export function SupportPageContent({
         </section>
       </main>
 
-      <SiteFooter locale={locale} externalTargets={externalTargets} />
+      <SiteFooter locale={locale} route="support" externalTargets={externalTargets} />
     </div>
   );
 }

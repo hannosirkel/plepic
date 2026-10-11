@@ -67,7 +67,7 @@ export function RulebookPageContent({
 
   return (
     <div data-layer="lunar" className={styles.page}>
-      <SiteHeader wordmark="dark" locale={locale} />
+      <SiteHeader wordmark="dark" locale={locale} route="rulebook" />
 
       <main className={styles.main}>
         <div className={styles.intro}>
@@ -86,7 +86,7 @@ export function RulebookPageContent({
         </div>
       </main>
 
-      <SiteFooter locale={locale} externalTargets={externalTargets} />
+      <SiteFooter locale={locale} route="rulebook" externalTargets={externalTargets} />
     </div>
   );
 }

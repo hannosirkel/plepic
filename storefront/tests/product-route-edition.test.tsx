@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_LOCALE, LOCALES, LOCALE_DEFINITIONS } from "../../content/routes.js";
 import { LunarBaseRoute } from "../src/app/localized-routes.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
-import { CHROME_STRINGS } from "../src/lib/chrome-strings.js";
+import { CHROME_STRINGS, LANGUAGE_SWITCHER_LABELS } from "../src/lib/chrome-strings.js";
 import { destinationForCode } from "../src/lib/destination.js";
 import { editionsMarkedIn, markedFor, unmarkedText } from "./helpers/marker-site-copy.js";
 
@@ -67,6 +67,8 @@ describe("the served product page", () => {
       expect(html).toMatch(new RegExp(`<p class="[^"]*productName[^"]*">[^<]*${catalogue.productName}[^<]*</p>`));
       const outsideCopy = [
         ...stringsIn(CHROME_STRINGS[locale]),
+        // The language selector names every edition in its own language, on every edition.
+        ...Object.values(LANGUAGE_SWITCHER_LABELS),
         ...Object.values(catalogue).filter((value): value is string => typeof value === "string"),
         mockCatalogue.name, "Plepic Games", "Instagram", "Facebook",
       ].filter(Boolean);

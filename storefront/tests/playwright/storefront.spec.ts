@@ -120,7 +120,8 @@ test("mobile menu supports disclosure semantics, Escape, close, and focus return
 
   const menu = page.getByRole("button", { name: "Menu", exact: true });
   const navigation = page.getByRole("navigation", { name: "Primary" });
-  const close = navigation.getByRole("button", { name: "Close menu" });
+  // The sheet holds the primary navigation and the language selector; its close control is its own.
+  const close = page.getByRole("button", { name: "Close menu" });
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await menu.focus();
   await page.keyboard.press("Enter");
@@ -139,6 +140,27 @@ test("mobile menu supports disclosure semantics, Escape, close, and focus return
   await close.click();
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(menu).toBeFocused();
+});
+
+test("language selector moves between the English and the Estonian imprint", async ({ page }, testInfo) => {
+  await page.goto("/legal/imprint");
+  await dismissConsentForInteraction(page);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+
+  // To Estonian by the header's selector, which on a narrow viewport is inside the navigation sheet.
+  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menu", exact: true }).click();
+  const inHeader = page.locator("header").getByRole("navigation", { name: "Language" });
+  await expect(inHeader.getByText("English")).toHaveAttribute("aria-current", "true");
+  await inHeader.getByRole("link", { name: "Eesti" }).click();
+  await expect(page).toHaveURL("/et/legal/imprint");
+  await expect(page.locator("html")).toHaveAttribute("lang", "et");
+
+  // And back by the footer's, which is labelled in the edition being read.
+  const inFooter = page.locator("footer").getByRole("navigation", { name: "Keel" });
+  await expect(inFooter.getByText("Eesti")).toHaveAttribute("aria-current", "true");
+  await inFooter.getByRole("link", { name: "English" }).click();
+  await expect(page).toHaveURL("/legal/imprint");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
 test("below-fold product media loads when reached and approved videos use privacy-enhanced frames", async ({ page }, testInfo) => {

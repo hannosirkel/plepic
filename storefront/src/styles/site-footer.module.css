@@ -36,6 +36,14 @@
   line-height: var(--line-height-body);
 }
 
+/* The legal links, and the language selector under them, share one column. */
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
 .legal,
 .social {
   display: flex;
