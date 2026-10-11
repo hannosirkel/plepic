@@ -10,8 +10,9 @@ const siteModules = [
 ] as const;
 const legalModules = ["imprint", "privacy", "returns", "shipping", "terms"] as const;
 const fixedKeys = new Set([
-  "anchor", "covers", "href", "id", "indexable", "kind", "path", "route",
-  "sections", "source", "src", "to", "url", "youTubeId",
+  "anchor", "autoComplete", "control", "covers", "emphasis", "href", "id",
+  "indexable", "kind", "name", "path", "reviewStatus", "route", "sections",
+  "source", "src", "to", "type", "url", "youTubeId",
 ]);
 
 function placeholders(value: string): string[] {
@@ -47,7 +48,7 @@ function compareStructure(english: unknown, translated: unknown, path: string): 
   if (typeof english !== typeof translated) return [`${path}: value type changed`];
   if (typeof english === "string" && typeof translated === "string") {
     const key = path.replaceAll("[", ".").replaceAll("]", "").split(".").at(-1) ?? "";
-    if ((fixedKeys.has(key) || key.endsWith("Id") || /\.(covers|sections)\[/.test(path)) && english !== translated) {
+    if ((fixedKeys.has(key) || key.endsWith("Id") || /\.(covers|sections|supporting)\[/.test(path)) && english !== translated) {
       return [`${path}: identifier or link target changed from ${JSON.stringify(english)} to ${JSON.stringify(translated)}`];
     }
     if (JSON.stringify(placeholders(english)) !== JSON.stringify(placeholders(translated))) {
@@ -126,6 +127,37 @@ describe("edition structure mirror", () => {
       writeFileSync(join(root, "sample.mjs"), 'export const line = "English";\n');
       writeFileSync(join(edition, "sample.mjs"), 'export const line = "Translated";\n');
       expect(await compareEdition(edition, ["sample", "later"], ".mjs")).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects changed supporting source ids in a fixture", async () => {
+    const root = mkdtempSync(join(tmpdir(), "plepic-mirror-sources-"));
+    const edition = join(root, "fixture");
+    try {
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(edition);
+      writeFileSync(join(root, "sample.mjs"), 'export const proof = { supporting: ["E14", "E15"] };\n');
+      writeFileSync(join(edition, "sample.mjs"), 'export const proof = { supporting: ["E1", "E2"] };\n');
+      expect((await compareEdition(edition, ["sample"], ".mjs")).join("\n")).toContain("supporting[0]");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects changed form tokens and review metadata in a fixture", async () => {
+    const root = mkdtempSync(join(tmpdir(), "plepic-mirror-fields-"));
+    const edition = join(root, "fixture");
+    try {
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(edition);
+      writeFileSync(join(root, "sample.mjs"), 'export const field = { name: "email", type: "email", control: "input", autoComplete: "email", emphasis: "primary", reviewStatus: "operator-approved" };\n');
+      writeFileSync(join(edition, "sample.mjs"), 'export const field = { name: "e-post", type: "text", control: "country", autoComplete: "e-post", emphasis: "secondary", reviewStatus: "draft" };\n');
+      const failures = (await compareEdition(edition, ["sample"], ".mjs")).join("\n");
+      for (const key of ["name", "type", "control", "autoComplete", "emphasis", "reviewStatus"]) {
+        expect(failures).toContain(`field.${key}`);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
