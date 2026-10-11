@@ -46,7 +46,8 @@
  * rather than naming a destination that is not the one being charged.
  */
 
-import { checkout } from "../../../content/shop.js";
+import { siteCopyFor } from "../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 
 import { resolveCatalogue, resolveCataloguePlaceholders } from "./catalogue.js";
 import type { ShippingZone } from "./cart.js";
@@ -100,7 +101,7 @@ export interface PriceQualification {
   readonly text: string;
 }
 
-function qualify(destination: Destination | null, addressBound: boolean): PriceQualification {
+function qualify(destination: Destination | null, addressBound: boolean, locale: Locale): PriceQualification {
   /*
    * Resolved for the destination when there is one and for the declared default
    * when there is not. That is safe for the **rate** specifically — the rate
@@ -108,7 +109,8 @@ function qualify(destination: Destination | null, addressBound: boolean): PriceQ
    * every other string on this object, which is exactly why none of them leaves
    * this function. See `PriceQualification.vatRate`.
    */
-  const catalogue = resolveCatalogue(undefined, destination ?? defaultDestination);
+  const catalogue = resolveCatalogue(undefined, destination ?? defaultDestination, locale);
+  const { checkout } = siteCopyFor(locale).shop;
   const shared = {
     destination,
     addressBound,
@@ -182,6 +184,7 @@ export type CheckoutQualificationInput =
  */
 export function checkoutPriceQualification(
   input: CheckoutQualificationInput,
+  locale: Locale = DEFAULT_LOCALE,
 ): PriceQualification {
   const addressBound =
     input.kind === "mock"
@@ -193,6 +196,7 @@ export function checkoutPriceQualification(
       ? destinationForCountryName(input.countryName.trim())
       : destinationForCode(input.destinationCode),
     addressBound,
+    locale,
   );
 }
 
@@ -205,6 +209,6 @@ export function checkoutPriceQualification(
  * destination rather than the declared default, because defaulting it would put
  * "No VAT added" over an order that was taxed. See `knownDestinationForCode`.
  */
-export function confirmationPriceQualification(countryCode: string): PriceQualification {
-  return qualify(knownDestinationForCode(countryCode), true);
+export function confirmationPriceQualification(countryCode: string, locale: Locale = DEFAULT_LOCALE): PriceQualification {
+  return qualify(knownDestinationForCode(countryCode), true, locale);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LOCALES, ROUTE_PATHS } from "../../content/routes.js";
+import { DEFAULT_LOCALE, LOCALES, ROUTE_PATHS } from "../../content/routes.js";
 import { buildRobotsRules } from "../src/lib/robots-contract.js";
 import { pagesIn } from "../src/lib/seo.js";
 import { localizedPath } from "../src/lib/urls.js";
@@ -18,15 +18,7 @@ describe("buildRobotsRules", () => {
     expect(rules.sitemap).toBe("https://example.com/sitemap.xml");
   });
 
-  /**
-   * The disallow list is a set of literal paths and the page registry is
-   * locale-keyed, and nothing but this test couples them. Today every
-   * non-default edition publishes only the legal set, so the bare `/cart`
-   * and `/checkout` entries are complete — `/et/cart` 404s and needs no
-   * rule, as `app/localized-routes.tsx` records. The day an edition
-   * publishes the basket, its localized path answers 200, this goes red,
-   * and the robots change stops being something nothing forces.
-   */
+  /** Published commercial routes must remain covered by the generated list. */
   it("disallows every commercial route in every locale that actually publishes it", () => {
     const rules = buildRobotsRules({ isTestHost: false, baseUrl: "https://example.com" });
     const disallowed = new Set(
@@ -42,6 +34,16 @@ describe("buildRobotsRules", () => {
           `${locale} publishes ${route} at ${path}, which robots.txt does not disallow`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("reserves commercial paths for every prefixed edition before publication", () => {
+    const rules = buildRobotsRules({ isTestHost: false, baseUrl: "https://example.com" });
+    const disallowed = Array.isArray(rules.rules) ? [] : rules.rules.disallow;
+    for (const locale of LOCALES) {
+      if (locale === DEFAULT_LOCALE) continue;
+      expect(disallowed).toContain(localizedPath(locale, ROUTE_PATHS.cart));
+      expect(disallowed).toContain(localizedPath(locale, ROUTE_PATHS.checkout));
     }
   });
 });

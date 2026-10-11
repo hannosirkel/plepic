@@ -13,6 +13,11 @@
  * in this file is prose.
  */
 export interface InterfaceCopy {
+  readonly destinationSelector: {
+    readonly label: string;
+    readonly hint: string;
+    readonly updatingPrice: string;
+  };
   /** The home page. */
   readonly home: {
     /** `alt` of the hero photograph of the box. */
@@ -108,6 +113,11 @@ export interface InterfaceCopy {
 }
 
 export const interfaceCopy: InterfaceCopy = {
+  destinationSelector: {
+    label: "Delivering to",
+    hint: "This decides which price is shown, not what you are charged. The charge follows the delivery address you confirm at checkout.",
+    updatingPrice: "Updating the price…",
+  },
   home: {
     heroImageAlt:
       "The front and back of the Lunar Base game box, showing the astronaut cover and the component and game summary on the reverse.",

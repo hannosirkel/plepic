@@ -12,6 +12,7 @@
  * a chain, not the whole of it.
  */
 import type { ReactNode } from "react";
+import { DEFAULT_LOCALE, type Locale, type RouteId } from "../../../../content/routes.js";
 
 import { SiteFooter } from "../SiteFooter.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
@@ -19,6 +20,8 @@ import { SiteHeader } from "../SiteHeader.js";
 import styles from "../../styles/pages/shop.module.css";
 
 export interface ShopPageShellProps {
+  readonly locale?: Locale;
+  readonly route?: RouteId;
   /**
    * From runtime configuration (`getRuntimeConfig().externalTargets`), passed
    * to the footer's social row. Absent keeps it inert text.
@@ -27,12 +30,12 @@ export interface ShopPageShellProps {
   readonly children: ReactNode;
 }
 
-export function ShopPageShell({ children, externalTargets = {} }: ShopPageShellProps) {
+export function ShopPageShell({ children, externalTargets = {}, locale = DEFAULT_LOCALE, route }: ShopPageShellProps) {
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" />
+      <SiteHeader wordmark="primary" locale={locale} />
       <main className={styles.main}>{children}</main>
-      <SiteFooter externalTargets={externalTargets} />
+      <SiteFooter externalTargets={externalTargets} locale={locale} route={route} />
     </div>
   );
 }

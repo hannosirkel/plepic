@@ -94,7 +94,7 @@
  */
 
 import catalogueSource from "../../mock/catalogue.json";
-import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../content/routes.js";
 import { defaultDestination, destinationNameIn, type Destination } from "./destination.js";
 
 export type CatalogueAvailability = "InStock" | "OutOfStock" | "PreOrder" | "SoldOut";
@@ -293,8 +293,8 @@ export interface ResolvedCatalogue {
   readonly ageRange: string;
 }
 
-function formatPrice(amount: number, currency: string): string {
-  return new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(amount / 100);
+function formatPrice(amount: number, currency: string, locale: Locale): string {
+  return new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, { style: "currency", currency }).format(amount / 100);
 }
 
 /**
@@ -452,10 +452,10 @@ export function resolveCatalogue(
    * destination that says which one this visitor is being quoted. No rate is
    * read and none is applied — see this module's doc comment.
    */
-  const price = formatPrice(vatApplies ? product.price.amountWithTax : product.price.amount, currency);
-  const priceNet = formatPrice(product.price.amount, currency);
-  const priceGross = formatPrice(product.price.amountWithTax, currency);
-  const priceVat = formatPrice(product.price.amountWithTax - product.price.amount, currency);
+  const price = formatPrice(vatApplies ? product.price.amountWithTax : product.price.amount, currency, locale);
+  const priceNet = formatPrice(product.price.amount, currency, locale);
+  const priceGross = formatPrice(product.price.amountWithTax, currency, locale);
+  const priceVat = formatPrice(product.price.amountWithTax - product.price.amount, currency, locale);
   const vatRate = `${String(product.price.vatRatePercent)}%`;
   const destinationName = destinationNameIn(destination, locale);
 

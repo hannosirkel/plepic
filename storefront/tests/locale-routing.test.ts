@@ -31,6 +31,7 @@ import {
 } from "../../content/routes.js";
 import { contentFor } from "../../content/schema.js";
 import {
+  BasketRoute,
   HomeRoute,
   LunarBaseRoute,
   LegalRoute,
@@ -215,7 +216,7 @@ describe("every published route can actually be rendered in its locale", () => {
   /**
    * The routes whose renderer reads the edition it is given: the five legal
    * routes, which read a locale-keyed registry, and the home page, the Lunar
-   * Base page, the support page and the rulebook page, which read
+   * Base page, the support page, the rulebook page and the basket, which read
    * `siteCopyFor(locale)`. Pinned by name and by renderer because the
    * failure mode is a route quietly *leaving* the table — after which its
    * locale URLs 404 and the suite above still passes, since a route nothing
@@ -228,6 +229,7 @@ describe("every published route can actually be rendered in its locale", () => {
       lunarBase: LunarBaseRoute,
       support: SupportRoute,
       rulebook: RulebookRoute,
+      cart: BasketRoute,
       legalImprint: LegalRoute,
       legalPrivacy: LegalRoute,
       legalReturns: LegalRoute,

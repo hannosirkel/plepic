@@ -34,12 +34,8 @@
  * page followed with theirs, and with a contact form whose answer is written
  * in the edition the form was rendered in.
  *
- * The basket and the checkout are not there yet: their components still
- * import English content directly, and listing them here would serve the
- * wrong edition's words. There is one more reason: they are non-indexable,
- * they compose `src/components/shop/`, and `robots.txt` disallows their two
- * literal paths. A `/xx/cart` that 404s needs no robots rule; one that
- * rendered would need one.
+ * The basket now reads its edition's copy, and its prefixed URL is disallowed
+ * in `robots.txt`. Checkout is added once its components read edition copy.
  */
 
 import { notFound } from "next/navigation";
@@ -50,6 +46,11 @@ import { LunarBaseMockup } from "../components/mockups/LunarBaseMockup.js";
 import { JsonLdScript } from "../components/JsonLdScript.js";
 import { AddToCartButton } from "../components/shop/AddToCartButton.js";
 import { DestinationSelector } from "../components/shop/DestinationSelector.js";
+import { BasketPageContent } from "../components/shop/BasketPageContent.js";
+import { ShopPageShell } from "../components/shop/ShopPageShell.js";
+import { CartProvider } from "../lib/cart-store.js";
+import { isMockLayerEnabled, MOCK_SCENARIO_PARAM, parseMockScenario } from "../lib/mock-cart-actions.js";
+import { getRequestHost } from "../lib/request-host.js";
 import { LegalPageContent } from "../components/pages/LegalPageContent.js";
 import { RulebookPageContent } from "../components/pages/RulebookPageContent.js";
 import { SupportPageContent } from "../components/pages/SupportPageContent.js";
@@ -78,6 +79,27 @@ export function lookupLegalPage(routeId: RouteId, locale: Locale): LegalPage | u
 export interface LocalizedRouteProps {
   readonly routeId: RouteId;
   readonly locale: Locale;
+  readonly searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/** The basket in the requested edition; a destination change keeps its URL prefix. */
+export async function BasketRoute({ routeId, locale, searchParams }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+  const [params, host, destination] = await Promise.all([
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getRequestHost(),
+    getRequestDestination(),
+  ]);
+  const scenario = isMockLayerEnabled(host, loadSiteHostConfig().testHostnames)
+    ? parseMockScenario(params[MOCK_SCENARIO_PARAM])
+    : null;
+  return (
+    <ShopPageShell locale={locale} route="cart" externalTargets={getRuntimeConfig().externalTargets}>
+      <CartProvider scenario={scenario} destinationCode={destination.code}>
+        <BasketPageContent locale={locale} />
+      </CartProvider>
+    </ShopPageShell>
+  );
 }
 
 /**
@@ -198,7 +220,7 @@ export async function LunarBaseRoute({ routeId, locale }: LocalizedRouteProps) {
         externalTargets={runtime.externalTargets}
         catalogue={catalogue}
         merchant={placeholderValuesFrom(runtime.merchant)}
-        destinationSelector={<DestinationSelector destinationCode={destination.code} />}
+        destinationSelector={<DestinationSelector destinationCode={destination.code} locale={locale} />}
         primaryPurchaseAction={<AddToCartButton locale={locale} label={addLabel} variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
       />
       <JsonLdScript data={jsonLd} nonce={nonce} />
@@ -251,6 +273,7 @@ export const LOCALIZED_ROUTE_VIEWS: Partial<
   lunarBase: LunarBaseRoute,
   support: SupportRoute,
   rulebook: RulebookRoute,
+  cart: BasketRoute,
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,
   legalShipping: LegalRoute,
