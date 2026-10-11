@@ -205,3 +205,16 @@ export const TERMS = {
 export type TermId = keyof typeof TERMS;
 
 export const TERM_IDS = Object.keys(TERMS) as readonly TermId[];
+
+/**
+ * Terms the English site copy and legal set never use, and where the rulebook
+ * uses each. The transcription is not in this repository, so until the English
+ * rulebook text lands a reader checks these, not the test.
+ */
+export const RULEBOOK_ONLY_TERMS: Readonly<Partial<Record<TermId, string>>> = {
+  draft: 'sheet 13, "Draft. Take 1 card from the Supply"',
+  draw: 'sheet 13, "Draw. Draw 1 card from the top of the deck"',
+  discard: 'sheet 13, "If you are instructed to Discard more than 1 card"',
+  flip: 'sheet 15, "Flip Station. Flip the indicated Station card(s)"',
+  terranOutpost: 'sheet 5, "with the Terran Outpost side showing"',
+};

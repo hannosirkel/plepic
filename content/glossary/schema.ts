@@ -54,6 +54,23 @@ export type GlossaryRegistry = Readonly<
   Partial<Record<Exclude<Locale, typeof DEFAULT_LOCALE>, Glossary>>
 >;
 
+/**
+ * The keys whose strings the check does not read: identifiers and link
+ * targets, by the name of the property or of the list a string is an item of.
+ * A name ending in `Id` counts too. `mirror.test.ts` holds each to the English
+ * string, so the check skips one only while it is still that string. Every
+ * other string is read, translated or not.
+ *
+ * The list repeats the mirror test's and need not agree with it to be safe. A
+ * name missing here makes the check read an identifier, and it says so; a name
+ * listed in error exempts only a string nobody changed.
+ */
+export const IDENTIFIER_KEYS: readonly string[] = [
+  "anchor", "autoComplete", "control", "covers", "emphasis", "href", "id",
+  "indexable", "kind", "name", "path", "reviewStatus", "route", "sections",
+  "source", "src", "supporting", "to", "type", "url", "youTubeId",
+];
+
 /** The three ways a translated string can fail the check. */
 export const GLOSSARY_RULES = ["forbidden-variant", "missing-term", "altered-as-printed"] as const;
 

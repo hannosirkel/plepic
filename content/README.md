@@ -138,9 +138,15 @@ An exception that suppresses nothing fails the test.
 
 Two things the check does not do. It does not look for the bracketed English
 word of the second class: "first use on a page" is a property of a page, not of
-a string, and the reviewer checks it. And it skips a string equal to its English
-original, which is an identifier the mirror test pins, or untranslated prose the
-English-leak guard reports.
+a string, and the reviewer checks it. And it does not read an identifier or a
+link target: the mirror test holds those to the English string, and
+`IDENTIFIER_KEYS` in `glossary/schema.ts` names their keys.
+
+Every other string is read, including one left exactly as the English has it. A
+short label such as a page title is below the English-leak guard's four words,
+so this check is the one that catches an untranslated "Checkout". A string that
+should stay in English, such as a brand in a table cell, passes when it holds no
+term or only as-printed ones, and otherwise takes an exception.
 
 Rulebook text joins the same check when it lands, through `rulebookPairs` in
 `glossary.test.ts`.

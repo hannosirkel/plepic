@@ -5,9 +5,9 @@
  * English string has a term and the translation has none of its forms, or when
  * an as-printed term is not there letter for letter.
  *
- * A string equal to its English original is skipped. It is an identifier or a
- * link target, which `mirror.test.ts` pins, or prose nobody translated, which
- * is the English-leak guard's finding and not this one's.
+ * An identifier or a link target is skipped: `mirror.test.ts` pins it to the
+ * English string. Any other string is read, even one left as the English has
+ * it, because a label a reader sees is the glossary's business either way.
  *
  * No glossary is registered until a language's first task, so the check is
  * proven here on fixtures, and the walk on the Estonian legal set.
@@ -21,6 +21,8 @@ import { describe, expect, it } from "vitest";
 import { siteCopyByLocale, siteCopyFor } from "./editions.js";
 import {
   GLOSSARY_RULES,
+  IDENTIFIER_KEYS,
+  RULEBOOK_ONLY_TERMS,
   TERM_CLASSES,
   TERM_IDS,
   TERMS,
@@ -145,7 +147,9 @@ function checkGlossary(glossary: Glossary, pairs: readonly Pair[]): Failure[] {
   const entries = wantedIn(glossary);
   const failures: Failure[] = [];
   for (const { key, english, translated } of pairs) {
-    if (english === translated) continue;
+    // The name of the property, or of the list the string is an item of.
+    const name = /([A-Za-z]\w*)(?:\[\d+\])*$/.exec(key)?.[1] ?? "";
+    if (english === translated && (IDENTIFIER_KEYS.includes(name) || name.endsWith("Id"))) continue;
     const found = hitsIn(translated, entries);
     const variants = new Map(found.filter((hit) => hit.forbidden).map((hit) => [`${hit.term} ${hit.text}`, hit]));
     for (const hit of variants.values()) {
@@ -238,27 +242,11 @@ describe("the term list", () => {
     }
   });
 
-  /**
-   * Terms the English site copy and legal set never use, and where the rulebook
-   * uses each. The transcription is not in this repository, so until the English
-   * rulebook text lands a reader checks these, not the test.
-   */
-  const RULEBOOK_ONLY: Readonly<Partial<Record<TermId, string>>> = {
-    draft: 'sheet 13, "Draft. Take 1 card from the Supply"',
-    draw: 'sheet 13, "Draw. Draw 1 card from the top of the deck"',
-    discard: 'sheet 13, "If you are instructed to Discard more than 1 card"',
-    flip: 'sheet 15, "Flip Station. Flip the indicated Station card(s)"',
-    terranOutpost: 'sheet 5, "with the Terran Outpost side showing"',
-  };
-
   it("seeds only terms the English site copy uses, or the named rulebook-only terms", () => {
-    const english = [
-      ...pairsOf(siteCopyFor(DEFAULT_LOCALE), siteCopyFor(DEFAULT_LOCALE), "site"),
-      ...legalPairs(DEFAULT_LOCALE),
-    ];
+    const english = [...sitePairs(DEFAULT_LOCALE), ...legalPairs(DEFAULT_LOCALE)];
     expect(english.length).toBeGreaterThan(300);
     const used = new Set(english.flatMap((pair) => hitsIn(pair.english, englishForms)).map((hit) => hit.term));
-    expect(TERM_IDS.filter((term) => !used.has(term))).toEqual(Object.keys(RULEBOOK_ONLY));
+    expect(TERM_IDS.filter((term) => !used.has(term))).toEqual(Object.keys(RULEBOOK_ONLY_TERMS));
   });
 });
 
@@ -345,9 +333,20 @@ describe("the check, on fixture data", () => {
     expect(messagesFor("Shuffle the deck.", "Mische den Ablagestapel.")).toHaveLength(1);
   });
 
-  it("skips a string equal to its English original", () => {
-    expect(messagesFor("deck", "deck")).toEqual([]);
-    expect(messagesFor("deck", "Deck")).toHaveLength(2);
+  it("skips an identifier the mirror test pins, and reads any other string left as the English has it", () => {
+    const kasse = fixtureGlossary({ checkout: { term: "Kasse", forms: ["Kasse"], forbidden: ["Checkout"] } });
+    const rulesAt = (key: string, english: string, translated = english) =>
+      checkGlossary(kasse, [{ key, english, translated }]).map((failure) => failure.rule);
+    expect(rulesAt("fixture.title", "Checkout")).toEqual(["forbidden-variant", "missing-term"]);
+    expect(rulesAt("fixture.title", "checkout")).toEqual(["missing-term"]);
+    for (const key of ["fixture.route", "fixture.sections[0]", "fixture.checkoutId"]) expect(rulesAt(key, "checkout"), key).toEqual([]);
+    // An identifier that was changed is no longer the pinned string, so it is read.
+    expect(rulesAt("fixture.route", "checkout", "Checkout")).toEqual(["forbidden-variant", "missing-term"]);
+    // The English site copy beside itself: the page title nobody translated fails, its route does not.
+    const route = sitePairs(DEFAULT_LOCALE).find((pair) => pair.english === "checkout" && pair.key.endsWith(".route"))?.key ?? "";
+    const failed = checkGlossary(kasse, sitePairs(DEFAULT_LOCALE)).map((failure) => `${failure.key} ${failure.rule}`);
+    expect(failed).toContain(`${route.replace(/route$/, "title")} forbidden-variant`);
+    expect(failed.filter((line) => line.startsWith(`${route} `))).toEqual([]);
   });
 
   it("lets a named exception pass, and fails one that gives no reason or suppresses nothing", () => {
