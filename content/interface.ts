@@ -41,6 +41,44 @@ export interface InterfaceCopy {
     readonly emailMissing: string;
     readonly emailInvalid: string;
   };
+  /**
+   * The contact form's own validation errors, shown before any request.
+   *
+   * One sentence per field and fault. The form used to build them from a
+   * lower-cased label, which is not a sentence in every language and changes
+   * the spelling of a Klingon word. The English ones are what it built, kept
+   * as they were.
+   */
+  readonly contactForm: {
+    readonly nameMissing: string;
+    readonly emailMissing: string;
+    readonly emailInvalid: string;
+    readonly subjectMissing: string;
+    readonly messageMissing: string;
+  };
+  /** Copy every form with a verification challenge shares. */
+  readonly forms: {
+    /** Accessible name of the challenge widget. */
+    readonly verificationLabel: string;
+  };
+  /**
+   * The support page's own heading. Its component list and its tutorial video
+   * are the product's, and stand under the product's headings below.
+   */
+  readonly support: {
+    readonly faqHeading: string;
+  };
+  /** The rulebook page. */
+  readonly rulebook: {
+    readonly heading: string;
+    readonly lede: string;
+    readonly openLabel: string;
+    /**
+     * `%megabytes%` is the size of the file the link opens. Written as
+     * `%missing%` is below: braces are for the tokens `schema.ts` declares.
+     */
+    readonly downloadNote: string;
+  };
   /** Copy written by the product page's presentation components. */
   readonly product: {
     readonly boxImageAlt: string;
@@ -87,6 +125,25 @@ export const interfaceCopy: InterfaceCopy = {
   newsletterForm: {
     emailMissing: "Enter your email address.",
     emailInvalid: "Enter a valid email address.",
+  },
+  contactForm: {
+    nameMissing: "Enter your name.",
+    emailMissing: "Enter your email address.",
+    emailInvalid: "Enter a valid your email address.",
+    subjectMissing: "Enter what is this about?.",
+    messageMissing: "Enter message.",
+  },
+  forms: {
+    verificationLabel: "Verification challenge",
+  },
+  support: {
+    faqHeading: "Frequently asked questions",
+  },
+  rulebook: {
+    heading: "Lunar Base rulebook",
+    lede: "The complete rulebook, exactly as printed in the box — 25 pages, tagged and selectable rather than a scan, so you can search it, copy from it, and read it with a screen reader.",
+    openLabel: "Open the rulebook (PDF)",
+    downloadNote: "It is a %megabytes% MB download, so it is worth knowing before you tap it on a phone.",
   },
   product: {
     boxImageAlt: "The Lunar Base box open on a plain background, its lid raised behind the empty tray, with a squared stack of cards topped by the Shackleton main-action card, a small card tuck box, the rulebook standing open, and several round scoring discs arranged in front.",

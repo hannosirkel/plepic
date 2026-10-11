@@ -30,15 +30,16 @@
  * content was the whole change. The home page followed, once `HomepageMockup`
  * and the sections it composes took a `locale` and read `siteCopyFor(locale)`.
  * The Lunar Base page followed with the same copy source for its page,
- * purchase controls and structured data.
+ * purchase controls and structured data. The support page and the rulebook
+ * page followed with theirs, and with a contact form whose answer is written
+ * in the edition the form was rendered in.
  *
- * Support is not there yet: `SupportPageContent` still imports English
- * content directly. Listing it here would serve the wrong edition's words.
- *
- * The basket and the checkout are absent for the same reason and one more:
- * they are non-indexable, they compose `src/components/shop/`, and
- * `robots.txt` disallows their two literal paths. A `/xx/cart` that 404s
- * needs no robots rule; one that rendered would need one.
+ * The basket and the checkout are not there yet: their components still
+ * import English content directly, and listing them here would serve the
+ * wrong edition's words. There is one more reason: they are non-indexable,
+ * they compose `src/components/shop/`, and `robots.txt` disallows their two
+ * literal paths. A `/xx/cart` that 404s needs no robots rule; one that
+ * rendered would need one.
  */
 
 import { notFound } from "next/navigation";
@@ -50,6 +51,8 @@ import { JsonLdScript } from "../components/JsonLdScript.js";
 import { AddToCartButton } from "../components/shop/AddToCartButton.js";
 import { DestinationSelector } from "../components/shop/DestinationSelector.js";
 import { LegalPageContent } from "../components/pages/LegalPageContent.js";
+import { RulebookPageContent } from "../components/pages/RulebookPageContent.js";
+import { SupportPageContent } from "../components/pages/SupportPageContent.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
 import { legalPagesByLocale } from "../../../content/legal/index.js";
 import { siteCopyFor } from "../../../content/editions.js";
@@ -204,6 +207,36 @@ export async function LunarBaseRoute({ routeId, locale }: LocalizedRouteProps) {
 }
 
 /**
+ * The support page, in one locale.
+ *
+ * The page registry is asked first, for the reason {@link HomeRoute} gives:
+ * an edition that does not publish the page has no copy to render it from.
+ */
+export async function SupportRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+
+  const runtimeConfig = getRuntimeConfig();
+  const nonce = await getRequestNonce();
+
+  return (
+    <SupportPageContent
+      locale={locale}
+      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+      nonce={nonce}
+      merchantContactAddress={runtimeConfig.merchant.contactAddress}
+      externalTargets={runtimeConfig.externalTargets}
+    />
+  );
+}
+
+/** The rulebook page, in one locale. It links one file, the same in every edition. */
+export function RulebookRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+
+  return <RulebookPageContent locale={locale} externalTargets={getRuntimeConfig().externalTargets} />;
+}
+
+/**
  * Routes with a locale-aware renderer, and the renderer for each.
  *
  * `Partial<Record<RouteId, …>>` rather than a total record: absence is the
@@ -216,6 +249,8 @@ export const LOCALIZED_ROUTE_VIEWS: Partial<
 > = {
   home: HomeRoute,
   lunarBase: LunarBaseRoute,
+  support: SupportRoute,
+  rulebook: RulebookRoute,
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,
   legalShipping: LegalRoute,

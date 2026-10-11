@@ -35,6 +35,8 @@ import {
   LunarBaseRoute,
   LegalRoute,
   LOCALIZED_ROUTE_VIEWS,
+  RulebookRoute,
+  SupportRoute,
   lookupLegalPage,
   resolveLocalizedRoute,
 } from "../src/app/localized-routes.js";
@@ -212,8 +214,9 @@ describe("every published route can actually be rendered in its locale", () => {
 
   /**
    * The routes whose renderer reads the edition it is given: the five legal
-   * routes, which read a locale-keyed registry, and the home page, which
-   * reads `siteCopyFor(locale)`. Pinned by name and by renderer because the
+   * routes, which read a locale-keyed registry, and the home page, the Lunar
+   * Base page, the support page and the rulebook page, which read
+   * `siteCopyFor(locale)`. Pinned by name and by renderer because the
    * failure mode is a route quietly *leaving* the table — after which its
    * locale URLs 404 and the suite above still passes, since a route nothing
    * publishes needs no renderer. A route joins this list in the change that
@@ -223,6 +226,8 @@ describe("every published route can actually be rendered in its locale", () => {
     expect(LOCALIZED_ROUTE_VIEWS).toEqual({
       home: HomeRoute,
       lunarBase: LunarBaseRoute,
+      support: SupportRoute,
+      rulebook: RulebookRoute,
       legalImprint: LegalRoute,
       legalPrivacy: LegalRoute,
       legalReturns: LegalRoute,

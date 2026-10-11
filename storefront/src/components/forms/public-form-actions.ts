@@ -72,16 +72,22 @@
  * The returned message is a fixed string from `content/`. **No value a
  * visitor typed is ever put in it**, which is the whole point of the
  * exercise.
+ *
+ * ## The edition of the answer
+ *
+ * A form rendered in an edition other than the default one posts that
+ * edition in a hidden field, and the answer is that edition's sentence. The
+ * field picks one of the fixed strings and is never put in one; see
+ * `./form-locale.tsx` for what is believed and what is not.
  */
 
-import { newsletter } from "../../../../content/publisher.js";
-import { contactForm } from "../../../../content/support.js";
 import { getRuntimeConfig } from "../../config/runtime-config.js";
 import {
   placeholderValuesFrom,
   resolveConfigurationPlaceholders,
 } from "../../lib/configuration-placeholders.js";
 import { submitContactMessage } from "./contact-submit.js";
+import { siteCopyForPost } from "./form-locale.js";
 import { submitNewsletterAddress } from "./newsletter-submit.js";
 
 /**
@@ -185,6 +191,7 @@ export async function submitNewsletter(
   previous: unknown,
   formData: FormData,
 ): Promise<PublicFormOutcome> {
+  const { newsletter } = siteCopyForPost(formData).publisher;
   const result = await submitNewsletterAddress(formData, getRuntimeConfig().medusa);
   return {
     message: result.ok ? newsletter.successMessage : newsletter.errorMessage,
@@ -197,6 +204,7 @@ export async function submitContact(
   previous: unknown,
   formData: FormData,
 ): Promise<PublicFormOutcome> {
+  const { contactForm } = siteCopyForPost(formData).support;
   const runtime = getRuntimeConfig();
   const result = await submitContactMessage(formData, runtime.medusa);
   const error = resolveConfigurationPlaceholders(

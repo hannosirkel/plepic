@@ -27,6 +27,8 @@
  * measures 1.59:1 against a 4.5:1 requirement. Every link that remains on
  * this page is token-coloured.
  */
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { SiteFooter } from "../SiteFooter.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
@@ -51,32 +53,40 @@ export interface RulebookPageContentProps {
    * to the footer's social row. Absent keeps it inert text.
    */
   readonly externalTargets?: ExternalTargetUrls;
+  /** The edition whose copy and links this renders. The file is the same in every edition. */
+  readonly locale?: Locale;
 }
 
-export function RulebookPageContent({ externalTargets = {} }: RulebookPageContentProps = {}) {
+export function RulebookPageContent({
+  externalTargets = {},
+  locale = DEFAULT_LOCALE,
+}: RulebookPageContentProps = {}) {
+  const copy = siteCopyFor(locale).interface.rulebook;
+  // The figure stays a text node of its own, as it was when the sentence was written here.
+  const [beforeSize, afterSize] = copy.downloadNote.split("%megabytes%");
+
   return (
     <div data-layer="lunar" className={styles.page}>
-      <SiteHeader wordmark="dark" />
+      <SiteHeader wordmark="dark" locale={locale} />
 
       <main className={styles.main}>
         <div className={styles.intro}>
-          <h1 className={styles.heading}>Lunar Base rulebook</h1>
-          <p className={styles.lede}>
-            The complete rulebook, exactly as printed in the box — 25 pages, tagged and selectable rather than a
-            scan, so you can search it, copy from it, and read it with a screen reader.
-          </p>
+          <h1 className={styles.heading}>{copy.heading}</h1>
+          <p className={styles.lede}>{copy.lede}</p>
           <div className={styles.actions}>
             <a className={`${ctaStyles.cta} ${ctaStyles.primary}`} href={RULEBOOK_PATH}>
-              Open the rulebook (PDF)
+              {copy.openLabel}
             </a>
           </div>
           <p className={styles.note}>
-            It is a {RULEBOOK_MEGABYTES} MB download, so it is worth knowing before you tap it on a phone.
+            {beforeSize}
+            {RULEBOOK_MEGABYTES}
+            {afterSize}
           </p>
         </div>
       </main>
 
-      <SiteFooter externalTargets={externalTargets} />
+      <SiteFooter locale={locale} externalTargets={externalTargets} />
     </div>
   );
 }

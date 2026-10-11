@@ -47,6 +47,7 @@ import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { FormLocaleField } from "./form-locale.js";
 import { submitNewsletter } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
@@ -55,11 +56,9 @@ export interface NewsletterFormProps {
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
   /**
-   * The edition whose labels and validation errors this renders.
-   *
-   * The sentence that answers a submission is not among them: it is written
-   * by the Server Function in `./public-form-actions.ts`, which does not know
-   * the form's edition yet and answers in the default one.
+   * The edition whose labels and validation errors this renders, and the one
+   * the Server Function in `./public-form-actions.ts` answers in: the form
+   * posts it, see `./form-locale.tsx`.
    */
   readonly locale?: Locale;
 }
@@ -132,6 +131,7 @@ export function NewsletterForm({
       noValidate
     >
       <input type="hidden" name="newsletter-consent" value="on" />
+      <FormLocaleField locale={locale} />
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel} htmlFor={fieldId}>
           {newsletter.fieldLabel}
@@ -201,7 +201,7 @@ export function NewsletterForm({
       <HoneypotField formName="newsletter" />
 
       <div className={styles.turnstile}>
-        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="newsletter" />
+        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="newsletter" locale={locale} />
       </div>
 
       <p className={styles.consentNote}>{newsletter.consentNote}</p>

@@ -20,6 +20,9 @@
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+
 export interface TurnstileWidgetProps {
   /** From runtime configuration. `null` renders nothing rather than a broken widget. */
   readonly siteKey: string | null;
@@ -88,13 +91,22 @@ export interface TurnstileWidgetProps {
   readonly size?: "normal" | "compact" | "flexible";
   /** Resets an already rendered challenge after its one-use response is spent. */
   readonly resetKey?: number;
+  /** The edition whose words name the challenge. The challenge itself is Cloudflare's. */
+  readonly locale?: Locale;
 }
 
 declare global {
   interface Window { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => string; reset: (id: string) => void }; }
 }
 
-export function TurnstileWidget({ siteKey, nonce, formName, size = "compact", resetKey = 0 }: TurnstileWidgetProps) {
+export function TurnstileWidget({
+  siteKey,
+  nonce,
+  formName,
+  size = "compact",
+  resetKey = 0,
+  locale = DEFAULT_LOCALE,
+}: TurnstileWidgetProps) {
   const element = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const lastReset = useRef(resetKey);
@@ -127,7 +139,7 @@ export function TurnstileWidget({ siteKey, nonce, formName, size = "compact", re
         data-sitekey={siteKey}
         data-size={size}
         data-testid={`turnstile-${formName}`}
-        aria-label="Verification challenge"
+        aria-label={siteCopyFor(locale).interface.forms.verificationLabel}
       />
     </>
   );
