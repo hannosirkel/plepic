@@ -50,7 +50,8 @@
  * certification copy on the same page states what the age grade is and why,
  * and it belongs to `content/`, which owns it.
  */
-import { specifications } from "../../../content/lunar-base.js";
+import { siteCopyFor } from "../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import {
   AlienAbductionIcon,
   AstronautHelmetIcon,
@@ -63,16 +64,16 @@ import type { FC } from "react";
 import styles from "../styles/feature-spec-strip.module.css";
 
 /**
- * Keyed by `specifications`' `term`, not by list position, so reordering
+ * Keyed by `specifications`' stable `source`, not by translated `term`, so reordering
  * `content/lunar-base.ts` moves a column without silently re-pairing the
  * icons — which is exactly how the previous mispairing survived review.
  */
 const PAIRING: Readonly<Record<string, FC<FeatureIconProps>>> = {
-  "Fast-paced": ShuttleLaunchIcon,
-  Replayable: GalaxyIcon,
-  "Quick Start": MissionControlIcon,
-  Portable: AlienAbductionIcon,
-  "Player info": AstronautHelmetIcon,
+  E10: ShuttleLaunchIcon,
+  "official-wording": GalaxyIcon,
+  E11: MissionControlIcon,
+  E12: AlienAbductionIcon,
+  E9: AstronautHelmetIcon,
 };
 
 /**
@@ -82,7 +83,8 @@ const PAIRING: Readonly<Record<string, FC<FeatureIconProps>>> = {
  * at import time (caught by any test that renders the component) instead of
  * silently dropping or misaligning a column.
  */
-const unpaired = specifications.filter((spec) => !(spec.term in PAIRING)).map((spec) => spec.term);
+const specifications = siteCopyFor(DEFAULT_LOCALE).lunarBase.specifications;
+const unpaired = specifications.filter((spec) => !(spec.source in PAIRING)).map((spec) => spec.source);
 
 if (unpaired.length > 0 || specifications.length !== Object.keys(PAIRING).length) {
   throw new Error(
@@ -92,14 +94,18 @@ if (unpaired.length > 0 || specifications.length !== Object.keys(PAIRING).length
   );
 }
 
-export function FeatureSpecStrip() {
+export function FeatureSpecStrip({ locale = DEFAULT_LOCALE }: { readonly locale?: Locale } = {}) {
+  const editionSpecifications = siteCopyFor(locale).lunarBase.specifications;
+  if (editionSpecifications.some((spec) => !(spec.source in PAIRING))) {
+    throw new Error(`FeatureSpecStrip has an unpaired specification in ${locale}`);
+  }
   return (
     <div className={styles.stripGroup}>
       <ul className={styles.strip}>
-        {specifications.map((spec) => {
-          const Icon = PAIRING[spec.term]!;
+        {editionSpecifications.map((spec) => {
+          const Icon = PAIRING[spec.source]!;
           return (
-            <li key={spec.term} className={styles.column}>
+            <li key={spec.source} className={styles.column}>
               <Icon title="" className={styles.icon} />
               <span className={styles.term}>{spec.term}</span>
               {spec.detail.map((line) => (

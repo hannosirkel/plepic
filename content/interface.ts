@@ -41,6 +41,33 @@ export interface InterfaceCopy {
     readonly emailMissing: string;
     readonly emailInvalid: string;
   };
+  /** Copy written by the product page's presentation components. */
+  readonly product: {
+    readonly productName: string;
+    readonly boxImageAlt: string;
+    readonly victoryHeading: string;
+    readonly boxHeading: string;
+    readonly cardsImageAlt: string;
+    readonly baseImageAlt: string;
+    readonly factionsSummary: string;
+    readonly tableHeading: string;
+    readonly tableImageAlt: string;
+    readonly watchHeading: string;
+    readonly trailerHeading: string;
+    readonly trailerTitle: string;
+    readonly tutorialHeading: string;
+    readonly tutorialTitle: string;
+    readonly reviewsHeading: string;
+    readonly questionsHeading: string;
+    readonly buyAccessibleLabel: string;
+    readonly safetyIncompleteSingle: string;
+    readonly safetyIncompletePlural: string;
+    readonly videoPendingSuffix: string;
+    readonly outOfStock: string;
+    readonly addingToBasket: string;
+    readonly retryAddingToBasket: string;
+    readonly basketExpired: string;
+  };
 }
 
 export const interfaceCopy: InterfaceCopy = {
@@ -61,5 +88,31 @@ export const interfaceCopy: InterfaceCopy = {
   newsletterForm: {
     emailMissing: "Enter your email address.",
     emailInvalid: "Enter a valid email address.",
+  },
+  product: {
+    productName: "Lunar Base",
+    boxImageAlt: "The Lunar Base box open on a plain background, its lid raised behind the empty tray, with a squared stack of cards topped by the Shackleton main-action card, a small card tuck box, the rulebook standing open, and several round scoring discs arranged in front.",
+    victoryHeading: "Four ways to win",
+    boxHeading: "What is in the box",
+    cardsImageAlt: "A hand of Lunar Base cards, fanned out.",
+    baseImageAlt: "A player's base laid out with a station and several module cards attached.",
+    factionsSummary: "The six factions",
+    tableHeading: "On the table",
+    tableImageAlt: "A complete Lunar Base game in progress seen from above, with six branching player bases and cards arranged around the shared play area.",
+    watchHeading: "Watch",
+    trailerHeading: "Trailer",
+    trailerTitle: "Lunar Base Kickstarter Launch Video",
+    tutorialHeading: "Tutorial",
+    tutorialTitle: "Lunar Base - Tutorial and Playthrough",
+    reviewsHeading: "What reviewers say",
+    questionsHeading: "Shipping, returns and other questions",
+    buyAccessibleLabel: "Buy {productName}",
+    safetyIncompleteSingle: "This manufacturer information is incomplete: %missing% has not been configured for this deployment.",
+    safetyIncompletePlural: "This manufacturer information is incomplete: %missing% have not been configured for this deployment.",
+    videoPendingSuffix: " is not linked yet — it will be embedded from YouTube once a published video id is configured.",
+    outOfStock: "Out of stock",
+    addingToBasket: "Adding to basket…",
+    retryAddingToBasket: "Try adding to basket again",
+    basketExpired: "The basket expired; try adding the game again",
   },
 };

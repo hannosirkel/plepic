@@ -50,7 +50,7 @@ registries cannot disagree about what the Estonian edition contains.
 One table is not keyed by locale, on purpose. `LOCALIZED_ROUTE_VIEWS` in
 `storefront/src/app/localized-routes.tsx` is a
 `Partial<Record<RouteId, renderer>>`. It lists the routes that have a renderer
-that takes a locale. Today it lists the home page and the five legal routes.
+that takes a locale. Today it lists the home page, Lunar Base and the five legal routes.
 
 Test files hold their own total tables of expected words per locale:
 `content/content.test.ts`, `storefront/tests/legal-pages.test.tsx`,
@@ -222,9 +222,10 @@ host says nothing about the language its visitor reads.
 
 | Item | State |
 | --- | --- |
-| Lunar Base, support, rulebook page, basket, checkout | The components import the English content modules directly: `content/publisher.ts`, `content/lunar-base.ts`, `content/support.ts`, `content/shop.ts`. They have no locale-aware renderer |
+| Support, rulebook page, basket, checkout | Their components still read English content directly and have no locale-aware renderer |
+| Lunar Base | Its renderer reads `siteCopyFor(locale)` for page copy and structured data. Only `en` publishes the route so far |
 | Home | The renderer takes a locale and reads `siteCopyFor(locale)`, but only `en` publishes the route. The sentence that answers a newsletter signup is written by the Server Function in `public-form-actions.ts`, in English |
-| Strings inside components | Reader-facing strings are written in components, not in `content/`. Examples: `LunarBaseMockup.tsx`, `StripePaymentReturn.tsx`, `ConsentManager.tsx` |
+| Strings inside components | Some reader-facing strings remain in components. Examples: `StripePaymentReturn.tsx`, `ConsentManager.tsx` |
 | Publisher tagline in the footer | The edition's own, from `siteCopyByLocale`. An edition with no site copy (`et`) shows the English one |
 | Price format | The fixed tag `en-IE`, in `storefront/src/lib/catalogue.ts` and `storefront/src/lib/cart.ts` |
 | Country names | `storefront/mock/countries.json` holds English names. `destinationNameIn` in `storefront/src/lib/destination.ts` asks ICU for the edition's name inside a price qualification. It answers in English when ICU has no data for the edition |

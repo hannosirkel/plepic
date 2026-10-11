@@ -29,12 +29,11 @@
  * through one component, so pointing that component at another locale's
  * content was the whole change. The home page followed, once `HomepageMockup`
  * and the sections it composes took a `locale` and read `siteCopyFor(locale)`.
+ * The Lunar Base page followed with the same copy source for its page,
+ * purchase controls and structured data.
  *
- * The rest are not there. `SupportPageContent` and `LunarBaseMockup` still
- * import `content/lunar-base.ts` and `content/support.ts` directly, and no
- * amount of routing makes those read a locale. Listing them here anyway — so
- * the table looked complete — would be exactly the "answers 200 with the
- * wrong words" failure above.
+ * Support is not there yet: `SupportPageContent` still imports English
+ * content directly. Listing it here would serve the wrong edition's words.
  *
  * The basket and the checkout are absent for the same reason and one more:
  * they are non-indexable, they compose `src/components/shop/`, and
@@ -46,9 +45,15 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { HomepageMockup } from "../components/mockups/HomepageMockup.js";
+import { LunarBaseMockup } from "../components/mockups/LunarBaseMockup.js";
+import { JsonLdScript } from "../components/JsonLdScript.js";
+import { AddToCartButton } from "../components/shop/AddToCartButton.js";
+import { DestinationSelector } from "../components/shop/DestinationSelector.js";
 import { LegalPageContent } from "../components/pages/LegalPageContent.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
 import { legalPagesByLocale } from "../../../content/legal/index.js";
+import { siteCopyFor } from "../../../content/editions.js";
+import { ROUTE_PATHS } from "../../../content/routes.js";
 import { contentFor, type LegalPage } from "../../../content/schema.js";
 import type { Locale, RouteId } from "../../../content/routes.js";
 import { mockCatalogue, resolveCatalogue } from "../lib/catalogue.js";
@@ -57,7 +62,10 @@ import { getRequestDestination } from "../lib/destination-request.js";
 import { getRequestNonce } from "../lib/nonce.js";
 import { lookupPage } from "../lib/seo.js";
 import { loadStoreCatalogueProduct } from "../lib/store-product.js";
-import { localeForPathSegment, routeIdForPath } from "../lib/urls.js";
+import { loadStoreProduct } from "../lib/store-product.js";
+import { buildProductJsonLd } from "../lib/product-jsonld.js";
+import { loadSiteHostConfig } from "../config/hosts.js";
+import { absoluteUrl, localizedPath, localeForPathSegment, routeIdForPath } from "../lib/urls.js";
 
 /** The legal page `locale` publishes for `routeId`, or `undefined`. */
 export function lookupLegalPage(routeId: RouteId, locale: Locale): LegalPage | undefined {
@@ -153,6 +161,48 @@ export async function HomeRoute({ routeId, locale }: LocalizedRouteProps) {
   );
 }
 
+/** The product page and its structured data, resolved for one edition. */
+export async function LunarBaseRoute({ routeId, locale }: LocalizedRouteProps) {
+  const page = lookupPage(routeId, locale);
+  if (page === undefined) notFound();
+
+  const runtime = getRuntimeConfig();
+  const [nonce, destination, store] = await Promise.all([
+    getRequestNonce(),
+    getRequestDestination(),
+    loadStoreProduct({
+      backendUrl: runtime.medusa.backendUrl,
+      publishableKey: runtime.medusa.publishableKey,
+      presentation: mockCatalogue,
+    }),
+  ]);
+  const catalogue = resolveCatalogue(store.catalogue, destination, locale);
+  const analyticsProduct = store.catalogue;
+  const copy = siteCopyFor(locale);
+  const jsonLd = buildProductJsonLd({
+    product: store.catalogue,
+    name: copy.interface.product.productName,
+    url: absoluteUrl(loadSiteHostConfig().baseUrl, localizedPath(locale, ROUTE_PATHS.lunarBase)),
+    description: page.description,
+  });
+  const addLabel = copy.lunarBase.purchase.callsToAction.find((action) => action.emphasis === "primary")?.label;
+  if (addLabel === undefined) throw new Error("The product has no primary purchase action");
+
+  return (
+    <>
+      <LunarBaseMockup
+        locale={locale}
+        externalTargets={runtime.externalTargets}
+        catalogue={catalogue}
+        merchant={placeholderValuesFrom(runtime.merchant)}
+        destinationSelector={<DestinationSelector destinationCode={destination.code} />}
+        primaryPurchaseAction={<AddToCartButton locale={locale} label={addLabel} variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
+      />
+      <JsonLdScript data={jsonLd} nonce={nonce} />
+    </>
+  );
+}
+
 /**
  * Routes with a locale-aware renderer, and the renderer for each.
  *
@@ -165,6 +215,7 @@ export const LOCALIZED_ROUTE_VIEWS: Partial<
   Readonly<Record<RouteId, (props: LocalizedRouteProps) => ReactNode | Promise<ReactNode>>>
 > = {
   home: HomeRoute,
+  lunarBase: LunarBaseRoute,
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,
   legalShipping: LegalRoute,

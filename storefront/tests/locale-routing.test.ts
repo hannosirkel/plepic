@@ -32,6 +32,7 @@ import {
 import { contentFor } from "../../content/schema.js";
 import {
   HomeRoute,
+  LunarBaseRoute,
   LegalRoute,
   LOCALIZED_ROUTE_VIEWS,
   lookupLegalPage,
@@ -221,6 +222,7 @@ describe("every published route can actually be rendered in its locale", () => {
   it("carries the legal set and the home page, and nothing that only looks locale-aware", () => {
     expect(LOCALIZED_ROUTE_VIEWS).toEqual({
       home: HomeRoute,
+      lunarBase: LunarBaseRoute,
       legalImprint: LegalRoute,
       legalPrivacy: LegalRoute,
       legalReturns: LegalRoute,

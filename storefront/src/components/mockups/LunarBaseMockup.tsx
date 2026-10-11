@@ -55,25 +55,9 @@
  * 800 — and the fact that everything a buyer needs is now in one place
  * instead of at opposite ends of the page.
  */
-import {
-  differentiator,
-  factions,
-  heroFacts,
-  howItPlays,
-  inTheBox,
-  inTheBoxSummary,
-  influenceVariantNote,
-  pitch,
-  productFaq,
-  purchase,
-  teaserVideos,
-  travelsWell,
-  victoryPaths,
-  victoryPathsIntro,
-  victoryPathsNote,
-} from "../../../../content/lunar-base.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import type { CallToAction } from "../../../../content/schema.js";
-import { rulebookLink } from "../../../../content/support.js";
 import {
   PRICE_HEADLINE_SEPARATOR,
   resolveCatalogue,
@@ -95,6 +79,7 @@ import { CallToActionLink } from "./CallToActionLink.js";
 import styles from "../../styles/mockups/lunar-base.module.css";
 
 export interface LunarBaseMockupProps {
+  readonly locale?: Locale;
   /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
   readonly catalogue?: ResolvedCatalogue;
   /**
@@ -135,8 +120,8 @@ export interface LunarBaseMockupProps {
  * exists to prevent, so it throws at import time — caught by any test that
  * renders this component — rather than rendering nothing.
  */
-function requirePrimaryPurchaseAction(): CallToAction {
-  const action = purchase.callsToAction.find((candidate) => candidate.emphasis === "primary");
+function requirePrimaryPurchaseAction(actions: readonly CallToAction[]): CallToAction {
+  const action = actions.find((candidate) => candidate.emphasis === "primary");
   if (action === undefined) {
     throw new Error(
       "content/lunar-base.ts's purchase.callsToAction declares no primary action, so the Lunar Base " +
@@ -146,20 +131,24 @@ function requirePrimaryPurchaseAction(): CallToAction {
   return action;
 }
 
-const heroBuyAction: CallToAction = requirePrimaryPurchaseAction();
-
 export function LunarBaseMockup({
-  catalogue = resolveCatalogue(),
+  locale = DEFAULT_LOCALE,
+  catalogue = resolveCatalogue(undefined, undefined, locale),
   merchant = NO_CONFIGURATION_VALUES,
   primaryPurchaseAction,
   destinationSelector,
   externalTargets = {},
 }: LunarBaseMockupProps = {}) {
+  const copy = siteCopyFor(locale);
+  const { differentiator, factions, heroFacts, howItPlays, inTheBox, inTheBoxSummary, influenceVariantNote, pitch, productFaq, purchase, teaserVideos, travelsWell, victoryPaths, victoryPathsIntro, victoryPathsNote } = copy.lunarBase;
+  const { rulebookLink } = copy.support;
+  const strings = copy.interface.product;
+  const heroBuyAction = requirePrimaryPurchaseAction(purchase.callsToAction);
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
   return (
     <div data-layer="lunar" className={styles.page}>
-      <SiteHeader wordmark="dark" />
+      <SiteHeader wordmark="dark" locale={locale} />
 
       <main className={styles.main}>
         <section id="aboutgame" className={styles.hero}>
@@ -196,7 +185,7 @@ export function LunarBaseMockup({
               )}
               <p className={styles.heroAvailability}>{catalogue.availabilityLabel}</p>
               <div className={styles.heroActions}>
-                {primaryPurchaseAction ?? <CallToActionLink action={heroBuyAction} resolveLabel={resolve} />}
+                {primaryPurchaseAction ?? <CallToActionLink action={heroBuyAction} resolveLabel={resolve} locale={locale} />}
               </div>
             </div>
           </div>
@@ -209,12 +198,12 @@ export function LunarBaseMockup({
             height={1000}
             loading="eager"
             decoding="async"
-            alt="The Lunar Base box open on a plain background, its lid raised behind the empty tray, with a squared stack of cards topped by the Shackleton main-action card, a small card tuck box, the rulebook standing open, and several round scoring discs arranged in front."
+            alt={strings.boxImageAlt}
           />
         </section>
 
         <section className={styles.specSection}>
-          <FeatureSpecStrip />
+          <FeatureSpecStrip locale={locale} />
         </section>
 
         <SectionDivider className={styles.divider} />
@@ -229,7 +218,7 @@ export function LunarBaseMockup({
         </section>
 
         <section id="victory-paths" className={styles.section}>
-          <h2 className={styles.heading}>Four ways to win</h2>
+          <h2 className={styles.heading}>{strings.victoryHeading}</h2>
           <p className={styles.body}>{resolve(victoryPathsIntro.text)}</p>
           <dl className={styles.victoryList}>
             {victoryPaths.map((path) => (
@@ -244,7 +233,7 @@ export function LunarBaseMockup({
         </section>
 
         <section id="in-the-box" className={styles.section}>
-          <h2 className={styles.heading}>What is in the box</h2>
+          <h2 className={styles.heading}>{strings.boxHeading}</h2>
           <p className={styles.body}>{resolve(inTheBoxSummary.text)}</p>
           <ul className={styles.boxList}>
             {inTheBox.map((item) => (
@@ -262,7 +251,7 @@ export function LunarBaseMockup({
               height={598}
               loading="lazy"
               decoding="async"
-              alt="A hand of Lunar Base cards, fanned out."
+              alt={strings.cardsImageAlt}
             />
             <img
               src="/images/components/layout-base-480.webp"
@@ -272,11 +261,11 @@ export function LunarBaseMockup({
               height={611}
               loading="lazy"
               decoding="async"
-              alt="A player's base laid out with a station and several module cards attached."
+              alt={strings.baseImageAlt}
             />
           </div>
           <details className={styles.factions}>
-            <summary>The six factions</summary>
+            <summary>{strings.factionsSummary}</summary>
             <dl className={styles.victoryList}>
               {factions.map((faction) => (
                 <div key={faction.term} className={styles.victoryItem}>
@@ -290,6 +279,7 @@ export function LunarBaseMockup({
             <CallToActionLink
               action={{ label: rulebookLink.label, emphasis: "quiet", target: rulebookLink.target, accessibleLabel: rulebookLink.accessibleLabel }}
               resolveLabel={resolve}
+              locale={locale}
             />
           </p>
         </section>
@@ -304,7 +294,7 @@ export function LunarBaseMockup({
         </section>
 
         <section id="table-photography" className={styles.section}>
-          <h2 className={styles.heading}>On the table</h2>
+          <h2 className={styles.heading}>{strings.tableHeading}</h2>
           <img
             className={styles.tablePhoto}
             src="/images/table/table-view-1440.webp"
@@ -314,23 +304,23 @@ export function LunarBaseMockup({
             height={1080}
             loading="lazy"
             decoding="async"
-            alt="A complete Lunar Base game in progress seen from above, with six branching player bases and cards arranged around the shared play area."
+            alt={strings.tableImageAlt}
           />
         </section>
 
         <section id="video_trailer" className={styles.section}>
-          <h2 className={styles.heading}>Watch</h2>
+          <h2 className={styles.heading}>{strings.watchHeading}</h2>
           {/* Every video remains on YouTube. This section keeps the existing
               id="video_trailer" fragment that backlinks carry. */}
-          <VideoEmbed
-            heading="Trailer"
-            title="Lunar Base Kickstarter Launch Video"
+          <VideoEmbed locale={locale}
+            heading={strings.trailerHeading}
+            title={strings.trailerTitle}
             youTubeId="2D_y7t7DDYM"
             aspectRatio="16:9"
           />
-          <VideoEmbed
-            heading="Tutorial"
-            title="Lunar Base - Tutorial and Playthrough"
+          <VideoEmbed locale={locale}
+            heading={strings.tutorialHeading}
+            title={strings.tutorialTitle}
             youTubeId="SOW3l7kdu7k"
             aspectRatio="16:9"
           />
@@ -341,7 +331,7 @@ export function LunarBaseMockup({
           <ul className={styles.teaserRow}>
             {teaserVideos.map((teaser) => (
               <li key={teaser.youTubeId}>
-                <VideoEmbed
+                <VideoEmbed locale={locale}
                   heading={teaser.heading}
                   title={teaser.title}
                   youTubeId={teaser.youTubeId}
@@ -354,12 +344,12 @@ export function LunarBaseMockup({
         </section>
 
         <section id="reviews" className={styles.section}>
-          <h2 className={styles.heading}>What reviewers say</h2>
-          <ReviewComposite />
+          <h2 className={styles.heading}>{strings.reviewsHeading}</h2>
+          <ReviewComposite locale={locale} />
         </section>
 
         <section id="shipping-and-returns" className={styles.section}>
-          <h2 className={styles.heading}>Shipping, returns and other questions</h2>
+          <h2 className={styles.heading}>{strings.questionsHeading}</h2>
           <div className={styles.faq}>
             {productFaq.map((entry) => (
               <details key={entry.question}>
@@ -373,7 +363,7 @@ export function LunarBaseMockup({
         </section>
 
         <section id="buy" className={styles.buySection}>
-          <PurchasePanelMockup catalogue={catalogue} primaryAction={primaryPurchaseAction} />
+          <PurchasePanelMockup locale={locale} catalogue={catalogue} primaryAction={primaryPurchaseAction} />
         </section>
 
         {/* GPSR Article 19: manufacturer identity and contact, and the safety
@@ -382,11 +372,11 @@ export function LunarBaseMockup({
             and above the footer rather than in it, because Article 19 attaches
             to the offer. */}
         <section id="product-safety" className={styles.section}>
-          <ProductSafetyBlock values={merchant} />
+          <ProductSafetyBlock values={merchant} locale={locale} />
         </section>
       </main>
 
-      <SiteFooter externalTargets={externalTargets} />
+      <SiteFooter externalTargets={externalTargets} locale={locale} />
     </div>
   );
 }
