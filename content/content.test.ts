@@ -35,6 +35,7 @@ import {
   SOURCES,
 } from "./evidence.js";
 import { pagesByLocale } from "./index.js";
+import { siteCopyByLocale, siteCopyFor } from "./editions.js";
 import { legalPages, legalPagesByLocale } from "./legal/index.js";
 import { pages } from "./pages.js";
 import { proofStrip, quotations } from "./proof.js";
@@ -273,13 +274,12 @@ describe("file coverage", () => {
    * from the walk above, and there is no honest reason for copy to be computed,
    * so the rule is simply that content exports none.
    *
-   * `schema.ts` is the one exception: it holds the model's placeholder helpers
-   * and no copy. `index.ts` inherits them by re-export, and is held to
-   * introducing none of its own.
+   * `schema.ts` holds model helpers; `editions.ts` holds the site-copy accessor.
+   * Both are copy-free helper modules. The barrel may re-export these helpers.
    */
   it("exports no functions outside the model", () => {
     const offenders = scanned
-      .filter((file) => file.name !== "schema.ts" && file.name !== "index.ts")
+      .filter((file) => !["schema.ts", "editions.ts", "index.ts"].includes(file.name))
       .flatMap((file) => file.functions.map((path) => `${file.name}${path}`));
 
     expect(offenders).toEqual([]);
@@ -293,7 +293,7 @@ describe("file coverage", () => {
         ),
       );
 
-    const model = names("schema.ts");
+    const model = new Set([...names("schema.ts"), ...names("editions.ts")]);
     expect(model.size).toBeGreaterThan(0);
     for (const exported of names("index.ts")) {
       expect(model.has(exported), `index.ts exports ${exported}, which schema.ts does not`).toBe(
@@ -1124,6 +1124,7 @@ describe("the locale dimension", () => {
   it("registers every locale in every locale-keyed registry", () => {
     for (const [name, registry] of [
       ["pagesByLocale", pagesByLocale],
+      ["siteCopyByLocale", siteCopyByLocale],
       ["legalPagesByLocale", legalPagesByLocale],
     ] as const) {
       expect(Object.keys(registry).toSorted(), name).toEqual([...LOCALES].toSorted());
@@ -1135,6 +1136,12 @@ describe("the locale dimension", () => {
       expect(contentFor(pagesByLocale, locale)).toBe(pagesByLocale[locale]);
     }
     expect(contentFor(legalPagesByLocale, DEFAULT_LOCALE)).toBe(legalPages);
+  });
+
+  it("keeps English site copy available and Estonian legal-only", () => {
+    expect(siteCopyFor("en")).toBe(siteCopyByLocale.en);
+    expect(siteCopyByLocale.et).toBeNull();
+    expect(() => siteCopyFor("et")).toThrow(/et.*site copy/);
   });
 
   /**
