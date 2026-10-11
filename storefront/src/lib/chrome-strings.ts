@@ -14,11 +14,12 @@
  * dimension: a third edition does not compile until its chrome strings are
  * written down, rather than inheriting English labels nobody decided on.
  *
- * **What deliberately stays English on every edition:** the publisher
- * tagline (`content/publisher.ts` — marketing copy, whose translation is a
- * content decision this table must not smuggle in), proper nouns (Plepic
- * Games, Lunar Base, Instagram, Facebook), and the stored consent tokens
- * (`granted`/`declined`), which are data, not copy.
+ * **What is not in this table:** the publisher tagline in the footer, which
+ * is marketing copy and comes from the edition's site copy
+ * (`content/editions.ts`) — an edition that has none yet shows the default
+ * edition's, see `SiteFooter.tsx`. **What stays as it is on every edition:**
+ * proper nouns (Plepic Games, Lunar Base, Instagram, Facebook), and the
+ * stored consent tokens (`granted`/`declined`), which are data, not copy.
  */
 
 import type { Locale, RouteId } from "../../../content/routes.js";

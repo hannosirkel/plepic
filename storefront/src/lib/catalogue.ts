@@ -263,22 +263,19 @@ export interface ResolvedCatalogue {
    * genuinely is" — see `content/publisher.ts`'s `homepageCallsToAction`,
    * whose "Buy for {price}" entry is the one surface that renders this today.
    *
-   * **That one surface is English-only, so `TAX_VOCABULARY.et`'s
-   * `vatIncludedNote` ("Käibemaks sisaldub") is currently unreachable.**
-   * `HomepageMockup` and `CallToActionLink` — the only renderers of this field
-   * — import `content/publisher.ts` directly rather than taking a `locale`,
-   * which `src/app/localized-routes.tsx`'s own doc comment records as
-   * deliberate and out of this module's authority to change; no call site
-   * ever resolves the catalogue with `locale: "et"` for a component that
-   * renders `vatIncludedNote`. The Estonian string was added for
+   * **That one surface is served in English only, so `TAX_VOCABULARY.et`'s
+   * `vatIncludedNote` ("Käibemaks sisaldub") has still reached no reader.**
+   * `HomepageMockup` takes a `locale` now, and `HomeRoute` in
+   * `src/app/localized-routes.tsx` resolves the catalogue for it, so the
+   * mechanism exists and `tests/home-edition.test.tsx` renders the Estonian
+   * note through it. What keeps it from a visitor is the page registry: `et`
+   * does not publish the `home` route. The Estonian string was added for
    * completeness with `en` — {@link TaxVocabulary} makes it a required field
-   * of both — but it has **not** had the qualified reader's confirmation
+   * of both — and it has **not** had the qualified reader's confirmation
    * `content/legal/et/*` records for its Estonian text (see e.g.
-   * `content/legal/et/shipping.ts`'s header for that pattern), because
-   * nothing has ever put it in front of a reader. Do not wire a locale into
-   * `HomepageMockup` on the strength of this comment alone: get that
-   * confirmation on the Estonian wording first, the same as any other
-   * Estonian copy this shop ships.
+   * `content/legal/et/shipping.ts`'s header for that pattern). Whoever
+   * publishes `home` in `et` puts this wording in front of a reader for the
+   * first time, and reviews it then with the rest of that edition's copy.
    */
   readonly vatIncludedNote: string;
   readonly availability: CatalogueAvailability;

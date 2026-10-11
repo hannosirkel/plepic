@@ -22,17 +22,19 @@
  * renderer, so the silent-404 case is a red test rather than a page a
  * translator wrote and nobody could reach.
  *
- * ## Why the table holds only the legal set today
+ * ## Why the table is not every route yet
  *
- * The legal pages are projections of `content/legal/*` through one component,
- * so pointing that component at another locale's content is the whole change.
- * The marketing pages are not: `SupportPageContent`,
- * `HomepageMockup` and `LunarBaseMockup` import `content/publisher.ts`,
- * `content/lunar-base.ts` and `content/support.ts` directly, and no amount of
- * routing makes those read a locale. Making them locale-aware is a change to
- * those components and those content modules, and both are outside this
- * unit's authority. Listing them here anyway — so the table looked complete —
- * would be exactly the "answers 200 with the wrong words" failure above.
+ * A route enters the table when its renderer reads the edition's copy and no
+ * other. The legal pages were first: they are projections of `content/legal/*`
+ * through one component, so pointing that component at another locale's
+ * content was the whole change. The home page followed, once `HomepageMockup`
+ * and the sections it composes took a `locale` and read `siteCopyFor(locale)`.
+ *
+ * The rest are not there. `SupportPageContent` and `LunarBaseMockup` still
+ * import `content/lunar-base.ts` and `content/support.ts` directly, and no
+ * amount of routing makes those read a locale. Listing them here anyway — so
+ * the table looked complete — would be exactly the "answers 200 with the
+ * wrong words" failure above.
  *
  * The basket and the checkout are absent for the same reason and one more:
  * they are non-indexable, they compose `src/components/shop/`, and
@@ -43,15 +45,18 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { HomepageMockup } from "../components/mockups/HomepageMockup.js";
 import { LegalPageContent } from "../components/pages/LegalPageContent.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
 import { legalPagesByLocale } from "../../../content/legal/index.js";
 import { contentFor, type LegalPage } from "../../../content/schema.js";
 import type { Locale, RouteId } from "../../../content/routes.js";
-import { resolveCatalogue } from "../lib/catalogue.js";
+import { mockCatalogue, resolveCatalogue } from "../lib/catalogue.js";
 import { placeholderValuesFrom } from "../lib/configuration-placeholders.js";
 import { getRequestDestination } from "../lib/destination-request.js";
+import { getRequestNonce } from "../lib/nonce.js";
 import { lookupPage } from "../lib/seo.js";
+import { loadStoreCatalogueProduct } from "../lib/store-product.js";
 import { localeForPathSegment, routeIdForPath } from "../lib/urls.js";
 
 /** The legal page `locale` publishes for `routeId`, or `undefined`. */
@@ -109,6 +114,46 @@ export async function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
 }
 
 /**
+ * The home page, in one locale.
+ *
+ * `app/(site)/page.tsx` and the localized router both render this, for the
+ * reason {@link LegalRoute} gives: one renderer, so the default edition and a
+ * prefixed one cannot come to disagree.
+ *
+ * The page registry is asked again here, although `resolveLocalizedRoute` has
+ * already asked it. An edition that does not publish the home page has, as a
+ * rule, no site copy at all, and `siteCopyFor` throws for it: a caller that
+ * skipped the resolver would get a 500 where a 404 is the answer.
+ *
+ * The catalogue is resolved for the locale as well as for the destination,
+ * because "VAT included" under the price is one of its words.
+ */
+export async function HomeRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+
+  const runtimeConfig = getRuntimeConfig();
+  const [nonce, destination, catalogueProduct] = await Promise.all([
+    getRequestNonce(),
+    getRequestDestination(),
+    loadStoreCatalogueProduct({
+      backendUrl: runtimeConfig.medusa.backendUrl,
+      publishableKey: runtimeConfig.medusa.publishableKey,
+      presentation: mockCatalogue,
+    }),
+  ]);
+
+  return (
+    <HomepageMockup
+      locale={locale}
+      catalogue={resolveCatalogue(catalogueProduct, destination, locale)}
+      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+      nonce={nonce}
+      externalTargets={runtimeConfig.externalTargets}
+    />
+  );
+}
+
+/**
  * Routes with a locale-aware renderer, and the renderer for each.
  *
  * `Partial<Record<RouteId, …>>` rather than a total record: absence is the
@@ -119,6 +164,7 @@ export async function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
 export const LOCALIZED_ROUTE_VIEWS: Partial<
   Readonly<Record<RouteId, (props: LocalizedRouteProps) => ReactNode | Promise<ReactNode>>>
 > = {
+  home: HomeRoute,
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,
   legalShipping: LegalRoute,

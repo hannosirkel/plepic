@@ -1,31 +1,14 @@
-import { getRuntimeConfig } from "../../config/runtime-config.js";
-import { HomepageMockup } from "../../components/mockups/HomepageMockup.js";
-import { mockCatalogue, resolveCatalogue } from "../../lib/catalogue.js";
-import { getRequestDestination } from "../../lib/destination-request.js";
-import { getRequestNonce } from "../../lib/nonce.js";
+/**
+ * `/` in the default edition. The page itself is `HomeRoute` in
+ * `src/app/localized-routes.tsx`, which a prefixed edition's home page
+ * renders too.
+ */
+import { DEFAULT_LOCALE } from "../../../../content/routes.js";
 import { makeMetadata } from "../../lib/page-shell.js";
-import { loadStoreCatalogueProduct } from "../../lib/store-product.js";
+import { HomeRoute } from "../localized-routes.js";
 
-export const generateMetadata = makeMetadata("home");
+export const generateMetadata = makeMetadata("home", DEFAULT_LOCALE);
 
-export default async function HomePage() {
-  const runtimeConfig = getRuntimeConfig();
-  const [nonce, destination, catalogueProduct] = await Promise.all([
-    getRequestNonce(),
-    getRequestDestination(),
-    loadStoreCatalogueProduct({
-      backendUrl: runtimeConfig.medusa.backendUrl,
-      publishableKey: runtimeConfig.medusa.publishableKey,
-      presentation: mockCatalogue,
-    }),
-  ]);
-
-  return (
-    <HomepageMockup
-      catalogue={resolveCatalogue(catalogueProduct, destination)}
-      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
-      nonce={nonce}
-      externalTargets={runtimeConfig.externalTargets}
-    />
-  );
+export default function HomePage() {
+  return <HomeRoute routeId="home" locale={DEFAULT_LOCALE} />;
 }
