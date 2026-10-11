@@ -424,6 +424,7 @@ not wait for an answer.
 | Q9 | Is the Estonian legal set translated again? | No. The five `et` pages exist and are approved. T027 only aligns the glossary with them |
 | Q10 | Can a worker run the pinned Playwright image to refresh screenshots? | T009 tries. If it cannot, it says so in its hand-over and the browser suite stays red on that branch until the baselines are refreshed |
 | Q11 | The task schema allows `claude` or `codex` as implementer; the dispatcher routes to `claude-lead` or `codex` | `tasks.json` uses `claude-lead` and `codex`, as the dispatch procedure needs. `validate-tasks.sh` therefore prints 23 errors, one per `claude-lead` task and all of the kind "implementer must be claude or codex", and exits 1. Nothing else fails: with that value read as `claude` the file is valid. The schema belongs to the `lunar-base` rig and is not changed here |
+| Q12 | Does T006 require a POST to change destination from a prefixed basket? | No. The basket has no destination control or POST handler. The existing product-page selector writes the destination cookie and calls `router.refresh()`, which keeps the URL edition. A browser test covers each published product edition; prefixed editions join the test when their product routes are published |
 
 ## Out of scope
 

@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { pagesByLocale } from "../../../content/index.js";
+import { LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
+import { localizedPath } from "../../src/lib/urls.js";
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://challenges.cloudflare.com/**", async (route) => {
@@ -37,6 +40,30 @@ const visualRoutes = [
 
 async function dismissConsentForInteraction(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Decline" }).click();
+}
+
+for (const locale of LOCALES) {
+  if (!pagesByLocale[locale].some((page) => page.route === "lunarBase")) continue;
+
+  test(`${locale} destination change keeps the product page in its edition`, async ({ page }) => {
+    const path = localizedPath(locale, ROUTE_PATHS.lunarBase);
+    await page.goto(path);
+    await page.getByRole("dialog").getByRole("button").last().click();
+
+    const selector = page.locator('select[name="destination"]');
+    await expect(selector).toHaveValue("US");
+    const headline = page.locator('[class*="priceHeadline"]');
+    const before = await headline.textContent();
+    await selector.selectOption("EE");
+
+    await expect(selector).toHaveValue("EE");
+    await expect.poll(() => page.evaluate(() => document.cookie)).toContain("plepic_destination=EE");
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect.poll(() => headline.textContent()).not.toBe(before);
+    await expect(headline).toContainText(new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
+      style: "currency", currency: "EUR",
+    }).format(31));
+  });
 }
 
 for (const [name, path] of visualRoutes) {
