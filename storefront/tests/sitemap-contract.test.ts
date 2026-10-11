@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CHECKOUT_RETURN_PATH, DEFAULT_LOCALE, LOCALES, ROUTE_PATHS } from "../../content/routes.js";
+import { CHECKOUT_RETURN_PATH, DEFAULT_LOCALE, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../content/routes.js";
 import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import { canonicalUrl, localizedPath } from "../src/lib/urls.js";
@@ -82,13 +82,17 @@ describe("buildSitemapEntries: the sitemap contract", () => {
   });
 
   /**
-   * One `hreflang` map, two consumers. If the sitemap computed its own, the
+   * One `hreflang` map, shared by the page and sitemap. If the sitemap computed its own, the
    * two would be free to disagree about which editions of a page exist — and
    * a crawler reading both would have no way to tell which was stale.
    */
   it("annotates every entry with the same alternates the page itself emits", () => {
     for (const entry of entries) {
       expect(entry.alternates).toEqual(alternateLinksFor(BASE_URL, entry.routeId));
+      const publishing = LOCALES.filter((locale) => pagesIn(locale).some((page) => page.route === entry.routeId));
+      expect(Object.keys(entry.alternates).toSorted()).toEqual(
+        [...publishing.map((locale) => LOCALE_DEFINITIONS[locale].languageTag), "x-default"].toSorted(),
+      );
     }
   });
 });

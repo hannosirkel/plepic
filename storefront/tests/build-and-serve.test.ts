@@ -2334,6 +2334,26 @@ describe("an unconfigured deployment fails closed for commerce pages", () => {
  * shapes a locale dimension must *not* create are genuinely absent rather
  * than merely unimplemented.
  */
+describe("request signals never select an edition", () => {
+  it("serves bare routes in English despite a German language, address and destination", async () => {
+    for (const path of [ROUTE_PATHS.home, ROUTE_PATHS.lunarBase]) {
+      const response = await requestWithHost(server.port, path, "runtime.example.com", {
+        headers: {
+          "Accept-Language": "de,et;q=0.9",
+          "X-Forwarded-For": "203.0.113.42",
+          Cookie: `${DESTINATION_COOKIE_NAME}=DE`,
+        },
+      });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.location, path).toBeUndefined();
+      expect(response.body, path).toMatch(/<html[^>]*\slang="en"/);
+      expect(paintedText(response.body), path).toContain(
+        "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base.",
+      );
+    }
+  });
+});
+
 describe("the served document declares its language and its alternates", () => {
   const HOST = "runtime.example.com";
 

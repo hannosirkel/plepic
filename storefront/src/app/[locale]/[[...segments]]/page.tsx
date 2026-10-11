@@ -27,7 +27,7 @@ import { getRequestHost } from "../../../lib/request-host.js";
 import { CheckoutReturnRoute, LOCALIZED_ROUTE_VIEWS, resolveLocalizedRoute } from "../../localized-routes.js";
 import { siteCopyByLocale } from "../../../../../content/editions.js";
 import { interfaceCopy } from "../../../../../content/interface.js";
-import { localeForPathSegment } from "../../../lib/urls.js";
+import { parseLocalizedPath } from "../../../lib/urls.js";
 
 export const dynamic = "force-dynamic";
 
@@ -60,8 +60,8 @@ export async function generateMetadata({
    * always attaches both.
    */
   if (resolved === null) {
-    const edition = localeForPathSegment(locale);
-    const title = (edition === undefined ? interfaceCopy : siteCopyByLocale[edition]?.interface ?? interfaceCopy).notFound.title;
+    const edition = parseLocalizedPath(`/${locale}`).locale;
+    const title = (siteCopyByLocale[edition]?.interface ?? interfaceCopy).notFound.title;
     return { title, robots: { index: false, follow: false } };
   }
 

@@ -32,7 +32,7 @@
  * static mockup, still renders the text-only form.
  */
 import { DEFAULT_LOCALE, type ExternalTargetId, type Locale, type RouteId } from "../../../content/routes.js";
-import { siteCopyByLocale, siteCopyFor } from "../../../content/editions.js";
+import { siteCopyByLocale } from "../../../content/editions.js";
 import { LanguageSelector } from "./LanguageSelector.js";
 import { resolveLinkHref } from "./mockups/link-target.js";
 import type { ExternalTargetUrls } from "../config/runtime-config.js";
@@ -85,15 +85,7 @@ export function SiteFooter({
   externalTargets = {},
 }: SiteFooterProps) {
   const strings = CHROME_STRINGS[locale];
-  /*
-   * The tagline is the edition's own. An edition that has registered its
-   * legal pages and not yet its site copy (`null` in `siteCopyByLocale`, which
-   * is `et` today) still renders this footer under every legal page, so it
-   * shows the default edition's tagline until its own exists. That is what
-   * such a footer rendered before the tagline was read by edition; asking
-   * `siteCopyFor` for it would throw and take the legal page down with it.
-   */
-  const { publisherShort } = (siteCopyByLocale[locale] ?? siteCopyFor(DEFAULT_LOCALE)).publisher;
+  const publisherShort = siteCopyByLocale[locale]?.publisher.publisherShort;
   const social = SOCIAL_LINK_ORDER.map((entry) => ({
     ...entry,
     href: resolveLinkHref({ kind: "external", to: entry.target }, externalTargets),
@@ -105,7 +97,7 @@ export function SiteFooter({
     <footer className={styles.footer}>
       <div className={styles.top}>
         <img className={styles.wordmark} src={FOOTER_WORDMARK_SRC} alt="Plepic Games" width={140} height={47} />
-        <p className={styles.tagline}>{publisherShort.text}</p>
+        {publisherShort === undefined ? null : <p className={styles.tagline}>{publisherShort.text}</p>}
       </div>
 
       <div className={styles.links}>

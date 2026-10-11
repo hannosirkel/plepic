@@ -3,6 +3,20 @@ import { pagesByLocale } from "../../../content/index.js";
 import { LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
 import { localizedPath } from "../../src/lib/urls.js";
 
+test("Klingon lang prevents uppercase on a header navigation link", async ({ page }) => {
+  await page.goto("/");
+  const link = page.locator("header nav[aria-label] a").first();
+  if (!(await link.isVisible())) await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await expect(link).toBeVisible();
+  const transform = () => link.evaluate((element) => getComputedStyle(element).textTransform);
+  expect(await transform()).toBe("uppercase");
+  await link.evaluate((element) => element.setAttribute("lang", "tlh"));
+  expect(await transform()).toBe("none");
+  await link.evaluate((element) => element.removeAttribute("lang"));
+  await page.locator("html").evaluate((element) => element.setAttribute("lang", "tlh"));
+  expect(await transform()).toBe("none");
+});
+
 test.beforeEach(async ({ page }) => {
   await page.route("https://challenges.cloudflare.com/**", async (route) => {
     await route.fulfill({ contentType: "application/javascript", body: `window.turnstile={render:(e)=>{e.innerHTML='<input type="hidden" name="cf-turnstile-response" value="">';return 'fixture'},reset:()=>{document.querySelector('[name=cf-turnstile-response]').value=''}}` });

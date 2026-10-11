@@ -87,9 +87,9 @@
 import { headers } from "next/headers";
 import { siteCopyByLocale } from "../../../content/editions.js";
 import { interfaceCopy } from "../../../content/interface.js";
-import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, ROUTE_PATHS, type Locale } from "../../../content/routes.js";
+import { LOCALE_DEFINITIONS, ROUTE_PATHS, type Locale } from "../../../content/routes.js";
 import { LanguageSelector } from "../components/LanguageSelector.js";
-import { localeForPathSegment, localizedPath } from "../lib/urls.js";
+import { parseLocalizedPath, localizedPath } from "../lib/urls.js";
 import styles from "../styles/pages/not-found.module.css";
 
 /**
@@ -99,7 +99,7 @@ export const NOT_FOUND_TITLE = interfaceCopy.notFound.title;
 
 export async function NotFoundContent({ locale: givenLocale }: { readonly locale?: Locale } = {}) {
   const path = givenLocale === undefined ? (await headers()).get("x-plepic-path") ?? "" : "";
-  const locale = givenLocale ?? localeForPathSegment(path.split("/")[1] ?? "") ?? DEFAULT_LOCALE;
+  const locale = givenLocale ?? parseLocalizedPath(path).locale;
   const copy = (siteCopyByLocale[locale]?.interface ?? interfaceCopy).notFound;
   return (
     <main
