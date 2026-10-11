@@ -156,7 +156,10 @@ canonical, against the payload the hydration reads.
 ## Links inside an edition
 
 `localizedLinkFor(locale, routeId)` in `storefront/src/lib/seo.ts` builds
-every link in the header and the footer.
+every link in the header and the footer. The home page's calls to action
+follow the same rule through `resolveLocalizedLink` in
+`storefront/src/components/mockups/link-target.ts`, which keeps the target's
+anchor.
 
 | Case | Link |
 | --- | --- |
@@ -167,8 +170,9 @@ In the Estonian edition the five legal links stay under `/et`. The links to
 the home page, Lunar Base, About, Support and the basket cross to English and
 say so with `hreflang="en"`.
 
-Only `LegalPageContent` passes a locale to `SiteHeader` and `SiteFooter`.
-Every other page renders them for the default edition.
+`LegalPageContent` and `HomepageMockup` pass their locale to `SiteHeader` and
+`SiteFooter`, and `HomepageMockup` passes it to its calls to action. Every
+other page renders its links for the default edition.
 
 ## Canonical, `hreflang` and the sitemap
 

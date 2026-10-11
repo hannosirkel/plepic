@@ -110,6 +110,7 @@ export function HomepageMockup({
                 <CallToActionLink
                   key={action.label}
                   action={action}
+                  locale={locale}
                   resolveLabel={resolve}
                   /*
                    * "VAT included" beneath "Buy for {price}" only — identified
@@ -163,6 +164,7 @@ export function HomepageMockup({
                 emphasis: "primary",
                 target: { kind: "route", to: "lunarBase" },
               }}
+              locale={locale}
             />
           </div>
           <img

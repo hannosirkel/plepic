@@ -30,7 +30,9 @@ import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../content/routes.js";
+import { pagesByLocale } from "../../content/index.js";
+import { DEFAULT_LOCALE, LOCALES, LOCALE_DEFINITIONS, type Locale } from "../../content/routes.js";
+import type { Page } from "../../content/schema.js";
 import { HomeRoute } from "../src/app/localized-routes.js";
 import { ReviewComposite } from "../src/components/ReviewComposite.js";
 import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
@@ -200,6 +202,53 @@ describe("the home page under the marker fixture", () => {
       expect(editionsMarkedIn(html)).toEqual([locale]);
       expect(html).toContain(markedFor(locale, english.interface.reviews.quotationOpen));
       expect(withoutMarkedText(html)).not.toMatch(/[“”„—–]/);
+    }
+  });
+});
+
+/*
+ * A reader who opened an edition stays in it: its calls to action carry its
+ * prefix, as its header and footer do. The page registry is the fixture's, so
+ * the second test takes one route away from one edition to see the other
+ * answer -- the default edition's URL, with the language it is written in.
+ */
+describe("the home page's links stay in its edition", () => {
+  /** Every anchor tag in `html` that points at the Lunar Base page. */
+  const lunarBaseAnchors = (html: string): readonly string[] =>
+    [...html.matchAll(/<a\s[^>]*>/g)].map((match) => match[0]).filter((tag) => tag.includes("/games/lunar-base"));
+  const hrefOf = (tag: string): string => /href="([^"]+)"/.exec(tag)?.[1] ?? "";
+
+  for (const locale of LOCALES) {
+    it(`links the Lunar Base page inside ${locale}, the buy anchor kept`, () => {
+      const prefix = LOCALE_DEFINITIONS[locale].pathPrefix;
+      const hrefs = lunarBaseAnchors(homePage(locale)).map(hrefOf);
+
+      // The header's link, the hero's two calls to action and the featured section's.
+      expect([...hrefs].sort()).toEqual([
+        `${prefix}/games/lunar-base`,
+        `${prefix}/games/lunar-base`,
+        `${prefix}/games/lunar-base`,
+        `${prefix}/games/lunar-base#buy`,
+      ]);
+    });
+  }
+
+  it("links the default edition, and names its language, for a page the edition does not publish", () => {
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    const published = pages.et;
+    pages.et = published.filter((page) => page.route !== "lunarBase");
+    try {
+      const anchors = lunarBaseAnchors(homePage("et"));
+
+      expect(anchors.map(hrefOf).sort()).toEqual([
+        "/games/lunar-base",
+        "/games/lunar-base",
+        "/games/lunar-base",
+        "/games/lunar-base#buy",
+      ]);
+      for (const tag of anchors) expect(tag).toContain('hrefLang="en"');
+    } finally {
+      pages.et = published;
     }
   });
 });

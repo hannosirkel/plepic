@@ -1,5 +1,6 @@
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import type { CallToAction } from "../../../../content/schema.js";
-import { resolveLinkHref } from "./link-target.js";
+import { resolveLocalizedLink } from "./link-target.js";
 import styles from "../../styles/mockups/call-to-action.module.css";
 
 export interface CallToActionLinkProps {
@@ -21,6 +22,15 @@ export interface CallToActionLinkProps {
    * for the people least able to resolve it themselves.
    */
   readonly note?: string;
+  /**
+   * The edition of the page this link is on. A route target is linked inside
+   * that edition where the edition publishes the route, and at the default
+   * edition's URL, marked with its language, where it does not -- see
+   * `resolveLocalizedLink` in `link-target.ts`. Defaults to the default
+   * locale, whose links are the unprefixed ones every call site that passes
+   * nothing has always rendered.
+   */
+  readonly locale?: Locale;
 }
 
 /**
@@ -56,8 +66,8 @@ export interface CallToActionLinkProps {
  *    plain `<a>` with no `aria-label` has the accessible name browsers
  *    compute from its content, which is exactly its visible text.
  */
-export function CallToActionLink({ action, resolveLabel, note }: CallToActionLinkProps) {
-  const href = resolveLinkHref(action.target);
+export function CallToActionLink({ action, resolveLabel, note, locale = DEFAULT_LOCALE }: CallToActionLinkProps) {
+  const { href, hrefLang } = resolveLocalizedLink(locale, action.target);
   const resolve = resolveLabel ?? ((text: string) => text);
   const label = resolve(action.label);
   const resolvedAccessibleLabel = action.accessibleLabel ? resolve(action.accessibleLabel) : undefined;
@@ -86,7 +96,7 @@ export function CallToActionLink({ action, resolveLabel, note }: CallToActionLin
     href === undefined ? (
       <span className={className}>{label}</span>
     ) : (
-      <a className={className} href={href} aria-label={accessibleLabel}>
+      <a className={className} href={href} hrefLang={hrefLang} aria-label={accessibleLabel}>
         {label}
       </a>
     );
