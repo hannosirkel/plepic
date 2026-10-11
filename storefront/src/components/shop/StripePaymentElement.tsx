@@ -45,8 +45,13 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
             };
           }
           const confirmation = stripeConfirmationForStatus(result.paymentIntent?.status);
-          if (!confirmation.ok && confirmation.pending) window.location.assign(returnUrl);
-          return confirmation;
+          if (confirmation.ok) return confirmation;
+          if (confirmation.pending) window.location.assign(returnUrl);
+          // What happened is `stripeConfirmationForStatus`'s to say. The sentence is the edition's.
+          return {
+            ...confirmation,
+            message: confirmation.pending ? copy.paymentProcessing : copy.paymentNotConfirmed,
+          };
         },
       }),
       [copy, elements, returnUrl, stripe],

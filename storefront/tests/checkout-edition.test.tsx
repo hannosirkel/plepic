@@ -16,6 +16,12 @@
  *
  * The address Stripe returns a visitor to is the one value this task changes
  * in what is sent to a provider, so it is read back out of the call itself.
+ *
+ * Two parts of the page hang on state only an effect sets, which no static
+ * render reaches: the options of the delivery method select, and what the
+ * page shows once the order is placed. The first is held at the function
+ * each option's charge is written by, the second at the component the page
+ * renders in that state.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -46,7 +52,9 @@ import {
 import { CHECKOUT_ORDER_POST_PATH } from "../src/components/shop/checkout-order-post.js";
 import { checkoutTermsFor, type CheckoutTerms } from "../src/components/shop/checkout-terms.js";
 import {
+  CheckoutConfirmation,
   CheckoutPageContent,
+  deliveryChargeIn,
   deliveryMethodNameIn,
 } from "../src/components/shop/CheckoutPageContent.js";
 import { ParcelMachinePicker } from "../src/components/shop/ParcelMachinePicker.js";
@@ -56,24 +64,37 @@ import {
   checkoutReturnUrl,
   type StripePaymentElementHandle,
 } from "../src/components/shop/StripePaymentElement.js";
-import { declaredShippingMethod, formatAmount } from "../src/lib/cart.js";
+import { declaredParcelMachineMethod, declaredShippingMethod, formatAmount } from "../src/lib/cart.js";
 import { CartProvider } from "../src/lib/cart-store.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { CHROME_STRINGS, LANGUAGE_SWITCHER_LABELS } from "../src/lib/chrome-strings.js";
 import { deliveryCountries, destinationForCountryName, destinationNameIn } from "../src/lib/destination.js";
 import { MOCK_SCENARIOS, type MockScenario } from "../src/lib/mock-cart-actions.js";
-import { isParcelMachineOption, type GuestShippingOption } from "../src/lib/store-checkout.js";
+import {
+  FREE_SHIPPING_LABEL,
+  NET_SHIPPING_SUFFIX,
+  isParcelMachineOption,
+  shippingOptionFigure,
+  type GuestShippingOption,
+  type ShippingFigureWording,
+} from "../src/lib/store-checkout.js";
+import { stripeConfirmationForStatus } from "../src/lib/store-payment.js";
 import { routeIdForPath } from "../src/lib/urls.js";
 import { editionsMarkedIn, markedFor, unmarkedText } from "./helpers/marker-site-copy.js";
 import { readerFacingLiterals } from "./helpers/reader-facing-literals.js";
 
 type Editions = typeof import("../../content/editions.js");
 
-/** What Stripe was asked to confirm, as `stripe.confirmPayment` received it, and how it answers. */
+/**
+ * What Stripe was asked to confirm, as `stripe.confirmPayment` received it, and
+ * how it answers: with an error, or with a payment in `status`. `undefined`
+ * is an answer that names no payment at all.
+ */
 const stripe = vi.hoisted(() => ({
   confirmed: [] as { confirmParams?: { return_url?: string } }[],
   loaded: true,
   refuses: false,
+  status: "succeeded" as string | undefined,
 }));
 
 /**
@@ -154,7 +175,9 @@ vi.mock("@stripe/react-stripe-js", () => ({
             stripe.confirmed.push(request);
             return stripe.refuses
               ? { error: { message: "Your card was declined." } }
-              : { paymentIntent: { status: "succeeded" } };
+              : stripe.status === undefined
+                ? {}
+                : { paymentIntent: { status: stripe.status } };
           },
         }
       : null,
@@ -184,6 +207,7 @@ afterEach(() => {
   stripe.confirmed.length = 0;
   stripe.loaded = true;
   stripe.refuses = false;
+  stripe.status = "succeeded";
   stage.restoredBasket = false;
   stage.parcelMachines = null;
   vi.unstubAllGlobals();
@@ -574,6 +598,150 @@ describe("delivery method names", () => {
   });
 });
 
+/**
+ * The other half of an option of the delivery method select: `name — charge`.
+ * The list is filled by an effect, so no static render shows an option; this
+ * is the function each one's charge is written by.
+ */
+describe("what a delivery method costs, as its option says it", () => {
+  const option = (name: string, amount: number, amountWithTax: number | null = null): GuestShippingOption => ({
+    id: "so_test",
+    name,
+    amount,
+    amountWithTax,
+    taxInclusive: false,
+  });
+  const rate = declaredShippingMethod.rates.europeanUnion;
+  /** The two declared methods as the shop prices them today: one at a net rate, one at nothing. */
+  const paid = option(declaredShippingMethod.name, rate);
+  const free = option(declaredParcelMachineMethod.name, 0);
+  const grossed = option(declaredShippingMethod.name, rate, rate + 168);
+
+  it("prices the declared methods as this suite assumes", () => {
+    expect(rate).toBeGreaterThan(0);
+    expect(isParcelMachineOption(free)).toBe(true);
+  });
+
+  for (const locale of LOCALES) {
+    it(`is in ${locale}'s words and number format`, () => {
+      const copy = english.interface.checkout;
+      const written = (amount: number): string => formatAmount(amount, "EUR", locale);
+
+      // Nothing to pay, inside the EU and outside it.
+      expect(deliveryChargeIn(free, true, locale)).toBe(markedFor(locale, copy.deliveryFree));
+      expect(deliveryChargeIn(free, false, locale)).toBe(markedFor(locale, copy.deliveryFree));
+      // A net rate VAT will be added to: the edition's sentence around the edition's figure.
+      expect(deliveryChargeIn(paid, true, locale)).toBe(
+        markedFor(locale, copy.deliveryNetCharge).replace("%amount%", written(rate)),
+      );
+      // A final figure, which is a number and no word.
+      expect(deliveryChargeIn(paid, false, locale)).toBe(written(rate));
+      expect(deliveryChargeIn(grossed, true, locale)).toBe(written(rate + 168));
+    });
+
+    it(`leaves no unmarked word in a ${locale} option, whatever the method costs`, () => {
+      const options = [free, paid, grossed].flatMap((method) =>
+        [true, false].map(
+          (vatApplies) =>
+            `<option value="${method.id}">${deliveryMethodNameIn(method.name, locale)} — ${deliveryChargeIn(method, vatApplies, locale)}</option>`,
+        ),
+      );
+      const html = `<select>${options.join("")}</select>`;
+
+      expect(unmarkedText(html, [])).toEqual([]);
+      expect(editionsMarkedIn(html)).toEqual([locale]);
+      expect(html).not.toContain("%amount%");
+    });
+  }
+
+  /* The fixture is marked English, so it cannot show this: the default edition's labels are what they were. */
+  it("is, with the default edition's words, the label the figure had before an edition could be named", () => {
+    const { deliveryFree, deliveryNetCharge } = english.interface.checkout;
+    const wording: ShippingFigureWording = { locale: DEFAULT_LOCALE, free: deliveryFree, beforeVat: deliveryNetCharge };
+
+    expect(deliveryFree).toBe(FREE_SHIPPING_LABEL);
+    expect(deliveryNetCharge).toBe(`%amount%${NET_SHIPPING_SUFFIX}`);
+    for (const method of [free, paid, grossed, { ...paid, taxInclusive: true }]) {
+      for (const vatApplies of [true, false]) {
+        expect(shippingOptionFigure(method, vatApplies, wording)).toEqual(shippingOptionFigure(method, vatApplies));
+      }
+    }
+    expect(shippingOptionFigure(paid, true).label).toBe(`${formatAmount(rate, "EUR")}${NET_SHIPPING_SUFFIX}`);
+  });
+
+  it("decides the same case and the same amount in every edition", () => {
+    for (const method of [free, paid, grossed]) {
+      for (const vatApplies of [true, false]) {
+        const { amount, final } = shippingOptionFigure(method, vatApplies);
+        for (const locale of LOCALES) {
+          const { deliveryFree, deliveryNetCharge } = fixture[locale]!.interface.checkout;
+          expect(
+            shippingOptionFigure(method, vatApplies, { locale, free: deliveryFree, beforeVat: deliveryNetCharge }),
+            locale,
+          ).toMatchObject({ amount, final });
+        }
+      }
+    }
+  });
+});
+
+/**
+ * What the page shows in place of its form once the order is placed: the
+ * confirmation, and beneath it a newsletter form that is a component of its
+ * own and has to be handed the edition like any other.
+ */
+describe("the checkout once the order is placed", () => {
+  const confirmation = (locale: Locale): string =>
+    renderToStaticMarkup(
+      <CheckoutConfirmation
+        locale={locale}
+        displayId={1042}
+        email="example@example.com"
+        turnstileSiteKey="test-site-key"
+        nonce="abc"
+      />,
+    );
+
+  for (const locale of LOCALES) {
+    it(`shows no unmarked sentence and no other edition's in ${locale}`, () => {
+      const html = confirmation(locale);
+
+      // `HoneypotField`'s label, as in the form above.
+      expect(unmarkedText(html, ["Leave this field empty"])).toEqual([]);
+      expect(editionsMarkedIn(html)).toEqual([locale]);
+    });
+
+    it(`confirms the order and offers the newsletter in ${locale}'s words`, () => {
+      const html = confirmation(locale);
+      const copy = english.interface.checkout;
+      const { newsletter } = english.publisher;
+
+      expect(html).toContain(rendered(locale, copy.confirmedHeading));
+      expect(html).toContain(rendered(locale, copy.confirmedBody).replace("%orderNumber%", "1042"));
+      for (const sentence of [
+        newsletter.postPurchaseHeading,
+        newsletter.postPurchaseBody,
+        newsletter.fieldLabel,
+        newsletter.postPurchaseConsentLabel,
+        newsletter.submitLabel,
+      ]) {
+        expect(html, sentence).toContain(rendered(locale, sentence));
+      }
+      expect(html).toContain(`aria-label="${rendered(locale, english.interface.forms.verificationLabel)}"`);
+      // Offered, never taken: the address is filled in and the choice is not made.
+      expect(html).toContain('value="example@example.com"');
+      expect(html).not.toMatch(/name="newsletter-consent"[^>]*checked/);
+    });
+  }
+
+  it("posts the edition with the newsletter form, so the answer comes back in it, and nothing for the default one", () => {
+    for (const locale of NON_DEFAULT_LOCALES) {
+      expect(confirmation(locale), locale).toContain(`<input type="hidden" name="locale" value="${locale}"/>`);
+    }
+    expect(confirmation(DEFAULT_LOCALE)).not.toContain('name="locale"');
+  });
+});
+
 describe("the address a payment provider returns a visitor to", () => {
   const origin = "https://shop.example.test";
 
@@ -677,7 +845,64 @@ describe("the payment form's own sentences", () => {
         message: markedFor(locale, copy.paymentNotConfirmed),
       });
     });
+
+    /*
+     * Stripe can also answer without an error and without having taken the
+     * money. `stripeConfirmationForStatus` says which of two things that is,
+     * in English; the page shows the message it is handed as it stands.
+     */
+    it(`are ${locale}'s for a payment Stripe has not settled, and what is done about it is unchanged`, async () => {
+      const copy = english.interface.checkout;
+      const returnUrl = checkoutReturnUrl("https://shop.example.test", locale);
+      const answerFor = async (status: string | undefined) => {
+        const assigned: string[] = [];
+        vi.stubGlobal("window", {
+          location: { origin: "https://shop.example.test", assign: (url: string) => assigned.push(url) },
+        });
+        const handle = createRef<StripePaymentElementHandle>();
+        renderToStaticMarkup(
+          <StripePaymentElement ref={handle} locale={locale} publishableKey="pk_x" clientSecret="pi_x" />,
+        );
+        stripe.status = status;
+        return { confirmation: await handle.current!.confirm(), assigned };
+      };
+
+      // Still processing: the visitor is sent to the edition's return page, and no failure is reported.
+      expect(await answerFor("processing")).toEqual({
+        confirmation: {
+          ok: false,
+          pending: true,
+          reportFailure: false,
+          message: markedFor(locale, copy.paymentProcessing),
+        },
+        assigned: [returnUrl],
+      });
+
+      // Anything else that is not success, a missing payment included: a failure, and the visitor stays.
+      for (const status of ["requires_payment_method", "requires_action", "requires_capture", "canceled", undefined]) {
+        expect(await answerFor(status), String(status)).toEqual({
+          confirmation: {
+            ok: false,
+            pending: false,
+            reportFailure: true,
+            message: markedFor(locale, copy.paymentNotConfirmed),
+          },
+          assigned: [],
+        });
+      }
+
+      expect(await answerFor("succeeded")).toEqual({ confirmation: { ok: true }, assigned: [] });
+    });
   }
+
+  it("are, in the default edition, the sentences the status helper gives", () => {
+    const copy = english.interface.checkout;
+
+    expect(stripeConfirmationForStatus("processing")).toMatchObject({ message: copy.paymentProcessing });
+    for (const status of ["requires_payment_method", "requires_capture", "canceled", undefined]) {
+      expect(stripeConfirmationForStatus(status), String(status)).toMatchObject({ message: copy.paymentNotConfirmed });
+    }
+  });
 });
 
 describe("the parcel machine picker", () => {
@@ -859,6 +1084,7 @@ describe("the checkout's components hold no sentence of their own", () => {
       "components/shop/CheckoutPageContent.tsx",
       "components/shop/StripePaymentElement.tsx",
       "components/shop/ParcelMachinePicker.tsx",
+      "components/shop/PostPurchaseNewsletterForm.tsx",
     ];
     const found = Object.fromEntries(
       components.map((name) => [name, [...new Set(readerFacingLiterals(name, readFileSync(join(srcDir, name), "utf8")))]]),
@@ -878,6 +1104,7 @@ describe("the checkout's components hold no sentence of their own", () => {
       ],
       "components/shop/StripePaymentElement.tsx": [],
       "components/shop/ParcelMachinePicker.tsx": [],
+      "components/shop/PostPurchaseNewsletterForm.tsx": [],
     });
   });
 

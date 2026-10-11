@@ -254,6 +254,19 @@ export function deliveryMethodNameIn(name: string, locale: Locale): string {
 }
 
 /**
+ * What a delivery method costs, as its option says it in `locale`.
+ *
+ * `shippingOptionFigure` decides what is said: nothing to pay, a final
+ * figure, or a net rate VAT will be added to. This hands it the edition's
+ * words and number format to say it in, so the option agrees with the order
+ * summary beneath it, which writes its figures in the same format.
+ */
+export function deliveryChargeIn(option: GuestShippingOption, vatApplies: boolean, locale: Locale): string {
+  const { deliveryFree, deliveryNetCharge } = siteCopyFor(locale).interface.checkout;
+  return shippingOptionFigure(option, vatApplies, { locale, free: deliveryFree, beforeVat: deliveryNetCharge }).label;
+}
+
+/**
  * The name a delivery country is shown under in `locale`.
  *
  * The form holds and submits the English name of `storefront/mock/countries.json`,
@@ -293,6 +306,43 @@ export interface CheckoutPageContentProps {
    * alternative was asserting that state nowhere.
    */
   readonly initialAddress?: AddressValues;
+}
+
+export interface CheckoutConfirmationProps {
+  readonly locale: Locale;
+  /** The number the shop gave the order. */
+  readonly displayId: number;
+  /** The address the order was placed with, offered to the newsletter form. */
+  readonly email: string;
+  readonly turnstileSiteKey: string | null;
+  readonly nonce: string | undefined;
+}
+
+/**
+ * What the checkout shows in place of its form once the order is placed.
+ *
+ * A component of its own because only a placed order reaches it, and
+ * `storefront/` has no DOM in its test environment to place one in: a test
+ * renders this, in each edition.
+ */
+export function CheckoutConfirmation({ locale, displayId, email, turnstileSiteKey, nonce }: CheckoutConfirmationProps) {
+  const copy = siteCopyFor(locale).interface.checkout;
+  return (
+    <section className={styles.card} aria-labelledby="checkout-confirmation-heading">
+      <h1 id="checkout-confirmation-heading" className={styles.heading}>
+        {copy.confirmedHeading}
+      </h1>
+      <p className={styles.body}>
+        {copy.confirmedBody.replace("%orderNumber%", String(displayId))}
+      </p>
+      <PostPurchaseNewsletterForm
+        locale={locale}
+        defaultEmail={email}
+        turnstileSiteKey={turnstileSiteKey}
+        nonce={nonce}
+      />
+    </section>
+  );
 }
 
 function initialOutcome(
@@ -868,19 +918,13 @@ export function CheckoutPageContent({
 
   if (completedOrder !== null) {
     return (
-      <section className={styles.card} aria-labelledby="checkout-confirmation-heading">
-        <h1 id="checkout-confirmation-heading" className={styles.heading}>
-          {copy.confirmedHeading}
-        </h1>
-        <p className={styles.body}>
-          {copy.confirmedBody.replace("%orderNumber%", String(completedOrder.displayId))}
-        </p>
-        <PostPurchaseNewsletterForm
-          defaultEmail={values.email ?? ""}
-          turnstileSiteKey={turnstileSiteKey}
-          nonce={nonce}
-        />
-      </section>
+      <CheckoutConfirmation
+        locale={locale}
+        displayId={completedOrder.displayId}
+        email={values.email ?? ""}
+        turnstileSiteKey={turnstileSiteKey}
+        nonce={nonce}
+      />
     );
   }
 
@@ -1113,7 +1157,7 @@ export function CheckoutPageContent({
                           `shippingOptionFigure`. */}
                       {shippingOptions.map((option) => (
                         <option key={option.id} value={option.id}>
-                          {deliveryMethodNameIn(option.name, locale)} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
+                          {deliveryMethodNameIn(option.name, locale)} — {deliveryChargeIn(option, deliveryZone === "europeanUnion", locale)}
                         </option>
                       ))}
                     </select>

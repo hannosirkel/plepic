@@ -134,6 +134,10 @@ export interface InterfaceCopy {
     readonly deliveryMethodPrompt: string;
     readonly deliveryOptionsLoading: string;
     readonly deliveryOptionsFailed: string;
+    /** What a delivery method priced at nothing is shown as, in place of a figure. */
+    readonly deliveryFree: string;
+    /** A net delivery rate that VAT will be added to. `%amount%` is the rate, in the edition's number format. */
+    readonly deliveryNetCharge: string;
     /** Shown where the payment form would be when the deployment has no payment key. */
     readonly paymentUnavailable: string;
     /** Shown where the payment form will be, until a delivery method is chosen. */
@@ -144,6 +148,8 @@ export interface InterfaceCopy {
     readonly paymentOptionsNotReady: string;
     readonly paymentFormLoading: string;
     readonly paymentNotConfirmed: string;
+    /** A payment the provider has accepted and not yet settled. The visitor is taken to the return page. */
+    readonly paymentProcessing: string;
     readonly paymentNotCompleted: string;
     readonly verificationIncomplete: string;
     readonly confirmedHeading: string;
@@ -247,6 +253,8 @@ export const interfaceCopy: InterfaceCopy = {
     deliveryMethodPrompt: "Choose a delivery method",
     deliveryOptionsLoading: "Updating delivery options…",
     deliveryOptionsFailed: "Delivery options could not be loaded. Check the address and try again.",
+    deliveryFree: "Free",
+    deliveryNetCharge: "%amount% + VAT",
     paymentUnavailable: "Payment is unavailable. Please try again later.",
     paymentAwaitingDelivery: "Choose a delivery method to load payment options.",
     paymentOptionsLoading: "Loading payment options…",
@@ -254,6 +262,7 @@ export const interfaceCopy: InterfaceCopy = {
     paymentOptionsNotReady: "Payment options are not ready. Wait a moment and try again.",
     paymentFormLoading: "Payment options are still loading",
     paymentNotConfirmed: "Payment could not be confirmed. Check the details or choose another method.",
+    paymentProcessing: "Payment is still processing. We are checking the order status.",
     paymentNotCompleted: "Payment could not be completed. Nothing has been charged.",
     verificationIncomplete: "Complete the verification challenge before placing the order.",
     confirmedHeading: "Order confirmed",
