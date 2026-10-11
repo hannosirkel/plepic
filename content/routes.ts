@@ -31,6 +31,20 @@ export const ROUTE_PATHS = {
 export type RouteId = keyof typeof ROUTE_PATHS;
 export type RoutePath = (typeof ROUTE_PATHS)[RouteId];
 
+/**
+ * Where a payment provider sends a visitor back to after a redirect-based
+ * payment.
+ *
+ * Beside {@link ROUTE_PATHS} and not inside it, because it is not a route id.
+ * A route id has a `Page` in `content/pages.ts` and a share image, and the
+ * return page has neither: it is served under the `checkout` route and
+ * borrows that route's metadata. It is declared here all the same, because
+ * this file is the one place a path is written. Prefix it with
+ * `localizedPath`, as any other path, so a visitor who paid from one edition
+ * returns to the same one.
+ */
+export const CHECKOUT_RETURN_PATH = "/checkout/payment-return";
+
 /* ------------------------------------------------------------------------
  * Locales — a dimension of the content model, not a copy of it
  * --------------------------------------------------------------------- */

@@ -72,12 +72,27 @@
  * form.
  */
 
-import { checkout } from "../../../../content/shop.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { destinationForCountryName } from "../../lib/destination.js";
 import { phoneRequiredForCountry } from "../../lib/store-checkout.js";
 
-export const FIELDS: readonly AddressFieldCopy[] = checkout.address.fields;
+/**
+ * The address fields as `locale`'s copy holds them: the same names, controls
+ * and `autoComplete` tokens in every edition, with that edition's labels and
+ * hints.
+ */
+export function fieldsFor(locale: Locale): readonly AddressFieldCopy[] {
+  return siteCopyFor(locale).shop.checkout.address.fields;
+}
+
+/**
+ * The default edition's fields. For whatever asks which fields there are, and
+ * not what they are called: the names are identifiers, held equal across
+ * editions by `content/mirror.test.ts`.
+ */
+export const FIELDS: readonly AddressFieldCopy[] = fieldsFor(DEFAULT_LOCALE);
 
 export type AddressValues = Readonly<Record<string, string>>;
 
@@ -142,20 +157,33 @@ export function phoneRequiredForCountryName(countryName: string): boolean {
  * Read {@link isPostalAddressComplete} and {@link isPhoneComplete} for the
  * two narrower questions this file's doc comment explains are answered from
  * this same set rather than a second validation pass.
+ *
+ * The **keys** do not depend on `locale`, which is why those two take none.
+ * The sentences do: each is `locale`'s own. A missing field's is a whole
+ * sentence from `content/interface.ts`, not a prefix and a lower-cased label,
+ * because that is not a sentence in every language and a changed case is a
+ * changed spelling in Klingon.
  */
-export function validate(values: AddressValues): Readonly<Record<string, string>> {
+export function validate(
+  values: AddressValues,
+  locale: Locale = DEFAULT_LOCALE,
+): Readonly<Record<string, string>> {
+  const { checkout } = siteCopyFor(locale).shop;
+  const sentences = siteCopyFor(locale).interface.checkout.missing;
+  const missing: Readonly<Record<string, string>> = sentences;
   const errors: Record<string, string> = {};
 
-  for (const field of FIELDS) {
+  for (const field of fieldsFor(locale)) {
     const value = (values[field.name] ?? "").trim();
     if (value.length === 0) {
-      // "Enter country" is an instruction nobody can follow in front of a
-      // dropdown, so a chosen field asks to be chosen.
-      const prefix =
-        field.control === "country"
-          ? checkout.errors.missingSelectionPrefix
-          : checkout.errors.missingFieldPrefix;
-      errors[field.name] = `${prefix}${field.label.toLowerCase()}.`;
+      const sentence = missing[field.name];
+      if (sentence === undefined) {
+        throw new Error(
+          `content/interface.ts has no "missing" sentence for the checkout field "${field.name}", ` +
+            "so the form could not say what to correct.",
+        );
+      }
+      errors[field.name] = sentence;
       continue;
     }
     if (field.type === "email" && !isPlausibleEmail(value)) {
@@ -182,7 +210,7 @@ export function validate(values: AddressValues): Readonly<Record<string, string>
   if (phone.length > 0 && !phone.startsWith("+")) {
     errors.phone = checkout.errors.invalidPhone;
   } else if (phone.length === 0 && phoneRequiredForCountryName(values.country ?? "")) {
-    errors.phone = `${checkout.errors.missingFieldPrefix}${checkout.address.phone.label.toLowerCase()}.`;
+    errors.phone = sentences.phone;
   }
 
   return errors;

@@ -14,16 +14,22 @@
  * method, carrying the zip): those are checkout concerns this component has
  * no business making decisions about, so it is handed the list and reports a
  * chosen zip back through {@link ParcelMachinePickerProps.onChange}.
+ *
+ * Its own four sentences — the accessible name, the unchosen option, and what
+ * it says while the list loads or when it could not be loaded — are read from
+ * the copy of the edition it is given. The groups and the machines are the
+ * carrier's place names, and are shown as the carrier writes them in every
+ * edition.
  */
 
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import type { StorefrontParcelMachine } from "../../lib/omniva-locations.js";
 import styles from "../../styles/pages/shop.module.css";
 
 export interface ParcelMachinePickerProps {
-  /** The `<select>`'s accessible name — there is no visible `<label>` beside it. */
-  readonly label: string;
-  /** The unchosen option's text. */
-  readonly prompt: string;
+  /** The edition whose words the picker speaks. The default edition's when absent. */
+  readonly locale?: Locale;
   /**
    * The machines to offer, in the order the backend returned them —
    * `GET /store/omniva/parcel-machines` groups and sorts this list, so this
@@ -32,10 +38,8 @@ export interface ParcelMachinePickerProps {
   readonly machines: readonly StorefrontParcelMachine[];
   /** The chosen zip, or `""` for none. */
   readonly value: string;
-  /** The status text to show while the list is loading, or `null` once it is settled. */
-  readonly loading: string | null;
-  /** Shown in place of the list when the machine list could not be fetched. */
-  readonly errorMessage: string | null;
+  /** Where the fetch of the machine list stands: `loading` and `error` each say so in words. */
+  readonly state: "idle" | "loading" | "error";
   readonly disabled: boolean;
   readonly onChange: (zip: string) => void;
 }
@@ -73,26 +77,26 @@ function groupContiguous(
 }
 
 export function ParcelMachinePicker({
-  label,
-  prompt,
+  locale = DEFAULT_LOCALE,
   machines,
   value,
-  loading,
-  errorMessage,
+  state,
   disabled,
   onChange,
 }: ParcelMachinePickerProps) {
+  const copy = siteCopyFor(locale).shop.checkout.delivery;
   const groups = groupContiguous(machines);
   return (
     <>
+      {/* No visible `<label>` stands beside it, so the name is the `aria-label`. */}
       <select
         className={`${styles.field} ${styles.select}`}
-        aria-label={label}
+        aria-label={copy.parcelMachineLabel}
         value={value}
         disabled={disabled || machines.length === 0}
         onChange={(event) => onChange(event.currentTarget.value)}
       >
-        <option value="">{prompt}</option>
+        <option value="">{copy.parcelMachinePrompt}</option>
         {groups.map(({ group, machines: groupMachines }) => (
           <optgroup key={group} label={group}>
             {groupMachines.map((machine) => (
@@ -106,16 +110,16 @@ export function ParcelMachinePicker({
       {/* `role="status"`/`role="alert"` rather than a silently empty
           `<select>`: a picker with nothing in it looks broken, not loading
           or unavailable, unless something says which. */}
-      {loading === null ? null : (
+      {state === "loading" ? (
         <p className={styles.note} role="status">
-          {loading}
+          {copy.parcelMachineLoading}
         </p>
-      )}
-      {errorMessage === null ? null : (
+      ) : null}
+      {state === "error" ? (
         <p className={styles.error} role="alert">
-          {errorMessage}
+          {copy.parcelMachineUnavailable}
         </p>
-      )}
+      ) : null}
     </>
   );
 }
