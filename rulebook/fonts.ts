@@ -1,7 +1,8 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 
-export type FontSpec = { name: string; family: string; weight: number; style: "normal" | "italic"; file: string };
+/** `embeddedName` is the name the built PDF carries for the face, where the file's own name differs from `name`. */
+export type FontSpec = { name: string; family: string; weight: number; style: "normal" | "italic"; file: string; embeddedName?: string };
 
 /** Every live-text face in the printed PDF. Minion Pro's lone space on sheet 6 is omitted. */
 export function fontSpecs(fontDir: string, root: string): FontSpec[] {
@@ -17,8 +18,14 @@ export function fontSpecs(fontDir: string, root: string): FontSpec[] {
     lato("Lato-MediumItalic", 500, "lato-medium-italic"),
     lato("Lato-BoldItalic", 700, "lato-bold-italic"),
     lato("Lato-HeavyItalic", 800, "lato-heavy-italic"),
-    { name: "JosefinSans-Bold", family: "Josefin Sans", weight: 700, style: "normal", file: resolve(root, "node_modules/@fontsource/josefin-sans/files/josefin-sans-latin-700-normal.woff2") },
+    // The packaged file names itself JosefinSansThin-Bold, and that is the name pdffonts reports for it.
+    { name: "JosefinSans-Bold", family: "Josefin Sans", weight: 700, style: "normal", file: resolve(root, "node_modules/@fontsource/josefin-sans/files/josefin-sans-latin-700-normal.woff2"), embeddedName: "JosefinSansThin-Bold" },
   ];
+}
+
+/** The only font names a built PDF may carry. The layout check fails on any other, embedded or not. */
+export function embeddedFontNames(specs: readonly FontSpec[]): string[] {
+  return specs.map((spec) => spec.embeddedName ?? spec.name);
 }
 
 export async function requireFonts(specs: readonly FontSpec[]): Promise<void> {
