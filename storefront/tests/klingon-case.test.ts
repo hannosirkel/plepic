@@ -21,7 +21,9 @@ export function caseViolations(path: string, css: string): string[] {
   if (path === "styles/global.css" && guards.length !== 1) violations.push("missing :lang(tlh) case guard");
   for (const [, selector = "", body = ""] of rules) {
     if (!/text-transform\s*:/i.test(body)) continue;
-    if (/::[a-z-]+/i.test(selector)) violations.push(`${selector.trim()} transforms a pseudo-element`);
+    if (/::[a-z-]+|:(?:first-letter|first-line|before|after)\b/i.test(selector)) {
+      violations.push(`${selector.trim()} transforms a pseudo-element`);
+    }
     if (/text-transform\s*:[^;{}]*!important/i.test(body) && selector.trim() !== ":lang(tlh)") {
       violations.push(`${selector.trim()} overrides the Klingon guard`);
     }
@@ -34,6 +36,7 @@ describe("Klingon spelling retains letter case", () => {
     expect(caseViolations("styles/global.css", "body { color: black; }")).toContain("missing :lang(tlh) case guard");
     expect(caseViolations("styles/extra.css", ".title { text-transform: uppercase !important; }")).toHaveLength(1);
     expect(caseViolations("styles/extra.css", ".title::first-letter { text-transform: uppercase; }")).toHaveLength(1);
+    expect(caseViolations("styles/extra.css", ".title:first-letter { text-transform: uppercase; }")).toHaveLength(1);
   });
 
   it("guards all descendants against stylesheet case changes", () => {

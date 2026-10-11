@@ -241,7 +241,7 @@ host says nothing about the language its visitor reads.
 | Lunar Base | Its renderer reads `siteCopyFor(locale)` for page copy and structured data. Only `en` publishes the route so far |
 | Home | The renderer takes a locale and reads `siteCopyFor(locale)`, but only `en` publishes the route |
 | Strings inside components | Some reader-facing strings remain in components. Examples: `StripePaymentReturn.tsx`, `ConsentManager.tsx` |
-| Publisher tagline in the footer | The edition's own, from `siteCopyByLocale`. An edition with no site copy (`et`) shows the English one |
+| Publisher tagline in the footer | The edition's own, from `siteCopyByLocale`. An edition with no site copy (`et`) shows no tagline |
 | Price format | The fixed tag `en-IE`, in `storefront/src/lib/catalogue.ts` and `storefront/src/lib/cart.ts` |
 | Country names | `storefront/mock/countries.json` holds English names. `destinationNameIn` in `storefront/src/lib/destination.ts` asks ICU for the edition's name inside a price qualification. It answers in English when ICU has no data for the edition |
 | `robots.txt` | Disallows `/cart`, `/checkout` and `/store-api`. It names no prefixed path, because no edition serves one for the basket or the checkout |

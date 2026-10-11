@@ -42,7 +42,8 @@ if (english === null) throw new Error("The default edition needs site copy");
 const englishStrings = [
   ...strings(english),
   ...strings(legalPagesByLocale[DEFAULT_LOCALE]),
-].flatMap((source) => source.split(/(?<=[.!?])\s+/))
+].flatMap((source) => source.split(/(?<=[.!?])\s+/)
+  .flatMap((sentence) => sentence.split(/\{[A-Za-z][A-Za-z0-9]*\}/)))
   .map((source) => source.replaceAll(/\s+/g, " ").trim())
   .filter((source) => source.split(/\s+/).length >= 4 && !Object.hasOwn(retainedEnglishPhrases, source));
 
@@ -79,11 +80,11 @@ export function dataLabelLeaks(html: string, locale: Locale): string[] {
   const leaks: string[] = [];
   for (const country of deliveryCountries) {
     if (countryMayKeepEnglish(country, locale)) continue;
-    if (renderedLabels.some((label) => label === country.name || label.includes(country.name))) leaks.push(country.name);
+    if (renderedLabels.some((label) => label === country.name)) leaks.push(country.name);
   }
   for (const method of [shipping.method, shipping.parcelMachine]) {
     if (methodMayKeepEnglish(method.id)) continue;
-    if (renderedLabels.some((label) => label === method.name || label.includes(method.name))) leaks.push(method.name);
+    if (renderedLabels.some((label) => label === method.name || label.startsWith(`${method.name} — `))) leaks.push(method.name);
   }
   return leaks;
 }
@@ -108,6 +109,12 @@ describe("published editions do not leak English copy or data labels", () => {
     expect(leakedEnglish(`<p>${source}</p>`)).toContain(source);
   });
 
+  it("rejects an English legal sentence after a placeholder is rendered", () => {
+    const renderedSentence = "Registered in the Estonian Commercial Register (äriregister) under number [seadistamata: registrikood].";
+    expect(leakedEnglish(`<p>${renderedSentence}</p>`))
+      .toContain("Registered in the Estonian Commercial Register (äriregister) under number");
+  });
+
   it("covers every shipping country and both method names", () => {
     expect(deliveryCountries.map((country) => country.name)).toEqual(countries.countries.map((country) => country.name));
     expect([shipping.method.name, shipping.parcelMachine.name]).toHaveLength(2);
@@ -118,5 +125,7 @@ describe("published editions do not leak English copy or data labels", () => {
       .toEqual(["Germany", "Standard delivery"]);
     expect(dataLabelLeaks("<option>Saksamaa</option><dd>Tavapärane kohaletoimetamine</dd>", "et"))
       .toEqual([]);
+    expect(dataLabelLeaks("<option>Peruu</option><option>Standard delivery — €5.00</option>", "et"))
+      .toEqual(["Standard delivery"]);
   });
 });
