@@ -35,7 +35,7 @@ jobs:
     # held to being identical about is the image.
     services:
       postgresql:
-        # postgres:17.10-bookworm
+        # postgres:17.11-bookworm
         image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
         env:
           POSTGRES_USER: plepic
@@ -49,7 +49,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       redis:
-        # redis:7.4.6-bookworm
+        # redis:7.4.11-bookworm
         image: redis:7.4.11-bookworm@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
         ports:
           - 6379:6379
@@ -59,7 +59,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       smtp:
-        # axllent/mailpit:v1.30.7
+        # axllent/mailpit:v1.31.5
         image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
         env:
           MP_SMTP_BIND_ADDR: 0.0.0.0:587
@@ -136,7 +136,7 @@ jobs:
   playwright:
     runs-on: ubuntu-24.04
     container:
-      # Playwright 1.57.0, Noble amd64; screenshot baselines must be produced
+      # Playwright 1.64.0, Noble amd64; screenshot baselines must be produced
       # by this exact immutable image (also documented in README.md).
       image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     steps:

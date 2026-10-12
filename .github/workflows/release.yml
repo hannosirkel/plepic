@@ -46,7 +46,7 @@ jobs:
     # identical.
     services:
       postgresql:
-        # postgres:17.10-bookworm
+        # postgres:17.11-bookworm
         image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
         env:
           POSTGRES_USER: plepic
@@ -60,7 +60,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       redis:
-        # redis:7.4.6-bookworm
+        # redis:7.4.11-bookworm
         image: redis:7.4.11-bookworm@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
         ports:
           - 6379:6379
@@ -70,7 +70,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       smtp:
-        # axllent/mailpit:v1.30.7
+        # axllent/mailpit:v1.31.5
         image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
         env:
           MP_SMTP_BIND_ADDR: 0.0.0.0:587
