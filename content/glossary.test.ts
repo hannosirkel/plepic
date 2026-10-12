@@ -467,8 +467,8 @@ describe("the printed word at first use, on fixture data", () => {
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
 
-  it("include German and Estonian", () => {
-    expect(registered.map(([locale]) => locale)).toEqual(expect.arrayContaining(["de", "et"]));
+  it("include German, Estonian and Klingon", () => {
+    expect(registered.map(([locale]) => locale)).toEqual(expect.arrayContaining(["de", "et", "tlh"]));
   });
 
   it("allow the printed English label beside a translated term", () => {
