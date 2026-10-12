@@ -198,11 +198,11 @@ describe("the rulebook page under the marker fixture", () => {
     expect(renderToStaticMarkup(<RulebookPageContent />)).toBe(rulebookPage(DEFAULT_LOCALE));
   });
 
-  it("uses the English PDF and the edition's notice when its document is unpublished", () => {
+  it("uses the Estonian PDF after its document is published", () => {
     const html = rulebookPage("et");
-    expect(html).toContain('href="/documents/lunar-base-rulebook.pdf"');
-    expect(html).toContain('hrefLang="en"');
-    expect(html).toContain(rendered("et", english.interface.rulebook.englishRulebookNotice));
+    expect(html).toContain('href="/documents/lunar-base-rulebook-et.pdf"');
+    expect(html).toContain('hrefLang="et"');
+    expect(html).not.toContain(rendered("et", english.interface.rulebook.englishRulebookNotice));
   });
 });
 
