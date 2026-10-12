@@ -38,7 +38,7 @@ export const publisherStory: Section = {
   anchor: "story",
   heading: "jav nuv, wa' Quj, wej DIS",
   body: [
-    "DIS 2017 tagh Lunar Base. Estonia SepDaq qaD nap luwuq jav juppu': qengmeH ngeDbogh nav Quj luchenmoHnIS, 'ej nItebHa' Qujvam Quj luneHbej. wa'DIch pupbe'bogh chovnatlh 'oH; juHDaq chenmoHlu'. qaStaHvIS 'op DIS ngonglu', Quj waHlu', lISlu', mIlloghmey chenmoHlu', 'ej Quj qo' chenmoHlu'; vaj nom rInbogh Dup Quj mach moj chovnatlh. maSDaq mIDmey chenmoHmeH 'ovbogh Humanpu' Del Quj. qaStaHvIS poHvam ghur ghom; qechmey waHlu' 'ej lonlu'; Quj luDub machbogh choH law'qu', 'ej Quj Qav luchenmoH. ghIq Qapchu' Kickstarter Huch boSmeH Qu'. Qu'vammo' 'echlet Quj Se'vIr moj juppu' jInmol, 'ej DaH qo' HochDaq Qujvam Quj nuvpu'.",
+    "DIS 2017 tagh Lunar Base. Estonia SepDaq qaD nap luwuq jav juppu': qengmeH ngeDbogh nav Quj luchenmoHnIS, 'ej nItebHa' Qujvam luQuj luneHbej. wa'DIch pupbe'bogh chovnatlh 'oH; juHDaq chenmoHlu'. qaStaHvIS 'op DIS ngonglu', Quj waHlu', lISlu', mIlloghmey chenmoHlu', 'ej Quj qo' chenmoHlu'; vaj nom rInbogh Dup Quj mach moj chovnatlh. maSDaq mIDmey chenmoHmeH 'ovbogh Humanpu' Del Quj. qaStaHvIS poHvam ghur ghom; qechmey waHlu' 'ej lonlu'; Quj luDub machbogh choH law'qu', 'ej Quj Qav luchenmoH. ghIq Qapchu' Kickstarter Huch boSmeH Qu'. Qu'vammo' 'echlet Quj Se'vIr moj juppu' jInmol, 'ej DaH qo' HochDaq Qujvam luQuj nuvpu'.",
   ],
   source: "E8",
   links: [

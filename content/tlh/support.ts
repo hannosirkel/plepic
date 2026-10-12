@@ -54,14 +54,14 @@ export const rulesFaq: readonly FaqEntry[] = [
   {
     question: "joptaHvIS wa' 'ovwI', Qapla' ngoQ luta' cha' nuv. Qap 'Iv?",
     answer: [
-      "wa' nuv ngoQmey law' law' latlh nuv ngoQmey law' puS — Qap nuvvam. rapchugh ngoQ mI', nItebHa' Qap.",
+      "ngoQmey'e' ta'pu'bogh wa' nuv law' law' ngoQmey'e' ta'pu'bogh latlh nuv law' puS — Qap nuvvam. rapchugh ngoQmey ta'lu'pu'bogh mI', nItebHa' Qap.",
     ],
     source: "rulebook",
   },
   {
     question: "Quj wa'DIch wItaghDI', HoS (Influence) navmey DIlo'nIS'a'?",
     answer: [
-      "ghobe'. Quj luSovchu'pa' 'ovwI'pu', navmeyvam lo'lu'be' 'e' chup mIw paq; ghIq, navmey noblu'pa', navmey ghomDaq DuDlu' 'e' chup. QapmeH mIw loSDIch luchel, 'ej latlh wej mIw choH.",
+      "ghobe'. baw'pa' 'ovwI'pu', navmeyvam lo'lu'be' 'e' chup mIw paq; ghIq, navmey noblu'pa', navmey ghomDaq DuDlu' 'e' chup. QapmeH mIw loSDIch luchel, 'ej navmeyvammo' pImchoH latlh wej mIw net jem.",
     ],
     source: "rulebook",
   },

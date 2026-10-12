@@ -4,6 +4,8 @@ export type KlingonSource = "TKD" | "KGT" | "KLI" | "coined";
 
 export interface KlingonLexiconEntry {
   readonly wordClass: KlingonWordClass;
+  /** The second class of a root its source lists as both noun and verb: it then takes the affixes of either. */
+  readonly alsoWordClass?: "noun" | "verb";
   readonly english: string;
   readonly source: KlingonSource;
   /** Required when source is coined; every named root must also occur here. */
@@ -125,7 +127,7 @@ export const klingonLexicon = {
   Dung: { wordClass: "noun", english: "area above", source: "TKD" },
   bIng: { wordClass: "noun", english: "area below", source: "TKD" },
   "wanI'": { wordClass: "noun", english: "event, occurrence", source: "TKD" },
-  Quj: { wordClass: "noun", english: "game; as a verb, play a game", source: "TKD" },
+  Quj: { wordClass: "noun", alsoWordClass: "verb", english: "game; as a verb, play a game", source: "TKD" },
   "ghogh'ot": { wordClass: "noun", english: "bill, payment request", source: "KLI" },
   chovnatlh: { wordClass: "noun", english: "specimen, example", source: "TKD" },
   meq: { wordClass: "noun", english: "reason, motive", source: "TKD" },
@@ -398,6 +400,8 @@ export const klingonLexicon = {
   mer: { wordClass: "verb", english: "surprise", source: "TKD" },
   par: { wordClass: "verb", english: "dislike; with -Ha', like", source: "TKD" },
   "tlho'": { wordClass: "verb", english: "thank", source: "TKD" },
+  "baw'": { wordClass: "verb", english: "be comfortable, be feeling prepared, be confident", source: "KLI" },
+  jem: { wordClass: "verb", english: "sense, feel, perceive, detect", source: "KLI" },
   // Agent nouns in -wI', listed so that one can take a noun suffix.
   "'ovwI'": { wordClass: "noun", english: "competitor, player (of a competitive game)", source: "KLI" },
   "SuchwI'": { wordClass: "noun", english: "visitor", source: "coined", construction: ["Such"] },

@@ -51,6 +51,12 @@ describe("Klingon word check", () => {
     expect(checkKlingonWords("HuchmeH")).toEqual([{ word: "HuchmeH", reason: "unknown-root" }]);
   });
 
+  it("reads a root listed as both noun and verb with the affixes of either class", () => {
+    expect(checkKlingonWords("Qujvam luQuj QujmeH")).toEqual([]);
+    // One class only: `choH` is listed as a verb, so its noun stays bare.
+    expect(checkKlingonWords("choHvam")).toEqual([{ word: "choHvam", reason: "unknown-root" }]);
+  });
+
   it("skips a placeholder of either syntax, and still reads the words beside it", () => {
     expect(klingonWordsIn("Huch {priceNet} nob %megabytes%")).toEqual(["Huch", "nob"]);
     expect(checkKlingonWords("{merchantLegalName} Huch: {price} %megabytes%")).toEqual([]);

@@ -32,7 +32,7 @@ export const marketingPages: readonly Page[] = [
     route: "lunarBase",
     title: "Lunar Base — 2-6 'ovwI'pu'vaD Dup nav Quj",
     description:
-      "maS waw' HoSghajqu' yIchenmoH. QapmeH loS mIw, gholpu'lI' botbogh vumwI'pu', 90 nav, 30 tup noHlu'bogh, buq 'ellaHbogh 'aplo'.",
+      "maS waw' HoSghaj law' Hoch HoSghaj puS — waw'vetlh yIchenmoH. QapmeH loS mIw, gholpu'lI' botbogh vumwI'pu', 90 nav, 30 tup noHlu'bogh, buq 'ellaHbogh 'aplo'.",
     indexable: true,
     sections: [
       "aboutgame",

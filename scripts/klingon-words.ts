@@ -1,5 +1,6 @@
 /** A conservative spelling and root check for translated Klingon prose. */
 import { klingonLexicon } from "../content/glossary/tlh-lexicon.js";
+import type { KlingonLexiconEntry } from "../content/glossary/tlh-lexicon.js";
 import { TERM_IDS, TERMS } from "../content/glossary/terms.js";
 
 const CONSONANT = "(?:tlh|ch|gh|ng|[bDHjlmnpqQrStvwy'])";
@@ -73,8 +74,8 @@ export interface KlingonWordIssue {
 }
 
 function hasRoot(word: string, wordClass: "noun" | "verb"): boolean {
-  const entry = klingonLexicon[word as keyof typeof klingonLexicon];
-  return entry?.wordClass === wordClass;
+  const entry: KlingonLexiconEntry | undefined = klingonLexicon[word as keyof typeof klingonLexicon];
+  return entry?.wordClass === wordClass || entry?.alsoWordClass === wordClass;
 }
 
 function canStripSuffixes(word: string, wordClass: "noun" | "verb", depth = 0): boolean {
