@@ -87,6 +87,9 @@ carries the load alone.
 | `pages.ts` | Title, description, indexability and sections per route |
 | `index.ts` | The barrel a renderer imports. Deliberately narrower than the directory |
 | `content.test.ts` | Everything above, enforced |
+| `editions.ts` | Total site-copy registry. `null` means an edition has legal pages but no published site copy yet. `siteCopyFor` rejects that case. |
+| `interface.ts` | Typed home for reader-facing interface strings as page groups become locale-aware. |
+| `mirror.test.ts` | Compares every staged edition directory with English modules, including editions not yet registered for publication. |
 
 ## Adding or changing copy
 
