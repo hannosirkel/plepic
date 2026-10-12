@@ -263,28 +263,27 @@ export interface ResolvedCatalogue {
    * genuinely is" — see `content/publisher.ts`'s `homepageCallsToAction`,
    * whose "Buy for {price}" entry is the one surface that renders this today.
    *
-   * **That one surface is served in English only, so `TAX_VOCABULARY.et`'s
-   * `vatIncludedNote` ("Käibemaks sisaldub") has still reached no reader.**
-   * `HomepageMockup` takes a `locale` now, and `HomeRoute` in
-   * `src/app/localized-routes.tsx` resolves the catalogue for it, so the
-   * mechanism exists and `tests/home-edition.test.tsx` renders the Estonian
-   * note through it. What keeps it from a visitor is the page registry: `et`
-   * does not publish the `home` route. The Estonian string was added for
-   * completeness with `en` — {@link TaxVocabulary} makes it a required field
-   * of both — and it has **not** had the qualified reader's confirmation
-   * `content/legal/et/*` records for its Estonian text (see e.g.
-   * `content/legal/et/shipping.ts`'s header for that pattern). Whoever
-   * publishes `home` in `et` puts this wording in front of a reader for the
-   * first time, and reviews it then with the rest of that edition's copy.
+   * **Every edition serves that surface now.** `HomepageMockup` takes a
+   * `locale`, `HomeRoute` in `src/app/localized-routes.tsx` resolves the
+   * catalogue for it, and `et` publishes `home` since the edition was turned
+   * on in full. The Estonian note was read then, as this comment asked of
+   * whoever published the page, and reworded from "Käibemaks sisaldub" to
+   * "Hind sisaldab käibemaksu": the first leaves out what the tax is included
+   * in, and the second is the sentence an Estonian shop writes under a price.
+   * It is site copy, reviewed with the rest of the edition's, and has not
+   * had the qualified reader's confirmation `content/legal/et/*` records for
+   * the legal text.
    */
   readonly vatIncludedNote: string;
   readonly availability: CatalogueAvailability;
   /** True when {@link availability} is `"InStock"` — the only state this catalogue is ever seeded with today. */
   readonly inStock: boolean;
-  /** The stock statement a buyer reads, derived from {@link availability} and never written as a literal. */
-  readonly availabilityLabel: string;
-  /** The player range as one phrase, e.g. "2–6 players". */
-  readonly playerCount: string;
+  /**
+   * The player range. A page words it, and the stock statement
+   * {@link inStock} selects, from its edition's copy — see "What is
+   * localised" below.
+   */
+  readonly players: { readonly min: number; readonly max: number };
   /**
    * The age marking, e.g. "10+" — a **safety** marking for the product
    * rather than a difficulty rating. `FeatureSpecStrip.tsx` renders it and
@@ -332,18 +331,20 @@ export const PRICE_HEADLINE_SEPARATOR = " · ";
  *
  * ## What is localised, and what deliberately is not
  *
- * Only the strings a **localised page can render**. `LOCALIZED_ROUTE_VIEWS`
- * serves the legal set and nothing else, and the only catalogue tokens those
- * pages use are `{price}`, `{priceNet}`, `{priceGross}`, `{priceVat}` and
+ * Only the strings a **localised page can render**. The catalogue tokens
+ * these pages use are `{price}`, `{priceNet}`, `{priceGross}`, `{priceVat}` and
  * `{vatRate}` — all figures, formatted by `Intl` — plus
  * `{priceTaxQualifier}`, which is prose. The shipping note reaches the same
  * page through the pin against `callout.detail`. Both are here.
  *
- * {@link ResolvedCatalogue.availabilityLabel} and
- * {@link ResolvedCatalogue.playerCount} are **not**, and that is not an
- * oversight: they are rendered only by the product surfaces, which have no
- * localised route to be rendered on. `tests/legal-pages.test.tsx` asserts the
- * set of catalogue tokens a localised page uses is exactly the set this table
+ * The stock statement and the player range are **not** composed here. This
+ * module used to write both in English, which was sound only while no
+ * product surface had a localised route. Every edition publishes the product
+ * page now, so the module hands over the facts —
+ * {@link ResolvedCatalogue.inStock} and {@link ResolvedCatalogue.players} —
+ * and `LunarBaseMockup` and `PurchasePanelMockup` word them from the
+ * edition's copy in `content/`. `tests/legal-pages.test.tsx` asserts the set
+ * of catalogue tokens a localised page uses is exactly the set this table
  * covers, so a translator who writes `{productName}` into an Estonian page
  * gets a red test rather than an English word.
  *
@@ -400,14 +401,27 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
     qualifiers: (qualifier, note) => `${qualifier}. ${note}`,
     line: (price, qualifiers) => `${price}, ${qualifiers}`,
   },
+  de: {
+    vatAdded: (destination) => `Mehrwertsteuer hinzugefügt, Lieferland: ${destination}`,
+    noVatAdded: (destination) => `keine Mehrwertsteuer hinzugefügt, Lieferland: ${destination}`,
+    vatIncludedNote: "Mehrwertsteuer enthalten",
+    shippingNote:
+      "Der Versand wird an der Kasse berechnet, und bei Lieferung innerhalb der Europäischen " +
+      "Union kommt darauf Mehrwertsteuer hinzu. Steuern und Zölle von Ländern außerhalb der EU, " +
+      "falls welche anfallen, sind nicht enthalten.",
+    breakdownWithVat: (gross, net, vat, rate) =>
+      `${gross} entsprechen ${net} zuzüglich ${vat} Mehrwertsteuer zum Satz von ${rate}`,
+    breakdownWithoutVat: (net) => `${net}, ohne zusätzliche Mehrwertsteuer`,
+    qualifiers: (qualifier, note) => `${qualifier}. ${note}`,
+    line: (price, qualifiers) => `${price}, ${qualifiers}`,
+  },
   et: {
     vatAdded: (destination) => `käibemaks lisatud, kättetoimetamisel sihtkohta ${destination}`,
     noVatAdded: (destination) =>
       `käibemaksu ei lisata, kättetoimetamisel sihtkohta ${destination}`,
-    // Unreachable and unreviewed — see `ResolvedCatalogue.vatIncludedNote`'s
-    // doc comment above before wiring this anywhere or treating it as
-    // confirmed Estonian copy.
-    vatIncludedNote: "Käibemaks sisaldub",
+    // Reworded when `et` published `home` — see
+    // `ResolvedCatalogue.vatIncludedNote`'s doc comment above.
+    vatIncludedNote: "Hind sisaldab käibemaksu",
     shippingNote:
       "Saatekulu arvutatakse tellimuse vormistamisel ja Euroopa Liidu sisese kättetoimetamise " +
       "puhul lisandub sellele käibemaks. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, " +
@@ -415,6 +429,20 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
     breakdownWithVat: (gross, net, vat, rate) =>
       `${gross} on ${net} pluss ${vat} käibemaksu määraga ${rate}`,
     breakdownWithoutVat: (net) => `${net}, käibemaksu ei lisata`,
+    qualifiers: (qualifier, note) => `${qualifier}. ${note}`,
+    line: (price, qualifiers) => `${price}, ${qualifiers}`,
+  },
+  tlh: {
+    vatAdded: (destination) => `ngevmeH 'ap chellu'; ${destination} SepDaq HIjlu'`,
+    noVatAdded: (destination) => `ngevmeH 'ap chellu'be'; ${destination} SepDaq HIjlu'`,
+    vatIncludedNote: "ngevmeH 'ap ngaS DIlmeH Huch",
+    shippingNote:
+      "Huch nobmeH DaqDaq ngeHmeH 'ap SImlu'. European Union SepDaq tep HIjlu'chugh, " +
+      "ngeHmeH 'apDaq ngevmeH 'ap (VAT) chellu'. latlh Sep qum 'ap, HIjmeH 'ap je " +
+      "yughbe' DIlmeH Huch.",
+    breakdownWithVat: (gross, net, vat, rate) =>
+      `${gross}: ${net} ngevmeH 'ap ${vat} (${rate}) je`,
+    breakdownWithoutVat: (net) => `${net}; ngevmeH 'ap chellu'be'`,
     qualifiers: (qualifier, note) => `${qualifier}. ${note}`,
     line: (price, qualifiers) => `${price}, ${qualifiers}`,
   },
@@ -503,8 +531,7 @@ export function resolveCatalogue(
     vatIncludedNote,
     availability: product.availability,
     inStock,
-    availabilityLabel: inStock ? "In stock" : "Out of stock",
-    playerCount: `${product.players.min}–${product.players.max} players`,
+    players: product.players,
     ageRange: product.ageRange,
   };
 }

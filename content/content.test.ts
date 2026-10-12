@@ -619,10 +619,20 @@ const COOKIE_TABLE_LANGUAGE: Readonly<
     hedgedDuration: /^(?:Up to |Varies)/,
     consentStatements: ["only with your consent", "do not require consent"],
   },
+  de: {
+    columns: ["Cookie", "Anbieter", "Zweck", "Speicherdauer"],
+    hedgedDuration: /^(?:Bis zu |Unterschiedlich)/,
+    consentStatements: ["nur mit Ihrer Einwilligung", "bedürfen keiner Einwilligung"],
+  },
   et: {
     columns: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
     hedgedDuration: /^(?:Kuni |Varieerub)/,
     consentStatements: ["ainult sinu nõusolekul", "ega vaja nõusolekut"],
+  },
+  tlh: {
+    columns: ["De' chabHom", "nobwI'", "ngoQ", "poH"],
+    hedgedDuration: /^(?:'aqroS: |pIm)/,
+    consentStatements: ["bIghIbchugh neH", "bIghIbnISbe'"],
   },
 };
 
@@ -1053,19 +1063,17 @@ describe("the page registry", () => {
  * Everything here is written over `LOCALES` rather than over the literal
  * `"en"`, so it states what a published edition must be rather than what
  * today's single edition happens to be — with one deliberate exception, the
- * count, which is pinned because a second locale arriving without a decision
+ * count, which is pinned because a new locale arriving without a decision
  * is a failure rather than progress.
  */
 describe("the locale dimension", () => {
   /**
-   * Still pinned, now at two. A locale appearing — or disappearing — without
-   * anybody deciding it is a failure, not progress. `et` is the operator's
-   * decision of 2026-08-09: the legal set translated for the Estonian
-   * consumer, after the second qualified legal read found consumer-facing
-   * terms in English only.
+   * Pinned at four. A locale appearing — or disappearing — without
+   * anybody deciding it is a failure, not progress. All four editions now
+   * publish the full site and a rulebook.
    */
-  it("has exactly the two decided locales, and the default is the English one", () => {
-    expect([...LOCALES]).toEqual(["en", "et"]);
+  it("has exactly the four decided locales, and the default is the English one", () => {
+    expect([...LOCALES]).toEqual(["en", "de", "et", "tlh"]);
     expect(DEFAULT_LOCALE).toBe("en");
   });
 
@@ -1138,10 +1146,19 @@ describe("the locale dimension", () => {
     expect(contentFor(legalPagesByLocale, DEFAULT_LOCALE)).toBe(legalPages);
   });
 
-  it("keeps English site copy available and Estonian legal-only", () => {
-    expect(siteCopyFor("en")).toBe(siteCopyByLocale.en);
-    expect(siteCopyByLocale.et).toBeNull();
-    expect(() => siteCopyFor("et")).toThrow(/et.*site copy/);
+  it("keeps published site copy available in each edition, each from its own modules", () => {
+    for (const locale of LOCALES) {
+      expect(siteCopyFor(locale)).toBe(siteCopyByLocale[locale]);
+      expect(siteCopyFor(locale).pages.pages, locale).toBe(pagesByLocale[locale]);
+    }
+    expect(siteCopyFor("et").shop).not.toBe(siteCopyFor("en").shop);
+  });
+
+  it("publishes the same route ids in every edition", () => {
+    const englishRoutes = pagesByLocale.en.map((page) => page.route).toSorted();
+    for (const locale of LOCALES) {
+      expect(pagesByLocale[locale].map((page) => page.route).toSorted(), locale).toEqual(englishRoutes);
+    }
   });
 
   /**

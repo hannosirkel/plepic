@@ -250,8 +250,8 @@ describe("a forged previous state cannot become part of the answer", () => {
 /**
  * The edition a form was rendered in comes back as a posted field, so it is
  * whatever the client sent. `tests/support-edition.test.tsx` shows the answer
- * follows the edition under a fixture; this is the same rule against the copy
- * the site ships, where an edition may be declared and have no site copy yet.
+ * follows the edition under a fixture; this checks the same rule against the
+ * complete copy shipped for every declared edition.
  */
 describe("the answer's edition is a posted value, and only a usable one is believed", () => {
   const post = (locale: string): FormData => {
@@ -266,9 +266,9 @@ describe("the answer's edition is a posted value, and only a usable one is belie
     }
   });
 
-  it("answers every declared locale in its own copy, or in English while it has none", async () => {
+  it("answers every declared locale in its own copy", async () => {
     for (const locale of LOCALES) {
-      const expected = (siteCopyByLocale[locale]?.publisher.newsletter ?? newsletterCopy).successMessage;
+      const expected = siteCopyByLocale[locale].publisher.newsletter.successMessage;
       expect((await submitNewsletter(null, post(locale))).message, locale).toBe(expected);
     }
   });

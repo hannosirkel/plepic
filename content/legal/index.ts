@@ -32,16 +32,27 @@ import { privacy } from "./privacy.js";
 import { returns } from "./returns.js";
 import { shipping } from "./shipping.js";
 import { terms } from "./terms.js";
+import { imprint as imprintDe } from "./de/imprint.js";
+import { privacy as privacyDe } from "./de/privacy.js";
+import { returns as returnsDe } from "./de/returns.js";
+import { shipping as shippingDe } from "./de/shipping.js";
+import { terms as termsDe } from "./de/terms.js";
 import { imprint as imprintEt } from "./et/imprint.js";
 import { privacy as privacyEt } from "./et/privacy.js";
 import { returns as returnsEt } from "./et/returns.js";
 import { shipping as shippingEt } from "./et/shipping.js";
 import { terms as termsEt } from "./et/terms.js";
+import { imprint as imprintTlh } from "./tlh/imprint.js";
+import { privacy as privacyTlh } from "./tlh/privacy.js";
+import { returns as returnsTlh } from "./tlh/returns.js";
+import { shipping as shippingTlh } from "./tlh/shipping.js";
+import { terms as termsTlh } from "./tlh/terms.js";
 
 export { imprint, privacy, returns, shipping, terms };
 
 /** The English edition, in the order a reader meets it. */
 const english: readonly LegalPage[] = [imprint, terms, shipping, returns, privacy];
+const german: readonly LegalPage[] = [imprintDe, termsDe, shippingDe, returnsDe, privacyDe];
 
 /**
  * The Estonian edition — the `et/` sibling directory, in the same reading
@@ -55,6 +66,7 @@ const english: readonly LegalPage[] = [imprint, terms, shipping, returns, privac
  * operator act with no field in this repository.
  */
 const estonian: readonly LegalPage[] = [imprintEt, termsEt, shippingEt, returnsEt, privacyEt];
+const klingon: readonly LegalPage[] = [imprintTlh, termsTlh, shippingTlh, returnsTlh, privacyTlh];
 
 /**
  * The legal set, per locale. Total over `Locale`: a new locale does not
@@ -63,7 +75,9 @@ const estonian: readonly LegalPage[] = [imprintEt, termsEt, shippingEt, returnsE
  */
 export const legalPagesByLocale: LocalizedContent<readonly LegalPage[]> = {
   en: english,
+  de: german,
   et: estonian,
+  tlh: klingon,
 };
 
 /**

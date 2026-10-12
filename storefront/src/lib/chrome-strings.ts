@@ -11,7 +11,7 @@
  * renders comes from this table, keyed by the locale being served.
  *
  * Total over `Locale`, exactly like every other registry in the locale
- * dimension: a third edition does not compile until its chrome strings are
+ * dimension: a new edition does not compile until its chrome strings are
  * written down, rather than inheriting English labels nobody decided on.
  *
  * **What is not in this table:** the publisher tagline in the footer, which
@@ -66,8 +66,7 @@ export interface ChromeStrings {
   /**
    * The incompleteness notice's body, from the reader-facing labels of the
    * missing disclosures. A function rather than a template string because
-   * both languages inflect around the count, and neither inflection is the
-   * other's.
+   * each language inflects around the count.
    */
   readonly noticeBody: (missing: readonly string[]) => string;
 }
@@ -101,6 +100,35 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
         : `These details have not been configured for this deployment, and they are marked ` +
           `in the text below: ${missing.join(", ")}. Until they are supplied, this page is ` +
           `not a complete legal notice and should not be relied on as one.`,
+  },
+  de: {
+    brandHomeLabel: "Plepic Games, Startseite",
+    primaryNavLabel: "Hauptnavigation",
+    navAbout: "Über uns",
+    navSupport: "Hilfe",
+    menuLabel: "Menü",
+    closeMenuLabel: "Menü schließen",
+    basketLabel: "Warenkorb",
+    legalNavLabel: "Rechtliche Informationen",
+    legalLinkLabels: {
+      legalImprint: "Impressum",
+      legalTerms: "Verkaufsbedingungen",
+      legalShipping: "Versand und Lieferung",
+      legalReturns: "Rücksendungen und Widerrufsrecht",
+      legalPrivacy: "Datenschutz",
+    },
+    languageNavLabel: "Sprache",
+    socialNavLabel: "Soziale Medien",
+    draftNote: "Entwurf; die Freigabe durch den Betreiber steht noch aus.",
+    noticeHeading: "Dieser rechtliche Hinweis ist unvollständig.",
+    noticeBody: (missing) =>
+      missing.length === 1
+        ? `Diese Angabe wurde für diese Bereitstellung noch nicht konfiguriert und ist im ` +
+          `folgenden Text gekennzeichnet: ${missing.join(", ")}. Solange sie fehlt, ist ` +
+          `dieser rechtliche Hinweis unvollständig und Sie sollten sich nicht darauf verlassen.`
+        : `Diese Angaben wurden für diese Bereitstellung noch nicht konfiguriert und sind im ` +
+          `folgenden Text gekennzeichnet: ${missing.join(", ")}. Solange sie fehlen, ist ` +
+          `dieser rechtliche Hinweis unvollständig und Sie sollten sich nicht darauf verlassen.`,
   },
   et: {
     brandHomeLabel: "Plepic Games, avaleht",
@@ -142,6 +170,30 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
           `tekstis tähistatud: ${missing.join(", ")}. Kuni need on esitamata, ei ole see ` +
           `leht täielik õiguslik teade ja sellele ei saa sellisena tugineda.`,
   },
+  tlh: {
+    brandHomeLabel: "Plepic Games, tenwal wa'DIch",
+    primaryNavLabel: "wIvmeH rarwI'mey",
+    navAbout: "De'maj",
+    navSupport: "QaH",
+    menuLabel: "wIvmeH tetlh",
+    closeMenuLabel: "wIvmeH tetlh yISoQmoH",
+    basketLabel: "je'meH ngaSwI'",
+    legalNavLabel: "chut De'",
+    legalLinkLabels: {
+      legalImprint: "chut QIn",
+      legalTerms: "ngevmeH chutmey",
+      legalShipping: "ngeHmeH mIw, HIjmeH mIw je",
+      legalReturns: "tep tatlhmeH mIw, je'Ha'meH DIb je",
+      legalPrivacy: "De' QanmeH mIw",
+    },
+    languageNavLabel: "Hol",
+    socialNavLabel: "ghom rarwI'mey",
+    draftNote: "qonmeH ghItlh; SIr'o' Daq vu'wI' lajbe'pu'.",
+    noticeHeading: "chut QInvam naQbe'.",
+    noticeBody: (missing) =>
+      `DaqvamvaD De'vam lanlu'be'pu'; bIngDaq ngu'lu': ${missing.join(", ")}. ` +
+      "De'vam lanlu'pa', chut QInvam naQbe'; naQ 'e' yIHarQo'.",
+  },
 };
 
 /**
@@ -152,5 +204,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
  */
 export const LANGUAGE_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
   en: "English",
+  de: "Deutsch",
   et: "Eesti",
+  tlh: "tlhIngan Hol",
 };

@@ -41,6 +41,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { legalPagesByLocale } from "../../content/legal/index.js";
+import { pagesByLocale } from "../../content/index.js";
 import {
   DEFAULT_LOCALE,
   LOCALES,
@@ -49,7 +50,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../content/routes.js";
-import { contentFor, finalRouteFor } from "../../content/schema.js";
+import { contentFor, finalRouteFor, type Page } from "../../content/schema.js";
 import { resolveLocalizedRoute } from "../src/app/localized-routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
 import { localizedHrefFor, localizedLinkFor, pagesIn } from "../src/lib/seo.js";
@@ -59,6 +60,13 @@ import { LanguageSelector } from "../src/components/LanguageSelector.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { SiteFooter } from "../src/components/SiteFooter.js";
 import { SiteHeader } from "../src/components/SiteHeader.js";
+import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
+import { LunarBaseMockup } from "../src/components/mockups/LunarBaseMockup.js";
+import { SupportPageContent } from "../src/components/pages/SupportPageContent.js";
+import { RulebookPageContent } from "../src/components/pages/RulebookPageContent.js";
+import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
+import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.js";
+import { CartProvider } from "../src/lib/cart-store.js";
 
 const ROUTE_IDS = Object.keys(ROUTE_PATHS) as readonly RouteId[];
 
@@ -69,7 +77,9 @@ const ROUTE_IDS = Object.keys(ROUTE_PATHS) as readonly RouteId[];
  */
 const EXPECTED_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
   en: "English",
+  de: "Deutsch",
   et: "Eesti",
+  tlh: "tlhIngan Hol",
 };
 
 /** Every anchor tag in `html` that points into this site, with its href. */
@@ -82,14 +92,35 @@ function internalAnchorsIn(html: string): readonly { tag: string; href: string }
     .filter((anchor) => anchor.href.startsWith("/"));
 }
 
-function renderedPage(locale: Locale, route: string): string {
+/**
+ * The retired `about` route is replaced by `home`. An edition that publishes
+ * its home page keeps the link there, at the address written here.
+ */
+const RETIRED_ABOUT_HREF: Readonly<Partial<Record<Locale, string>>> = { de: "/de", et: "/et", tlh: "/tlh" };
+
+/** The label of each complete translated edition's language selector, as literals. */
+const COMPLETE_EDITIONS = [
+  { locale: "de", selectorLabel: "Sprache" },
+  { locale: "et", selectorLabel: "Keel" },
+  { locale: "tlh", selectorLabel: "Hol" },
+] as const;
+
+function renderedPage(locale: Locale, route: RouteId): string {
   const page = contentFor(legalPagesByLocale, locale).find(
     (candidate) => candidate.route === route,
   );
-  expect(page, `${locale} does not carry ${route}`).toBeDefined();
-  return renderToStaticMarkup(
-    <LegalPageContent page={page!} locale={locale} values={NO_CONFIGURATION_VALUES} />,
+  if (page !== undefined) return renderToStaticMarkup(
+    <LegalPageContent page={page} locale={locale} values={NO_CONFIGURATION_VALUES} />,
   );
+  switch (route) {
+    case "home": return renderToStaticMarkup(<HomepageMockup locale={locale} />);
+    case "lunarBase": return renderToStaticMarkup(<LunarBaseMockup locale={locale} />);
+    case "support": return renderToStaticMarkup(<SupportPageContent locale={locale} turnstileSiteKey={null} nonce={undefined} merchantContactAddress={null} />);
+    case "rulebook": return renderToStaticMarkup(<RulebookPageContent locale={locale} />);
+    case "cart": return renderToStaticMarkup(<CartProvider scenario={null} latencyMs={0}><BasketPageContent locale={locale} /></CartProvider>);
+    case "checkout": return renderToStaticMarkup(<CartProvider scenario="filled" latencyMs={0}><CheckoutPageContent locale={locale} scenario="filled" latencyMs={0} turnstileSiteKey={null} nonce={undefined} /></CartProvider>);
+    default: throw new Error(`No render fixture for ${locale}:${route}`);
+  }
 }
 
 describe("localizedLinkFor answers from the registries, not from itself", () => {
@@ -107,9 +138,10 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
-        const expected = published.has(routeId)
+        const retired = routeId === "about" ? RETIRED_ABOUT_HREF[locale] : undefined;
+        const expected = retired ?? (published.has(routeId)
           ? localizedPath(locale, ROUTE_PATHS[routeId])
-          : ROUTE_PATHS[routeId];
+          : ROUTE_PATHS[routeId]);
         if (published.has(routeId)) ownEdition += 1;
         else fallback += 1;
 
@@ -139,12 +171,32 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
-        const servedBy = published.has(routeId) ? locale : DEFAULT_LOCALE;
+        const servedBy = published.has(routeId) || (routeId === "about" && RETIRED_ABOUT_HREF[locale] !== undefined)
+          ? locale : DEFAULT_LOCALE;
         const { hrefLang } = localizedLinkFor(locale, routeId);
         expect(
           hrefLang,
           `${locale}:${routeId} ${servedBy === locale ? "stays home and needs no tag" : "crosses editions and must say so"}`,
         ).toBe(servedBy === locale ? undefined : LOCALE_DEFINITIONS[servedBy].languageTag);
+      }
+    }
+  });
+
+  /*
+   * Every edition publishes every route now, so no real pair crosses. The
+   * crossing branch is kept honest by withholding one page from each
+   * translated edition in turn.
+   */
+  it("crosses to the default edition, and says so, for a route withheld from an edition", () => {
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    for (const { locale } of COMPLETE_EDITIONS) {
+      const published = pages[locale];
+      expect(localizedLinkFor(locale, "lunarBase")).toEqual({ href: `/${locale}/games/lunar-base` });
+      pages[locale] = published.filter((page) => page.route !== "lunarBase");
+      try {
+        expect(localizedLinkFor(locale, "lunarBase")).toEqual({ href: "/games/lunar-base", hrefLang: "en" });
+      } finally {
+        pages[locale] = published;
       }
     }
   });
@@ -257,6 +309,35 @@ describe("every edition's pages link within the edition", () => {
   });
 });
 
+describe("a complete translated edition keeps its navigation in its own edition", () => {
+  for (const { locale, selectorLabel } of COMPLETE_EDITIONS) {
+    const selector = new RegExp(`<nav[^>]*aria-label="${selectorLabel}"[^>]*>[\\s\\S]*?</nav>`, "g");
+
+    it(`${locale} publishes every page the default edition does, and its selector carries the label set aside below`, () => {
+      expect(pagesByLocale[locale].map((page) => page.route)).toEqual(
+        pagesByLocale[DEFAULT_LOCALE].map((page) => page.route),
+      );
+      // Header and footer: a label that matched nothing would set nothing aside.
+      expect(renderedPage(locale, "home").match(selector)).toHaveLength(2);
+    });
+
+    for (const page of pagesByLocale[locale]) {
+      it(`${locale}:${page.route} has no cross-edition route link outside the selector`, () => {
+        const anchors = internalAnchorsIn(renderedPage(locale, page.route).replace(selector, ""));
+        expect(anchors.length).toBeGreaterThan(0);
+        for (const { href } of anchors) {
+          if (href.startsWith("/documents/")) continue;
+          const path = href.split("#", 1)[0] ?? href;
+          const parsed = parseLocalizedPath(path);
+          const routeId = routeIdForPath(parsed.path);
+          expect(routeId, `${href} is not a declared route`).toBeDefined();
+          expect(parsed.locale, `${page.route} links to ${href} outside ${locale}`).toBe(locale);
+        }
+      });
+    }
+  }
+});
+
 describe("every non-default edition has inbound links, via the language switcher", () => {
   for (const locale of LOCALES) {
     if (locale === DEFAULT_LOCALE) continue;
@@ -293,7 +374,7 @@ describe("every non-default edition has inbound links, via the language switcher
  * the page registry and `localizedPath`, never read back from the component.
  */
 describe("the language selector", () => {
-  const SELECTOR = /<nav[^>]*aria-label="(?:Language|Keel)"[^>]*>[\s\S]*?<\/nav>/g;
+  const SELECTOR = /<nav[^>]*aria-label="(?:Language|Sprache|Keel|Hol)"[^>]*>[\s\S]*?<\/nav>/g;
   /** Every selector in `html`, in document order. */
   const selectorsIn = (html: string): readonly string[] => [...html.matchAll(SELECTOR)].map((match) => match[0]);
   /** The first `<header>` or `<footer>` element of `html`, whole. */
@@ -307,6 +388,14 @@ describe("the language selector", () => {
     }));
 
   for (const part of ["header", "footer"] as const) {
+    it(`/legal/imprint: the ${part} links Deutsch to the German imprint`, () => {
+      const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
+      expect(selectors).toHaveLength(1);
+      expect(selectors[0]).toMatch(
+        /<a[^>]* href="\/de\/legal\/imprint" lang="de" hrefLang="de">Deutsch<\/a>/,
+      );
+    });
+
     it(`/legal/imprint: the ${part} shows English as current and links Eesti to /et/legal/imprint`, () => {
       const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
       expect(selectors, `the ${part} must hold exactly one selector`).toHaveLength(1);
@@ -326,23 +415,53 @@ describe("the language selector", () => {
       expect(selector).toMatch(/<a[^>]* href="\/legal\/imprint" lang="en" hrefLang="en">English<\/a>/);
       expect(selector, "the current edition must not be a link").not.toMatch(/<a[^>]*>Eesti/);
     });
+
+    it(`/legal/imprint: the ${part} offers tlhIngan Hol with its language tag`, () => {
+      const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
+      expect(selectors).toHaveLength(1);
+      expect(selectors[0]).toMatch(
+        /<a[^>]* href="\/tlh\/legal\/imprint" lang="tlh" hrefLang="tlh">tlhIngan Hol<\/a>/,
+      );
+    });
   }
 
-  /*
-   * `et` does not publish the product page today. The task that publishes it
-   * replaces this expectation with the link.
-   */
-  it("/games/lunar-base: offers no Estonian entry, in the header or in the footer", () => {
-    expect(pagesIn("et").some((page) => page.route === "lunarBase")).toBe(false);
-
+  it("/games/lunar-base: offers all translated product pages, in the header and in the footer", () => {
     for (const html of [
       renderToStaticMarkup(<SiteHeader wordmark="dark" route="lunarBase" />),
       renderToStaticMarkup(<SiteFooter route="lunarBase" />),
     ]) {
       const selectors = selectorsIn(html);
       expect(selectors).toHaveLength(1);
-      expect(entriesOf(selectors[0] ?? "")).toEqual([{ label: "English", href: undefined }]);
-      expect(html).not.toContain("/et");
+      expect(entriesOf(selectors[0] ?? "")).toEqual([
+        { label: "English", href: undefined },
+        { label: "Deutsch", href: "/de/games/lunar-base" },
+        { label: "Eesti", href: "/et/games/lunar-base" },
+        { label: "tlhIngan Hol", href: "/tlh/games/lunar-base" },
+      ]);
+    }
+  });
+
+  /* An edition that lacks the route is not offered on that page. */
+  it("/games/lunar-base: offers no Estonian entry while the edition does not publish the page", () => {
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    const published = pages.et;
+    pages.et = published.filter((page) => page.route !== "lunarBase");
+    try {
+      for (const html of [
+        renderToStaticMarkup(<SiteHeader wordmark="dark" route="lunarBase" />),
+        renderToStaticMarkup(<SiteFooter route="lunarBase" />),
+      ]) {
+        const selectors = selectorsIn(html);
+        expect(selectors).toHaveLength(1);
+        expect(entriesOf(selectors[0] ?? "")).toEqual([
+          { label: "English", href: undefined },
+          { label: "Deutsch", href: "/de/games/lunar-base" },
+          { label: "tlhIngan Hol", href: "/tlh/games/lunar-base" },
+        ]);
+        expect(html).not.toContain("/et/games/lunar-base");
+      }
+    } finally {
+      pages.et = published;
     }
   });
 
@@ -370,20 +489,26 @@ describe("the language selector", () => {
   });
 
   it("on the 404, which is no route, links each edition's home page", async () => {
-    // `et` publishes no home page yet, so the English 404 offers no way to one.
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="en" />))).toEqual([
       { label: "English", href: undefined },
+      { label: "Deutsch", href: "/de" },
+      { label: "Eesti", href: "/et" },
+      { label: "tlhIngan Hol", href: "/tlh" },
     ]);
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="et" />))).toEqual([
       { label: "English", href: "/" },
+      { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: undefined },
+      { label: "tlhIngan Hol", href: "/tlh" },
     ]);
 
     const missing = selectorsIn(renderToStaticMarkup(await NotFoundContent({ locale: "et" })));
     expect(missing, "the 404 page must hold the selector").toHaveLength(1);
     expect(entriesOf(missing[0] ?? "")).toEqual([
       { label: "English", href: "/" },
+      { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: undefined },
+      { label: "tlhIngan Hol", href: "/tlh" },
     ]);
   });
 
@@ -444,6 +569,25 @@ const EXPECTED_CHROME: Readonly<
       ">Privacy<",
     ],
   },
+  de: {
+    header: [
+      ">Über uns<",
+      ">Hilfe<",
+      ">Menü<",
+      ">Warenkorb<",
+      'aria-label="Hauptnavigation"',
+      'aria-label="Plepic Games, Startseite"',
+    ],
+    footer: [
+      'aria-label="Rechtliche Informationen"',
+      'aria-label="Sprache"',
+      ">Impressum<",
+      ">Verkaufsbedingungen<",
+      ">Versand und Lieferung<",
+      ">Rücksendungen und Widerrufsrecht<",
+      ">Datenschutz<",
+    ],
+  },
   et: {
     header: [
       ">Meist<",
@@ -461,6 +605,17 @@ const EXPECTED_CHROME: Readonly<
       ">Saatmine<",
       ">Tagastamine<",
       ">Privaatsus<",
+    ],
+  },
+  tlh: {
+    header: [
+      ">De&#x27;maj<", ">QaH<", ">wIvmeH tetlh<", ">je&#x27;meH ngaSwI&#x27;<",
+      'aria-label="wIvmeH rarwI&#x27;mey"', 'aria-label="Plepic Games, tenwal wa&#x27;DIch"',
+    ],
+    footer: [
+      'aria-label="chut De&#x27;"', 'aria-label="Hol"',
+      ">chut QIn<", ">ngevmeH chutmey<", ">ngeHmeH mIw, HIjmeH mIw je<",
+      ">tep tatlhmeH mIw, je&#x27;Ha&#x27;meH DIb je<", ">De&#x27; QanmeH mIw<",
     ],
   },
 };

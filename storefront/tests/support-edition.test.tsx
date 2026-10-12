@@ -180,7 +180,7 @@ describe("the rulebook page under the marker fixture", () => {
 
     it(`shows the edition's own sentences in ${locale}, the file's size inside its sentence`, () => {
       const copy = english.interface.rulebook;
-      const size = /(\d+\.\d) MB/.exec(html)?.[1];
+      const size = /(\d+[.,]\d) MB/.exec(html)?.[1];
 
       expect(size).toBeDefined();
       for (const sentence of [copy.heading, copy.lede, copy.openLabel, copy.downloadNote.replace("%megabytes%", size!)]) {
@@ -196,6 +196,13 @@ describe("the rulebook page under the marker fixture", () => {
 
   it("is the default edition's page when no locale is given", () => {
     expect(renderToStaticMarkup(<RulebookPageContent />)).toBe(rulebookPage(DEFAULT_LOCALE));
+  });
+
+  it("uses the Estonian PDF after its document is published", () => {
+    const html = rulebookPage("et");
+    expect(html).toContain('href="/documents/lunar-base-rulebook-et.pdf"');
+    expect(html).toContain('hrefLang="et"');
+    expect(html).not.toContain("Reegliraamat on inglise keeles.");
   });
 });
 
@@ -307,21 +314,6 @@ describe("a post that names no edition this site has is answered in the default 
       });
     }
 
-    it(`${form.name}: a declared edition that has no site copy`, async () => {
-      const copies = fixture as Record<string, unknown>;
-      const withoutCopy = LOCALES.find((locale) => locale !== DEFAULT_LOCALE)!;
-      const published = copies[withoutCopy];
-      copies[withoutCopy] = null;
-      try {
-        stage.relayed = true;
-        const post = new FormData();
-        post.set("locale", withoutCopy);
-
-        expect((await form.action(null, post)).message).toBe(markedFor(DEFAULT_LOCALE, form.sent));
-      } finally {
-        copies[withoutCopy] = published;
-      }
-    });
   }
 });
 
@@ -352,9 +344,9 @@ describe("the contact form's validation errors", () => {
 });
 
 /**
- * Each view asks the page registry itself, as `HomeRoute` does: an edition
- * that does not publish the page has no site copy to render it from, and the
- * answer is a 404, not the error `siteCopyFor` throws.
+ * Each view asks the page registry itself, as `HomeRoute` does. A caller that
+ * skips the route resolver still gets a 404 for a page the edition does not
+ * publish.
  */
 describe("a route view answers 404 for an edition that does not publish its page", () => {
   const pages = pagesByLocale as Record<Locale, readonly Page[]>;

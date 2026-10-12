@@ -25,11 +25,12 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  RETIRED_ROUTES,
   ROUTE_PATHS,
   type Locale,
   type RouteId,
 } from "../../content/routes.js";
-import { contentFor } from "../../content/schema.js";
+import { contentFor, type Page } from "../../content/schema.js";
 import {
   BasketRoute,
   CheckoutRoute,
@@ -142,6 +143,24 @@ describe("localized paths", () => {
 });
 
 describe("resolveLocalizedRoute", () => {
+  for (const locale of ["de", "et", "tlh"] as const) {
+    it(`serves every active English route under ${locale}, plus the checkout return`, () => {
+      expect(pagesIn("en").map((page) => page.route).toSorted()).toEqual(
+        ROUTE_IDS.filter((routeId) => !Object.hasOwn(RETIRED_ROUTES, routeId)).toSorted(),
+      );
+      for (const page of pagesIn("en")) {
+        const segments = ROUTE_PATHS[page.route].split("/").filter(Boolean);
+        expect(resolveLocalizedRoute(locale, segments), page.route).toEqual({
+          locale, routeId: page.route,
+        });
+      }
+      expect(resolveLocalizedRoute(locale, ["about"])).toBeNull();
+      expect(resolveLocalizedRoute(locale, ["checkout", "payment-return"])).toEqual({
+        locale, routeId: "checkout", view: "checkoutReturn",
+      });
+    });
+  }
+
   it("refuses the default edition's own identifier", () => {
     expect(resolveLocalizedRoute(DEFAULT_LOCALE, ["legal", "imprint"])).toBeNull();
   });
@@ -310,18 +329,24 @@ describe("the home page has one renderer", () => {
   });
 
   /**
-   * `HomeRoute` asks the page registry itself. An edition that does not
-   * publish the home page has no site copy to render it from, and the
-   * renderer reached without the resolver must still answer 404 rather than
-   * throw `siteCopyFor`'s error, which a visitor would meet as a 500.
+   * `HomeRoute` asks the page registry itself. A caller that skips the route
+   * resolver still gets a 404 when the edition does not publish the home page.
    */
   it("answers 404 for an edition that does not publish the home page", async () => {
-    const unpublished = LOCALES.filter((locale) => !pagesIn(locale).some((page) => page.route === "home"));
+    // Every edition publishes the home page now, so each has it withheld in turn.
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
 
-    for (const locale of unpublished) {
-      await expect(HomeRoute({ routeId: "home", locale }), locale).rejects.toMatchObject({
-        digest: expect.stringContaining("404"),
-      });
+    for (const locale of LOCALES) {
+      if (locale === DEFAULT_LOCALE) continue;
+      const published = pages[locale];
+      pages[locale] = published.filter((page) => page.route !== "home");
+      try {
+        await expect(HomeRoute({ routeId: "home", locale }), locale).rejects.toMatchObject({
+          digest: expect.stringContaining("404"),
+        });
+      } finally {
+        pages[locale] = published;
+      }
     }
   });
 });

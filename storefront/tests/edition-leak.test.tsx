@@ -17,6 +17,7 @@ import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.
 import { CartProvider } from "../src/lib/cart-store.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
 import { deliveryCountries } from "../src/lib/cart.js";
+import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
 import { countryMayKeepEnglish, methodMayKeepEnglish, retainedEnglishPhrases } from "./english-leak-exemptions.js";
 
 const HTML_ENTITIES: Readonly<Record<string, string>> = {
@@ -97,6 +98,47 @@ describe("published editions do not leak English copy or data labels", () => {
         const html = render(page.route, locale);
         expect(leakedEnglish(html), `${locale}/${page.route}`).toEqual([]);
         expect(dataLabelLeaks(html, locale), `${locale}/${page.route}`).toEqual([]);
+      }
+    }
+  });
+
+  /*
+   * Too short for the sentence scan above, which reads four words and more.
+   * The catalogue used to compose both labels in English for every edition.
+   * A total table, so a new edition does not compile until its words are here.
+   */
+  it("words the product page's stock statement and player range in the edition's language", () => {
+    const expected: Readonly<Record<Locale, { inStock: string; outOfStock: string; players: string } | null>> = {
+      en: { inStock: "In stock", outOfStock: "Out of stock", players: "2–6 players" },
+      de: { inStock: "Auf Lager", outOfStock: "Nicht auf Lager", players: "2–6 Personen" },
+      et: { inStock: "Laos olemas", outOfStock: "Laost otsas", players: "2–6 mängijat" },
+      tlh: { inStock: "polmeH DaqDaq tu'lu'", outOfStock: "Hoch ngevlu'pu'", players: "2–6 'ovwI'pu'" },
+    };
+    const englishWords = expected.en;
+    if (englishWords === null) throw new Error("The English edition needs stock words");
+    const paragraphs = (html: string): string[] =>
+      [...html.matchAll(/<(p|li)\b[^>]*>([^<]*)<\/\1>/g)].map((match) => visibleText(match[2] ?? ""));
+
+    for (const locale of LOCALES) {
+      const words = expected[locale];
+      if (siteCopyByLocale[locale] === null) {
+        expect(words, locale).toBeNull();
+        continue;
+      }
+      if (words === null) throw new Error(`${locale} has site copy but no stock words`);
+      const inStock = paragraphs(render("lunarBase", locale));
+      // The hero and the purchase panel both state it.
+      expect(inStock.filter((text) => text === words.inStock), locale).toHaveLength(2);
+      expect(inStock, locale).toContain(words.players);
+
+      const soldOut = resolveCatalogue({ ...mockCatalogue, availability: "OutOfStock" }, undefined, locale);
+      const outOfStock = paragraphs(renderToStaticMarkup(<LunarBaseMockup locale={locale} catalogue={soldOut} />));
+      expect(outOfStock.filter((text) => text === words.outOfStock), locale).toHaveLength(2);
+      expect(outOfStock, locale).not.toContain(words.inStock);
+
+      if (locale === DEFAULT_LOCALE) continue;
+      for (const page of [inStock, outOfStock]) {
+        expect(page.filter((text) => Object.values(englishWords).includes(text)), locale).toEqual([]);
       }
     }
   });

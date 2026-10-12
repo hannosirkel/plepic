@@ -123,9 +123,17 @@ const STORAGE_DISCLOSURES: Readonly<Record<Locale, Readonly<Record<StorageArea, 
     localStorage: "in your browser's local storage rather than as a cookie",
     sessionStorage: "in your browser's session storage rather than as a cookie",
   },
+  de: {
+    localStorage: "im lokalen Speicher (local storage) Ihres Browsers und nicht als Cookie",
+    sessionStorage: "im Sitzungsspeicher (session storage) Ihres Browsers und nicht als Cookie",
+  },
   et: {
     localStorage: "kohalikku salvestusse (local storage), mitte küpsisena",
     sessionStorage: "seansisalvestusse (session storage), mitte küpsisena",
+  },
+  tlh: {
+    localStorage: "SIr'o' leghmeH janlIj polmeH Daq (local storage) lo', 'ej De' chabHom lo'be'",
+    sessionStorage: "SIr'o' leghmeH janlIj polmeH Daq ru' (session storage) lo', 'ej De' chabHom lo'be'",
   },
 };
 
@@ -140,16 +148,27 @@ const BASKET_SENTENCES: Readonly<Record<Locale, string>> = {
     "An opaque identifier for your basket is stored by this site in your browser's session storage " +
     "rather than as a cookie. It is kept only until you close the tab, and it records no product " +
     "details, quantities, email address or delivery address.",
+  de:
+    "Eine opake Kennung für Ihren Warenkorb speichert diese Website im Sitzungsspeicher " +
+    "(session storage) Ihres Browsers und nicht als Cookie. Sie bleibt nur gespeichert, " +
+    "bis Sie den Tab schließen, und sie hält keine Produktdetails, Mengen, E-Mail-Adresse " +
+    "oder Lieferadresse fest.",
   et:
     "Sinu ostukorvi läbipaistmatu tunnus salvestatakse selle saidi poolt sinu brauseri " +
     "seansisalvestusse (session storage), mitte küpsisena. Seda hoitakse ainult vahelehe " +
     "sulgemiseni ning see ei salvesta toodete üksikasju, koguseid, e-posti aadressi ega tarneaadressi.",
+  tlh:
+    "je'meH ngaSwI'lIj ngu'bogh ngoq pol SIr'o' Daqvam; SIr'o' leghmeH janlIj polmeH Daq ru' " +
+    "(session storage) lo', 'ej De' chabHom lo'be'. tenwal DaSoQmoHpa' neH pollu'. " +
+    "Doch De', Doch mI', QIn Daq, HIjmeH Daq je qonbe'.",
 };
 
 /** The cookie table's caption, per edition — the anchor the exclusion check holds on to. */
 const COOKIE_TABLE_CAPTIONS: Readonly<Record<Locale, string>> = {
   en: "Cookies this site can set",
+  de: "Cookies, die diese Website setzen kann",
   et: "Küpsised, mida see sait võib salvestada",
+  tlh: "De' chabHommey lanlaHbogh SIr'o' Daqvam",
 };
 
 /**
@@ -162,7 +181,9 @@ const COOKIE_TABLE_CAPTIONS: Readonly<Record<Locale, string>> = {
  */
 const COOKIE_TABLE_COLUMNS: Readonly<Record<Locale, readonly string[]>> = {
   en: ["Cookie", "Provider", "Purpose", "Duration"],
+  de: ["Cookie", "Anbieter", "Zweck", "Speicherdauer"],
   et: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
+  tlh: ["De' chabHom", "nobwI'", "ngoQ", "poH"],
 };
 
 /**

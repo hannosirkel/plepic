@@ -4,6 +4,8 @@ import { destinationNameIn, type Destination } from "../src/lib/destination.js";
 /** Carrier brand and method name are the carrier's own labels. */
 export const retainedEnglishPhrases: Readonly<Record<string, string>> = {
   "Omniva parcel machine": "Omniva names this carrier service; the branded method label is retained.",
+  "Paul Grogan, Gaming Rules!": "The reviewer's name and publication are an attribution retained across editions.",
+  "Rodney Smith, Watch It Played": "The reviewer's name and channel are an attribution retained across editions.",
 };
 
 /** ICU keeps proper names and has no Klingon region-name data. */

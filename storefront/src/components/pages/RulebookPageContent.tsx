@@ -28,24 +28,15 @@
  * this page is token-coloured.
  */
 import { siteCopyFor } from "../../../../content/editions.js";
-import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../../content/routes.js";
+import { rulebookDocuments } from "../../../../content/rulebook-documents.js";
 import { SiteFooter } from "../SiteFooter.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
 import ctaStyles from "../../styles/mockups/call-to-action.module.css";
 import styles from "../../styles/pages/rulebook.module.css";
 
-const RULEBOOK_PATH = "/documents/lunar-base-rulebook.pdf";
-
-/**
- * 8,898,253 bytes, stated to one decimal place. Committed as-is: the
- * migration report records that Ghostscript recompression strips the
- * structure tree the "tagged and selectable rather than a scan" requirement
- * depends on. Since it cannot be made smaller without breaking it, the honest
- * thing is to tell a visitor on a metered connection what they are about to
- * fetch.
- */
-const RULEBOOK_MEGABYTES = "8.9";
+const DOCUMENTS_PATH = "/documents";
 
 export interface RulebookPageContentProps {
   /**
@@ -53,7 +44,7 @@ export interface RulebookPageContentProps {
    * to the footer's social row. Absent keeps it inert text.
    */
   readonly externalTargets?: ExternalTargetUrls;
-  /** The edition whose copy and links this renders. The file is the same in every edition. */
+  /** The edition whose copy and rulebook PDF this renders. */
   readonly locale?: Locale;
 }
 
@@ -62,8 +53,14 @@ export function RulebookPageContent({
   locale = DEFAULT_LOCALE,
 }: RulebookPageContentProps = {}) {
   const copy = siteCopyFor(locale).interface.rulebook;
+  const document = rulebookDocuments[locale];
   // The figure stays a text node of its own, as it was when the sentence was written here.
   const [beforeSize, afterSize] = copy.downloadNote.split("%megabytes%");
+  // One decimal, written as the edition writes it: a comma in German and Estonian.
+  const megabytes = new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(document.megabytes);
 
   return (
     <div data-layer="lunar" className={styles.page}>
@@ -74,13 +71,13 @@ export function RulebookPageContent({
           <h1 className={styles.heading}>{copy.heading}</h1>
           <p className={styles.lede}>{copy.lede}</p>
           <div className={styles.actions}>
-            <a className={`${ctaStyles.cta} ${ctaStyles.primary}`} href={RULEBOOK_PATH}>
+            <a className={`${ctaStyles.cta} ${ctaStyles.primary}`} href={`${DOCUMENTS_PATH}/${document.fileName}`} hrefLang={locale}>
               {copy.openLabel}
             </a>
           </div>
           <p className={styles.note}>
             {beforeSize}
-            {RULEBOOK_MEGABYTES}
+            {megabytes}
             {afterSize}
           </p>
         </div>

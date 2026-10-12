@@ -56,10 +56,10 @@
  * makes possible and what the qualification exists to prevent.
  *
  * `availability` is likewise never a resolved placeholder in
- * `content/lunar-base.ts` (it is the literal string "In stock") — this
- * component renders `catalogue.availabilityLabel` rather than that literal,
- * so a future non-`InStock` mock catalogue state changes what a buyer reads
- * here instead of silently contradicting it.
+ * `content/lunar-base.ts` (it is the edition's own "In stock") — this
+ * component renders it only while `catalogue.inStock` holds and the edition's
+ * `outOfStock` otherwise, so a future non-`InStock` mock catalogue state
+ * changes what a buyer reads here instead of silently contradicting it.
  *
  * The wrapper carries `role="group"` rather than a bare `aria-label`. A
  * `<div>` with no role is `role="generic"`, and `aria-label` is not honoured
@@ -110,7 +110,9 @@ export function PurchasePanelMockup({
       </p>
       <p className={styles.breakdown}>{catalogue.priceTaxBreakdown}</p>
       <p className={styles.note}>{catalogue.priceShippingNote}</p>
-      <p className={styles.availability}>{catalogue.availabilityLabel}</p>
+      <p className={styles.availability}>
+        {catalogue.inStock ? purchase.availability : copy.interface.product.outOfStock}
+      </p>
 
       <dl className={styles.meta}>
         {purchase.notes.map((note) => (

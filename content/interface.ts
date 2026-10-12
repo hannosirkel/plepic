@@ -106,6 +106,8 @@ export interface InterfaceCopy {
     readonly safetyIncompletePlural: string;
     readonly videoPendingSuffix: string;
     readonly outOfStock: string;
+    /** The player range in the product page's hero. `%min%` and `%max%` come from the catalogue. */
+    readonly playerCount: string;
     readonly addingToBasket: string;
     readonly retryAddingToBasket: string;
     readonly basketExpired: string;
@@ -261,6 +263,7 @@ export const interfaceCopy: InterfaceCopy = {
     safetyIncompletePlural: "This manufacturer information is incomplete: %missing% have not been configured for this deployment.",
     videoPendingSuffix: " is not linked yet — it will be embedded from YouTube once a published video id is configured.",
     outOfStock: "Out of stock",
+    playerCount: "%min%–%max% players",
     addingToBasket: "Adding to basket…",
     retryAddingToBasket: "Try adding to basket again",
     basketExpired: "The basket expired; try adding the game again",

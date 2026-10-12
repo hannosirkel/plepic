@@ -1,6 +1,6 @@
 /**
- * The glossary check. For every registered glossary, each translated string
- * of the locale's site copy and legal set is read beside the English string at
+ * The glossary check. For every translated edition, each string of its site
+ * copy, legal set and rulebook is read beside the English string at
  * the same key. A string fails when it uses a forbidden variant, when the
  * English string has a term and the translation has none of its forms, or when
  * an as-printed term is not there letter for letter.
@@ -9,8 +9,8 @@
  * English string. Any other string is read, even one left as the English has
  * it, because a label a reader sees is the glossary's business either way.
  *
- * No glossary is registered until a language's first task, so the check is
- * proven here on fixtures, and the walk on the Estonian legal set.
+ * Rulebook text is read the same way, frame by frame, and owes one thing
+ * more: the printed English word at a term's first use on a sheet.
  */
 
 import { readFileSync } from "node:fs";
@@ -19,6 +19,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { siteCopyByLocale, siteCopyFor } from "./editions.js";
+import * as englishProduct from "./lunar-base.js";
+import { interfaceCopy as englishInterface } from "./interface.js";
+import * as englishShop from "./shop.js";
+import { interfaceCopy as klingonInterface } from "./tlh/interface.js";
+import * as klingonProduct from "./tlh/lunar-base.js";
+import * as klingonShop from "./tlh/shop.js";
 import {
   GLOSSARY_RULES,
   IDENTIFIER_KEYS,
@@ -34,8 +40,15 @@ import {
   type Term,
   type TermId,
 } from "./glossary/index.js";
+import { klingonGlossary, klingonLegalTerms } from "./glossary/tlh.js";
 import { legalPagesByLocale } from "./legal/index.js";
 import { DEFAULT_LOCALE, type Locale } from "./routes.js";
+import { reviewedSheets } from "../rulebook/layout/overrides.js";
+import { de as germanRulebook } from "../rulebook/text/de/index.js";
+import { et as estonianRulebook } from "../rulebook/text/et/index.js";
+import { en as englishRulebook } from "../rulebook/text/en.js";
+import type { RulebookText } from "../rulebook/text/schema.js";
+import { tlh as klingonRulebook } from "../rulebook/text/tlh/index.js";
 
 const contentDir = dirname(fileURLToPath(import.meta.url));
 const terms: Readonly<Record<TermId, Term>> = TERMS;
@@ -63,8 +76,7 @@ function pairsOf(english: unknown, translated: unknown, key: string, out: Pair[]
 }
 
 function sitePairs(locale: Locale): readonly Pair[] {
-  const copy = siteCopyByLocale[locale];
-  return copy === null ? [] : pairsOf(siteCopyFor(DEFAULT_LOCALE), copy, "site");
+  return pairsOf(siteCopyFor(DEFAULT_LOCALE), siteCopyByLocale[locale], "site");
 }
 
 function legalPairs(locale: Locale): readonly Pair[] {
@@ -74,12 +86,24 @@ function legalPairs(locale: Locale): readonly Pair[] {
 }
 
 /**
- * The hook for rulebook text. When `rulebook/text/<locale>/` exists, this
- * returns one pair per frame id: the English text of the frame map beside the
- * locale's string for the same frame. Until then a locale has none.
+ * The complete rulebook text for each translated edition.
  */
-function rulebookPairs(_locale: Locale): readonly Pair[] {
-  return [];
+const rulebookTexts: Readonly<Record<Exclude<Locale, typeof DEFAULT_LOCALE>, RulebookText>> = {
+  de: germanRulebook, et: estonianRulebook, tlh: klingonRulebook,
+};
+
+/**
+ * The hook for rulebook text: one pair per frame the locale has, the English
+ * text of the frame beside the locale's string for it. The key is
+ * `rulebook.<frame id>`, and the pairs come in reading order, so a term's
+ * first use on a sheet is the first pair of that sheet that has it.
+ */
+function rulebookPairs(locale: Locale): readonly Pair[] {
+  if (locale === DEFAULT_LOCALE) return [];
+  const translated = rulebookTexts[locale];
+  return reviewedSheets.flatMap((sheet) => sheet.frames).map(({ id }) => ({
+    key: `rulebook.${id}`, english: englishRulebook[id], translated: translated[id],
+  }));
 }
 
 const sources = [sitePairs, legalPairs, rulebookPairs] as const;
@@ -168,6 +192,33 @@ function checkGlossary(glossary: Glossary, pairs: readonly Pair[]): Failure[] {
     }
   }
   return failures;
+}
+
+/**
+ * The cards are printed in English. Where a sheet first uses a term of class
+ * `translated-with-original`, the translation therefore names the printed
+ * word in brackets: round ones, or square ones inside a bracket. It need not
+ * where it already spells the term as the cards do. A frame is on the sheet
+ * its key names (`rulebook.s05.f04`), and the pairs are in reading order.
+ */
+function missingOriginals(glossary: Glossary, pairs: readonly Pair[]): string[] {
+  const entries = wantedIn(glossary);
+  const introduced = new Set<string>();
+  const missing: string[] = [];
+  for (const { key, english, translated } of pairs) {
+    const sheet = key.slice(0, key.lastIndexOf("."));
+    const found = hitsIn(translated, entries).filter((hit) => !hit.forbidden);
+    for (const term of new Set(hitsIn(english, englishForms).map((hit) => hit.term))) {
+      if (terms[term].class !== "translated-with-original" || introduced.has(`${sheet} ${term}`)) continue;
+      introduced.add(`${sheet} ${term}`);
+      const bracketed = terms[term].forms.some((form) => new RegExp(`[(\\[]${form}[)\\]:]`, "u").test(translated));
+      const asPrinted = found.some((hit) => hit.term === term && terms[term].forms.includes(hit.text));
+      if (!bracketed && !asPrinted) {
+        missing.push(`${key}: the first use of ${term} on the sheet does not name the printed "${terms[term].english}" in brackets`);
+      }
+    }
+  }
+  return missing;
 }
 
 function covers(exception: GlossaryException, locale: Locale, failure: Failure): boolean {
@@ -259,8 +310,25 @@ describe("the walk", () => {
     expect(title?.english).toBe(legalPagesByLocale.en.find((page) => page.route === "legalTerms")?.title);
     expect(title?.translated).toBe(legalPagesByLocale.et.find((page) => page.route === "legalTerms")?.title);
     expect(title?.translated).not.toBe(title?.english);
-    // The Estonian edition publishes no site copy, so it has no site pairs.
-    expect(sitePairs("et")).toEqual([]);
+    // The Estonian edition publishes its site copy, so every English site string has a pair.
+    expect(sitePairs("et").length).toBe(sitePairs(DEFAULT_LOCALE).length);
+    expect(sitePairs("et").find((pair) => pair.key === "site.shop.checkout.orderButtonLabel")?.translated).toBe("Maksa kohe");
+  });
+
+  it("pairs every German rulebook frame with the English frame of the same id, in reading order", () => {
+    const pairs = rulebookPairs("de");
+    expect(pairs.length).toBe(Object.keys(englishRulebook).length);
+    expect(pairs.map((pair) => pair.key)).toEqual(Object.keys(germanRulebook).map((id) => `rulebook.${id}`));
+    expect(pairs.find((pair) => pair.key === "rulebook.s10.f03")).toEqual({
+      key: "rulebook.s10.f03", english: "CHECK FOR ARRIVING SHUTTLES", translated: germanRulebook["s10.f03"],
+    });
+    expect(pairs.find((pair) => pair.key === "rulebook.s10.f03")?.translated).not.toBe("CHECK FOR ARRIVING SHUTTLES");
+    expect(rulebookPairs("et").map((pair) => pair.key)).toEqual(Object.keys(englishRulebook).map((id) => `rulebook.${id}`));
+    // The Klingon edition has sheets 1 to 13 so far: a pair for each frame it has, and none for a later sheet.
+    const klingon = rulebookPairs("tlh");
+    expect(klingon.map((pair) => pair.key)).toEqual(Object.keys(klingonRulebook).map((id) => `rulebook.${id}`));
+    expect(klingon.length).toBeGreaterThan(200);
+    expect(klingon.at(-1)?.key).toBe("rulebook.s24.f21c");
   });
 
   it("pairs nested lists and objects by key, and skips what the translation lacks", () => {
@@ -366,8 +434,118 @@ describe("the check, on fixture data", () => {
   });
 });
 
+describe("the printed word at first use, on fixture data", () => {
+  const frame = (id: string, english: string, translated: string): Pair => ({ key: `rulebook.${id}`, english, translated });
+  const namedAt = (...pairs: Pair[]) => missingOriginals(german, pairs).map((message) => message.slice(0, message.indexOf(":")));
+
+  it("fails a first use that leaves the printed word out, and names the frame and the term", () => {
+    expect(missingOriginals(german, [frame("s08.f05", "Play a Module.", "Spiele ein Modul.")])).toEqual([
+      'rulebook.s08.f05: the first use of module on the sheet does not name the printed "Module" in brackets',
+    ]);
+    expect(namedAt(frame("s08.f05", "Play a Module.", "Spiele ein Modul (Module)."))).toEqual([]);
+    expect(namedAt(frame("s08.f05", "Play two Agents.", "Spiele zwei Agenten (Agents)."))).toEqual([]);
+    // A word that merely stands in brackets is not the printed word.
+    expect(namedAt(frame("s08.f05", "Play a Module.", "Spiele ein Modul (Karte)."))).toEqual(["rulebook.s08.f05"]);
+  });
+
+  it("asks once per sheet, at the first frame in reading order", () => {
+    const first = frame("s08.f05", "Play a Module.", "Spiele ein Modul.");
+    const later = frame("s08.f10", "Each Module counts.", "Jedes Modul zählt.");
+    const nextSheet = frame("s09.f04", "Each Module counts.", "Jedes Modul zählt.");
+    expect(namedAt(first, later, nextSheet)).toEqual(["rulebook.s08.f05", "rulebook.s09.f04"]);
+    expect(namedAt(frame("s08.f05", "Play a Module.", "Spiele ein Modul (Module)."), later)).toEqual([]);
+    // Naming the word at a later use does not make up for the first.
+    expect(namedAt(first, frame("s08.f10", "Each Module counts.", "Jedes Modul (Module) zählt."))).toEqual(["rulebook.s08.f05"]);
+  });
+
+  it("accepts square brackets inside a bracket, a bracket the word opens, and a term spelled as printed", () => {
+    expect(namedAt(frame("s07.f06", "(your Agents)", "(deine Agenten [Agents])"))).toEqual([]);
+    expect(namedAt(frame("s07.f06", "in your Base", "in deiner Basis\n(Base: deine Karten)"))).toEqual([]);
+    expect(namedAt(frame("s08.f05", "Play an Agent card.", "Spiele einen Agent."))).toEqual([]);
+    expect(namedAt(frame("s08.f05", "Play two Agents.", "Spiele zwei Agenten."))).toEqual(["rulebook.s08.f05"]);
+    // The German plural „Module“ is the very word the cards print.
+    expect(namedAt(frame("s08.f05", "Play two Modules.", "Spiele zwei Module."))).toEqual([]);
+  });
+
+  it("asks nothing of a term that is translated freely or stays as printed", () => {
+    expect(namedAt(frame("s05.f06", "Shuffle the deck.", "Mische den Nachziehstapel."))).toEqual([]);
+    expect(namedAt(frame("s05.f05", "Show the Terran Outpost side.", "Zeige die Seite Terran Outpost."))).toEqual([]);
+  });
+});
+
+describe("the staged Klingon product copy", () => {
+  it("uses the agreed terms in every translated product string", () => {
+    const pairs = pairsOf(englishProduct, klingonProduct, "site.lunarBase");
+    expect(pairs.length).toBeGreaterThan(100);
+    expect(reportFor("tlh", klingonGlossary, pairs, [])).toEqual([]);
+  });
+});
+
+describe("the staged Klingon interface and shop copy", () => {
+  const stringsOf = (value: unknown): string[] => pairsOf(value, value, "").map((pair) => pair.translated);
+  const legal = legalPagesByLocale.tlh.flatMap(stringsOf);
+
+  it("uses the agreed terms in every translated interface and shop string", () => {
+    const pairs = [
+      ...pairsOf(englishInterface, klingonInterface, "site.interface"),
+      ...pairsOf(englishShop, klingonShop, "site.shop"),
+    ];
+    expect(pairs.length).toBeGreaterThan(250);
+    expect(pairs.filter((pair) => pair.key.startsWith("site.shop.")).length).toBeGreaterThan(100);
+    expect(reportFor("tlh", klingonGlossary, pairs, [])).toEqual([]);
+  });
+
+  it("names the basket, the checkout, the parcel machine and withdrawal as the Klingon legal pages do", () => {
+    const shop = stringsOf(klingonShop);
+    for (const term of ["basket", "checkout", "parcelMachine", "withdrawal"] as const) {
+      const used = (strings: readonly string[]) =>
+        strings.some((text) => hitsIn(text, wanted(term, klingonGlossary[term].forms)).length > 0);
+      expect(used(shop), `${term}: not in the shop copy`).toBe(true);
+      expect(used(legal), `${term}: not in the legal pages`).toBe(true);
+    }
+  });
+
+  it("labels the order button with the words the Klingon terms page quotes", () => {
+    const label = klingonShop.checkout.orderButtonLabel;
+    expect(label).toBe(klingonLegalTerms.payNow.term);
+    expect(klingonShop.COMPLIANT_ORDER_BUTTON_LABELS).toContain(label);
+    expect(legal.some((text) => text.includes(`"${label}"`))).toBe(true);
+  });
+});
+
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
+
+  it("include every translated edition", () => {
+    expect(registered.map(([locale]) => locale).toSorted()).toEqual(["de", "et", "tlh"]);
+  });
+
+  it("allow the printed English label beside a translated term", () => {
+    for (const [locale, glossary] of registered) {
+      for (const term of TERM_IDS.filter((id) => TERMS[id].class === "translated-with-original")) {
+        for (const variant of glossary[term].forbidden) {
+          expect(TERMS[term].english.match(patternOf(variant)), `${locale}.${term}: ${variant}`).toBeNull();
+        }
+      }
+    }
+  });
+
+  it("has an allowed form for every term and explains any shared translation", () => {
+    for (const [locale, glossary] of registered) {
+      expect(Object.keys(glossary).sort(), locale).toEqual([...TERM_IDS].sort());
+      const byTranslation = new Map<string, TermId[]>();
+      for (const term of TERM_IDS) {
+        expect(glossary[term].forms.length, `${locale}.${term}`).toBeGreaterThan(0);
+        const translation = glossary[term].term.toLocaleLowerCase(locale === "de" ? "de" : "en");
+        byTranslation.set(translation, [...(byTranslation.get(translation) ?? []), term]);
+      }
+      for (const ids of byTranslation.values()) {
+        if (ids.length > 1) {
+          for (const term of ids) expect(glossary[term].note?.trim(), `${locale}.${term}`).toBeTruthy();
+        }
+      }
+    }
+  });
 
   it("names a term with no form, an empty form, or an as-printed term that was translated", () => {
     expect(problemsIn(german)).toEqual([]);
@@ -381,8 +559,9 @@ describe("the registered glossaries", () => {
     for (const [locale, glossary] of registered) {
       expect(problemsIn(glossary), locale).toEqual([]);
       const pairs = sources.flatMap((pairsFor) => pairsFor(locale));
-      expect(pairs.length, `${locale} has a glossary and no translated string`).toBeGreaterThan(0);
+      expect(pairs.length, `${locale} has no translated string`).toBeGreaterThan(0);
       expect(reportFor(locale, glossary, pairs, glossaryExceptions), locale).toEqual([]);
+      expect(missingOriginals(glossary, rulebookPairs(locale)), locale).toEqual([]);
     }
   });
 

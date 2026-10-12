@@ -16,6 +16,9 @@
 }
 
 .intro {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   max-width: 54rem;
   display: flex;
   flex-direction: column;
@@ -24,6 +27,8 @@
 }
 
 .heading {
+  box-sizing: border-box;
+  max-width: 100%;
   margin: 0;
   padding: var(--space-sm);
   border: var(--border-width) solid var(--border-strong);
@@ -31,6 +36,7 @@
   font-weight: var(--font-weight-bold);
   line-height: 0.92;
   letter-spacing: var(--letter-spacing-display);
+  overflow-wrap: anywhere;
 }
 
 .lede {
@@ -45,6 +51,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
+  max-width: 100%;
+}
+
+.actions a {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
 }
 
 .note {

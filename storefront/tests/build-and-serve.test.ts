@@ -2335,23 +2335,35 @@ describe("an unconfigured deployment fails closed for commerce pages", () => {
  * than merely unimplemented.
  */
 describe("request signals never select an edition", () => {
-  it("serves bare routes in English despite a German language, address and destination", async () => {
-    for (const path of [ROUTE_PATHS.home, ROUTE_PATHS.lunarBase]) {
-      const response = await requestWithHost(server.port, path, "runtime.example.com", {
-        headers: {
-          "Accept-Language": "de,et;q=0.9",
-          "X-Forwarded-For": "203.0.113.42",
-          Cookie: `${DESTINATION_COOKIE_NAME}=DE`,
-        },
-      });
-      expect(response.status, path).toBe(200);
-      expect(response.headers.location, path).toBeUndefined();
-      expect(response.body, path).toMatch(/<html[^>]*\slang="en"/);
-      expect(paintedText(response.body), path).toContain(
-        "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base.",
-      );
-    }
-  });
+  /*
+   * Once for each translated edition that publishes these routes: its
+   * language first, and its own country as destination. A request that came
+   * from a page of the edition says so in `Referer`, and that chooses nothing
+   * either.
+   */
+  for (const signals of [
+    { edition: "German", language: "de,et;q=0.9", destination: "DE", referer: "/de" },
+    { edition: "Estonian", language: "et,de;q=0.9", destination: "EE", referer: "/et" },
+  ]) {
+    it(`serves bare routes in English despite the ${signals.edition} edition's language, address and destination`, async () => {
+      for (const path of [ROUTE_PATHS.home, ROUTE_PATHS.lunarBase]) {
+        const response = await requestWithHost(server.port, path, "runtime.example.com", {
+          headers: {
+            "Accept-Language": signals.language,
+            "X-Forwarded-For": "203.0.113.42",
+            Cookie: `${DESTINATION_COOKIE_NAME}=${signals.destination}`,
+            Referer: `https://runtime.example.com${signals.referer}`,
+          },
+        });
+        expect(response.status, path).toBe(200);
+        expect(response.headers.location, path).toBeUndefined();
+        expect(response.body, path).toMatch(/<html[^>]*\slang="en"/);
+        expect(paintedText(response.body), path).toContain(
+          "Lunar Base is a 2-6 player strategy card game where you compete to build the most powerful moon base.",
+        );
+      }
+    });
+  }
 });
 
 describe("the served document declares its language and its alternates", () => {
@@ -2441,7 +2453,9 @@ describe("the served document declares its language and its alternates", () => {
   it("gives a 404 no canonical and no alternates, in the payload hydration reads", async () => {
     const unescaped = (body: string) => body.replace(/\\/g, "");
     const CANONICAL = [/rel="canonical"/, /"rel":"canonical"/];
-    const ALTERNATE = [/rel="alternate"/, /"rel":"alternate"/, /hrefLang/];
+    // The language selector now links to German even on a 404, and its anchors
+    // carry hrefLang; only alternate metadata is forbidden here.
+    const ALTERNATE = [/rel="alternate"/, /"rel":"alternate"/];
 
     const page = unescaped((await requestWithHost(server.port, "/legal/imprint", HOST)).body);
     expect(

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { describe, expect, it } from "vitest";
 import { rulebookSheets, type RulebookSheet } from "./layout/frames.js";
-import { applyOverrides, reviewedSheets, sheetOverrides, type SheetOverride } from "./layout/overrides.js";
+import { applyOverrides, editionBoxes, editionSheets, reviewedSheets, sheetOverrides, type SheetOverride } from "./layout/overrides.js";
 import { en } from "./text/en.js";
 import { parseMarkup, plainText, type RulebookText } from "./text/schema.js";
 
@@ -140,6 +140,8 @@ describe("reviewed rulebook layout", () => {
     // A circled step starts after the list number hidden under its circle.
     expect(frame("s05.f05")).toMatchObject({ role: "ol", box: { x: 42.52, y: 135.24, width: 207.13, height: 61 } });
     expect(frame("s05.f07")).toMatchObject({ role: "label" });
+    // A circled letter inside a paragraph's line has the room of its circle there.
+    expect(frame("s09.f11b")).toMatchObject({ role: "label", room: 11, box: { x: 206.04, y: 68.35, width: 4.53, height: 7.73 } });
     // A Contents line is an entry and a page, the page flush right.
     expect(frame("s02.f05b")).toMatchObject({ role: "label", alignment: "right", fontWeight: 700, fontSize: 10 });
     // Page numbers hidden under artwork are not frames.
@@ -235,6 +237,8 @@ describe("reviewed English rulebook text", () => {
       // An anchored frame is a label on the same sheet, anchored once.
       expect(new Set(anchored).size, `sheet ${sheet.sheet}`).toBe(anchored.length);
       for (const id of anchored) expect(sheet.frames.find((frame) => frame.id === id)?.role, id).toBe("label");
+      // It has room in the line that anchors it, and no other frame has.
+      expect(sheet.frames.filter((frame) => frame.room !== undefined).map((frame) => frame.id).sort(), `sheet ${sheet.sheet}`).toEqual([...anchored].sort());
     }
   });
 
@@ -285,5 +289,37 @@ describe("reviewed English rulebook text", () => {
       const reviewed = reviewedSheets[sheet.sheet - 1]?.frames.map((frame) => plainText(text[frame.id] ?? "")) ?? [];
       expect(words(reviewed.join(" ")), `sheet ${sheet.sheet}`).toEqual(extracted);
     }
+  });
+});
+
+describe("an edition's boxes", () => {
+  const frame = (sheets: ReturnType<typeof editionSheets>, id: string) => sheets.flatMap((sheet) => sheet.frames).find((candidate) => candidate.id === id);
+
+  it("grows the frames the edition names and keeps each one's English box beside it", () => {
+    const german = editionSheets("de");
+    // A Contents entry runs right, towards its page number.
+    expect(frame(german, "s02.f07a")).toMatchObject({ box: { x: 311.81, y: 148.09, width: 66.34, height: 10 }, englishBox: { x: 311.81, y: 148.09, width: 20.34, height: 10 } });
+    // A caption grows to both sides and stays centred under its cards.
+    expect(frame(german, "s03.f06a")).toMatchObject({ alignment: "center", box: { x: 92.42, y: 148.81, width: 98.63, height: 9 } });
+    // An action's name stands over its icon and the printed word under it.
+    expect(frame(german, "s13.f18")).toMatchObject({ skip: 27, box: { x: 308.65, y: 67.68, width: 45.57, height: 52 } });
+    const grown = Object.keys(editionBoxes.de ?? {});
+    for (const sheet of german) for (const candidate of sheet.frames) {
+      expect(candidate.englishBox !== undefined, candidate.id).toBe(grown.includes(candidate.id));
+    }
+  });
+
+  it("leaves the reading order, the type and every other edition as reviewed", () => {
+    expect(editionSheets("en")).toEqual(reviewedSheets);
+    const german = editionSheets("de");
+    german.forEach((sheet, index) => {
+      expect(sheet.frames.map(({ box: _box, englishBox: _englishBox, skip: _skip, ...rest }) => rest))
+        .toEqual(reviewedSheets[index]?.frames.map(({ box: _box, ...rest }) => rest));
+    });
+  });
+
+  it("fails on a frame that was not reviewed and on a box grown off its sheet", () => {
+    expect(() => editionSheets("de", reviewedSheets, { "s01.f99": { right: 1 } } as never)).toThrow("de: s01.f99 is not a reviewed frame");
+    expect(() => editionSheets("de", reviewedSheets, { "s01.f01": { right: 200 } })).toThrow("de: s01.f01 grows off sheet 1");
   });
 });

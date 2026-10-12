@@ -12,8 +12,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ROUTE_PATHS, type RouteId } from "../../content/routes.js";
-import type { CallToAction } from "../../content/schema.js";
+import { pagesByLocale } from "../../content/index.js";
+import { ROUTE_PATHS, type Locale, type RouteId } from "../../content/routes.js";
+import type { CallToAction, Page } from "../../content/schema.js";
 import { CallToActionLink } from "../src/components/mockups/CallToActionLink.js";
 import styles from "../src/styles/mockups/call-to-action.module.css";
 
@@ -93,9 +94,10 @@ describe("CallToActionLink: resolution reaches the accessible name, not only the
 });
 
 /*
- * The registries here are the real ones: `et` publishes the five legal pages
- * and nothing else, so one edition gives both answers. The hrefs are written
- * out rather than computed, so the link rule is not asked to check itself.
+ * The registries here are the real ones, and `et` publishes every route. The
+ * second answer therefore withholds the product page from the edition for the
+ * length of one test. The hrefs are written out rather than computed, so the
+ * link rule is not asked to check itself.
  */
 describe("CallToActionLink: a route target is linked in the edition it is rendered for", () => {
   const anchorTag = (html: string): string => /<a\s[^>]*>/.exec(html)?.[0] ?? "";
@@ -113,11 +115,21 @@ describe("CallToActionLink: a route target is linked in the edition it is render
   });
 
   it("links the default edition, anchor kept and language named, for a route the edition does not publish", () => {
-    const tag = anchorTag(
+    const buyTag = (): string => anchorTag(
       renderToStaticMarkup(<CallToActionLink action={buyAction} resolveLabel={resolvePrice} locale="et" />),
     );
-    expect(tag).toContain('href="/games/lunar-base#buy"');
-    expect(tag).toContain('hrefLang="en"');
+    expect(buyTag()).toContain('href="/et/games/lunar-base#buy"');
+    expect(buyTag()).not.toContain("hrefLang");
+
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    const published = pages.et;
+    pages.et = published.filter((page) => page.route !== "lunarBase");
+    try {
+      expect(buyTag()).toContain('href="/games/lunar-base#buy"');
+      expect(buyTag()).toContain('hrefLang="en"');
+    } finally {
+      pages.et = published;
+    }
   });
 
   /* English must not change: with no locale, every route is its bare `ROUTE_PATHS` entry. */

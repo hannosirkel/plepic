@@ -150,7 +150,22 @@ jobs:
         run: npm ci
 
       - name: Run browser and screenshot suites
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: ${{ github.workspace }}/playwright-results
         run: npm -w storefront exec -- playwright test
+
+      # A failed screenshot comparison leaves the picture this image actually
+      # drew beside the expected one. Keeping them shows what changed, and is
+      # the only way to refresh a baseline without running the pinned image.
+      - name: Retain the browser results of a failed run
+        if: ${{ failure() }}
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-results-${{ github.sha }}
+          path: playwright-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   store-smoke:
     runs-on: ubuntu-24.04
