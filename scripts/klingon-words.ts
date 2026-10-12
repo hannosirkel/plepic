@@ -26,14 +26,34 @@ export const NOUN_SUFFIXES = [
   "ra'", "vam", "vetlh", "Daq", "vo'", "mo'", "vaD", "'e'",
 ] as const;
 
-/** Printed names are exempt only with this exact spelling. Extend when copy needs one. */
+/**
+ * Names are exempt only with this exact spelling. Extend when copy needs one.
+ * A name takes no Klingon suffix: `StripeDaq` is not `Stripe`, and fails.
+ */
 export const KLINGON_PROPER_NOUNS = [
+  // Printed on the box and the cards.
   "Terran Outpost", "The Oasis", "Taikotech", "Dark Side", "Shackleton",
   "Selene Labs", "Imbrium", "Lunar Base", "Plepic Games",
+  // Companies and products the legal pages name.
+  "Stripe", "Apple Pay", "Google Pay", "PayPal", "Google Analytics", "Google",
+  "Meta", "Cloudflare", "Brevo", "Omniva",
+  // Institutions and legal instruments, under the names the English pages use.
+  "European Union", "European Commission", "Consumer Disputes Committee",
+  "Estonian Consumer Protection and Technical Regulatory Authority",
+  "Andmekaitse Inspektsioon", "äriregister", "EU–US Data Privacy Framework",
+  // Countries, as the shop names them: a carrier needs the real name.
+  "Estonia", "Latvia", "Lithuania", "United States",
+  // Cookie names. `_ga` also covers `_ga_*`.
+  "_ga", "_fbp", "plepic_destination",
 ] as const;
 
-/** A loan requires a named entry and an explanation in the glossary or copy. */
-export const KLINGON_LOANS: readonly string[] = [];
+/**
+ * A loan requires a named entry and an explanation in the glossary or copy.
+ * `content/glossary/tlh.ts` says what each one stands beside.
+ */
+export const KLINGON_LOANS: readonly string[] = [
+  "VAT", "DNS", "IP", "local storage", "session storage", "granted", "declined",
+];
 
 /** English card vocabulary may appear only as a bracketed aid at first use. */
 export const PRINTED_CARD_LABELS = TERM_IDS
@@ -68,13 +88,19 @@ export function isKnownKlingonWord(word: string): boolean {
     canStripSuffixes(word.slice(prefix.length), "verb"));
 }
 
-/** Names may span words; remove them before checking the remaining tokens. */
-export function checkKlingonWords(
+// The two token syntaxes of `content/mirror.test.ts`. A token is not a word.
+const PLACEHOLDER = /\{[A-Za-z][A-Za-z0-9]*\}|%[A-Za-z][A-Za-z0-9]*%/g;
+
+/**
+ * The words of `text` the check reads: what is left once placeholders, names,
+ * loans and bracketed card labels are removed. Names may span words.
+ */
+export function klingonWordsIn(
   text: string,
   properNouns: readonly string[] = KLINGON_PROPER_NOUNS,
   loans: readonly string[] = KLINGON_LOANS,
-): KlingonWordIssue[] {
-  let remaining = text;
+): string[] {
+  let remaining = text.replace(PLACEHOLDER, " ");
   for (const label of PRINTED_CARD_LABELS) {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     remaining = remaining.replace(new RegExp(`(?:\\(${escaped}\\)|\\[${escaped}\\])`, "g"), " ");
@@ -83,9 +109,16 @@ export function checkKlingonWords(
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     remaining = remaining.replace(new RegExp(`(?<![A-Za-z'])${escaped}(?![A-Za-z'])`, "g"), " ");
   }
-  const words: string[] = remaining.match(/[A-Za-z']+/g) ?? [];
+  return remaining.match(/[A-Za-z']+/g) ?? [];
+}
+
+export function checkKlingonWords(
+  text: string,
+  properNouns: readonly string[] = KLINGON_PROPER_NOUNS,
+  loans: readonly string[] = KLINGON_LOANS,
+): KlingonWordIssue[] {
   const issues: KlingonWordIssue[] = [];
-  for (const word of words) {
+  for (const word of klingonWordsIn(text, properNouns, loans)) {
     if (!SYLLABLE.test(word)) issues.push({ word, reason: "spelling" });
     else if (!isKnownKlingonWord(word)) issues.push({ word, reason: "unknown-root" });
   }

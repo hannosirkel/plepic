@@ -25,6 +25,29 @@ mark it as a loan in the glossary note, and explain it at first use. Proper
 nouns are exempt only when entered on the named proper noun list, with exact
 case. Do not use a spelling exception to admit an invented Klingon root.
 
+The check reads every word of a string except a placeholder (`{price}`,
+`%megabytes%`) and a listed name or loan. Four things follow for a translator:
+
+- A placeholder or a name takes no suffix. `StripeDaq` fails. Put a Klingon
+  noun beside it to carry the suffix (`Estonia SepDaq`), or build the sentence
+  so the token stands bare.
+- The lexicon gives a root one word class, and the check strips a suffix only
+  in that class. A homograph (`chaw'`, allow and permit) passes bare in either
+  sense and takes a suffix only in the listed one; its gloss names the other.
+- A pronoun, a conjunction, an adverbial or a number stands bare. Use a verb
+  prefix for "to you" and "to us" (`QIn pIngeH`), not `SoHvaD`.
+- The check does not strip a noun suffix from a verb that describes a noun,
+  so `Daq motlhDaq`, which is correct Klingon, fails. Use a relative clause:
+  `motlhbogh DaqDaq`.
+
+Legal and shop vocabulary that `content/glossary/terms.ts` does not list is in
+`klingonLegalTerms` in `content/glossary/tlh.ts`, each with its construction.
+Use those words again before coining another.
+
+The check does not test suffix order. `-Qo'` stands last in a verb, before a
+type-9 suffix only: `lajlu'Qo'` and `vumlu'Qo'DI'`, not `lajQo'lu'`. Where that
+would put it after `-laH`, recast the sentence (`DalajnISbe'`).
+
 The word check is deliberately a guard, not a translator. A passing check says
 that each token has valid spelling and a listed root; a reviewer still checks
 grammar, meaning, and the fit of phrases in the page and rulebook.

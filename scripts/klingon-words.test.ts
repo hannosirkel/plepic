@@ -7,9 +7,14 @@ import { IDENTIFIER_KEYS } from "../content/glossary/schema.js";
 import type { GlossaryEntry } from "../content/glossary/schema.js";
 import { klingonLexicon } from "../content/glossary/tlh-lexicon.js";
 import type { KlingonLexiconEntry } from "../content/glossary/tlh-lexicon.js";
-import { klingonGlossary } from "../content/glossary/tlh.js";
+import { klingonGlossary, klingonLegalTerms } from "../content/glossary/tlh.js";
 import { TERM_IDS, TERMS } from "../content/glossary/terms.js";
-import { checkKlingonWords, isKnownKlingonWord } from "./klingon-words.js";
+import { checkKlingonWords, isKnownKlingonWord, KLINGON_LOANS, klingonWordsIn } from "./klingon-words.js";
+
+/** The roots a glossary note names: each word that stands before its gloss in brackets. */
+function rootsNamedIn(note: string): string[] {
+  return [...note.matchAll(/(?:^|[ :+])([A-Za-z']+) \(/g)].flatMap((match) => match[1] ?? []);
+}
 
 describe("Klingon word check", () => {
   it("accepts attested roots and ordinary inflections", () => {
@@ -25,15 +30,40 @@ describe("Klingon word check", () => {
   });
 
   it("accepts sourced roots of every declared word class", () => {
-    const lexicon = klingonLexicon as unknown as Record<string, KlingonLexiconEntry>;
+    const lexicon = klingonLexicon as unknown as Record<string, KlingonLexiconEntry | undefined>;
+    // The lexicon may come to hold either root, so each is put back as it was.
+    const before = { jIH: lexicon.jIH, "'ej": lexicon["'ej"] };
     lexicon.jIH = { wordClass: "pronoun", english: "I", source: "TKD" };
     lexicon["'ej"] = { wordClass: "other", english: "and", source: "TKD" };
     try {
       expect(checkKlingonWords("jIH 'ej")).toEqual([]);
     } finally {
-      delete lexicon.jIH;
-      delete lexicon["'ej"];
+      for (const [root, entry] of Object.entries(before)) {
+        if (entry) lexicon[root] = entry;
+        else delete lexicon[root];
+      }
     }
+  });
+
+  it("reads a root with a suffix only in its own word class", () => {
+    expect(checkKlingonWords("Huchmey nobmeH")).toEqual([]);
+    expect(checkKlingonWords("nobmey")).toEqual([{ word: "nobmey", reason: "unknown-root" }]);
+    expect(checkKlingonWords("HuchmeH")).toEqual([{ word: "HuchmeH", reason: "unknown-root" }]);
+  });
+
+  it("skips a placeholder of either syntax, and still reads the words beside it", () => {
+    expect(klingonWordsIn("Huch {priceNet} nob %megabytes%")).toEqual(["Huch", "nob"]);
+    expect(checkKlingonWords("{merchantLegalName} Huch: {price} %megabytes%")).toEqual([]);
+    // A suffix written onto a token is still a word of the string.
+    expect(klingonWordsIn("{merchantLegalName}'e'")).toEqual(["'e'"]);
+    expect(checkKlingonWords("{price} klingon")).toEqual([{ word: "klingon", reason: "spelling" }]);
+    // Braces alone do not hide a word.
+    expect(checkKlingonWords("{ klingon }")).toEqual([{ word: "klingon", reason: "spelling" }]);
+  });
+
+  it("does not exempt a name that carries a Klingon suffix", () => {
+    expect(checkKlingonWords("Stripe Huch")).toEqual([]);
+    expect(checkKlingonWords("StripeDaq")).toEqual([{ word: "StripeDaq", reason: "spelling" }]);
   });
 
   it("does not treat the noun suffix -na' as a verb suffix", () => {
@@ -60,9 +90,9 @@ describe("Klingon word check", () => {
       else {
         expect(checkKlingonWords(entry.term), `${id}: ${entry.term}`).toEqual([]);
         if (entry.note?.startsWith("Coined")) {
-          const roots = [...entry.note.matchAll(/(?:^|[ :+])([A-Za-z']+) \(/g)].map((match) => match[1]);
+          const roots = rootsNamedIn(entry.note);
           expect(roots.length, `${id}: construction has no roots`).toBeGreaterThan(0);
-          for (const root of roots) expect(root && Object.hasOwn(klingonLexicon, root), `${id}: ${root}`).toBe(true);
+          for (const root of roots) expect(Object.hasOwn(klingonLexicon, root), `${id}: ${root}`).toBe(true);
         }
       }
     }
@@ -76,6 +106,21 @@ describe("Klingon word check", () => {
         }
       }
     }
+  });
+
+  it("builds every legal term from the lexicon and names every loan it stands beside", () => {
+    const loansNamed = new Set<string>();
+    for (const [id, entry] of Object.entries(klingonLegalTerms)) {
+      expect(entry.english.trim(), `${id}: no English gloss`).not.toBe("");
+      expect(checkKlingonWords(entry.term, [], []), `${id}: ${entry.term}`).toEqual([]);
+      expect(entry.note, `${id}: the note says neither Coined nor Attested`).toMatch(/^(?:Coined|Attested)/);
+      const roots = rootsNamedIn(entry.note);
+      expect(roots.length, `${id}: the note names no root`).toBeGreaterThan(0);
+      for (const root of roots) expect(Object.hasOwn(klingonLexicon, root), `${id}: ${root}`).toBe(true);
+      if ("loan" in entry) loansNamed.add(entry.loan);
+    }
+    // A loan nobody explains is an English word let through.
+    expect([...loansNamed].sort()).toEqual([...KLINGON_LOANS].sort());
   });
 });
 
@@ -108,16 +153,22 @@ it("checks every staged Klingon translation string and reports the scan count", 
   const files = sourceDirectories.flatMap(translationFiles);
   const failures: string[] = [];
   let scannedStrings = 0;
+  let scannedWords = 0;
   for (const file of files) {
     const module = await import(pathToFileURL(join(process.cwd(), file)).href) as Record<string, unknown>;
     for (const value of Object.values(module)) {
       for (const line of proseStrings(value)) {
         scannedStrings++;
+        scannedWords += klingonWordsIn(line).length;
         for (const issue of checkKlingonWords(line)) failures.push(`${file}: ${issue.word} (${issue.reason})`);
       }
     }
   }
-  process.stdout.write(`Klingon word check: ${scannedStrings} translated strings in ${files.length} files\n`);
+  process.stdout.write(
+    `Klingon word check: ${scannedWords} words in ${scannedStrings} translated strings in ${files.length} files\n`,
+  );
   if (files.length === 0) expect(scannedStrings, "no tlh translation files yet").toBe(0);
+  // A file that yields no word was not read: an empty scan must not pass.
+  else expect(scannedWords, "tlh translation files with no word in them").toBeGreaterThan(0);
   expect(failures).toEqual([]);
 });
