@@ -116,6 +116,15 @@ const LABELS: Readonly<
     merchantPhoneNumber: "telefoninumber",
     returnAddress: "tagastusaadress",
   },
+  tlh: {
+    merchantLegalName: "malja' pong qonlu'bogh",
+    merchantRegisteredAddress: "malja' Daq qonlu'bogh",
+    merchantRegistrationNumber: "malja' mI' qonlu'bogh",
+    merchantVatNumber: "ngevmeH 'ap mI'",
+    merchantContactAddress: "QIn ngeHmeH Daq",
+    merchantPhoneNumber: "ghogh HablI' mI'",
+    returnAddress: "tep tatlhmeH Daq",
+  },
 };
 
 /**
@@ -128,6 +137,7 @@ const MARKER_WORDS: Readonly<Record<Locale, string>> = {
   en: "not configured",
   de: "nicht konfiguriert",
   et: "seadistamata",
+  tlh: "lanlu'be'pu'",
 };
 
 export type ConfigurationPlaceholderToken = keyof ConfigurationPlaceholderValues;

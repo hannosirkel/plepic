@@ -37,6 +37,7 @@ export const siteCopyByLocale: LocalizedContent<SiteCopy | null> = {
   en: { publisher, lunarBase, proof, support, shop, pages, interface: interfaceCopy },
   de: { publisher: dePublisher, lunarBase: deLunarBase, proof: deProof, support: deSupport, shop: deShop, pages: dePages, interface: deInterfaceCopy },
   et: { publisher: etPublisher, lunarBase: etLunarBase, proof: etProof, support: etSupport, shop: etShop, pages: etPages, interface: etInterfaceCopy },
+  tlh: null,
 };
 
 /** A null entry denotes an edition whose site copy has not been published. */

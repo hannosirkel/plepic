@@ -35,10 +35,21 @@ describe("buildSitemapEntries: the sitemap contract", () => {
       const paths = entries.filter((entry) => entry.locale === locale).map((entry) => entry.path);
       expect(paths.toSorted(), locale).toEqual(indexable.map((path) => `/${locale}${path}`).toSorted());
     }
-    expect(entries).toHaveLength(indexable.length * 3);
+    const klingonLegal = [
+      "/legal/imprint", "/legal/terms", "/legal/privacy", "/legal/shipping", "/legal/returns",
+    ];
+    expect(entries.filter((entry) => entry.locale === "tlh").map((entry) => entry.path).toSorted())
+      .toEqual(klingonLegal.map((path) => `/tlh${path}`).toSorted());
+    expect(entries).toHaveLength(indexable.length * 3 + klingonLegal.length);
     for (const entry of entries) {
-      expect(Object.keys(entry.alternates).toSorted(), entry.path).toEqual(["de", "en", "et", "x-default"]);
+      const languages = entry.routeId.startsWith("legal")
+        ? ["de", "en", "et", "tlh", "x-default"]
+        : ["de", "en", "et", "x-default"];
+      expect(Object.keys(entry.alternates).toSorted(), entry.path).toEqual(languages);
       expect(entry.alternates.et, entry.path).toBe(`${BASE_URL}/et${ROUTE_PATHS[entry.routeId] === "/" ? "" : ROUTE_PATHS[entry.routeId]}`);
+      if (entry.routeId.startsWith("legal")) {
+        expect(entry.alternates.tlh, entry.path).toBe(`${BASE_URL}/tlh${ROUTE_PATHS[entry.routeId]}`);
+      }
     }
   });
 

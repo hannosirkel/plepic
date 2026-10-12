@@ -131,6 +131,10 @@ const STORAGE_DISCLOSURES: Readonly<Record<Locale, Readonly<Record<StorageArea, 
     localStorage: "kohalikku salvestusse (local storage), mitte küpsisena",
     sessionStorage: "seansisalvestusse (session storage), mitte küpsisena",
   },
+  tlh: {
+    localStorage: "SIr'o' leghmeH janlIj polmeH Daq (local storage) lo', 'ej De' chabHom lo'be'",
+    sessionStorage: "SIr'o' leghmeH janlIj polmeH Daq ru' (session storage) lo', 'ej De' chabHom lo'be'",
+  },
 };
 
 /**
@@ -153,6 +157,10 @@ const BASKET_SENTENCES: Readonly<Record<Locale, string>> = {
     "Sinu ostukorvi läbipaistmatu tunnus salvestatakse selle saidi poolt sinu brauseri " +
     "seansisalvestusse (session storage), mitte küpsisena. Seda hoitakse ainult vahelehe " +
     "sulgemiseni ning see ei salvesta toodete üksikasju, koguseid, e-posti aadressi ega tarneaadressi.",
+  tlh:
+    "je'meH ngaSwI'lIj ngu'bogh ngoq pol SIr'o' Daqvam; SIr'o' leghmeH janlIj polmeH Daq ru' " +
+    "(session storage) lo', 'ej De' chabHom lo'be'. tenwal DaSoQmoHpa' neH pollu'. " +
+    "Doch De', Doch mI', QIn Daq, HIjmeH Daq je qonbe'.",
 };
 
 /** The cookie table's caption, per edition — the anchor the exclusion check holds on to. */
@@ -160,6 +168,7 @@ const COOKIE_TABLE_CAPTIONS: Readonly<Record<Locale, string>> = {
   en: "Cookies this site can set",
   de: "Cookies, die diese Website setzen kann",
   et: "Küpsised, mida see sait võib salvestada",
+  tlh: "De' chabHommey lanlaHbogh SIr'o' Daqvam",
 };
 
 /**
@@ -174,6 +183,7 @@ const COOKIE_TABLE_COLUMNS: Readonly<Record<Locale, readonly string[]>> = {
   en: ["Cookie", "Provider", "Purpose", "Duration"],
   de: ["Cookie", "Anbieter", "Zweck", "Speicherdauer"],
   et: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
+  tlh: ["De' chabHom", "nobwI'", "ngoQ", "poH"],
 };
 
 /**

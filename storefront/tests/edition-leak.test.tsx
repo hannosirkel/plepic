@@ -108,16 +108,24 @@ describe("published editions do not leak English copy or data labels", () => {
    * A total table, so a new edition does not compile until its words are here.
    */
   it("words the product page's stock statement and player range in the edition's language", () => {
-    const expected: Readonly<Record<Locale, { inStock: string; outOfStock: string; players: string }>> = {
+    const expected: Readonly<Record<Locale, { inStock: string; outOfStock: string; players: string } | null>> = {
       en: { inStock: "In stock", outOfStock: "Out of stock", players: "2–6 players" },
       de: { inStock: "Auf Lager", outOfStock: "Nicht auf Lager", players: "2–6 Personen" },
       et: { inStock: "Laos olemas", outOfStock: "Laost otsas", players: "2–6 mängijat" },
+      tlh: null,
     };
+    const englishWords = expected.en;
+    if (englishWords === null) throw new Error("The English edition needs stock words");
     const paragraphs = (html: string): string[] =>
       [...html.matchAll(/<(p|li)\b[^>]*>([^<]*)<\/\1>/g)].map((match) => match[2] ?? "");
 
     for (const locale of LOCALES) {
       const words = expected[locale];
+      if (siteCopyByLocale[locale] === null) {
+        expect(words, locale).toBeNull();
+        continue;
+      }
+      if (words === null) throw new Error(`${locale} has site copy but no stock words`);
       const inStock = paragraphs(render("lunarBase", locale));
       // The hero and the purchase panel both state it.
       expect(inStock.filter((text) => text === words.inStock), locale).toHaveLength(2);
@@ -130,7 +138,7 @@ describe("published editions do not leak English copy or data labels", () => {
 
       if (locale === DEFAULT_LOCALE) continue;
       for (const page of [inStock, outOfStock]) {
-        expect(page.filter((text) => Object.values(expected[DEFAULT_LOCALE]).includes(text)), locale).toEqual([]);
+        expect(page.filter((text) => Object.values(englishWords).includes(text)), locale).toEqual([]);
       }
     }
   });

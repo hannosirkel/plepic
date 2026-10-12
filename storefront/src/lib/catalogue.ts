@@ -433,6 +433,20 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
     qualifiers: (qualifier, note) => `${qualifier}. ${note}`,
     line: (price, qualifiers) => `${price}, ${qualifiers}`,
   },
+  tlh: {
+    vatAdded: (destination) => `ngevmeH 'ap chellu'; ${destination}Daq HIjlu'`,
+    noVatAdded: (destination) => `ngevmeH 'ap chellu'be'; ${destination}Daq HIjlu'`,
+    vatIncludedNote: "ngevmeH 'ap ngaS DIlmeH Huch",
+    shippingNote:
+      "Huch nobmeH DaqDaq ngeHmeH 'ap SImlu'. European Union SepDaq tep HIjlu'chugh, " +
+      "ngeHmeH 'apDaq ngevmeH 'ap (VAT) chellu'. latlh Sep qum 'ap, HIjmeH 'ap je " +
+      "yughbe' DIlmeH Huch.",
+    breakdownWithVat: (gross, net, vat, rate) =>
+      `${gross}: ${net} ngevmeH 'ap ${vat} (${rate}) je`,
+    breakdownWithoutVat: (net) => `${net}; ngevmeH 'ap chellu'be'`,
+    qualifiers: (qualifier, note) => `${qualifier}. ${note}`,
+    line: (price, qualifiers) => `${price}, ${qualifiers}`,
+  },
 };
 
 /**

@@ -42,6 +42,11 @@ import { privacy as privacyEt } from "./et/privacy.js";
 import { returns as returnsEt } from "./et/returns.js";
 import { shipping as shippingEt } from "./et/shipping.js";
 import { terms as termsEt } from "./et/terms.js";
+import { imprint as imprintTlh } from "./tlh/imprint.js";
+import { privacy as privacyTlh } from "./tlh/privacy.js";
+import { returns as returnsTlh } from "./tlh/returns.js";
+import { shipping as shippingTlh } from "./tlh/shipping.js";
+import { terms as termsTlh } from "./tlh/terms.js";
 
 export { imprint, privacy, returns, shipping, terms };
 
@@ -61,6 +66,7 @@ const german: readonly LegalPage[] = [imprintDe, termsDe, shippingDe, returnsDe,
  * operator act with no field in this repository.
  */
 const estonian: readonly LegalPage[] = [imprintEt, termsEt, shippingEt, returnsEt, privacyEt];
+const klingon: readonly LegalPage[] = [imprintTlh, termsTlh, shippingTlh, returnsTlh, privacyTlh];
 
 /**
  * The legal set, per locale. Total over `Locale`: a new locale does not
@@ -71,6 +77,7 @@ export const legalPagesByLocale: LocalizedContent<readonly LegalPage[]> = {
   en: english,
   de: german,
   et: estonian,
+  tlh: klingon,
 };
 
 /**

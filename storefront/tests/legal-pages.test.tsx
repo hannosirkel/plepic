@@ -208,6 +208,21 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
       "ei ole see leht täielik õiguslik teade ja sellele ei saa sellisena tugineda",
     draftNote: "Mustand, ootab haldaja heakskiitu.",
   },
+  tlh: {
+    markerPrefix: "[lanlu'be'pu': ",
+    imprintMarkers: [
+      "[lanlu'be'pu': malja' pong qonlu'bogh]",
+      "[lanlu'be'pu': malja' Daq qonlu'bogh]",
+      "[lanlu'be'pu': malja' mI' qonlu'bogh]",
+      "[lanlu'be'pu': ngevmeH 'ap mI']",
+      "[lanlu'be'pu': QIn ngeHmeH Daq]",
+      "[lanlu'be'pu': ghogh HablI' mI']",
+    ],
+    returnsMarker: "[lanlu'be'pu': tep tatlhmeH Daq]",
+    noticeHeading: "chut QInvam naQbe'.",
+    noticeBodyFragment: "chut QInvam naQbe'; naQ 'e' yIHarQo'",
+    draftNote: "qonmeH ghItlh; lo'wI' lajbe'pu'.",
+  },
 };
 
 describe("the resolver knows exactly the tokens content/ declares from configuration", () => {
@@ -700,6 +715,14 @@ const VAT_CALLOUT_LANGUAGE: Readonly<
       "puhul lisandub sellele käibemaks. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, " +
       "kui neid on, hinnas ei sisaldu.",
   },
+  tlh: {
+    vatAdded: "ngevmeH 'ap chellu'; EstoniaDaq HIjlu'",
+    noVatAdded: "ngevmeH 'ap chellu'be'; United StatesDaq HIjlu'",
+    shippingNote:
+      "Huch nobmeH DaqDaq ngeHmeH 'ap SImlu'. European Union SepDaq tep HIjlu'chugh, " +
+      "ngeHmeH 'apDaq ngevmeH 'ap (VAT) chellu'. latlh Sep qum 'ap, HIjmeH 'ap je " +
+      "yughbe' DIlmeH Huch.",
+  },
 };
 
 /**
@@ -993,6 +1016,7 @@ describe("the VAT section makes one statement about tax", () => {
       en: /European Union/,
       de: /Europäischen Union/,
       et: /Euroopa Liidu/,
+      tlh: /European Union/,
     };
 
     for (const locale of LOCALES) {
