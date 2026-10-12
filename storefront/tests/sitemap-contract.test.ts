@@ -22,6 +22,26 @@ describe("buildSitemapEntries: the sitemap contract", () => {
     expect(new Set(actual).size).toBe(entries.length);
   });
 
+  /*
+   * Written out, not derived: the test above reads its expectation from the
+   * page registry, so it would agree with an edition that published nothing.
+   */
+  it("gives each translated edition one entry per indexable route, and names it in every alternate set", () => {
+    const indexable = [
+      "", "/games/lunar-base", "/support/lunar-base", "/support/lunar-base/rulebook",
+      "/legal/imprint", "/legal/terms", "/legal/privacy", "/legal/shipping", "/legal/returns",
+    ];
+    for (const locale of ["de", "et"] as const) {
+      const paths = entries.filter((entry) => entry.locale === locale).map((entry) => entry.path);
+      expect(paths.toSorted(), locale).toEqual(indexable.map((path) => `/${locale}${path}`).toSorted());
+    }
+    expect(entries).toHaveLength(indexable.length * 3);
+    for (const entry of entries) {
+      expect(Object.keys(entry.alternates).toSorted(), entry.path).toEqual(["de", "en", "et", "x-default"]);
+      expect(entry.alternates.et, entry.path).toBe(`${BASE_URL}/et${ROUTE_PATHS[entry.routeId] === "/" ? "" : ROUTE_PATHS[entry.routeId]}`);
+    }
+  });
+
   it("never lists /cart or /checkout, in any locale", () => {
     for (const locale of LOCALES) {
       for (const route of ["cart", "checkout"] as const) {

@@ -72,4 +72,25 @@ export const glossaryExceptions: readonly GlossaryException[] = [
     reason:
       'The English "legal bases" is the plural of "legal basis" under data protection law, and no player\'s Base is meant. The Estonian says "Õiguslikud alused", the regulation\'s own word.',
   },
+  {
+    locale: "et",
+    key: "site.pages.pages[6].description",
+    term: "plepicGames",
+    rule: "altered-as-printed",
+    reason: 'The published page registry also carries the imprint. Its "Plepic Gamesi taga" is the approved page\'s declension, excepted above.',
+  },
+  {
+    locale: "et",
+    key: "site.pages.pages[8].body[0].body[1]",
+    term: "parcelMachine",
+    rule: "missing-term",
+    reason: 'The published page registry also carries the shipping page. Its "Omniva parcel machine" is the label quoted in English, excepted above.',
+  },
+  {
+    locale: "et",
+    key: "site.pages.pages[10].body[2].body[0]",
+    term: "base",
+    rule: "missing-term",
+    reason: "The published page registry also carries the privacy page. Its legal bases are õiguslikud alused, not a player's Base.",
+  },
 ];

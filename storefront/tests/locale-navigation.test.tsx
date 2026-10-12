@@ -50,7 +50,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../content/routes.js";
-import { contentFor, finalRouteFor } from "../../content/schema.js";
+import { contentFor, finalRouteFor, type Page } from "../../content/schema.js";
 import { resolveLocalizedRoute } from "../src/app/localized-routes.js";
 import { NO_CONFIGURATION_VALUES } from "../src/lib/configuration-placeholders.js";
 import { localizedHrefFor, localizedLinkFor, pagesIn } from "../src/lib/seo.js";
@@ -91,6 +91,18 @@ function internalAnchorsIn(html: string): readonly { tag: string; href: string }
     .filter((anchor) => anchor.href.startsWith("/"));
 }
 
+/**
+ * The retired `about` route is replaced by `home`. An edition that publishes
+ * its home page keeps the link there, at the address written here.
+ */
+const RETIRED_ABOUT_HREF: Readonly<Partial<Record<Locale, string>>> = { de: "/de", et: "/et" };
+
+/** The label of each complete translated edition's language selector, as literals. */
+const COMPLETE_EDITIONS = [
+  { locale: "de", selectorLabel: "Sprache" },
+  { locale: "et", selectorLabel: "Keel" },
+] as const;
+
 function renderedPage(locale: Locale, route: RouteId): string {
   const page = contentFor(legalPagesByLocale, locale).find(
     (candidate) => candidate.route === route,
@@ -124,10 +136,10 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
-        const germanRetired = locale === "de" && routeId === "about";
-        const expected = germanRetired ? "/de" : published.has(routeId)
+        const retired = routeId === "about" ? RETIRED_ABOUT_HREF[locale] : undefined;
+        const expected = retired ?? (published.has(routeId)
           ? localizedPath(locale, ROUTE_PATHS[routeId])
-          : ROUTE_PATHS[routeId];
+          : ROUTE_PATHS[routeId]);
         if (published.has(routeId)) ownEdition += 1;
         else fallback += 1;
 
@@ -157,13 +169,32 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
-        const servedBy = published.has(routeId) || (locale === "de" && routeId === "about")
+        const servedBy = published.has(routeId) || (routeId === "about" && RETIRED_ABOUT_HREF[locale] !== undefined)
           ? locale : DEFAULT_LOCALE;
         const { hrefLang } = localizedLinkFor(locale, routeId);
         expect(
           hrefLang,
           `${locale}:${routeId} ${servedBy === locale ? "stays home and needs no tag" : "crosses editions and must say so"}`,
         ).toBe(servedBy === locale ? undefined : LOCALE_DEFINITIONS[servedBy].languageTag);
+      }
+    }
+  });
+
+  /*
+   * Every edition publishes every route now, so no real pair crosses. The
+   * crossing branch is kept honest by withholding one page from each
+   * translated edition in turn.
+   */
+  it("crosses to the default edition, and says so, for a route withheld from an edition", () => {
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    for (const { locale } of COMPLETE_EDITIONS) {
+      const published = pages[locale];
+      expect(localizedLinkFor(locale, "lunarBase")).toEqual({ href: `/${locale}/games/lunar-base` });
+      pages[locale] = published.filter((page) => page.route !== "lunarBase");
+      try {
+        expect(localizedLinkFor(locale, "lunarBase")).toEqual({ href: "/games/lunar-base", hrefLang: "en" });
+      } finally {
+        pages[locale] = published;
       }
     }
   });
@@ -276,22 +307,32 @@ describe("every edition's pages link within the edition", () => {
   });
 });
 
-describe("the complete German edition keeps its navigation in German", () => {
-  for (const page of pagesByLocale["de"]) {
-    it(`de:${page.route} has no cross-edition route link outside the selector`, () => {
-      const html = renderedPage("de", page.route)
-        .replace(/<nav[^>]*aria-label="Sprache"[^>]*>[\s\S]*?<\/nav>/g, "");
-      const anchors = internalAnchorsIn(html);
-      expect(anchors.length).toBeGreaterThan(0);
-      for (const { href } of anchors) {
-        if (href.startsWith("/documents/")) continue;
-        const path = href.split("#", 1)[0] ?? href;
-        const parsed = parseLocalizedPath(path);
-        const routeId = routeIdForPath(parsed.path);
-        expect(routeId, `${href} is not a declared route`).toBeDefined();
-        expect(parsed.locale, `${page.route} links to ${href} outside German`).toBe("de");
-      }
+describe("a complete translated edition keeps its navigation in its own edition", () => {
+  for (const { locale, selectorLabel } of COMPLETE_EDITIONS) {
+    const selector = new RegExp(`<nav[^>]*aria-label="${selectorLabel}"[^>]*>[\\s\\S]*?</nav>`, "g");
+
+    it(`${locale} publishes every page the default edition does, and its selector carries the label set aside below`, () => {
+      expect(pagesByLocale[locale].map((page) => page.route)).toEqual(
+        pagesByLocale[DEFAULT_LOCALE].map((page) => page.route),
+      );
+      // Header and footer: a label that matched nothing would set nothing aside.
+      expect(renderedPage(locale, "home").match(selector)).toHaveLength(2);
     });
+
+    for (const page of pagesByLocale[locale]) {
+      it(`${locale}:${page.route} has no cross-edition route link outside the selector`, () => {
+        const anchors = internalAnchorsIn(renderedPage(locale, page.route).replace(selector, ""));
+        expect(anchors.length).toBeGreaterThan(0);
+        for (const { href } of anchors) {
+          if (href.startsWith("/documents/")) continue;
+          const path = href.split("#", 1)[0] ?? href;
+          const parsed = parseLocalizedPath(path);
+          const routeId = routeIdForPath(parsed.path);
+          expect(routeId, `${href} is not a declared route`).toBeDefined();
+          expect(parsed.locale, `${page.route} links to ${href} outside ${locale}`).toBe(locale);
+        }
+      });
+    }
   }
 });
 
@@ -374,13 +415,7 @@ describe("the language selector", () => {
     });
   }
 
-  /*
-   * `et` does not publish the product page today. The task that publishes it
-   * replaces this expectation with the link.
-   */
-  it("/games/lunar-base: offers no Estonian entry, in the header or in the footer", () => {
-    expect(pagesIn("et").some((page) => page.route === "lunarBase")).toBe(false);
-
+  it("/games/lunar-base: offers the German and the Estonian product page, in the header and in the footer", () => {
     for (const html of [
       renderToStaticMarkup(<SiteHeader wordmark="dark" route="lunarBase" />),
       renderToStaticMarkup(<SiteFooter route="lunarBase" />),
@@ -390,8 +425,31 @@ describe("the language selector", () => {
       expect(entriesOf(selectors[0] ?? "")).toEqual([
         { label: "English", href: undefined },
         { label: "Deutsch", href: "/de/games/lunar-base" },
+        { label: "Eesti", href: "/et/games/lunar-base" },
       ]);
-      expect(html).not.toContain("/et");
+    }
+  });
+
+  /* An edition that lacks the route is not offered on that page. */
+  it("/games/lunar-base: offers no Estonian entry while the edition does not publish the page", () => {
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    const published = pages.et;
+    pages.et = published.filter((page) => page.route !== "lunarBase");
+    try {
+      for (const html of [
+        renderToStaticMarkup(<SiteHeader wordmark="dark" route="lunarBase" />),
+        renderToStaticMarkup(<SiteFooter route="lunarBase" />),
+      ]) {
+        const selectors = selectorsIn(html);
+        expect(selectors).toHaveLength(1);
+        expect(entriesOf(selectors[0] ?? "")).toEqual([
+          { label: "English", href: undefined },
+          { label: "Deutsch", href: "/de/games/lunar-base" },
+        ]);
+        expect(html).not.toContain("/et/games/lunar-base");
+      }
+    } finally {
+      pages.et = published;
     }
   });
 
@@ -419,10 +477,10 @@ describe("the language selector", () => {
   });
 
   it("on the 404, which is no route, links each edition's home page", async () => {
-    // `et` publishes no home page yet; German does.
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="en" />))).toEqual([
       { label: "English", href: undefined },
       { label: "Deutsch", href: "/de" },
+      { label: "Eesti", href: "/et" },
     ]);
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="et" />))).toEqual([
       { label: "English", href: "/" },

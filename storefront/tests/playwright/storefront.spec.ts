@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { pagesByLocale } from "../../../content/index.js";
-import { LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
+import { CHECKOUT_RETURN_PATH, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
 import { localizedPath } from "../../src/lib/urls.js";
 
 test("Klingon lang prevents uppercase on a header navigation link", async ({ page }) => {
@@ -177,91 +177,142 @@ test("language selector moves between the English and the Estonian imprint", asy
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
-const germanHeadings = {
-  home: /Lunar Base ist ein Strategiespiel mit Karten/,
-  lunarBase: /Lunar Base ist ein Strategiespiel mit Karten/,
-  support: /Regeln und Hilfe/,
-  rulebook: /Spielanleitung zu Lunar Base/,
-  cart: /Dein Warenkorb/,
-  checkout: /^Kasse$/,
-  legalImprint: /^Impressum$/,
-  legalTerms: /^Verkaufsbedingungen$/,
-  legalPrivacy: /^Datenschutz$/,
-  legalShipping: /^Versand und Lieferung$/,
-  legalReturns: /^Rücksendungen und Widerrufsrecht$/,
+/*
+ * What a translated edition shows a browser, written out per edition and
+ * never read from `content/`: a table that imported its expectations would
+ * agree with whatever the edition says. No screenshot baseline is taken here.
+ */
+const translatedEditions = {
+  de: {
+    name: "German",
+    headings: {
+      home: /Lunar Base ist ein Strategiespiel mit Karten/,
+      lunarBase: /Lunar Base ist ein Strategiespiel mit Karten/,
+      support: /Regeln und Hilfe/,
+      rulebook: /Spielanleitung zu Lunar Base/,
+      cart: /Dein Warenkorb/,
+      checkout: /^Kasse$/,
+      legalImprint: /^Impressum$/,
+      legalTerms: /^Verkaufsbedingungen$/,
+      legalPrivacy: /^Datenschutz$/,
+      legalShipping: /^Versand und Lieferung$/,
+      legalReturns: /^Rücksendungen und Widerrufsrecht$/,
+    },
+    menuButton: "Menü",
+    selectorLabel: "Sprache",
+    ownLanguage: "Deutsch",
+    buyGroup: "Lunar Base kaufen",
+    addToBasket: "In den Warenkorb",
+    basketHeading: "Dein Warenkorb",
+    toCheckout: "Zur Kasse",
+    checkoutHeading: "Kasse",
+    paymentReturnHeading: "Bestellung abschließen",
+  },
+  et: {
+    name: "Estonian",
+    headings: {
+      home: /Lunar Base on strateegiline kaardimäng/,
+      lunarBase: /Lunar Base on strateegiline kaardimäng/,
+      support: /Reeglid ja abi/,
+      rulebook: /Lunar Base reegliraamat/,
+      cart: /Sinu ostukorv/,
+      checkout: /^Tellimuse vormistamine$/,
+      legalImprint: /^Õigusteave$/,
+      legalTerms: /^Müügitingimused$/,
+      legalPrivacy: /^Privaatsus$/,
+      legalShipping: /^Saatmine ja kättetoimetamine$/,
+      legalReturns: /^Tagastamine ja taganemisõigus$/,
+    },
+    menuButton: "Menüü",
+    selectorLabel: "Keel",
+    ownLanguage: "Eesti",
+    buyGroup: "Osta Lunar Base",
+    addToBasket: "Lisa ostukorvi",
+    basketHeading: "Sinu ostukorv",
+    toCheckout: "Mine tellimuse vormistamise juurde",
+    checkoutHeading: "Tellimuse vormistamine",
+    paymentReturnHeading: "Lõpeta tellimus",
+  },
 } as const;
 
-for (const published of pagesByLocale["de"]) {
-  const routeId = published.route;
-  if (routeId === "about") throw new Error("The retired About route must not be published");
-  test(`German ${routeId} serves its translated page`, async ({ page }) => {
-    const response = await page.goto(localizedPath("de", ROUTE_PATHS[routeId]));
+for (const locale of ["de", "et"] as const) {
+  const edition = translatedEditions[locale];
+  const home = localizedPath(locale, ROUTE_PATHS.home);
+
+  for (const published of pagesByLocale[locale]) {
+    const routeId = published.route;
+    if (routeId === "about") throw new Error("The retired About route must not be published");
+    test(`${edition.name} ${routeId} serves its translated page`, async ({ page }) => {
+      const response = await page.goto(localizedPath(locale, ROUTE_PATHS[routeId]));
+      expect(response?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("lang", locale);
+      await expect(page.getByRole("heading", { level: 1 })).toContainText(edition.headings[routeId]);
+    });
+  }
+
+  test(`${edition.name} selector returns to English and the bare home stays English`, async ({ page }, testInfo) => {
+    await page.goto(home);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    if (testInfo.project.name === "mobile") await page.getByRole("button", { name: edition.menuButton, exact: true }).click();
+    const selector = page.locator("header").getByRole("navigation", { name: edition.selectorLabel });
+    await selector.getByRole("link", { name: "English" }).click();
+    await expect(page).toHaveURL("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.locator("header").getByRole("navigation", { name: "Language" })
+      .getByRole("link", { name: edition.ownLanguage }).click();
+    await expect(page).toHaveURL(home);
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  });
+
+  test(`${edition.name} buyer adds Lunar Base and reaches checkout in ${edition.name}`, async ({ page }, testInfo) => {
+    const cartId = `cart_${locale}_${testInfo.project.name}_${testInfo.workerIndex}`;
+    await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
+    await page.goto(localizedPath(locale, ROUTE_PATHS.lunarBase));
+    await page.getByRole("dialog").getByRole("button").last().click();
+    await page.getByLabel(edition.buyGroup).getByRole("button", { name: edition.addToBasket }).click();
+    await expect(page).toHaveURL(localizedPath(locale, ROUTE_PATHS.cart));
+    await expect(page.getByRole("heading", { name: edition.basketHeading, exact: true })).toBeVisible();
+    await page.getByRole("link", { name: edition.toCheckout }).click();
+    await expect(page).toHaveURL(localizedPath(locale, ROUTE_PATHS.checkout));
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.getByRole("heading", { name: edition.checkoutHeading, exact: true })).toBeVisible();
+  });
+
+  test(`${edition.name} payment return is served in ${edition.name}`, async ({ page }) => {
+    const response = await page.goto(localizedPath(locale, CHECKOUT_RETURN_PATH));
     expect(response?.status()).toBe(200);
-    await expect(page.locator("html")).toHaveAttribute("lang", "de");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(germanHeadings[routeId]);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.getByRole("heading", { name: edition.paymentReturnHeading })).toBeVisible();
+  });
+
+  test(`${edition.name} controls fit at 320 px`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    const cart = localizedPath(locale, ROUTE_PATHS.cart);
+    const checkout = localizedPath(locale, ROUTE_PATHS.checkout);
+    const paths = [
+      ...pagesByLocale[locale].map((published) => localizedPath(locale, ROUTE_PATHS[published.route])),
+      localizedPath(locale, CHECKOUT_RETURN_PATH),
+    ];
+    for (const route of paths) {
+      const path = route === cart || route === checkout ? `${route}?mock=filled` : route;
+      await page.goto(path);
+      await expect.poll(() => page.locator("body").evaluate((body) => getComputedStyle(body).fontFamily))
+        .toContain("MADE Evolve Sans");
+      const overflows = await page.locator("button, a, select, label, summary, dt, dd, legend, h1, h2, h3").evaluateAll((elements) => elements
+        .filter((element) => {
+          const box = element.getBoundingClientRect();
+          if (element.closest("header")) return false;
+          return box.width > 0 && box.height > 0 && (
+            element.scrollWidth > element.clientWidth + 1 || box.left < -1 || box.right > innerWidth + 1
+          );
+        })
+        .map((element) => ({ tag: element.tagName, text: element.textContent?.trim().slice(0, 80), width: element.clientWidth, scroll: element.scrollWidth })));
+      expect(overflows, path).toEqual([]);
+    }
   });
 }
-
-test("German selector returns to English and the bare home stays English", async ({ page }, testInfo) => {
-  await page.goto("/de");
-  await expect(page.locator("html")).toHaveAttribute("lang", "de");
-  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menü", exact: true }).click();
-  const selector = page.locator("header").getByRole("navigation", { name: "Sprache" });
-  await selector.getByRole("link", { name: "English" }).click();
-  await expect(page).toHaveURL("/");
-  await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menu", exact: true }).click();
-  await page.locator("header").getByRole("navigation", { name: "Language" })
-    .getByRole("link", { name: "Deutsch" }).click();
-  await expect(page).toHaveURL("/de");
-  await page.goto("/");
-  await expect(page.locator("html")).toHaveAttribute("lang", "en");
-});
-
-test("German buyer adds Lunar Base and reaches checkout in German", async ({ page }, testInfo) => {
-  const cartId = `cart_german_${testInfo.project.name}_${testInfo.workerIndex}`;
-  await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
-  await page.goto("/de/games/lunar-base");
-  await page.getByRole("dialog").getByRole("button").last().click();
-  await page.getByLabel("Lunar Base kaufen").getByRole("button", { name: "In den Warenkorb" }).click();
-  await expect(page).toHaveURL("/de/cart");
-  await expect(page.getByRole("heading", { name: "Dein Warenkorb", exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Zur Kasse" }).click();
-  await expect(page).toHaveURL("/de/checkout");
-  await expect(page.locator("html")).toHaveAttribute("lang", "de");
-  await expect(page.getByRole("heading", { name: "Kasse", exact: true })).toBeVisible();
-});
-
-test("German payment return is served in German", async ({ page }) => {
-  const response = await page.goto("/de/checkout/payment-return");
-  expect(response?.status()).toBe(200);
-  await expect(page.locator("html")).toHaveAttribute("lang", "de");
-  await expect(page.getByRole("heading", { name: "Bestellung abschließen" })).toBeVisible();
-});
-
-test("German controls fit at 320 px", async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 800 });
-  const paths = [
-    ...pagesByLocale["de"].map((published) => localizedPath("de", ROUTE_PATHS[published.route])),
-    "/de/checkout/payment-return",
-  ];
-  for (const route of paths) {
-    const path = route === "/de/cart" || route === "/de/checkout" ? `${route}?mock=filled` : route;
-    await page.goto(path);
-    await expect.poll(() => page.locator("body").evaluate((body) => getComputedStyle(body).fontFamily))
-      .toContain("MADE Evolve Sans");
-    const overflows = await page.locator("button, a, select, label, summary, dt, dd, legend, h1, h2, h3").evaluateAll((elements) => elements
-      .filter((element) => {
-        const box = element.getBoundingClientRect();
-        if (element.closest("header")) return false;
-        return box.width > 0 && box.height > 0 && (
-          element.scrollWidth > element.clientWidth + 1 || box.left < -1 || box.right > innerWidth + 1
-        );
-      })
-      .map((element) => ({ tag: element.tagName, text: element.textContent?.trim().slice(0, 80), width: element.clientWidth, scroll: element.scrollWidth })));
-    expect(overflows, path).toEqual([]);
-  }
-});
 
 test("below-fold product media loads when reached and approved videos use privacy-enhanced frames", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop") {

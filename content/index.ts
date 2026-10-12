@@ -15,9 +15,9 @@
  * that imports this barrel. Anything that genuinely needs the registry imports
  * `./evidence.js` directly and takes that cost knowingly.
  */
-import { legalPagesByLocale } from "./legal/index.js";
 import { pages } from "./pages.js";
 import { pages as dePages } from "./de/pages.js";
+import { pages as etPages } from "./et/pages.js";
 import type { LocalizedContent, Page } from "./schema.js";
 
 export * from "./routes.js";
@@ -42,12 +42,13 @@ export * as legal from "./legal/index.js";
  * inside the copy. `pages.ts` stays a flat list of the English pages and is
  * not locale-aware; it is what the `en` entry is built from.
  *
- * **An edition need not publish every route.** German now publishes its full
- * page list; Estonian still publishes only its five legal pages. The sitemap,
- * the canonical and the `hreflang` alternates are all computed from this
- * registry, so a route an edition does not publish simply has no URL, no
- * sitemap entry and no alternate in that locale, rather than a URL that
- * answers 200 with another language's words.
+ * **An edition need not publish every route**, though all three now do:
+ * English, German and Estonian each publish their full page list, which is
+ * the edition's own `pages.ts` — its marketing and shop pages joined with its
+ * legal set. The sitemap, the canonical and the `hreflang` alternates are all
+ * computed from this registry, so a route an edition does not publish simply
+ * has no URL, no sitemap entry and no alternate in that locale, rather than a
+ * URL that answers 200 with another language's words.
  *
  * What stops the second case is not this file: renderers live in the
  * storefront, and `storefront/tests/locale-routing.test.ts` fails on a page
@@ -57,12 +58,10 @@ export const pagesByLocale: LocalizedContent<readonly Page[]> = {
   en: pages,
   de: dePages,
   /*
-   * The Estonian edition publishes the legal set and nothing else — the
-   * reason the dimension exists is the legal-language obligation, not a
-   * decision to translate the marketing site. Its page list *is* its legal
-   * set: a `LegalPage` is a `Page`, and registering the same objects both
-   * here and in `legal/index.ts` is what keeps the two registries incapable
-   * of disagreeing about what the edition contains.
+   * `et/pages.ts` ends with `legalPagesByLocale.et` itself: a `LegalPage` is
+   * a `Page`, and registering the same objects both here and in
+   * `legal/index.ts` is what keeps the two registries incapable of
+   * disagreeing about what the edition's legal set contains.
    */
-  et: legalPagesByLocale.et,
+  et: etPages,
 };

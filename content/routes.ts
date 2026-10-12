@@ -52,8 +52,8 @@ export const CHECKOUT_RETURN_PATH = "/checkout/payment-return";
 /**
  * Every locale the site is published in.
  *
- * The English default, German and Estonian editions are published. The
- * German publishes the full site; Estonian currently publishes only its five legal pages.
+ * The English default, German and Estonian editions are published, and each
+ * publishes the full site: every route English serves, under its own prefix.
  *
  * A locale is *not* a language: it is a published edition of this site, keyed
  * by an identifier that is also its URL segment. {@link LocaleDefinition}

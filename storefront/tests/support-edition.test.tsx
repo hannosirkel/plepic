@@ -180,7 +180,7 @@ describe("the rulebook page under the marker fixture", () => {
 
     it(`shows the edition's own sentences in ${locale}, the file's size inside its sentence`, () => {
       const copy = english.interface.rulebook;
-      const size = /(\d+\.\d) MB/.exec(html)?.[1];
+      const size = /(\d+[.,]\d) MB/.exec(html)?.[1];
 
       expect(size).toBeDefined();
       for (const sentence of [copy.heading, copy.lede, copy.openLabel, copy.downloadNote.replace("%megabytes%", size!)]) {

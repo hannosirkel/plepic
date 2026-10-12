@@ -28,7 +28,7 @@
  * this page is token-coloured.
  */
 import { siteCopyFor } from "../../../../content/editions.js";
-import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../../content/routes.js";
 import { rulebookDocuments } from "../../../../content/rulebook-documents.js";
 import { SiteFooter } from "../SiteFooter.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
@@ -59,6 +59,11 @@ export function RulebookPageContent({
   const documentLocale = ownDocument === null ? DEFAULT_LOCALE : locale;
   // The figure stays a text node of its own, as it was when the sentence was written here.
   const [beforeSize, afterSize] = copy.downloadNote.split("%megabytes%");
+  // One decimal, written as the edition writes it: a comma in German and Estonian.
+  const megabytes = new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(document.megabytes);
 
   return (
     <div data-layer="lunar" className={styles.page}>
@@ -75,7 +80,7 @@ export function RulebookPageContent({
           </div>
           <p className={styles.note}>
             {beforeSize}
-            {document.megabytes.toFixed(1)}
+            {megabytes}
             {afterSize}
           </p>
           {ownDocument === null && <p className={styles.note}>{copy.englishRulebookNotice}</p>}
