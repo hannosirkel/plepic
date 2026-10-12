@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
     "rulebook:extract": "node rulebook/extract.ts",
-    "rulebook:build": "node --import tsx rulebook/build.ts"
+    "rulebook:build": "node --import tsx rulebook/build.ts",
+    "rulebook:check": "node --import tsx rulebook/check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

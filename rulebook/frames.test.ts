@@ -140,6 +140,8 @@ describe("reviewed rulebook layout", () => {
     // A circled step starts after the list number hidden under its circle.
     expect(frame("s05.f05")).toMatchObject({ role: "ol", box: { x: 42.52, y: 135.24, width: 207.13, height: 61 } });
     expect(frame("s05.f07")).toMatchObject({ role: "label" });
+    // A circled letter inside a paragraph's line has the room of its circle there.
+    expect(frame("s09.f11b")).toMatchObject({ role: "label", room: 11, box: { x: 206.04, y: 68.35, width: 4.53, height: 7.73 } });
     // A Contents line is an entry and a page, the page flush right.
     expect(frame("s02.f05b")).toMatchObject({ role: "label", alignment: "right", fontWeight: 700, fontSize: 10 });
     // Page numbers hidden under artwork are not frames.
@@ -235,6 +237,8 @@ describe("reviewed English rulebook text", () => {
       // An anchored frame is a label on the same sheet, anchored once.
       expect(new Set(anchored).size, `sheet ${sheet.sheet}`).toBe(anchored.length);
       for (const id of anchored) expect(sheet.frames.find((frame) => frame.id === id)?.role, id).toBe("label");
+      // It has room in the line that anchors it, and no other frame has.
+      expect(sheet.frames.filter((frame) => frame.room !== undefined).map((frame) => frame.id).sort(), `sheet ${sheet.sheet}`).toEqual([...anchored].sort());
     }
   });
 
