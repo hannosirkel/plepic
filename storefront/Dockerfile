@@ -27,8 +27,8 @@
 # each one, and `scripts/images.test.ts` holds this file to declaring no build
 # argument. The storefront reads all of it from `process.env` per request.
 
-# node:24.18.1-trixie-slim
-FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS build
+# node:24.21.0-trixie-slim
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS build
 
 WORKDIR /src
 
@@ -51,8 +51,8 @@ COPY storefront/ storefront/
 # by a build.
 RUN NODE_ENV=production npm run build --workspace storefront
 
-# node:24.18.1-trixie-slim
-FROM node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc AS runtime
+# node:24.21.0-trixie-slim
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS runtime
 
 # `org.opencontainers.image.source` is not set here, and it is not omitted
 # either: `release.yml` and `deploy-test.yml` each pass it to both builds as a
