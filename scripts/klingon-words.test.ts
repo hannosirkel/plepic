@@ -24,6 +24,23 @@ describe("Klingon word check", () => {
     expect(checkKlingonWords("qoch")).toEqual([{ word: "qoch", reason: "unknown-root" }]);
   });
 
+  it("accepts sourced roots of every declared word class", () => {
+    const lexicon = klingonLexicon as unknown as Record<string, KlingonLexiconEntry>;
+    lexicon.jIH = { wordClass: "pronoun", english: "I", source: "TKD" };
+    lexicon["'ej"] = { wordClass: "other", english: "and", source: "TKD" };
+    try {
+      expect(checkKlingonWords("jIH 'ej")).toEqual([]);
+    } finally {
+      delete lexicon.jIH;
+      delete lexicon["'ej"];
+    }
+  });
+
+  it("does not treat the noun suffix -na' as a verb suffix", () => {
+    expect(checkKlingonWords("Dujna'")).toEqual([]);
+    expect(checkKlingonWords("leghna'")).toEqual([{ word: "leghna'", reason: "unknown-root" }]);
+  });
+
   it("exempts only exact named proper nouns and loans", () => {
     expect(checkKlingonWords("Lunar Base Qapla'", ["Lunar Base"])).toEqual([]);
     expect(checkKlingonWords("VAT", [], ["VAT"])).toEqual([]);
@@ -54,6 +71,9 @@ describe("Klingon word check", () => {
       expect(isKnownKlingonWord(root), root).toBe(true);
       if (entry.source === "coined") {
         expect((entry.construction?.length ?? 0) > 0, root).toBe(true);
+        for (const component of entry.construction ?? []) {
+          expect(Object.hasOwn(klingonLexicon, component), `${root}: ${component}`).toBe(true);
+        }
       }
     }
   });

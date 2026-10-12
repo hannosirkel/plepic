@@ -16,7 +16,7 @@ export const VERB_PREFIXES = [
 export const VERB_SUFFIXES = [
   "'egh", "chuq", "nIS", "qang", "rup", "beH", "vIp", "choH", "qa'", "moH",
   "laH", "lu'", "taH", "lI'", "pu'", "ta'", "chu'", "bej",
-  "law'", "ba'", "na'", "DI'", "chugh", "pa'", "vIS", "bogh", "meH",
+  "law'", "ba'", "DI'", "chugh", "pa'", "vIS", "bogh", "meH",
   "mo'", "'a'", "jaj", "wI'", "ghach", "be'", "Qo'", "Ha'", "qu'", "neS",
 ] as const;
 
@@ -61,6 +61,7 @@ function canStripSuffixes(word: string, wordClass: "noun" | "verb", depth = 0): 
 
 export function isKnownKlingonWord(word: string): boolean {
   if (!SYLLABLE.test(word)) return false;
+  if (Object.hasOwn(klingonLexicon, word)) return true;
   if (canStripSuffixes(word, "noun") || canStripSuffixes(word, "verb")) return true;
   return VERB_PREFIXES.some((prefix) =>
     word.startsWith(prefix) && word.length > prefix.length &&
