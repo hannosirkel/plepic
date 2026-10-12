@@ -27,12 +27,13 @@ describe("RulebookPageContent", () => {
     expect(german).not.toContain("Die Spielanleitung ist auf Englisch.");
   });
 
-  it("offers the Estonian edition the English PDF, says so, and writes its size with a decimal comma", () => {
+  it("links the Estonian PDF and writes its size with a decimal comma", () => {
     const estonian = renderToStaticMarkup(<RulebookPageContent locale="et" />);
-    expect(estonian).toContain('href="/documents/lunar-base-rulebook.pdf"');
-    expect(estonian).toContain('hrefLang="en"');
-    expect(estonian).toContain("Faili suurus on 8,9 MB");
-    expect(estonian).toContain("Reegliraamat on inglise keeles.");
+    expect(estonian).toContain('href="/documents/lunar-base-rulebook-et.pdf"');
+    expect(estonian).toContain('hrefLang="et"');
+    expect(estonian).toContain("Eestikeelne Lunar Base reegliraamat");
+    expect(estonian).toContain("Faili suurus on 9,5 MB");
+    expect(estonian).not.toContain("Reegliraamat on inglise keeles.");
   });
 
   it("never links to the file-sharing host the rulebook used to live on — a completion criterion of the plan", () => {

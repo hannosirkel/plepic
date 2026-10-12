@@ -845,6 +845,98 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     "s23.f03": { right: 8, down: 8 }, "s23.f05": { down: 11 }, "s23.f06": { right: 10, down: 10 }, "s23.f08": { right: 8, down: 11 },
     "s24.f20": { left: 22, right: 22 }, "s24.f32": { left: 13, right: 13 },
   },
+  et: {
+    // Estonian labels and captions have room beside their English frames.
+    // Sheet 2.
+    "s02.f05a": { right: 30 },
+    "s02.f05c": { right: 34 },
+    "s02.f06a": { right: 40 },
+    "s02.f06e": { right: 31 },
+    "s02.f07a": { right: 46 },
+    "s02.f07c": { right: 18 },
+    "s02.f08a": { right: 12 },
+    // Sheet 3.
+    "s03.f06a": { left: 30, right: 30 },
+    "s03.f05": { left: 26, right: 26 },
+    "s03.f06b": { left: 26, right: 26 },
+    "s03.f06c": { left: 46, right: 46 },
+    // Sheet 3 heading and sheet 4 card labels stay within their artwork.
+    "s03.f03": { right: 30 },
+    // Sheet 4.
+    "s04.f05": { right: 40 },
+    "s04.f07": { right: 18, up: 5, down: 6 },
+    "s04.f10": { right: 16 },
+    "s04.f08": { up: 5, down: 6 },
+    "s04.f34": { left: 4, right: 5 },
+    "s05.f03": { right: 100 },
+    // Sheet 5.
+    "s05.f10": { left: 20, right: 20 },
+    "s05.f11": { left: 16.5, right: 16.5 },
+    "s06.f05": { right: 18, down: 8 },
+    // Sheet 6.
+    "s06.f10": { left: 20, right: 20 },
+    "s06.f11": { left: 18.5, right: 14.5 },
+    // Sheet 7.
+    "s07.f05": { right: 20 },
+    "s07.f06": { right: 48 },
+    "s08.f03": { right: 70 }, "s08.f14": { right: 28 },
+    // Sheet 8.
+    "s08.f05": { right: 37 },
+    "s08.f09": { right: 45 },
+    "s10.f03": { right: 75 },
+    // Sheet 10.
+    "s10.f19": { left: 6, right: 6, down: 8 },
+    // Sheet 11.
+    "s11.f03": { right: 110 },
+    "s11.f09a": { right: 60 },
+    "s11.f09b": { right: 60 },
+    "s11.f09c": { right: 48 },
+    "s11.f09d": { right: 50 },
+    "s11.f09e": { right: 45 },
+    "s11.f09f": { right: 48 },
+    "s12.f10": { right: 30 },
+    // Sheet 12.
+    "s12.f02": { right: 60 },
+    // Sheet 13.
+    "s13.f03": { right: 22 },
+    "s13.f06": { left: 5, right: 10, down: 40, skip: 25 },
+    "s13.f05": { right: 14, down: 43, skip: 28 },
+    "s13.f18": { left: 6, right: 8, down: 42, skip: 27 },
+    "s13.f09": { right: 10, down: 37, skip: 22 },
+    "s13.f11": { right: 30 },
+    // Sheet 15.
+    "s15.f04": { left: 5.5, right: 5.5, up: 8, down: 37, skip: 26 },
+    "s15.f07": { left: 9.5, right: 9.5, down: 47, skip: 32 },
+    "s15.f09": { right: 40 },
+    "s15.f12": { right: 35 },
+    // Sheet 16.
+    "s16.f05": { right: 15, down: 5 },
+    "s16.f07": { right: 28 },
+    "s16.f08": { right: 15, down: 5 },
+    "s16.f18a": { down: 8 },
+    "s16.f18b": { left: 8, right: 13, down: 8 },
+    // Sheet 17.
+    "s17.f13a": { down: 8 },
+    "s17.f13b": { left: 8, right: 13, down: 8 },
+    // Sheet 18.
+    "s18.f06": { right: 8, down: 8 },
+    "s18.f08": { right: 2, down: 8 },
+    // Sheet 19.
+    "s19.f03": { right: 100 },
+    // Sheet 20.
+    "s20.f07": { right: 8 },
+    // Sheet 21.
+    "s21.f04": { right: 25 },
+    "s21.f05": { right: 75 },
+    "s21.f07": { right: 20 },
+    "s21.f15": { left: 12, right: 12, down: 9 },
+    "s21.f14": { left: 5, right: 5, down: 9 },
+    "s24.f25": { down: 8 },
+    // Sheet 24.
+    "s24.f22": { right: 45 },
+    "s24.f32": { left: 13, right: 13 },
+    "s24.f28": { left: 20, right: 20 },
+  },
 };
 
 /** The reviewed layout with an edition's boxes grown. Each grown frame keeps its English box as `englishBox`. */

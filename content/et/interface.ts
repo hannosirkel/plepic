@@ -240,7 +240,7 @@ export const interfaceCopy: InterfaceCopy = {
   },
   rulebook: {
     heading: "Lunar Base reegliraamat",
-    lede: "Täielik reegliraamat täpselt sellisena, nagu see on karbis – 25 lehekülge valitavat teksti, mitte skannitud pildid. Saad tekstist otsida, seda kopeerida ja ekraanilugeriga lugeda.",
+    lede: "Eestikeelne Lunar Base reegliraamat: 25 lehekülge valitavat teksti koos algsete kaardipiltidega. Saad tekstist otsida, seda kopeerida ja ekraanilugeriga lugeda.",
     openLabel: "Ava reegliraamat (PDF)",
     downloadNote:
       "Faili suurus on %megabytes% MB; seda on hea teada enne telefonis avamist.",
