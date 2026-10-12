@@ -685,8 +685,8 @@ const VAT_CALLOUT_LANGUAGE: Readonly<
       "European Union. Non-EU taxes and duties, if any, are not included.",
   },
   de: {
-    vatAdded: "Mehrwertsteuer hinzugefügt, Lieferung nach Estland",
-    noVatAdded: "keine Mehrwertsteuer hinzugefügt, Lieferung nach Vereinigte Staaten",
+    vatAdded: "Mehrwertsteuer hinzugefügt, Lieferland: Estland",
+    noVatAdded: "keine Mehrwertsteuer hinzugefügt, Lieferland: Vereinigte Staaten",
     shippingNote:
       "Der Versand wird an der Kasse berechnet, und bei Lieferung innerhalb der Europäischen " +
       "Union kommt darauf Mehrwertsteuer hinzu. Steuern und Zölle von Ländern außerhalb der EU, " +

@@ -401,8 +401,8 @@ const TAX_VOCABULARY: Readonly<Record<Locale, TaxVocabulary>> = {
     line: (price, qualifiers) => `${price}, ${qualifiers}`,
   },
   de: {
-    vatAdded: (destination) => `Mehrwertsteuer hinzugefügt, Lieferung nach ${destination}`,
-    noVatAdded: (destination) => `keine Mehrwertsteuer hinzugefügt, Lieferung nach ${destination}`,
+    vatAdded: (destination) => `Mehrwertsteuer hinzugefügt, Lieferland: ${destination}`,
+    noVatAdded: (destination) => `keine Mehrwertsteuer hinzugefügt, Lieferland: ${destination}`,
     vatIncludedNote: "Mehrwertsteuer enthalten",
     shippingNote:
       "Der Versand wird an der Kasse berechnet, und bei Lieferung innerhalb der Europäischen " +
