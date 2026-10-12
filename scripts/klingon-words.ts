@@ -62,6 +62,22 @@ export const KLINGON_PROPER_NOUNS = [
   // Card titles the rulebook names, the address it prints, and the letters of its diagrams.
   "Double Agent", "Experimental Borehole", "Mormon Scientist", "Space Elevator",
   "lunarbasegame.com", "A", "B", "C",
+  // Printed names in the example turns, story, and credits on rulebook sheets 16–24.
+  "Alice", "Bob", "Kim", "Solicitor", "Inflatable Habitat", "Fusion Reactor",
+  "Depot", "Rovers", "Rover", "Dome", "Laika’s Memorial", "Laika’s Paradise",
+  "Beruang Engineers", "United States of Africa", "Garuna", "Mah", "Ilmatar",
+  "Meztli", "Chang’e", "UN", "LUNARFLEET", "LUNARBASE",
+  "Lunar Base Collector’s Bundle", "Silver Türk", "Joosep Simm", "Kaido Koort",
+  "Martin Paroll", "Ladislava Bohacova", "Erkki Lindpere", "Mart Redi",
+  "James Bowman", "Leila Toomet", "Hanno Sirkel", "Ole Busborg Jensen",
+  "Indrek Kempi", "Farhad Omid", "Zachary Fissel", "Jevgeni Kabanov",
+  "Kaido Vaade", "Meelis Müür", "Lambert Chow", "Juhan Hion",
+  "Mart Rasva", "Rainer Jürgenson", "Margus Niitsoo", "Sam R",
+  "David Wilson", "Kye Moseley", "Kristi Seemen", "Boris Schirra",
+  "Emil Andre Hallen", "Francesco Sabbatini", "Paul Ambs", "Patrick Grunau",
+  "Lauri Peil", "Ricardo Job-Reese", "Rémi Camberlein", "Nick Dillon",
+  "Erin Reed", "Chris Kuivenhoven", "Sergio Ruiz Fernández", "Brenden Brzozowski",
+  "Ruben Parras", "Alexander Welsz", "Michael Allan", "Owen Williams", "Mudd Law",
 ] as const;
 
 /**
