@@ -466,13 +466,16 @@ describe("the printed word at first use, on fixture data", () => {
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
 
-  it("allows the printed English label beside a translated German term", () => {
-    const glossary = registered.find(([locale]) => locale === "de")?.[1];
-    expect(glossary).toBeDefined();
-    if (!glossary) return;
-    for (const term of TERM_IDS.filter((id) => TERMS[id].class === "translated-with-original")) {
-      for (const variant of glossary[term].forbidden) {
-        expect(TERMS[term].english.match(patternOf(variant)), `de.${term}: ${variant}`).toBeNull();
+  it("include German and Estonian", () => {
+    expect(registered.map(([locale]) => locale)).toEqual(expect.arrayContaining(["de", "et"]));
+  });
+
+  it("allow the printed English label beside a translated term", () => {
+    for (const [locale, glossary] of registered) {
+      for (const term of TERM_IDS.filter((id) => TERMS[id].class === "translated-with-original")) {
+        for (const variant of glossary[term].forbidden) {
+          expect(TERMS[term].english.match(patternOf(variant)), `${locale}.${term}: ${variant}`).toBeNull();
+        }
       }
     }
   });
