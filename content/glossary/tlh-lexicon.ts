@@ -430,17 +430,21 @@ export const klingonLexicon = {
   "tlho'": { wordClass: "verb", english: "thank", source: "TKD" },
   "baw'": { wordClass: "verb", english: "be comfortable, be feeling prepared, be confident", source: "KLI" },
   jem: { wordClass: "verb", english: "sense, feel, perceive, detect", source: "KLI" },
-  // Interface, basket and checkout copy (T040). Each root is in The Klingon Dictionary.
+  // Interface, basket and checkout copy (T040). Each source is the one boQwI' records for the root:
+  // tlhop and 'em are of Klingon for the Galactic Traveler, taw of the qepHom'a' 2015 word list and
+  // bartIq of the qepHom'a' 2016 one.
   chIm: { wordClass: "verb", english: "be empty, be deserted", source: "TKD" },
   chegh: { wordClass: "verb", english: "return (a noun with -Daq names where to)", source: "TKD" },
   Qam: { wordClass: "verb", english: "stand", source: "TKD" },
   loQ: { wordClass: "other", english: "slightly, a little bit", source: "TKD" },
   tugh: { wordClass: "other", english: "soon", source: "TKD" },
-  taw: { wordClass: "noun", english: "road, street", source: "TKD" },
-  tlhop: { wordClass: "noun", english: "area in front of", source: "TKD" },
-  "'em": { wordClass: "noun", english: "area behind", source: "TKD" },
+  taw: { wordClass: "noun", english: "road, street, path (the physical one)", source: "KLI" },
+  tlhop: { wordClass: "noun", english: "area in front of", source: "KGT" },
+  "'em": { wordClass: "noun", english: "area behind", source: "KGT" },
   gho: { wordClass: "noun", english: "circle", source: "TKD" },
   "pa'": { wordClass: "noun", english: "room", source: "TKD" },
+  Sor: { wordClass: "noun", english: "tree", source: "TKD" },
+  bartIq: { wordClass: "noun", english: "branch (of a tree)", source: "KLI" },
   // Agent nouns in -wI', listed so that one can take a noun suffix.
   "'ovwI'": { wordClass: "noun", english: "competitor, player (of a competitive game)", source: "KLI" },
   "SuchwI'": { wordClass: "noun", english: "visitor", source: "coined", construction: ["Such"] },
