@@ -334,7 +334,7 @@ describe("the walk", () => {
     const klingon = rulebookPairs("tlh");
     expect(klingon.map((pair) => pair.key)).toEqual(Object.keys(klingonRulebook).map((id) => `rulebook.${id}`));
     expect(klingon.length).toBeGreaterThan(200);
-    expect(klingon.at(-1)?.key).toBe("rulebook.s13.f01");
+    expect(klingon.at(-1)?.key).toBe("rulebook.s24.f21c");
   });
 
   it("pairs nested lists and objects by key, and skips what the translation lacks", () => {

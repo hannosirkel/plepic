@@ -14,7 +14,7 @@ import { tlh } from "./tlh/index.js";
 const translations: Readonly<Record<string, { text: Partial<RulebookText>; sheets: number }>> = {
   de: { text: de, sheets: 25 },
   et: { text: et, sheets: 25 },
-  tlh: { text: tlh, sheets: 13 },
+  tlh: { text: tlh, sheets: 25 },
 };
 
 /**

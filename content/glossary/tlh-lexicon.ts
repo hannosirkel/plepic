@@ -470,4 +470,15 @@ export const klingonLexicon = {
   Doq: { wordClass: "verb", english: "be red, be orange", source: "TKD" },
   Hurgh: { wordClass: "verb", english: "be dark", source: "TKD" },
   qIj: { wordClass: "verb", english: "be black", source: "TKD" },
+  // Rulebook text, sheets 14 to 24 (T043).
+  chIl: { wordClass: "verb", english: "lose, misplace", source: "TKD" },
+  "ra'": { wordClass: "verb", english: "command, order", source: "TKD" },
+  vIH: { wordClass: "verb", english: "move, be in motion", source: "TKD" },
+  jey: { wordClass: "verb", english: "defeat", source: "TKD" },
+  Hov: { wordClass: "noun", english: "star", source: "TKD" },
+  val: { wordClass: "verb", english: "be clever", source: "TKD" },
+  buS: { wordClass: "verb", english: "concentrate on, focus on", source: "TKD" },
+  qur: { wordClass: "verb", english: "be greedy", source: "TKD" },
+  Hegh: { wordClass: "verb", english: "die", source: "TKD" },
+  Hap: { wordClass: "noun", english: "matter, substance", source: "TKD" },
 } as const satisfies Readonly<Record<string, KlingonLexiconEntry>>;
