@@ -18,7 +18,7 @@ export const klingonGlossary = {
   draft: { term: "wIv", forms: ["wIv*"], forbidden: [], note: "wIv means choose; take a card from the Supply." },
   draw: { term: "lel", forms: ["lel*"], forbidden: [], note: "lel means take out; take a card from the deck." },
   discard: { term: "woD", forms: ["woD*"], forbidden: [], note: "woD means throw away." },
-  resell: { term: "ngevqa'", forms: ["ngevqa'*"], forbidden: [], note: "Coined inflection: ngev (sell) + -qa' (again)." },
+  resell: { term: "ngevqa'", forms: ["ngevqa'*", "yIngevqa'*", "tIngevqa'*"], forbidden: [], note: "Coined inflection: ngev (sell) + -qa' (again). The imperative adds yI- or tI-." },
   build: { term: "chenmoH", forms: ["chenmoH*", "yIchenmoH*", "tIchenmoH*"], forbidden: [], note: "chenmoH means build. A command takes the prefix yI- or tI-, so the forms list both." },
   flip: { term: "jIrmoH", forms: ["jIrmoH*"], forbidden: [], note: "Coined inflection: jIr (rotate) + -moH (cause to)." },
   deck: { term: "navmey ghom", forms: ["navmey ghom*"], forbidden: [], note: "Coined phrase: nav (paper) + -mey (plural) + ghom (group), a card stack." },
@@ -160,4 +160,8 @@ export const klingonLegalTerms = {
   evidenceManifest: { term: "nompuq ta", english: "evidence manifest", note: "Coined phrase: nompuq (evidence) + ta (record)." },
   headline: { term: "per'a'", english: "headline", note: "Coined inflection: per (label) + -'a' (augmentative)." },
   operator: { term: "SIr'o' Daq vu'wI'", english: "the site's operator", note: "Coined phrase: SIr'o' (web) + Daq (place) + vu' (manage) + -wI' (one who does)." },
+  // Product units and the named substance in the safety report (T039).
+  centimetres: { term: "juvmeH mI'", english: "centimetres", loan: "centimetres", note: "Coined phrase: juv (measure) + -meH (for the purpose of) + mI' (number). The loan preserves the physical unit." },
+  grams: { term: "juvmeH mI'", english: "grams", loan: "grams", note: "Coined phrase: juv (measure) + -meH (for the purpose of) + mI' (number). The loan preserves the mass unit." },
+  aluminium: { term: "baS", english: "aluminium", loan: "aluminium", note: "Attested noun: baS (metal). The loan specifies the metal tested in the report." },
 } as const satisfies Readonly<Record<string, KlingonLegalTerm>>;

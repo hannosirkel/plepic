@@ -22,6 +22,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { siteCopyByLocale, siteCopyFor } from "./editions.js";
+import * as englishProduct from "./lunar-base.js";
+import * as klingonProduct from "./tlh/lunar-base.js";
 import {
   GLOSSARY_RULES,
   IDENTIFIER_KEYS,
@@ -37,6 +39,7 @@ import {
   type Term,
   type TermId,
 } from "./glossary/index.js";
+import { klingonGlossary } from "./glossary/tlh.js";
 import { legalPagesByLocale } from "./legal/index.js";
 import { DEFAULT_LOCALE, type Locale } from "./routes.js";
 import { reviewedSheets } from "../rulebook/layout/overrides.js";
@@ -461,6 +464,14 @@ describe("the printed word at first use, on fixture data", () => {
   it("asks nothing of a term that is translated freely or stays as printed", () => {
     expect(namedAt(frame("s05.f06", "Shuffle the deck.", "Mische den Nachziehstapel."))).toEqual([]);
     expect(namedAt(frame("s05.f05", "Show the Terran Outpost side.", "Zeige die Seite Terran Outpost."))).toEqual([]);
+  });
+});
+
+describe("the staged Klingon product copy", () => {
+  it("uses the agreed terms in every translated product string", () => {
+    const pairs = pairsOf(englishProduct, klingonProduct, "site.lunarBase");
+    expect(pairs.length).toBeGreaterThan(100);
+    expect(reportFor("tlh", klingonGlossary, pairs, [])).toEqual([]);
   });
 });
 
