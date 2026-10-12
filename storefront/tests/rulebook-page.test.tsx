@@ -12,6 +12,9 @@ describe("RulebookPageContent", () => {
 
   it("points at the committed PDF under storefront/public/", () => {
     expect(html).toContain('href="/documents/lunar-base-rulebook.pdf"');
+    expect(html).toContain('hrefLang="en"');
+    expect(html).toContain("It is a 8.9 MB download");
+    expect(html).not.toContain("The rulebook is in English.");
   });
 
   it("never links to the file-sharing host the rulebook used to live on — a completion criterion of the plan", () => {
