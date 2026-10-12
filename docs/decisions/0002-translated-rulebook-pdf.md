@@ -105,5 +105,6 @@ from the English sheet, and a script cannot judge that in full.
   and the English PDF. A unit test fails when text changes without a rebuild.
 - The translated PDF is for reading on screen. It is not print-ready.
 
-The detail of each check and task is in `docs/working/site-translation/plan.md`
-while the plan is active.
+The plan was carried out and retired on 2026-10-12. The present state of the
+build, each check and the manifest is in
+[`docs/current/rulebook.md`](../current/rulebook.md).

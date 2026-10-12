@@ -766,17 +766,22 @@ Two directories are not workspaces but are consumed by the storefront:
 
 ## Locales
 
-The site is published in two editions. `en` is the default edition, at the
-unprefixed paths. `et` is served under `/et` and publishes the five legal
-pages and nothing else. The URL path prefix selects the edition; nothing
-negotiates one from a header, an address or a cookie.
+The site is published in four editions: English, German, Estonian and
+Klingon. `en` is the default edition, at the unprefixed paths. `de`, `et` and
+`tlh` are served under `/de`, `/et` and `/tlh`. Each edition publishes every
+route and has its own rulebook PDF. The URL path prefix selects the edition;
+nothing negotiates one from a header, an address or a cookie.
 
-[`docs/current/locales.md`](./docs/current/locales.md) describes the
-registries, the routing, the served document, the 404 page, the metadata and
-what is not locale-aware yet. Two decisions are recorded in
-[`docs/decisions/`](./docs/decisions/): how a locale is chosen
-([0001](./docs/decisions/0001-locale-chosen-by-url.md)) and how a translated
-rulebook PDF is produced
+| Document | Describes |
+| --- | --- |
+| [`docs/current/locales.md`](./docs/current/locales.md) | The editions, how one is chosen, the language selector, where copy lives, how to add a string or a language, the routing, the 404 page, the metadata, and what does not follow the edition |
+| [`docs/current/rulebook.md`](./docs/current/rulebook.md) | The four rulebook PDFs and how a translated one is built and checked |
+| [`docs/current/translation/`](./docs/current/translation/) | The conventions of German, Estonian and Klingon copy |
+| [`docs/issues/`](./docs/issues/) | What is open, and the questions the operator has not answered |
+
+Two decisions are recorded in [`docs/decisions/`](./docs/decisions/): how a
+locale is chosen ([0001](./docs/decisions/0001-locale-chosen-by-url.md)) and
+how a translated rulebook PDF is produced
 ([0002](./docs/decisions/0002-translated-rulebook-pdf.md)).
 
 ## Development

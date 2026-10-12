@@ -89,12 +89,28 @@ the storefront workspace chooses its own TypeScript version when it lands (see
 
 | Path | Holds |
 | --- | --- |
-| `storefront/` | workspace: the Next.js App Router site — routes under `src/app/(site)/`, the localized catch-all under `src/app/[locale]/`, and the same-origin `/store-api` proxy |
-| `backend/` | workspace: the Medusa v2 backend — Store API routes, commerce configuration and seeding, catalogue import, the Stripe payment session, the SMTP notification provider, and the Redis preflight |
-| `content/`, `design/`, `rulebook/`, `scripts/` | not workspaces: typed site copy, `tokens.css`, the rulebook frame map and extractor, and the tooling `scripts/validate` runs |
+| `storefront/` | workspace: the Next.js App Router site — the default edition's routes under `src/app/(site)/`, the catch-all under `src/app/[locale]/` that serves the `/de`, `/et` and `/tlh` editions, the same-origin `/store-api` proxy, and the four rulebook PDFs under `public/documents/` |
+| `backend/` | workspace: the Medusa v2 backend — Store API routes, commerce configuration and seeding, catalogue import, the Stripe payment session, the SMTP notification provider, and the Redis preflight. It knows no edition: its e-mails are English |
+| `content/` | not a workspace: typed site copy. The English modules, their mirrors in `de/`, `et/` and `tlh/`, the legal pages per edition, the locale registries, and the glossary |
+| `rulebook/` | not a workspace: the build and the layout check of the translated rulebook PDFs, the frame map read from the English PDF, the text of each edition, and `manifest.json` |
+| `design/`, `scripts/` | not workspaces: `tokens.css`, and the tooling `scripts/validate` runs, the Klingon word check among it |
 
 `compose.yaml` stands the whole stack up locally. See [`README.md`](./README.md).
-Current-state documents live in [`docs/current/`](./docs/current/).
+
+The site is published in four editions: English, German, Estonian and
+Klingon. The URL path prefix selects the edition, and nothing negotiates one.
+Read the document before you change what it describes.
+
+| Document | Describes |
+| --- | --- |
+| [`docs/current/locales.md`](./docs/current/locales.md) | The editions, how one is chosen, the selector, where copy lives, how to add a string or a language |
+| [`docs/current/rulebook.md`](./docs/current/rulebook.md) | The rulebook PDFs: sources, prerequisites, build and check commands, the manifest |
+| [`docs/current/translation/`](./docs/current/translation/) | The conventions of German, Estonian and Klingon copy |
+| [`docs/decisions/`](./docs/decisions/) | Why the locale is chosen by the URL, and how a translated rulebook PDF is produced |
+| [`docs/issues/`](./docs/issues/) | What is open: known gaps, and questions the operator has not answered |
+
+A reader-facing string is never written inside a component. It goes in
+`content/`, in every edition.
 
 Kubernetes manifests for both environments live in `hannosirkel/deploys` under
 `plepic/`; the Argo CD `Application` objects live in `hannosirkel/orange`. This

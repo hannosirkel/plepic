@@ -53,7 +53,8 @@ does not wait for an answer.
 | Q2 | Does the site remember a visitor's language? | No. A stored choice makes `/` answer differently per visitor, and the brief says the default stays English |
 | Q5 | Are URL paths translated? | No. `/de/games/lunar-base`, not a German path |
 
-The numbers Q1, Q2 and Q5 are those of the plan's section Questions.
+The numbers Q1, Q2 and Q5 are those of the plan's section Questions, and of
+the files in `docs/issues/`.
 
 ## Rationale
 
@@ -88,10 +89,13 @@ drift from the first.
 - A first-time visitor is not routed to a matching language. The selector must
   be easy to find on every page.
 - A German or Estonian URL contains English path words.
-- The absence of negotiation needs a guard. The plan's task T010 adds a source
-  scan and a served test. Until then no test holds this decision.
+- The absence of negotiation needs a guard. A source scan and a served test
+  hold this decision: `storefront/tests/locale-selection.test.ts` and
+  `storefront/tests/build-and-serve.test.ts`.
 - The delivery-destination cookie continues to exist. It selects a price
   presentation and must never select a language.
 
-The plan is `docs/working/site-translation/plan.md` while it is active. The
-present behaviour is in [`docs/current/locales.md`](../current/locales.md).
+The plan was carried out and retired on 2026-10-12. The present behaviour is
+in [`docs/current/locales.md`](../current/locales.md). The three questions
+above are still unanswered; each has a file in
+[`docs/issues/`](../issues/README.md).

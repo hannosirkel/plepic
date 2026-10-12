@@ -5,6 +5,11 @@ The site's copy, as typed TypeScript. Start with
 and it opens with the three lines of positioning every page assumes. This file
 explains the model that carries it.
 
+The site is published in four editions: English, German, Estonian and
+Klingon. The English modules are the source. Each other edition mirrors them
+file for file. [`docs/current/locales.md`](../docs/current/locales.md) says
+how an edition is chosen and served.
+
 ## Why TypeScript and not MDX
 
 The plan forbids three things in content files: absolute URLs, hostnames, and
@@ -75,23 +80,27 @@ carries the load alone.
 | File | Holds |
 |---|---|
 | `content-document.md` | The editorial record: positioning, every piece of copy, the proof choice and its rejections, the campaign-language removals, and the open operator inputs |
-| `routes.ts` | Every route, anchor and named external target. The single source of truth for paths |
-| `schema.ts` | The content model and the placeholder registry |
+| `routes.ts` | Every route, anchor and named external target, and every locale: `LOCALES` and `LOCALE_DEFINITIONS`. The single source of truth for paths and editions |
+| `schema.ts` | The content model and the placeholder registry. It holds no copy. `LocalizedContent<T>` is the total record every locale-keyed table uses |
 | `evidence.ts` | The evidence registry, the commercial-commitment registry, and the two blocklists. **Not re-exported from `index.ts`** — the blocklists contain the strings the site must never show, and they have no business in a bundle |
-| `schema.ts` | The model. The only content module permitted to export a function, and it holds no copy |
 | `publisher.ts` | Publisher sentence, story, timeline, team, newsletter |
 | `lunar-base.ts` | The one canonical set of product copy |
 | `proof.ts` | The proof strip, its rejections, and the quotations |
 | `support.ts` | Rules FAQ, rulebook link, contact |
-| `legal/` | The five legal pages |
+| `shop.ts` | Basket and checkout copy: labels, headings and notes |
+| `interface.ts` | Reader-facing interface strings: forms, basket, checkout, consent banner, 404, delivery method names. No component holds one |
 | `pages.ts` | Title, description, indexability and sections per route |
-| `index.ts` | The barrel a renderer imports. Deliberately narrower than the directory |
-| `content.test.ts` | Everything above, enforced |
-| `editions.ts` | Total site-copy registry. `null` means an edition has legal pages but no published site copy yet. `siteCopyFor` rejects that case. |
-| `interface.ts` | Typed home for reader-facing interface strings as page groups become locale-aware. |
-| `mirror.test.ts` | Compares every staged edition directory with English modules, including editions not yet registered for publication. |
-| `glossary/` | The term list (`terms.ts`), the per-language model (`schema.ts`) and the registry and exception list (`index.ts`). **Not re-exported from `index.ts`** — its forbidden variants are words the site must not show |
-| `glossary.test.ts` | The glossary check: every translated string of a registered language, beside the English string at the same key |
+| `legal/` | The five English legal pages, and `legalPagesByLocale` in `legal/index.ts` |
+| `de/`, `et/`, `tlh/` | The German, Estonian and Klingon editions of the seven modules above, `publisher.ts` to `pages.ts`, under the same file names |
+| `legal/de/`, `legal/et/`, `legal/tlh/` | The five legal pages of each edition |
+| `editions.ts` | `siteCopyByLocale`, the total site-copy registry, and `siteCopyFor`, which a component reads it through. `SiteCopy` names the seven modules an edition must provide, so an edition without full copy does not compile |
+| `rulebook-documents.ts` | The rulebook PDF of each edition: file name, size and sheet count |
+| `index.ts` | The barrel a renderer imports, and `pagesByLocale`. Deliberately narrower than the directory |
+| `glossary/` | The term list (`terms.ts`), the model (`schema.ts`), one glossary per language (`de.ts`, `et.ts`, `tlh.ts`), the Klingon lexicon (`tlh-lexicon.ts`), and the registry and exception list (`index.ts`). **Not re-exported from `index.ts`** — its forbidden variants are words the site must not show |
+| `content.test.ts` | The prohibitions above, enforced, and the rules of the locale dimension |
+| `mirror.test.ts` | Compares every edition directory on disk with the English modules, including one not yet registered |
+| `glossary.test.ts` | The glossary check: every translated string of the site, the legal pages and the rulebook, beside the English string at the same key |
+| `rulebook-documents.test.ts` | Every edition has a committed rulebook PDF of the registered size and sheet count |
 
 ## Adding or changing copy
 
@@ -101,8 +110,12 @@ carries the load alone.
    steps.
 2. Write it in the relevant content file. Never write a URL, a host, an email
    address or a price — use a `LinkTarget` or a placeholder.
-3. Run `bash scripts/validate`.
-4. If the copy changes what a page claims, update `content-document.md` in the
+3. Add the same key, translated, to `de/`, `et/` and `tlh/`. The mirror test
+   fails until every edition has it.
+   [`docs/current/locales.md`](../docs/current/locales.md), section Adding a
+   string, has the steps.
+4. Run `bash scripts/validate`.
+5. If the copy changes what a page claims, update `content-document.md` in the
    same commit. That document is what the editorial gate reads.
 
 ## The glossary
@@ -120,6 +133,13 @@ closed list of terms. Each has one of three classes:
 The cards are printed in English and stay so. That is why the second class
 exists: a German reader must be able to match the rulebook's word to the word
 on the card.
+
+German, Estonian and Klingon are registered. The conventions of each language
+— address, typography, how a game term is written in running text — are in
+[`docs/current/translation/`](../docs/current/translation/):
+[`de.md`](../docs/current/translation/de.md),
+[`et.md`](../docs/current/translation/et.md) and
+[`klingon.md`](../docs/current/translation/klingon.md).
 
 A language registers in `glossary/index.ts` with a sibling `<locale>.ts`. For
 every term it gives the translation, the forms a string may use, the variants
@@ -148,8 +168,24 @@ so this check is the one that catches an untranslated "Checkout". A string that
 should stay in English, such as a brand in a table cell, passes when it holds no
 term or only as-printed ones, and otherwise takes an exception.
 
-Rulebook text joins the same check when it lands, through `rulebookPairs` in
-`glossary.test.ts`.
+Rulebook text is under the same check, through `rulebookPairs` in
+`glossary.test.ts`: one pair per frame, in reading order.
+
+### Klingon
+
+Klingon has a small fixed vocabulary, so the risk is an invented word.
+`glossary/tlh-lexicon.ts` lists every root the Klingon copy uses, with its
+word class, an English gloss and a source: *The Klingon Dictionary*, *Klingon
+for the Galactic Traveler*, a word list of the Klingon Language Institute, or
+`coined` with its construction. `klingonLegalTerms` in `glossary/tlh.ts`
+holds the legal and shop vocabulary `terms.ts` does not list.
+
+`scripts/klingon-words.test.ts` reads every Klingon string of the site and
+the rulebook. It strips the closed sets of prefixes and suffixes from each
+word and requires the rest to be a root in the lexicon, validly spelled.
+Proper nouns and loans pass only from a named list in
+`scripts/klingon-words.ts`. A reviewer therefore reviews a finite list of
+roots, not every sentence's vocabulary.
 
 ## Routes and the router
 
