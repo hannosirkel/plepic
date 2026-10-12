@@ -173,7 +173,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
   tlh: {
     brandHomeLabel: "Plepic Games, tenwal wa'DIch",
     primaryNavLabel: "wIvmeH rarwI'mey",
-    navAbout: "maHvaD De'",
+    navAbout: "De'maj",
     navSupport: "QaH",
     menuLabel: "wIvmeH tetlh",
     closeMenuLabel: "wIvmeH tetlh yISoQmoH",
@@ -188,7 +188,7 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
     },
     languageNavLabel: "Hol",
     socialNavLabel: "ghom rarwI'mey",
-    draftNote: "qonmeH ghItlh; lo'wI' lajbe'pu'.",
+    draftNote: "qonmeH ghItlh; SIr'o' Daq vu'wI' lajbe'pu'.",
     noticeHeading: "chut QInvam naQbe'.",
     noticeBody: (missing) =>
       `DaqvamvaD De'vam lanlu'be'pu'; bIngDaq ngu'lu': ${missing.join(", ")}. ` +

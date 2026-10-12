@@ -603,7 +603,7 @@ const EXPECTED_CHROME: Readonly<
   },
   tlh: {
     header: [
-      ">maHvaD De&#x27;<", ">QaH<", ">wIvmeH tetlh<", ">je&#x27;meH ngaSwI&#x27;<",
+      ">De&#x27;maj<", ">QaH<", ">wIvmeH tetlh<", ">je&#x27;meH ngaSwI&#x27;<",
       'aria-label="wIvmeH rarwI&#x27;mey"', 'aria-label="Plepic Games, tenwal wa&#x27;DIch"',
     ],
     footer: [

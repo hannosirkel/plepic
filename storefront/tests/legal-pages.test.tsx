@@ -221,7 +221,7 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
     returnsMarker: "[lanlu'be'pu': tep tatlhmeH Daq]",
     noticeHeading: "chut QInvam naQbe'.",
     noticeBodyFragment: "chut QInvam naQbe'; naQ 'e' yIHarQo'",
-    draftNote: "qonmeH ghItlh; lo'wI' lajbe'pu'.",
+    draftNote: "qonmeH ghItlh; SIr'o' Daq vu'wI' lajbe'pu'.",
   },
 };
 
@@ -716,8 +716,8 @@ const VAT_CALLOUT_LANGUAGE: Readonly<
       "kui neid on, hinnas ei sisaldu.",
   },
   tlh: {
-    vatAdded: "ngevmeH 'ap chellu'; EstoniaDaq HIjlu'",
-    noVatAdded: "ngevmeH 'ap chellu'be'; United StatesDaq HIjlu'",
+    vatAdded: "ngevmeH 'ap chellu'; Estonia SepDaq HIjlu'",
+    noVatAdded: "ngevmeH 'ap chellu'be'; United States SepDaq HIjlu'",
     shippingNote:
       "Huch nobmeH DaqDaq ngeHmeH 'ap SImlu'. European Union SepDaq tep HIjlu'chugh, " +
       "ngeHmeH 'apDaq ngevmeH 'ap (VAT) chellu'. latlh Sep qum 'ap, HIjmeH 'ap je " +
