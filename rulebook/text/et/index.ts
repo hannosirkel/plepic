@@ -1,5 +1,6 @@
 import type { RulebookText } from "../schema.js";
 import { part1 } from "./part1.js";
+import { part2 } from "./part2.js";
 
-/** Estonian rulebook text available through sheet 13. */
-export const et: Partial<RulebookText> = { ...part1 };
+/** The complete Estonian rulebook text. A missing frame stops compiling. */
+export const et: RulebookText = { ...part1, ...part2 };
