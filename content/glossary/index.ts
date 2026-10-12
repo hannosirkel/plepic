@@ -9,6 +9,7 @@
 import type { GlossaryException, GlossaryRegistry } from "./schema.js";
 import { germanGlossary } from "./de.js";
 import { estonianGlossary } from "./et.js";
+import { klingonGlossary } from "./tlh.js";
 
 export * from "./terms.js";
 export * from "./schema.js";
@@ -18,7 +19,7 @@ export * from "./schema.js";
  * that holds its `Glossary`. From then on `glossary.test.ts` checks every
  * translated string of that locale.
  */
-export const glossaries: GlossaryRegistry = { de: germanGlossary, et: estonianGlossary };
+export const glossaries: GlossaryRegistry = { de: germanGlossary, et: estonianGlossary, tlh: klingonGlossary };
 
 /**
  * The strings the check would fail and that stand as written. An entry that

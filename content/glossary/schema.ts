@@ -51,7 +51,7 @@ export type Glossary = Readonly<Record<TermId, GlossaryEntry>>;
  * The default locale never does, because English is what others are checked against.
  */
 // German glossary work precedes registration of `de` in the site's Locale type.
-export type GlossaryLocale = Exclude<Locale, typeof DEFAULT_LOCALE> | "de";
+export type GlossaryLocale = Exclude<Locale, typeof DEFAULT_LOCALE> | "de" | "tlh";
 export type GlossaryRegistry = Readonly<Partial<Record<GlossaryLocale, Glossary>>>;
 
 /**
