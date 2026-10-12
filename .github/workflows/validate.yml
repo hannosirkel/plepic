@@ -36,7 +36,7 @@ jobs:
     services:
       postgresql:
         # postgres:17.10-bookworm
-        image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+        image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
         env:
           POSTGRES_USER: plepic
           POSTGRES_DB: plepic
@@ -50,7 +50,7 @@ jobs:
           --health-retries 20
       redis:
         # redis:7.4.6-bookworm
-        image: redis:7.4.6-bookworm@sha256:a9cc41d6d01da2aa26c219e4f99ecbeead955a7b656c1c499cce8922311b2514
+        image: redis:7.4.11-bookworm@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
         ports:
           - 6379:6379
         options: >-
@@ -60,7 +60,7 @@ jobs:
           --health-retries 20
       smtp:
         # axllent/mailpit:v1.30.7
-        image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
+        image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
         env:
           MP_SMTP_BIND_ADDR: 0.0.0.0:587
           MP_UI_BIND_ADDR: 0.0.0.0:8025
@@ -138,7 +138,7 @@ jobs:
     container:
       # Playwright 1.57.0, Noble amd64; screenshot baselines must be produced
       # by this exact immutable image (also documented in README.md).
-      image: mcr.microsoft.com/playwright:v1.57.0-noble@sha256:8fb7af3bb488c51364d6554876a8eddf377736608327dbdf4177b4901faf7bc9
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     steps:
       - name: Check out repository
         # actions/checkout v7.0.1
