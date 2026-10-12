@@ -808,8 +808,7 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     // Sheet 4: the list on the left panel; a two-line entry stands around its numeral, as the English fifth entry does.
     "s04.f03": { right: 10 }, "s04.f05": { right: 40 }, "s04.f07": { right: 18, up: 5, down: 6 }, "s04.f08": { up: 5, down: 6 },
     "s04.f09": { right: 10 }, "s04.f10": { right: 16 },
-    // Sheet 4: a callout stands on a white pill drawn for the English words, so none grows past its pill. This one runs left, off its numeral.
-    "s04.f39": { left: 2 },
+    // Sheet 4: no callout around the cards grows. Each stands on a white pill drawn for the English words, and is shortened to fit it.
     // Sheets 5 and 6: the pile labels, centred under their piles.
     "s05.f06": { right: 5, down: 6 }, "s05.f10": { left: 9, right: 9 }, "s05.f11": { left: 16.5, right: 16.5 },
     "s06.f10": { left: 9, right: 9 }, "s06.f11": { left: 18.5, right: 14.5 }, "s06.f12": { right: 6 },
