@@ -46,6 +46,10 @@ export const KLINGON_PROPER_NOUNS = [
   "Estonia", "Latvia", "Lithuania", "United States", "Finland", "Denmark",
   // Places, companies and events the publisher and proof copy name.
   "Tallinn", "Kickstarter", "AireCon", "Brætspilscaféen",
+  // Names, report ids and English wording printed in the product copy.
+  "English", "United Nations", "Longpack Co., Ltd.", "Shanghai", "China", "Intertek Testing Services Ltd.",
+  "SHAH01338706", "May", "EN71-1:2014+A1:2018", "EN71-2:2020", "EN71-3:2019",
+  "Directive 2009/48/EC",
   // Reviewers and their outlets, as the quotations attribute them.
   "Paul Grogan", "Gaming Rules", "Hairy Game Lords", "Tabletop Games Blog",
   "Rodney Smith", "Watch It Played",
@@ -61,6 +65,7 @@ export const KLINGON_PROPER_NOUNS = [
  */
 export const KLINGON_LOANS: readonly string[] = [
   "VAT", "DNS", "IP", "local storage", "session storage", "granted", "declined",
+  "centimetres", "grams", "aluminium",
 ];
 
 /** English card vocabulary may appear only as a bracketed aid at first use. */
