@@ -123,7 +123,7 @@ for (const [name, path, locale = "en"] of visualRoutes) {
       expect(response?.status()).toBeLessThan(400);
       expect(consoleErrors).toEqual([]);
     }
-    await page.getByRole("button", { name: "Agree" }).click();
+    await page.getByRole("button", { name: siteCopyFor(locale).interface.consent.agree }).click();
     await expect.poll(() => analyticsRequests.length).toBeGreaterThan(0);
   });
 }
