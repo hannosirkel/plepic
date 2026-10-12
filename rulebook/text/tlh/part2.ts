@@ -5,13 +5,13 @@ type Sheet = "s14" | "s15" | "s16" | "s17" | "s18" | "s19" | "s20" | "s21" | "s2
 /** Klingon rulebook, sheets 14 to 25, in the English frames' reading order. */
 export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   // Sheet 14
-  "s14.f03": "'ay' (Module) DachenmoHDI' (Build), Dop DaneHbogh yIwIv; mIwmeyvam yIpab:",
+  "s14.f03": "'ay' (Module) DachenmoHDI' (Build), Dop DaneHbogh yIwuq; mIwmeyvam yIpab:",
   "s14.f05": "1",
-  "s14.f04": "cha' moQ (Orb) bIDmey rItlh rap DararDI', wa' moQ DachenmoHnIS; logh DaqlIj (Station) pagh waw'lIjDaq (Base) latlh 'ay' rar 'ay' chu'. qIjbogh bIDmey wov tlhab; Hoch rItlh lu'oSlaH.",
+  "s14.f04": "cha' moQ (Orb) bIDmey rItlh rap DararDI', wa' moQ, moQmey law' ghap DachenmoHnIS; logh DaqlIj (Station), waw'lIjDaq (Base) latlh 'ay' ghap rar 'ay' chu'. qIjbogh bIDmey wov tlhab; Hoch rItlh lu'oSlaH.",
   "s14.f06": "lugh",
   "s14.f02": "23",
   "s14.f09": "2",
-  "s14.f07": "latlh navmey retlhDaq moQ bIDmey tu'lu'chugh, rItlh rap ghajbogh bIDmey rarlu'nIS. moQ bIDmey rarHa'lu'bogh pagh pImbogh rItlhmey (chovnatlh: Doq-SuD, SuD-SuD 'ej wov, SuD 'ej wov-Doq) DachenmoHlaHbe'.",
+  "s14.f07": "latlh navmey retlhDaq moQ bIDmey tu'lu'chugh, rItlh rap ghajbogh bIDmey rarlu'nIS. moQ bIDmey rarHa'lu'bogh, pImbogh rItlhmey ghap (chovnatlh: Doq-SuD 'ej Hurgh, SuD 'ej Hurgh-SuD 'ej wov, SuD 'ej wov-Doq) DachenmoHlaHbe'.",
   "s14.f10": "3",
   "s14.f08": "latlh nav DungDaq 'ay' nav DalanlaHbe'.",
   "s14.f11": "Qagh",
@@ -19,9 +19,9 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 15
   "s15.f04": "logh Daq (Station) yIjIrmoH (Flip)",
-  "s15.f03": "latlh Dop 'angmeH logh Daq (Station) navmey 'anglu'bogh tIjIrmoH. 'ay' (Module) rarbogh Daqmey tIchoHQo' (logh Daq cha' Doppu'Daq rap moQ [Orb] bIDmey).",
+  "s15.f03": "latlh Dop 'angmeH logh Daq (Station) navmey 'anglu'bogh tIjIrmoH. 'ay' (Module) rarbogh Daqmey tIchoHQo' (logh Daq cha' DopDaq rap moQ [Orb] bIDmey).",
   "s15.f07": "yIngevqa' (Resell)",
-  "s15.f06": "nobmeH Daqvo' (Supply) 1 vumwI' (Agent) nav pagh 'ay' nav yItlhap, 'ej navmey woDlu'bogh ghomDaq yIlan. 1 Huch (Credit) DaSuq. 1 nav puS law' Dangevqa'nISchugh, Hoch navvaD mIwvam yIta'qa'.",
+  "s15.f06": "nobmeH Daqvo' (Supply) 1 vumwI' (Agent) nav, 'ay' nav ghap yItlhap, 'ej navmey woDlu'bogh ghomDaq yIlan. 1 Huch (Credit) DaSuq. 1 nav juSbogh mI' Dangevqa'nISchugh, Hoch navvaD mIwvam yIta'qa'.",
   "s15.f09": "Huch yISuq pagh yIchIl",
   "s15.f08": "'anglu'bogh Huch (Credits) mI' DaSuq pagh DachIl.",
   "s15.f02": "25",
@@ -29,7 +29,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s15.f10": "rapbogh Degh ghajbogh 'ay' (Module) latlh 'ovwI' waw'vo' (Base) yItlhap, 'ej ghoplIjDaq yIlan.",
   "s15.f11": "vaj latlh 'ay'mey waw'chajvo' rarHa'lu'chugh, 'ay'meyvetlh QaptaH.",
   "s15.f14": "Huch yInIH",
-  "s15.f13": "latlh 'ovwI' yIwIv. 'anglu'bogh Huch (Credits) mI' DanIH. Huch nIHlu'bogh Huch mI' janlIjDaq yIchel, 'ej janDajvo' yIteq. ghajbogh Huch mI' neH yInIH.",
+  "s15.f13": "latlh 'ovwI' yIwuq. 'anglu'bogh Huch (Credits) mI' DanIH. Huch nIHlu'bogh Huch mI' janlIjDaq yIchel, 'ej janDajvo' yIteq. ghajbogh Huch mI' neH yInIH.",
   "s15.f01": "26",
 
   // Sheet 16
@@ -42,7 +42,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s16.f10": "2",
   "s16.f06": "Solicitor lo'taHvIS Bob waw'vo' Inflatable Habitat nIH Alice, 'ej ghopDajDaq lan.",
   "s16.f11": "3",
-  "s16.f07": "ghIq Fusion Reactor Qu' potlh wIv Alice: chenmoH (Build), lel (Draw), woD (Discard) je, tetlhvamDaq.",
+  "s16.f07": "ghIq Fusion Reactor Qu' potlh wuq Alice: chenmoH (Build), lel (Draw), woD (Discard) je, tetlhvamDaq.",
   "s16.f12": "4",
   "s16.f08": "Huch DIlbe'taHvIS ghopDajvo' Depot chenmoH (2 SuDbogh moQmey Hurgh poQ nav; 0 moj DIlmeH Huch, 2 SuDbogh moQmey Hurgh {s16.f14} ghajmo'). 'anglu'bogh DaqDaq lan.",
   "s16.f14": "A",
@@ -62,7 +62,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 17
   "s17.f08": "5",
-  "s17.f03": "“navvam lo'lu'DI'” Qu' ghaj Depot; DaH ta' Alice. vaj SIbI' chenmoHqa'laH (Build), neHchugh (yIqaw: reH chenmoH Qu' wIvlaHlu').",
+  "s17.f03": "“navvam lo'lu'DI'” Qu' ghaj Depot; DaH ta' Alice. vaj SIbI' chenmoHqa'laH (Build), neHchugh (yIqaw: chenmoH Qu' Data'nISbe').",
   "s17.f09": "6",
   "s17.f04": "Experimental Borehole chenmoHmeH wuq; Huch poQbe'.",
   "s17.f10": "7",
@@ -87,7 +87,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 18
   "s18.f03": "Dor Quj",
-  "s18.f04": "wa' Qapla' ngoQ pagh ngoQmey law' chavDI' 'ovwI', SIbI' Dor Quj. loS Qapla' ngoQmey tu'lu':",
+  "s18.f04": "wa' Qapla' ngoQ, Qapla' ngoQmey law' ghap chavDI' 'ovwI', SIbI' Dor Quj. loS Qapla' ngoQmey tu'lu':",
   "s18.f06": "20 maS Huch (Credits) tIboS",
   "s18.f07": "waw'lIjDaq (Base) 10 waw' nganpu' tIDabmoH",
   "s18.f08": "(logh DaqlIj [Station] + 'ay'meylIj [Modules])",
@@ -104,20 +104,20 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s19.f10": "woQ Dalo'taHvIS gholpu'lI' tIjey.",
   "s19.f04a": "HoS",
   "s19.f04b": "QujDaq HoS navmey chellu'. Quj mIwmey naQ DaSovDI', navmey ghomDaq bIH DachellaH 'e' wIchup. Hoch Quj pImmoH navmeyvam.",
-  "s19.f05": "**Quj lanmeH mIw:** 8 HoS navmey yIwIv 'ej 'ay' (Module) vumwI' (Agent) navmey je navmey ghomDaq tIDuD; 'ovwI'pu'vaD pagh nobmeH DaqDaq (Supply) navmey Danobpa' yIta'.",
-  "s19.f06": "HoS navmeyDaq Qu'mey tu'lu'; latlh navmey Qu'mey DataHpa' **SIbI'** ta'nISlu' (tenwalmey 36—38 chovnatlhmey tIlaD). SIbI' qaSbogh Qu'mey law' tu'lu'chugh, bIjoptaHvIS tetlh wIv 'ovwI'.",
+  "s19.f05": "**Quj lanmeH mIw:** 8 HoS navmey tIwuq 'ej 'ay' (Module) vumwI' (Agent) navmey je navmey ghomDaq tIDuD; 'ovwI'pu'vaD navmey Danobpa' pagh nobmeH DaqDaq (Supply) navmey Danobpa', yIta'.",
+  "s19.f06": "HoS navmeyDaq Qu'mey tu'lu'; latlh navmey Qu'mey DataHpa' **SIbI'** ta'nISlu' (tenwalmey 36—38 chovnatlhmey tIlaD). SIbI' qaSbogh Qu'mey law' tu'lu'chugh, tetlh wuq joptaHbogh 'ovwI'.",
   "s19.f02": "33",
   "s19.f07a": "nobmeH DaqDaq HoS navmey",
   "s19.f07b": "nobmeH DaqDaq ratlhtaHvIS HoS nav, QaptaH Qu'Daj. nobmeH DaqDaq HoS navmey:",
-  "s19.f08": "- ghoplIjDaq tIwIv (Draft).\n- **tIngevqa'Qo' (Resell).**",
+  "s19.f08": "- ghoplIjDaq DawIvlaH (Draft).\n- **tIngevqa'Qo' (Resell).**",
   "s19.f09": "pawDI' lup Dujmey (Shuttles), nobmeH DaqDaq QaptaH HoS navmey; noblu'bogh navmey chu' mI' luchoHbe'.",
   "s19.f01": "34",
 
   // Sheet 20
   "s20.f03a": "ghoplIjDaq HoS navmey",
   "s20.f03b": "ghoplIjDaq 4 HoS (Influence) navmey tIboS, 'ej bIjoptaHvIS poH DorDI' tI'ang: **SIbI' bIQap.**",
-  "s20.f04": "SoH DanuQbogh vumwI' (Agent) nav lo'chugh 'ovwI', ghoplIjvo' HoS nav DawoDlaH (Discard); vaj SoH waw'lIj (Base) je vumwI' Qu' bot (latlh 'ovwI'pu' nuQlaHtaH vumwI' nav).",
-  "s20.f05": "HoS nav DawoDDI', DawoDmeH meq yIqelbe'; navDaq “HoS navvam DawoDDI'” Qu'mey tu'lu'chugh, tIta'.",
+  "s20.f04": "SoH DunuQbogh vumwI' (Agent) nav lo'chugh 'ovwI', ghoplIjvo' HoS nav DawoDlaH (Discard); vaj SoH waw'lIj (Base) je vumwI' Qu' bot (latlh 'ovwI'pu' nuQlaHtaH vumwI' nav).",
+  "s20.f05": "HoS nav DawoDDI', DawoDmeH meq yIqelQo'; navDaq “HoS navvam DawoDDI'” Qu'mey tu'lu'chugh, tIta'.",
   "s20.f02": "35",
   "s20.f06": "HoS nav chovnatlh:",
   "s20.f12": "1",
@@ -138,7 +138,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   // Sheet 21
   "s21.f03": "HoS chovnatlh",
   "s21.f09": "1",
-  "s21.f04": "Terran Outpost chenmoHmeH Qu' (Build) wIv Kim.",
+  "s21.f04": "Terran Outpost chenmoHmeH Qu' (Build) wuq Kim.",
   "s21.f10": "2",
   "s21.f05": "Laika’s Memorial chenmoH.",
   "s21.f11": "3",
@@ -162,15 +162,15 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 22
   "s22.f03": "lut",
-  "s22.f04": "2049 bov 'oH. qaStaHvIS poH nI', Hapmey rarmeH QeD ghajta' tera' Sepmey, 'ach logh Dujmey vIHmoHmeH lulo'be'. Hapmey rarmeH HoS lo'bogh logh Duj loghDaq ngeHta'DI' United States of Africa, latlh Sepmey malja' ghommey je tlhej. tagh jaqbogh logh mID chermeH bov. mID chermeH lup Dujmey (Shuttles) law' chenmoHlu'. vagh wa'DIch pongmey: Garuna, Mah, Ilmatar, Meztli, Chang’e...\n\nDaH maSDaq mID chermeH 'ov ghom DaDev. pIm ghomlIj ngoQmey laHmey je; vaj Qu'vam Data'meH pImbogh mIw Dalo'nIS.",
+  "s22.f04": "2049 bov 'oH. qaStaHvIS poH nI', Hapmey rarmeH QeD lughajta' tera' Sepmey, 'ach logh Dujmey vIHmoHmeH lulo'be'. Hapmey rarmeH HoS lo'bogh logh Duj loghDaq ngeHta'DI' United States of Africa, latlh Sepmey malja' ghommey je lutlhej. tagh jaqbogh logh mID chermeH bov. mID chermeH lup Dujmey (Shuttles) law' chenmoHlu'. vagh wa'DIch pongmey: Garuna, Mah, Ilmatar, Meztli, Chang’e...\n\nDaH maSDaq mID chermeH 'ov ghom DaDev. pIm ghomlIj ngoQmey laHmey je; vaj Qu'vam Data'meH pImbogh mIw Dalo'nIS.",
   "s22.f02": "39",
-  "s22.f06": "**Terran Outpost**\ntera'Daq vu'wI'pu' che'bogh waw' (Base) 'oS; So'taH ngoQmeyDaj.",
+  "s22.f06": "**Terran Outpost**\ntera'Daq vu'wI'pu' luche'bogh waw' (Base) 'oS; So'taH ngoQmeyDaj.",
   "s22.f01": "40",
 
   // Sheet 23
   "s23.f03": "**The Oasis** qa' mIw QeD mIw je 'oH. yIn Seghmey Qan 'ej ghurmoH neH, nuvpu' qurmo' buSHa'mo' je HeghlaHbogh Seghmey'e'.",
   "s23.f04": "**Taikotech** Har: loghDaq tlhIlmeH vum latlh malja' je Huch Suq; Huchvammo' logh mID moj Humanpu'.",
-  "s23.f05": "**Dark Side** Huch nob yIn QeD malja' ghommey, qo' mIllogh chenmoHbogh malja' ghommey je. Humanpu' nIvmoHlu'DI' HovmeyDaq nom pawlu' 'e' Har.",
+  "s23.f05": "**Dark Side** Huch lunob yIn QeD malja' ghommey, qo' mIllogh chenmoHbogh malja' ghommey je. Humanpu' nIvmoHlu'DI' HovmeyDaq nom pawlu' 'e' Har.",
   "s23.f02": "41",
   "s23.f06": "**Imbrium** vum malja' je lo'taHvIS mID chermeH ngo'bogh che'meH mIw pab malja' ghom 'oH: ghom nIvqu' moj neH.",
   "s23.f07": "**Selene Labs** logh QeD Dev neH. valqu'bogh nuvpu' boSmeH vum; vaj julmaj HurDaq qo'mey chu' tu'laH.",
@@ -179,7 +179,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 24
   "s24.f03": "**LUNARFLEET** nuvpu' le' tetlh",
-  "s24.f20": "Lunar Base Collector’s Bundle Kickstarter QaHwI'pu' nIvqu' wItlho'qu'.",
+  "s24.f20": "Lunar Base Collector’s Bundle Kickstarter QaHwI'pu' nIvqu' DItlho'qu'.",
   "s24.f04": "Farhad Omid\nZachary Fissel\nJevgeni Kabanov\nKaido Vaade\nMeelis Müür\nLambert Chow\nJuhan Hion\nMart Rasva\nRainer Jürgenson\nMargus Niitsoo\nSam R\nDavid Wilson\nKye Moseley\nKristi Seemen\nBoris Schirra\nEmil Andre Hallen",
   "s24.f11": "Francesco Sabbatini\nPaul Ambs\nPatrick Grunau\nLauri Peil\nRicardo Job-Reese\nRémi Camberlein\nNick Dillon\nErin Reed\nChris Kuivenhoven\nSergio Ruiz Fernández\nBrenden Brzozowski\nRuben Parras\nAlexander Welsz\nMichael Allan\nOwen Williams\nMudd Law",
   "s24.f22": "**LUNARBASE** ghom",
