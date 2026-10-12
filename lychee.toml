@@ -35,6 +35,14 @@ exclude = [
 max_concurrency = 4
 max_retries = 5
 retry_wait_time = 5
+
+# Retries did not cure it: the refusals last longer than a run. A link to a
+# file in a public repository is therefore checked at the address GitHub
+# serves the same file from without that throttle. The file must still exist
+# on that branch, so a moved or deleted standard still fails here.
+remap = [
+  "^https://github\\.com/([^/]+)/([^/]+)/blob/([^/#?]+)/([^#?]+).*$ https://raw.githubusercontent.com/$1/$2/$3/$4",
+]
 timeout = 20
 
 accept = ["200", "204", "206", "429"]
