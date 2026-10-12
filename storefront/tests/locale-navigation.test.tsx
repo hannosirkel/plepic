@@ -69,6 +69,7 @@ const ROUTE_IDS = Object.keys(ROUTE_PATHS) as readonly RouteId[];
  */
 const EXPECTED_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
   en: "English",
+  de: "Deutsch",
   et: "Eesti",
 };
 
@@ -307,6 +308,14 @@ describe("the language selector", () => {
     }));
 
   for (const part of ["header", "footer"] as const) {
+    it(`/legal/imprint: the ${part} links Deutsch to the German imprint`, () => {
+      const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
+      expect(selectors).toHaveLength(1);
+      expect(selectors[0]).toMatch(
+        /<a[^>]* href="\/de\/legal\/imprint" lang="de" hrefLang="de">Deutsch<\/a>/,
+      );
+    });
+
     it(`/legal/imprint: the ${part} shows English as current and links Eesti to /et/legal/imprint`, () => {
       const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
       expect(selectors, `the ${part} must hold exactly one selector`).toHaveLength(1);
@@ -442,6 +451,25 @@ const EXPECTED_CHROME: Readonly<
       ">Shipping<",
       ">Returns<",
       ">Privacy<",
+    ],
+  },
+  de: {
+    header: [
+      ">Über uns<",
+      ">Hilfe<",
+      ">Menü<",
+      ">Warenkorb<",
+      'aria-label="Hauptnavigation"',
+      'aria-label="Plepic Games, Startseite"',
+    ],
+    footer: [
+      'aria-label="Rechtliche Informationen"',
+      'aria-label="Sprache"',
+      ">Impressum<",
+      ">Verkaufsbedingungen<",
+      ">Versand und Lieferung<",
+      ">Rücksendungen und Widerrufsrecht<",
+      ">Datenschutz<",
     ],
   },
   et: {

@@ -98,6 +98,15 @@ const LABELS: Readonly<
     merchantPhoneNumber: "telephone number",
     returnAddress: "return address",
   },
+  de: {
+    merchantLegalName: "eingetragener Firmenname",
+    merchantRegisteredAddress: "eingetragene Geschäftsanschrift",
+    merchantRegistrationNumber: "Handelsregisternummer",
+    merchantVatNumber: "Umsatzsteuer-Identifikationsnummer",
+    merchantContactAddress: "Kontakt-E-Mail-Adresse",
+    merchantPhoneNumber: "Telefonnummer",
+    returnAddress: "Rücksendeadresse",
+  },
   et: {
     merchantLegalName: "registreeritud ärinimi",
     merchantRegisteredAddress: "registrijärgne aadress",
@@ -117,6 +126,7 @@ const LABELS: Readonly<
  */
 const MARKER_WORDS: Readonly<Record<Locale, string>> = {
   en: "not configured",
+  de: "nicht konfiguriert",
   et: "seadistamata",
 };
 

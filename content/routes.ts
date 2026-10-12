@@ -52,21 +52,15 @@ export const CHECKOUT_RETURN_PATH = "/checkout/payment-return";
 /**
  * Every locale the site is published in.
  *
- * **There are exactly two: the English default and the Estonian edition.**
- * The dimension was declared, tested and served at one locale first, so that
- * adding the second would be a content change and a registration rather than
- * a refactor — see `LOCALE_DEFINITIONS` for what "a registration" means
- * mechanically. `et` is that second edition: the legal set translated for
- * the Estonian consumer, added on the operator's decision of 2026-08-09
- * after the second qualified legal read found consumer-facing terms in
- * English only. It publishes the five legal pages and nothing else.
+ * The English default, German and Estonian editions are published. The
+ * German and Estonian editions currently publish only the five legal pages.
  *
  * A locale is *not* a language: it is a published edition of this site, keyed
  * by an identifier that is also its URL segment. {@link LocaleDefinition}
  * carries the BCP 47 language tag the edition is written in, because the two
  * are different facts and only one of them belongs in a URL.
  */
-export const LOCALES = ["en", "et"] as const;
+export const LOCALES = ["en", "de", "et"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -112,16 +106,17 @@ export interface LocaleDefinition {
  * defined here. Every other locale-keyed registry in the content package is
  * declared the same way (`LocalizedContent<T>` in `schema.ts`), so the type
  * checker — not a checklist, and not review — is what enumerates the work a
- * second locale creates.
+ * new locale creates.
  */
 export const LOCALE_DEFINITIONS: Readonly<Record<Locale, LocaleDefinition>> = {
   en: { languageTag: "en", numberFormatTag: "en-IE", pathPrefix: "" },
   /*
    * `en` keeps the unprefixed paths it has always served — every existing
-   * link into this site depends on that — and `et` is declared with its own
-   * prefix rather than deriving one, per the field's own rule that "which
+   * link into this site depends on that — and other editions have their own
+   * prefixes rather than deriving them, per the field's rule that "which
    * edition gets the unprefixed URLs" is a decision recorded in data.
    */
+  de: { languageTag: "de", numberFormatTag: "de-DE", pathPrefix: "/de" },
   et: { languageTag: "et", numberFormatTag: "et-EE", pathPrefix: "/et" },
 };
 
