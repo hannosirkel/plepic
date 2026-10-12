@@ -37,7 +37,7 @@ Every table keyed by locale is a total `Record<Locale, T>`. A new member of
 | `LOCALE_DEFINITIONS` | `content/routes.ts` | `languageTag` and `pathPrefix` of each edition | `<html lang>`, `hreflang`, `og:locale`, list collation, `storefront/src/lib/urls.ts` |
 | `pagesByLocale` | `content/index.ts` | The pages each edition publishes | Canonical, `hreflang`, sitemap, the router, link targets |
 | `legalPagesByLocale` | `content/legal/index.ts` | The legal pages each edition carries | `LegalRoute` in `storefront/src/app/localized-routes.tsx` |
-| `siteCopyByLocale` | `content/editions.ts` | The site copy of each edition, or `null` for an edition that has none yet (`et`) | `HomepageMockup` and the sections it composes, through `siteCopyFor`; the footer tagline in `SiteFooter` |
+| `siteCopyByLocale` | `content/editions.ts` | The site copy of each edition, or `null` for an edition that has none yet (`et`) | `HomepageMockup`, `LunarBaseMockup`, `SupportPageContent`, `RulebookPageContent` and what they compose, through `siteCopyFor`; the footer tagline in `SiteFooter`; the Server Functions that answer the public forms |
 | `CHROME_STRINGS` | `storefront/src/lib/chrome-strings.ts` | Header and footer labels, the draft note, the incompleteness notice | `SiteHeader`, `SiteFooter`, `LegalPageContent` |
 | `LANGUAGE_SWITCHER_LABELS` | `storefront/src/lib/chrome-strings.ts` | The switcher label of each target edition, in its own language | `SiteFooter` |
 | `TAX_VOCABULARY` | `storefront/src/lib/catalogue.ts` | The VAT qualification phrases and the shipping note | `resolveCatalogue` |
@@ -50,7 +50,8 @@ registries cannot disagree about what the Estonian edition contains.
 One table is not keyed by locale, on purpose. `LOCALIZED_ROUTE_VIEWS` in
 `storefront/src/app/localized-routes.tsx` is a
 `Partial<Record<RouteId, renderer>>`. It lists the routes that have a renderer
-that takes a locale. Today it lists the home page, Lunar Base and the five legal routes.
+that takes a locale. Today it lists the home page, Lunar Base, the support
+page, the rulebook page and the five legal routes.
 
 Test files hold their own total tables of expected words per locale:
 `content/content.test.ts`, `storefront/tests/legal-pages.test.tsx`,
@@ -170,9 +171,10 @@ In the Estonian edition the five legal links stay under `/et`. The links to
 the home page, Lunar Base, About, Support and the basket cross to English and
 say so with `hreflang="en"`.
 
-`LegalPageContent` and `HomepageMockup` pass their locale to `SiteHeader` and
-`SiteFooter`, and `HomepageMockup` passes it to its calls to action. Every
-other page renders its links for the default edition.
+`LegalPageContent`, `HomepageMockup`, `LunarBaseMockup`, `SupportPageContent`
+and `RulebookPageContent` pass their locale to `SiteHeader` and `SiteFooter`,
+and to their calls to action. The basket and the checkout render their links
+for the default edition.
 
 ## Canonical, `hreflang` and the sitemap
 
@@ -222,9 +224,11 @@ host says nothing about the language its visitor reads.
 
 | Item | State |
 | --- | --- |
-| Support, rulebook page, basket, checkout | Their components still read English content directly and have no locale-aware renderer |
+| Basket, checkout | Their components still read English content directly and have no locale-aware renderer |
+| Support, rulebook page | Their renderers read `siteCopyFor(locale)`. Only `en` publishes the routes so far. The rulebook page links the one English PDF in every edition, and states its size with a decimal point |
+| Public forms | A newsletter or contact form rendered in a non-default edition posts its edition in a hidden `locale` field, and the Server Function in `public-form-actions.ts` answers in that edition. Any other value, and no value, is answered in the default edition (`form-locale.tsx`). The default edition's forms post no such field. The post-purchase newsletter form is written and answered in English. The honeypot's hidden label is English |
 | Lunar Base | Its renderer reads `siteCopyFor(locale)` for page copy and structured data. Only `en` publishes the route so far |
-| Home | The renderer takes a locale and reads `siteCopyFor(locale)`, but only `en` publishes the route. The sentence that answers a newsletter signup is written by the Server Function in `public-form-actions.ts`, in English |
+| Home | The renderer takes a locale and reads `siteCopyFor(locale)`, but only `en` publishes the route |
 | Strings inside components | Some reader-facing strings remain in components. Examples: `StripePaymentReturn.tsx`, `ConsentManager.tsx` |
 | Publisher tagline in the footer | The edition's own, from `siteCopyByLocale`. An edition with no site copy (`et`) shows the English one |
 | Price format | The fixed tag `en-IE`, in `storefront/src/lib/catalogue.ts` and `storefront/src/lib/cart.ts` |
