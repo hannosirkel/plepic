@@ -210,7 +210,7 @@ export const interfaceCopy: InterfaceCopy = {
       "Lunar Base mängukarbi esi- ja tagakülg: esikaanel astronaut ning tagaküljel osade ja mängu kirjeldus.",
     proofSectionLabel: "Tõendus",
     featuredCallToActionLabel: "Tutvu mänguga Lunar Base",
-    featuredImageAlt: "Lehvikuna laiali hoitud Lunar Base kaardid.",
+    featuredImageAlt: "Lehvikuna käes hoitud Lunar Base kaardid.",
     teamPhotoAlt:
       "Plepic Games’i kuus liiget koos siseruumis; nende ees laual on Lunar Base mängukarbid.",
   },
@@ -246,10 +246,10 @@ export const interfaceCopy: InterfaceCopy = {
   },
   product: {
     boxImageAlt:
-      "Avatud Lunar Base karp ühevärvilisel taustal: kaas on tühja sisuosa taga, kõrval on Shackletoni põhitegevuse kaardiga kaetud kaardipakk, väike kaardikarp, avatud reegliraamat ja ümmargused punktikettad.",
+      "Avatud Lunar Base karp ühevärvilisel taustal: kaas on tühja sisuosa taga, kõrval on Shackleton’i põhitegevuse kaardiga kaetud kaardipakk, väike kaardikarp, avatud reegliraamat ja ümmargused punktikettad.",
     victoryHeading: "Neli võiduvõimalust",
     boxHeading: "Mis on karbis",
-    cardsImageAlt: "Lehvikuna laiali hoitud Lunar Base kaardid.",
+    cardsImageAlt: "Lehvikuna käes hoitud Lunar Base kaardid.",
     baseImageAlt:
       "Mängija baas koos jaama ja selle külge ühendatud moodulikaartidega.",
     factionsSummary: "Kuus fraktsiooni",
@@ -258,9 +258,9 @@ export const interfaceCopy: InterfaceCopy = {
       "Ülalt nähtud pooleliolev Lunar Base mäng: ühise mänguala ümber on kuus hargnevat mängijabaasi ja kaardid.",
     watchHeading: "Vaata",
     trailerHeading: "Treiler",
-    trailerTitle: "Lunar Base Kickstarter Launch Video",
+    trailerTitle: "Lunar Base – Kickstarteri tutvustusvideo",
     tutorialHeading: "Õpetus",
-    tutorialTitle: "Lunar Base - Tutorial and Playthrough",
+    tutorialTitle: "Lunar Base – õpetus ja näidismäng",
     reviewsHeading: "Mida arvustajad ütlevad",
     questionsHeading: "Saatmine, tagastamine ja muud küsimused",
     buyAccessibleLabel: "Osta {productName}",

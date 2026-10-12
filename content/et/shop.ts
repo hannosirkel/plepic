@@ -276,7 +276,7 @@ export const basket = {
   },
 
   checkout: {
-    label: "Mine tellimust vormistama",
+    label: "Mine tellimuse vormistamise juurde",
     emphasis: "primary",
     target: { kind: "route", to: "checkout" },
   } satisfies CallToAction,
