@@ -63,6 +63,8 @@ describe("Klingon word check", () => {
     // A suffix written onto a token is still a word of the string.
     expect(klingonWordsIn("{merchantLegalName}'e'")).toEqual(["'e'"]);
     expect(checkKlingonWords("{price} klingon")).toEqual([{ word: "klingon", reason: "spelling" }]);
+    // A frame named in rulebook text is a token too.
+    expect(klingonWordsIn("wa' Qu' potlh ({s09.f11a} {s09.f11b} ghap)")).toEqual(["wa'", "Qu'", "potlh", "ghap"]);
     // Braces alone do not hide a word.
     expect(checkKlingonWords("{ klingon }")).toEqual([{ word: "klingon", reason: "spelling" }]);
   });

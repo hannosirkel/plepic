@@ -59,6 +59,9 @@ export const KLINGON_PROPER_NOUNS = [
   "YouTube",
   // Cookie names. `_ga` also covers `_ga_*`.
   "_ga", "_fbp", "plepic_destination",
+  // Card titles the rulebook names, the address it prints, and the letters of its diagrams.
+  "Double Agent", "Experimental Borehole", "Mormon Scientist", "Space Elevator",
+  "lunarbasegame.com", "A", "B", "C",
 ] as const;
 
 /**
@@ -103,8 +106,8 @@ export function isKnownKlingonWord(word: string): boolean {
     canStripSuffixes(word.slice(prefix.length), "verb"));
 }
 
-// The two token syntaxes of `content/mirror.test.ts`. A token is not a word.
-const PLACEHOLDER = /\{[A-Za-z][A-Za-z0-9]*\}|%[A-Za-z][A-Za-z0-9]*%/g;
+// The two token syntaxes of `content/mirror.test.ts`, and a frame the rulebook text names (`{s09.f11a}`). A token is not a word.
+const PLACEHOLDER = /\{[A-Za-z][A-Za-z0-9]*\}|%[A-Za-z][A-Za-z0-9]*%|\{s\d\d\.f\d\d[a-z]?\}/g;
 
 /**
  * The words of `text` the check reads: what is left once placeholders, names,
