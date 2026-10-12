@@ -236,7 +236,7 @@ host says nothing about the language its visitor reads.
 | Item | State |
 | --- | --- |
 | Basket, checkout | Their components still read English content directly and have no locale-aware renderer |
-| Support, rulebook page | Their renderers read `siteCopyFor(locale)`. Only `en` publishes the routes so far. The rulebook page links the one English PDF in every edition, and states its size with a decimal point |
+| Support, rulebook page | Their renderers read `siteCopyFor(locale)`. Only `en` publishes the routes so far. The rulebook page links the edition's own PDF where `content/rulebook-documents.ts` has one (`en`, `de`) and the English PDF with a notice elsewhere, and states the linked file's size with a decimal point |
 | Public forms | A newsletter or contact form rendered in a non-default edition posts its edition in a hidden `locale` field, and the Server Function in `public-form-actions.ts` answers in that edition. Any other value, and no value, is answered in the default edition (`form-locale.tsx`). The default edition's forms post no such field. The post-purchase newsletter form is written and answered in English. The honeypot's hidden label is English |
 | Lunar Base | Its renderer reads `siteCopyFor(locale)` for page copy and structured data. Only `en` publishes the route so far |
 | Home | The renderer takes a locale and reads `siteCopyFor(locale)`, but only `en` publishes the route |
@@ -245,7 +245,7 @@ host says nothing about the language its visitor reads.
 | Price format | The fixed tag `en-IE`, in `storefront/src/lib/catalogue.ts` and `storefront/src/lib/cart.ts` |
 | Country names | `storefront/mock/countries.json` holds English names. `destinationNameIn` in `storefront/src/lib/destination.ts` asks ICU for the edition's name inside a price qualification. It answers in English when ICU has no data for the edition |
 | `robots.txt` | Disallows `/cart`, `/checkout` and `/store-api`. It names no prefixed path, because no edition serves one for the basket or the checkout |
-| Rulebook | One English PDF, `storefront/public/documents/lunar-base-rulebook.pdf` |
+| Rulebook | The English PDF as printed, `storefront/public/documents/lunar-base-rulebook.pdf`, and the German edition built from it, `lunar-base-rulebook-de.pdf` (25 sheets, 9.5 MB). `rulebook/README.md` says how an edition is built and checked |
 
 An edition that registered one of the routes in the first row would fail
 `storefront/tests/locale-routing.test.ts`. It would not serve English words

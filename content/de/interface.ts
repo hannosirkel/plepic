@@ -82,7 +82,7 @@ export const interfaceCopy: InterfaceCopy = {
   },
   rulebook: {
     heading: "Spielanleitung zu Lunar Base",
-    lede: "Die vollständige Spielanleitung, genau wie sie gedruckt in der Schachtel liegt – 25 Seiten, mit Tags versehen und mit markierbarem Text statt als Scan, sodass du sie durchsuchen, daraus kopieren und sie mit einem Screenreader lesen kannst.",
+    lede: "Die vollständige Spielanleitung auf Deutsch, gesetzt wie die gedruckte englische Anleitung aus der Schachtel – 25 Seiten, mit Tags versehen und mit markierbarem Text statt als Scan, sodass du sie durchsuchen, daraus kopieren und sie mit einem Screenreader lesen kannst.",
     openLabel: "Spielanleitung öffnen (PDF)",
     downloadNote: "Der Download ist %megabytes% MB groß – gut zu wissen, bevor du ihn auf dem Handy antippst.",
     englishRulebookNotice: "Die Spielanleitung ist auf Englisch.",

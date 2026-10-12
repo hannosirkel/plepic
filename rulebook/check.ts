@@ -8,7 +8,7 @@ import { editionPaths, editions, englishPdf, type Edition } from "./editions.js"
 import { embeddedFontNames, fontSpecs } from "./fonts.js";
 import { sourceLeading } from "./leading.js";
 import type { ReviewedFrame, ReviewedSheet } from "./layout/overrides.js";
-import { reviewedSheets } from "./layout/overrides.js";
+import { editionSheets } from "./layout/overrides.js";
 import { plainText } from "./text/schema.js";
 import { thresholds } from "./thresholds.js";
 
@@ -132,7 +132,11 @@ const union = (boxes: readonly Box[]): Box => ({
   left: Math.min(...boxes.map((box) => box.left)), right: Math.max(...boxes.map((box) => box.right)),
   top: Math.min(...boxes.map((box) => box.top)), bottom: Math.max(...boxes.map((box) => box.bottom)),
 });
-const english = (frame: ReviewedFrame): Box => ({ left: frame.box.x, right: frame.box.x + frame.box.width, top: frame.box.y, bottom: frame.box.y + frame.box.height });
+const edges = (box: ReviewedFrame["box"]): Box => ({ left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height });
+/** The box the edition's text has to fit: the English box, unless `editionBoxes` grew it. */
+const allowed = (frame: ReviewedFrame): Box => edges(frame.box);
+/** Where the published English text of the frame stands. */
+const english = (frame: ReviewedFrame): Box => edges(frame.englishBox ?? frame.box);
 /** How far two boxes overlap: the smaller of the shared width and the shared height, negative when apart. */
 const overlap = (a: Box, b: Box) => Math.min(Math.min(a.right, b.right) - Math.max(a.left, b.left), Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
 const fixed = (value: number, digits = 2) => value.toFixed(digits);
@@ -205,7 +209,7 @@ export function checkFit(sheets: readonly ReviewedSheet[], built: Built, english
       if (leadingScale < thresholds.minLeadingScale - thresholds.leadingSlack) failures.push(`${frame.id} (sheet ${sheet.sheet}) has at most ${fixed(bound)} pt leading, ${fixed(leadingScale * 100, 1)}% of English at this size; the floor is ${thresholds.minLeadingScale * 100}%`);
     }
     const ink = union(lineBoxes(element.runs));
-    const box = english(frame);
+    const box = allowed(frame);
     const sides = [["left of", box.left - ink.left], ["right of", ink.right - box.right], ["above", box.top - ink.top], ["below", ink.bottom - box.bottom]] as const;
     const [side, by] = sides.reduce((most, candidate) => (candidate[1] > most[1] ? candidate : most));
     if (by > furthest.by) furthest = { by, id: frame.id };
@@ -445,7 +449,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   const { work, pdf } = editionPaths(root, locale);
   try { await access(pdf); }
   catch { throw new Error(`${pdf} is missing; run npm run rulebook:build -- ${locale} first`); }
-  const results = await checkEdition({ root, locale, edition, sheets: reviewedSheets, pdf, work });
+  const results = await checkEdition({ root, locale, edition, sheets: editionSheets(locale), pdf, work });
   for (const result of results) {
     console.log(`${result.failures.length === 0 ? "ok  " : "FAIL"} ${result.name}: ${result.summary}`);
     for (const failure of result.failures) console.log(`       ${failure}`);

@@ -68,6 +68,11 @@ export async function renderRulebookHtml(input: {
       const style = `--bold-font:'${boldName}';left:${frame.box.x}pt;top:${frame.box.y}pt;width:${frame.box.width}pt;height:${frame.box.height}pt;color:${frame.color};font-family:'${name}';font-size:${frame.fontSize}pt;text-align:${frame.alignment};${frame.indent === undefined ? "" : `--indent:${frame.indent}pt;`}`;
       let blocks = parseMarkup(source).map((block) => renderBlock(block, room, tag === "ol" || tag === "ul")).join("");
       if (tag === "h1" || tag === "h2") blocks = blocks.replace(/<\/?p>/g, "");
+      if (frame.skip !== undefined) {
+        const last = blocks.lastIndexOf("<br>");
+        if (last < 0) throw new Error(`${frame.id} skips ${frame.skip} pt above its last line, but its text is one line`);
+        blocks = `${blocks.slice(0, last)}<br><span class="skip" style="height:${frame.skip}pt"></span>${blocks.slice(last + 4)}`;
+      }
       return `<${tag} class="frame role-${frame.role}${frame.role === "label" && frame.box.height <= frame.fontSize * 1.3 ? " nowrap" : ""}" id="${frame.id}" data-size="${frame.fontSize}" style="${style}">${blocks}</${tag}>`;
     }).join("\n");
     const page = sheet.width === sheet.height ? "cover" : "spread";
@@ -80,7 +85,7 @@ ${faces.join("\n")}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{color:#15244d}
 .sheet{position:relative;background-size:100% 100%;background-repeat:no-repeat;break-after:page;overflow:hidden}.sheet.cover{page:cover}.sheet.spread{page:spread}.sheet:last-child{break-after:auto}
 .frame{position:absolute;display:block;overflow:visible;white-space:normal;line-height:1.25;margin:0;padding:0;font-synthesis:none;text-rendering:geometricPrecision}
-.frame p,.frame div,.frame li{margin:0;padding:0}.frame p:not(:last-child),.frame li:not(:last-child){margin-bottom:.25em}.frame.role-ul,.frame.role-ol{list-style:none;margin:0;padding:0}.frame.nowrap,.role-page-number{white-space:nowrap}.anchor{display:inline-block}.frame strong{font-family:var(--bold-font);font-weight:normal}.frame em{font-style:italic}
+.frame p,.frame div,.frame li{margin:0;padding:0}.frame p:not(:last-child),.frame li:not(:last-child){margin-bottom:.25em}.frame.role-ul,.frame.role-ol{list-style:none;margin:0;padding:0}.frame.nowrap,.role-page-number{white-space:nowrap}.anchor{display:inline-block}.skip{display:block}.frame strong{font-family:var(--bold-font);font-weight:normal}.frame em{font-style:italic}
 .list-item{position:relative;padding-left:var(--indent,12pt)!important}.list-item span{position:absolute;left:0}.bullet span{font-family:'JosefinSans-Bold'}
 </style></head><body>${pages.join("\n")}</body></html>`;
 }

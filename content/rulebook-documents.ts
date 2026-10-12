@@ -10,6 +10,6 @@ export interface RulebookDocument {
 /** Null means this edition uses the English rulebook until its PDF is published. */
 export const rulebookDocuments: LocalizedContent<RulebookDocument | null> = {
   en: { fileName: "lunar-base-rulebook.pdf", megabytes: 8.9, sheetCount: 25 },
-  de: null,
+  de: { fileName: "lunar-base-rulebook-de.pdf", megabytes: 9.5, sheetCount: 25 },
   et: null,
 };

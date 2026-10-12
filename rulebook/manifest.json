@@ -3,5 +3,20 @@
     "path": "storefront/public/documents/lunar-base-rulebook.pdf",
     "sha256": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
   },
-  "editions": {}
+  "editions": {
+    "de": {
+      "pdf": {
+        "path": "storefront/public/documents/lunar-base-rulebook-de.pdf",
+        "sha256": "7b9b814a28d7d2787f8f464102b6a7cacd67c0be5c36b6ddc08106186976c51c"
+      },
+      "sources": {
+        "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
+        "rulebook/layout/overrides.ts": "712aad2386c9196d22a9dba0def816267d270d361dbc421861d88da3c8f00bac",
+        "rulebook/text/de/index.ts": "23d1d3c0972e869005cfa13f5c68d7d89de109172b8c0180d8ada9a29866703d",
+        "rulebook/text/de/part1.ts": "20a2368f63b2162c3ac93219c446c8d43f535540b6c5ff81f11825c67663e812",
+        "rulebook/text/de/part2.ts": "4f167673d37d981603b0925c7e6528b4abd6cbc0dc31c469ab6f5416b4920540",
+        "storefront/public/documents/lunar-base-rulebook.pdf": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
+      }
+    }
+  }
 }

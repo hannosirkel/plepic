@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { describe, expect, it } from "vitest";
 import { rulebookSheets, type RulebookSheet } from "./layout/frames.js";
-import { applyOverrides, reviewedSheets, sheetOverrides, type SheetOverride } from "./layout/overrides.js";
+import { applyOverrides, editionBoxes, editionSheets, reviewedSheets, sheetOverrides, type SheetOverride } from "./layout/overrides.js";
 import { en } from "./text/en.js";
 import { parseMarkup, plainText, type RulebookText } from "./text/schema.js";
 
@@ -289,5 +289,37 @@ describe("reviewed English rulebook text", () => {
       const reviewed = reviewedSheets[sheet.sheet - 1]?.frames.map((frame) => plainText(text[frame.id] ?? "")) ?? [];
       expect(words(reviewed.join(" ")), `sheet ${sheet.sheet}`).toEqual(extracted);
     }
+  });
+});
+
+describe("an edition's boxes", () => {
+  const frame = (sheets: ReturnType<typeof editionSheets>, id: string) => sheets.flatMap((sheet) => sheet.frames).find((candidate) => candidate.id === id);
+
+  it("grows the frames the edition names and keeps each one's English box beside it", () => {
+    const german = editionSheets("de");
+    // A Contents entry runs right, towards its page number.
+    expect(frame(german, "s02.f07a")).toMatchObject({ box: { x: 311.81, y: 148.09, width: 66.34, height: 10 }, englishBox: { x: 311.81, y: 148.09, width: 20.34, height: 10 } });
+    // A caption grows to both sides and stays centred under its cards.
+    expect(frame(german, "s03.f06a")).toMatchObject({ alignment: "center", box: { x: 92.42, y: 148.81, width: 98.63, height: 9 } });
+    // An action's name stands over its icon and the printed word under it.
+    expect(frame(german, "s13.f18")).toMatchObject({ skip: 27, box: { x: 308.65, y: 67.68, width: 45.57, height: 52 } });
+    const grown = Object.keys(editionBoxes.de ?? {});
+    for (const sheet of german) for (const candidate of sheet.frames) {
+      expect(candidate.englishBox !== undefined, candidate.id).toBe(grown.includes(candidate.id));
+    }
+  });
+
+  it("leaves the reading order, the type and every other edition as reviewed", () => {
+    expect(editionSheets("en")).toEqual(reviewedSheets);
+    const german = editionSheets("de");
+    german.forEach((sheet, index) => {
+      expect(sheet.frames.map(({ box: _box, englishBox: _englishBox, skip: _skip, ...rest }) => rest))
+        .toEqual(reviewedSheets[index]?.frames.map(({ box: _box, ...rest }) => rest));
+    });
+  });
+
+  it("fails on a frame that was not reviewed and on a box grown off its sheet", () => {
+    expect(() => editionSheets("de", reviewedSheets, { "s01.f99": { right: 1 } } as never)).toThrow("de: s01.f99 is not a reviewed frame");
+    expect(() => editionSheets("de", reviewedSheets, { "s01.f01": { right: 200 } })).toThrow("de: s01.f01 grows off sheet 1");
   });
 });

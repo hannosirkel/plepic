@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { de } from "./text/de/index.js";
 import { en } from "./text/en.js";
 import type { RulebookText } from "./text/schema.js";
 
@@ -10,6 +11,7 @@ export type Edition = { tag: string; title: string; text: RulebookText };
 /** Every edition the build and the layout check know. A translation is added here. */
 export const editions: Readonly<Record<string, Edition>> = {
   en: { tag: "en", title: "Lunar Base Rule Book", text: en },
+  de: { tag: "de", title: "Lunar Base Spielanleitung", text: de },
 };
 
 /**

@@ -17,6 +17,16 @@ describe("RulebookPageContent", () => {
     expect(html).not.toContain("The rulebook is in English.");
   });
 
+  it("links the German edition's own PDF, says what the file is and how large, and no longer calls the rulebook English", () => {
+    const german = renderToStaticMarkup(<RulebookPageContent locale="de" />);
+    expect(german).toContain('href="/documents/lunar-base-rulebook-de.pdf"');
+    expect(german).toContain('hrefLang="de"');
+    expect(german).not.toContain('href="/documents/lunar-base-rulebook.pdf"');
+    expect(german).toContain("Die vollständige Spielanleitung auf Deutsch");
+    expect(german).toContain("Der Download ist 9.5 MB groß");
+    expect(german).not.toContain("Die Spielanleitung ist auf Englisch.");
+  });
+
   it("never links to the file-sharing host the rulebook used to live on — a completion criterion of the plan", () => {
     // Assembled rather than written literally — see support-page.test.tsx's
     // matching assertion for why.

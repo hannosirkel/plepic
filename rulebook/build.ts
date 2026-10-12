@@ -3,7 +3,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import type { FrameId, ReviewedSheet } from "./layout/overrides.js";
-import { reviewedSheets } from "./layout/overrides.js";
+import { editionSheets } from "./layout/overrides.js";
 import { editions, editionPaths, englishPdf, type Edition } from "./editions.js";
 import { fontSpecs, requireFonts, type FontSpec } from "./fonts.js";
 import { DoesNotFit, fitFloor, fitFrame, type Fit } from "./fit.js";
@@ -105,7 +105,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   await requireFonts(fonts);
   await access(resolve(root, englishPdf));
   const { work, pdf } = editionPaths(root, locale);
-  const input: BuildInput = { root, locale, edition, sheets: reviewedSheets, fonts, work };
+  const input: BuildInput = { root, locale, edition, sheets: editionSheets(locale), fonts, work };
   const unfit = await printEdition(await composeEdition(input), input, pdf);
   if (unfit.length > 0) {
     const anchors = (id: string) => parseMarkup(edition.text[id as FrameId]).some((block) => block.lines.flat().some((run) => "anchor" in run));
