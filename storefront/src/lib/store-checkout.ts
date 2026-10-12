@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import { ConfigError } from "../config/env.js";
 import {
   declaredParcelMachineMethod,
@@ -145,6 +146,26 @@ export const VAT_ADDEND_PREFIX = "+ ";
 export const FREE_SHIPPING_LABEL = "Free";
 
 /**
+ * The words and the number format {@link shippingOptionFigure} writes a label
+ * in. The checkout hands it its edition's (`content/interface.ts`); the
+ * default is the default edition's, and is what every label was before a
+ * checkout could be served in a second one.
+ */
+export interface ShippingFigureWording {
+  readonly locale: Locale;
+  /** A zero-priced method, in place of a figure. */
+  readonly free: string;
+  /** A net rate VAT will be added to. `%amount%` is the formatted rate. */
+  readonly beforeVat: string;
+}
+
+const DEFAULT_SHIPPING_FIGURE_WORDING: ShippingFigureWording = {
+  locale: DEFAULT_LOCALE,
+  free: FREE_SHIPPING_LABEL,
+  beforeVat: `%amount%${NET_SHIPPING_SUFFIX}`,
+};
+
+/**
  * The parcel machine method's display name, as Medusa returns it — read from
  * `mock/shipping.json`, through `declaredParcelMachineMethod`
  * (`./cart.js`), rather than written here.
@@ -227,27 +248,36 @@ export function defaultShippingOptionId(options: readonly GuestShippingOption[])
  * screen — the same `euMember` flag the shipping zone itself is chosen with, so
  * the label and the rate cannot disagree about which side of the border an
  * address is on. It decides a **word**, never an amount.
+ *
+ * `wording` decides the language the label is written in and nothing else:
+ * which of the four cases holds, and the amount, are the same in every
+ * edition.
  */
 export function shippingOptionFigure(
   option: GuestShippingOption,
   vatApplies: boolean,
+  wording: ShippingFigureWording = DEFAULT_SHIPPING_FIGURE_WORDING,
 ): ShippingOptionFigure {
   if (option.amount === 0) {
-    return { amount: 0, label: FREE_SHIPPING_LABEL, final: true };
+    return { amount: 0, label: wording.free, final: true };
   }
   if (option.amountWithTax !== null) {
     return {
       amount: option.amountWithTax,
-      label: formatAmount(option.amountWithTax, "EUR"),
+      label: formatAmount(option.amountWithTax, "EUR", wording.locale),
       final: true,
     };
   }
   if (option.taxInclusive || !vatApplies) {
-    return { amount: option.amount, label: formatAmount(option.amount, "EUR"), final: true };
+    return {
+      amount: option.amount,
+      label: formatAmount(option.amount, "EUR", wording.locale),
+      final: true,
+    };
   }
   return {
     amount: option.amount,
-    label: `${formatAmount(option.amount, "EUR")}${NET_SHIPPING_SUFFIX}`,
+    label: wording.beforeVat.replace("%amount%", () => formatAmount(option.amount, "EUR", wording.locale)),
     final: false,
   };
 }

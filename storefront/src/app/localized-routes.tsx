@@ -35,7 +35,11 @@
  * in the edition the form was rendered in.
  *
  * The basket now reads its edition's copy, and its prefixed URL is disallowed
- * in `robots.txt`. Checkout is added once its components read edition copy.
+ * in `robots.txt`. The checkout followed: its form, its validation errors,
+ * the sentences it reads out of the edition's legal pages, and the country
+ * and delivery method names that reach it from data. `robots.txt` disallows
+ * its prefixed URL too. No edition but the default publishes it yet, so it is
+ * in the table and still answers 404 under every prefix.
  */
 
 import { notFound } from "next/navigation";
@@ -47,6 +51,8 @@ import { JsonLdScript } from "../components/JsonLdScript.js";
 import { AddToCartButton } from "../components/shop/AddToCartButton.js";
 import { DestinationSelector } from "../components/shop/DestinationSelector.js";
 import { BasketPageContent } from "../components/shop/BasketPageContent.js";
+import { isOrderNotPlaced, ORDER_OUTCOME_PARAM } from "../components/shop/checkout-order-post.js";
+import { CheckoutPageContent } from "../components/shop/CheckoutPageContent.js";
 import { ShopPageShell } from "../components/shop/ShopPageShell.js";
 import { CartProvider } from "../lib/cart-store.js";
 import { isMockLayerEnabled, MOCK_SCENARIO_PARAM, parseMockScenario } from "../lib/mock-cart-actions.js";
@@ -97,6 +103,47 @@ export async function BasketRoute({ routeId, locale, searchParams }: LocalizedRo
     <ShopPageShell locale={locale} route="cart" externalTargets={getRuntimeConfig().externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
         <BasketPageContent locale={locale} />
+      </CartProvider>
+    </ShopPageShell>
+  );
+}
+
+/**
+ * The checkout, in one locale.
+ *
+ * What `app/(site)/checkout/page.tsx` resolves per request is resolved here
+ * the same way: the `?mock=` state and whether the hostname honours it, and
+ * the outcome of a submission the browser made itself. That file's doc
+ * comment gives the reason for each.
+ *
+ * The form still posts to the unprefixed order handler, and a payment
+ * provider returns to `CHECKOUT_RETURN_PATH` under this edition's prefix:
+ * `StripePaymentElement` builds that address from the locale it is given.
+ */
+export async function CheckoutRoute({ routeId, locale, searchParams }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+  const [params, nonce, host, destination] = await Promise.all([
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getRequestNonce(),
+    getRequestHost(),
+    getRequestDestination(),
+  ]);
+  const runtimeConfig = getRuntimeConfig();
+  const scenario = isMockLayerEnabled(host, loadSiteHostConfig().testHostnames)
+    ? parseMockScenario(params[MOCK_SCENARIO_PARAM])
+    : null;
+
+  return (
+    <ShopPageShell locale={locale} route="checkout" externalTargets={runtimeConfig.externalTargets}>
+      <CartProvider scenario={scenario} destinationCode={destination.code}>
+        <CheckoutPageContent
+          locale={locale}
+          turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+          nonce={nonce}
+          stripePublishableKey={runtimeConfig.stripe.publishableKey}
+          scenario={scenario}
+          unhydratedOrderAttempt={isOrderNotPlaced(params[ORDER_OUTCOME_PARAM])}
+        />
       </CartProvider>
     </ShopPageShell>
   );
@@ -274,6 +321,7 @@ export const LOCALIZED_ROUTE_VIEWS: Partial<
   support: SupportRoute,
   rulebook: RulebookRoute,
   cart: BasketRoute,
+  checkout: CheckoutRoute,
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,
   legalShipping: LegalRoute,

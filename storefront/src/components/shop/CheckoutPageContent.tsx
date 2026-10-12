@@ -149,12 +149,18 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
-import { checkout, unavailableFigure } from "../../../../content/shop.js";
-import { destinationForCode, destinationForCountryName } from "../../lib/destination.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import {
+  destinationForCode,
+  destinationForCountryName,
+  destinationNameIn,
+} from "../../lib/destination.js";
 import { checkoutPriceQualification } from "../../lib/price-qualification.js";
 import {
   cartTotals,
   catalogueLinesForDestination,
+  declaredParcelMachineMethod,
   declaredShippingMethod,
   deliveryCountries,
   formatAmount,
@@ -179,7 +185,7 @@ import {
 } from "../../lib/store-checkout.js";
 import {
   EMPTY_ADDRESS,
-  FIELDS,
+  fieldsFor,
   guestAddress,
   isPhoneComplete,
   isPostalAddressComplete,
@@ -204,7 +210,7 @@ import {
 } from "../../lib/analytics.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
-import { resolveLinkHref } from "../mockups/link-target.js";
+import { resolveLocalizedLink } from "../mockups/link-target.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { ParcelMachinePicker } from "./ParcelMachinePicker.js";
@@ -215,14 +221,7 @@ import {
   type StripePaymentElementHandle,
 } from "./StripePaymentElement.js";
 import { CHECKOUT_ORDER_POST_PATH } from "./checkout-order-post.js";
-import {
-  CARD_STATEMENT,
-  CONFIRMATION_PROMISE,
-  CONSENT_LINE,
-  CONTRACT_FORMATION,
-  DELIVERY_ESTIMATE,
-  RETURN_POSTAGE,
-} from "./checkout-terms.js";
+import { checkoutTermsFor } from "./checkout-terms.js";
 import styles from "../../styles/pages/shop.module.css";
 
 function browserRuntimeConfig(): ClientRuntimeConfig {
@@ -233,7 +232,55 @@ function browserRuntimeConfig(): ClientRuntimeConfig {
   return JSON.parse(element.textContent) as ClientRuntimeConfig;
 }
 
+/**
+ * The name a delivery method is shown under in `locale`.
+ *
+ * Medusa returns a method's name in English, whatever edition asked. A name
+ * equal to a declared method's — the two of `storefront/mock/shipping.json` —
+ * is shown as the edition names that method in `deliveryMethodNames`
+ * (`content/interface.ts`); any other name is shown as Medusa returns it,
+ * because nothing here knows what it would be called.
+ *
+ * This decides what a reader sees and nothing else. The method is still
+ * recognised by the name Medusa returns (`isParcelMachineOption`), and that
+ * name is never sent anywhere: an option is chosen by its id.
+ */
+export function deliveryMethodNameIn(name: string, locale: Locale): string {
+  const names: Readonly<Record<string, string>> = siteCopyFor(locale).interface.deliveryMethodNames;
+  const declared = [declaredShippingMethod, declaredParcelMachineMethod].find(
+    (method) => method.name === name,
+  );
+  return (declared === undefined ? undefined : names[declared.id]) ?? name;
+}
+
+/**
+ * What a delivery method costs, as its option says it in `locale`.
+ *
+ * `shippingOptionFigure` decides what is said: nothing to pay, a final
+ * figure, or a net rate VAT will be added to. This hands it the edition's
+ * words and number format to say it in, so the option agrees with the order
+ * summary beneath it, which writes its figures in the same format.
+ */
+export function deliveryChargeIn(option: GuestShippingOption, vatApplies: boolean, locale: Locale): string {
+  const { deliveryFree, deliveryNetCharge } = siteCopyFor(locale).interface.checkout;
+  return shippingOptionFigure(option, vatApplies, { locale, free: deliveryFree, beforeVat: deliveryNetCharge }).label;
+}
+
+/**
+ * The name a delivery country is shown under in `locale`.
+ *
+ * The form holds and submits the English name of `storefront/mock/countries.json`,
+ * since that is what the shipping zone and Medusa's address are read from. A
+ * reader is shown the edition's name for the same country.
+ */
+function countryNameIn(name: string, locale: Locale): string {
+  const destination = destinationForCountryName(name);
+  return destination === null ? name : destinationNameIn(destination, locale);
+}
+
 export interface CheckoutPageContentProps {
+  /** The edition this checkout is served in. The default edition's when absent. */
+  readonly locale?: Locale;
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
   readonly stripePublishableKey?: string | null;
@@ -261,6 +308,43 @@ export interface CheckoutPageContentProps {
   readonly initialAddress?: AddressValues;
 }
 
+export interface CheckoutConfirmationProps {
+  readonly locale: Locale;
+  /** The number the shop gave the order. */
+  readonly displayId: number;
+  /** The address the order was placed with, offered to the newsletter form. */
+  readonly email: string;
+  readonly turnstileSiteKey: string | null;
+  readonly nonce: string | undefined;
+}
+
+/**
+ * What the checkout shows in place of its form once the order is placed.
+ *
+ * A component of its own because only a placed order reaches it, and
+ * `storefront/` has no DOM in its test environment to place one in: a test
+ * renders this, in each edition.
+ */
+export function CheckoutConfirmation({ locale, displayId, email, turnstileSiteKey, nonce }: CheckoutConfirmationProps) {
+  const copy = siteCopyFor(locale).interface.checkout;
+  return (
+    <section className={styles.card} aria-labelledby="checkout-confirmation-heading">
+      <h1 id="checkout-confirmation-heading" className={styles.heading}>
+        {copy.confirmedHeading}
+      </h1>
+      <p className={styles.body}>
+        {copy.confirmedBody.replace("%orderNumber%", String(displayId))}
+      </p>
+      <PostPurchaseNewsletterForm
+        locale={locale}
+        defaultEmail={email}
+        turnstileSiteKey={turnstileSiteKey}
+        nonce={nonce}
+      />
+    </section>
+  );
+}
+
 function initialOutcome(
   scenario: MockScenario | null,
   unhydratedOrderAttempt: boolean,
@@ -271,6 +355,7 @@ function initialOutcome(
 }
 
 export function CheckoutPageContent({
+  locale = DEFAULT_LOCALE,
   turnstileSiteKey,
   nonce,
   stripePublishableKey = null,
@@ -279,6 +364,10 @@ export function CheckoutPageContent({
   latencyMs,
   initialAddress = EMPTY_ADDRESS,
 }: CheckoutPageContentProps) {
+  const { checkout, unavailableFigure } = siteCopyFor(locale).shop;
+  const copy = siteCopyFor(locale).interface.checkout;
+  const terms = checkoutTermsFor(locale);
+  const fields = fieldsFor(locale);
   const { lines, destinationCode } = useCart();
   const baseId = useId();
   const errorSummaryRef = useRef<HTMLDivElement>(null);
@@ -406,6 +495,7 @@ export function CheckoutPageContent({
           countryName: values.country ?? "",
           destinationCode,
         },
+    locale,
   );
   const unavailable = lines.some((line) => !isAvailable(line));
   const blockedNoteId = `${baseId}-order-blocked`;
@@ -416,7 +506,7 @@ export function CheckoutPageContent({
    * reader who presses the order button with the phone field newly required
    * and empty would get no link to it at all.
    */
-  const errorList = [...FIELDS.map((field) => field.name), "phone"].filter(
+  const errorList = [...fields.map((field) => field.name), "phone"].filter(
     (name) => errors[name] !== undefined,
   );
   /*
@@ -691,7 +781,7 @@ export function CheckoutPageContent({
     // flight returned above.
     setPlacing(false);
 
-    const nextErrors = validate(values);
+    const nextErrors = validate(values, locale);
     setErrors(nextErrors);
     setOutcome(null);
 
@@ -744,7 +834,7 @@ export function CheckoutPageContent({
       turnstileToken.trim().length === 0 ||
       turnstileToken.trim().length > 4096
     ) {
-      setPaymentError("Complete the verification challenge before placing the order.");
+      setPaymentError(copy.verificationIncomplete);
       return;
     }
 
@@ -771,7 +861,7 @@ export function CheckoutPageContent({
     ) {
       attemptInFlight.current = false;
       setPlacing(false);
-      setPaymentError("Payment options are not ready. Wait a moment and try again.");
+      setPaymentError(copy.paymentOptionsNotReady);
       return;
     }
     setPaymentError(null);
@@ -811,7 +901,7 @@ export function CheckoutPageContent({
         setPaymentError(
           error instanceof Error
             ? error.message
-            : "Payment could not be completed. Nothing has been charged.",
+            : copy.paymentNotCompleted,
         );
         setChallengeRevision((value) => value + 1);
         window.requestAnimationFrame(() => outcomeRef.current?.focus());
@@ -828,20 +918,13 @@ export function CheckoutPageContent({
 
   if (completedOrder !== null) {
     return (
-      <section className={styles.card} aria-labelledby="checkout-confirmation-heading">
-        <h1 id="checkout-confirmation-heading" className={styles.heading}>
-          Order confirmed
-        </h1>
-        <p className={styles.body}>
-          Your order number is {String(completedOrder.displayId)}. A confirmation will be sent by
-          email.
-        </p>
-        <PostPurchaseNewsletterForm
-          defaultEmail={values.email ?? ""}
-          turnstileSiteKey={turnstileSiteKey}
-          nonce={nonce}
-        />
-      </section>
+      <CheckoutConfirmation
+        locale={locale}
+        displayId={completedOrder.displayId}
+        email={values.email ?? ""}
+        turnstileSiteKey={turnstileSiteKey}
+        nonce={nonce}
+      />
     );
   }
 
@@ -872,7 +955,7 @@ export function CheckoutPageContent({
           </h2>
           <p className={styles.body}>{checkout.empty.body}</p>
           <div className={styles.actions}>
-            <CallToActionLink action={checkout.empty.link} />
+            <CallToActionLink action={checkout.empty.link} locale={locale} />
           </div>
         </section>
       </>
@@ -928,7 +1011,7 @@ export function CheckoutPageContent({
           <p className={styles.body}>{checkout.address.body}</p>
 
           <div className={styles.fields}>
-            {FIELDS.map((field) => {
+            {fields.map((field) => {
               const fieldId = `${baseId}-${field.name}`;
               const errorId = `${fieldId}-error`;
               const hintId = `${fieldId}-hint`;
@@ -981,7 +1064,7 @@ export function CheckoutPageContent({
                       <option value="">{checkout.address.countryUnchosen}</option>
                       {deliveryCountries.map((country) => (
                         <option key={country.code} value={country.name}>
-                          {country.name}
+                          {destinationNameIn(country, locale)}
                         </option>
                       ))}
                     </select>
@@ -1067,14 +1150,14 @@ export function CheckoutPageContent({
                       }
                       onChange={(event) => selectShippingOption(event.currentTarget.value)}
                     >
-                      <option value="">Choose a delivery method</option>
+                      <option value="">{copy.deliveryMethodPrompt}</option>
                       {/* Never a bare `option.amount`. That is the net rate, and
                           rendering it unmarked beside a summary charging the
                           gross one is two prices for one delivery — see
                           `shippingOptionFigure`. */}
                       {shippingOptions.map((option) => (
                         <option key={option.id} value={option.id}>
-                          {option.name} — {shippingOptionFigure(option, deliveryZone === "europeanUnion").label}
+                          {deliveryMethodNameIn(option.name, locale)} — {deliveryChargeIn(option, deliveryZone === "europeanUnion", locale)}
                         </option>
                       ))}
                     </select>
@@ -1084,26 +1167,16 @@ export function CheckoutPageContent({
                         made in two steps rather than two separate rows. */}
                     {selectedIsParcelMachine ? (
                       <ParcelMachinePicker
-                        label={checkout.delivery.parcelMachineLabel}
-                        prompt={checkout.delivery.parcelMachinePrompt}
+                        locale={locale}
                         machines={parcelMachines}
                         value={parcelMachineZip}
-                        loading={
-                          parcelMachineState === "loading"
-                            ? checkout.delivery.parcelMachineLoading
-                            : null
-                        }
-                        errorMessage={
-                          parcelMachineState === "error"
-                            ? checkout.delivery.parcelMachineUnavailable
-                            : null
-                        }
+                        state={parcelMachineState}
                         disabled={shippingState === "loading" || placing || parcelMachineState === "loading"}
                         onChange={selectParcelMachine}
                       />
                     ) : null}
                   </>
-                ) : declaredShippingMethod.name}
+                ) : deliveryMethodNameIn(declaredShippingMethod.name, locale)}
               </dd>
             </div>
             <div className={styles.summaryRow}>
@@ -1111,19 +1184,19 @@ export function CheckoutPageContent({
               <dd>
                 {totals.shippingAmount === null
                   ? checkout.delivery.chargePending
-                  : formatAmount(totals.shippingAmount, totals.currency)}
+                  : formatAmount(totals.shippingAmount, totals.currency, locale)}
               </dd>
             </div>
             <div className={`${styles.summaryRow} ${styles.summaryProse}`}>
               <dt>{checkout.delivery.estimateLabel}</dt>
-              <dd>{DELIVERY_ESTIMATE}</dd>
+              <dd>{terms.deliveryEstimate}</dd>
             </div>
           </dl>
           {scenario === null && shippingState === "loading" ? (
-            <p className={styles.note} role="status">Updating delivery options…</p>
+            <p className={styles.note} role="status">{copy.deliveryOptionsLoading}</p>
           ) : null}
           {scenario === null && shippingState === "error" ? (
-            <p className={styles.error} role="alert">Delivery options could not be loaded. Check the address and try again.</p>
+            <p className={styles.error} role="alert">{copy.deliveryOptionsFailed}</p>
           ) : null}
         </section>
 
@@ -1131,7 +1204,7 @@ export function CheckoutPageContent({
           <h2 id="checkout-payment-heading" className={styles.sectionHeading}>
             {checkout.payment.heading}
           </h2>
-          <p className={styles.body}>{CARD_STATEMENT}</p>
+          <p className={styles.body}>{terms.cardStatement}</p>
           <div
             className={styles.cardPlaceholder}
             role="group"
@@ -1141,6 +1214,7 @@ export function CheckoutPageContent({
             {scenario === null ? (
               <StripePaymentElement
                 ref={paymentElementRef}
+                locale={locale}
                 publishableKey={stripePublishableKey}
                 clientSecret={
                   paymentSession?.revision === payableRevision
@@ -1151,9 +1225,9 @@ export function CheckoutPageContent({
             ) : (
               <p className={styles.note}>{checkout.payment.cardRegionBody}</p>
             )}
-            {paymentState === "loading" ? <p role="status">Loading payment options…</p> : null}
+            {paymentState === "loading" ? <p role="status">{copy.paymentOptionsLoading}</p> : null}
             {paymentState === "error" ? (
-              <p className={styles.error} role="alert">Payment options could not be loaded.</p>
+              <p className={styles.error} role="alert">{copy.paymentOptionsFailed}</p>
             ) : null}
             {paymentError === null ? null : (
               <p className={styles.error} role="alert" ref={outcomeRef} tabIndex={-1}>
@@ -1164,7 +1238,7 @@ export function CheckoutPageContent({
 
           <HoneypotField formName="checkout" />
           <div className={styles.turnstile}>
-            <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="checkout" resetKey={challengeRevision} />
+            <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="checkout" resetKey={challengeRevision} locale={locale} />
           </div>
         </section>
 
@@ -1172,17 +1246,17 @@ export function CheckoutPageContent({
           <h2 id="checkout-before-heading" className={styles.sectionHeading}>
             {checkout.beforeYouOrder.heading}
           </h2>
-          <p className={styles.body}>{CONTRACT_FORMATION}</p>
+          <p className={styles.body}>{terms.contractFormation}</p>
 
           <h3 className={styles.subHeading}>{checkout.beforeYouOrder.returnPostageLabel}</h3>
-          <p className={styles.body}>{RETURN_POSTAGE}</p>
+          <p className={styles.body}>{terms.returnPostage}</p>
 
           <h3 className={styles.subHeading}>{checkout.beforeYouOrder.withdrawalLabel}</h3>
           <p className={styles.body}>{checkout.beforeYouOrder.withdrawalBody}</p>
           <ul className={styles.linkList}>
             {checkout.beforeYouOrder.links.map((link) => (
               <li key={link.label}>
-                <a href={resolveLinkHref(link.target)}>{link.label}</a>
+                <a {...resolveLocalizedLink(locale, link.target)}>{link.label}</a>
               </li>
             ))}
           </ul>
@@ -1215,7 +1289,7 @@ export function CheckoutPageContent({
               <dd>
                 {totals.goodsAmount === null
                   ? unavailableFigure
-                  : formatAmount(totals.goodsAmount, totals.currency)}
+                  : formatAmount(totals.goodsAmount, totals.currency, locale)}
               </dd>
             </div>
             <div className={styles.summaryRow}>
@@ -1223,7 +1297,7 @@ export function CheckoutPageContent({
               <dd>
                 {totals.shippingAmount === null
                   ? checkout.delivery.chargePending
-                  : formatAmount(totals.shippingAmount, totals.currency)}
+                  : formatAmount(totals.shippingAmount, totals.currency, locale)}
               </dd>
             </div>
             {/* The seventh value, and an **addend to the two net rows above
@@ -1242,7 +1316,7 @@ export function CheckoutPageContent({
             {totals.taxAmount !== null && totals.taxAmount > 0 ? (
               <div className={styles.summaryRow}>
                 <dt>{qualification.vatLabel}</dt>
-                <dd>{VAT_ADDEND_PREFIX}{formatAmount(totals.taxAmount, totals.currency)}</dd>
+                <dd>{VAT_ADDEND_PREFIX}{formatAmount(totals.taxAmount, totals.currency, locale)}</dd>
               </div>
             ) : null}
             <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>
@@ -1253,7 +1327,7 @@ export function CheckoutPageContent({
                   cannot resolve on this screen, so it wins when both hold. */}
               <dd>
                 {totals.orderAmount !== null
-                  ? formatAmount(totals.orderAmount, totals.currency)
+                  ? formatAmount(totals.orderAmount, totals.currency, locale)
                   : totals.goodsAmount === null
                     ? unavailableFigure
                     : checkout.order.totalPending}
@@ -1267,21 +1341,25 @@ export function CheckoutPageContent({
                     8(2) names as "the delivery address"; `inDeliveryAddress`
                     in `content/shop.ts` is what separates them. */}
                 {addressComplete
-                  ? FIELDS.filter((field) => field.inDeliveryAddress)
-                      .map((field) => values[field.name])
+                  ? fields.filter((field) => field.inDeliveryAddress)
+                      .map((field) =>
+                        field.control === "country"
+                          ? countryNameIn(values[field.name] ?? "", locale)
+                          : values[field.name],
+                      )
                       .join(", ")
                   : checkout.address.missingValue}
               </dd>
             </div>
             <div className={`${styles.summaryRow} ${styles.summaryProse}`}>
               <dt>{checkout.order.estimateLabel}</dt>
-              <dd>{DELIVERY_ESTIMATE}</dd>
+              <dd>{terms.deliveryEstimate}</dd>
             </div>
           </dl>
 
           <p className={styles.note}>{qualification.text}</p>
 
-          <p className={styles.consentLine}>{CONSENT_LINE}</p>
+          <p className={styles.consentLine}>{terms.consentLine}</p>
 
           {/* `aria-disabled`, never `disabled`: the attribute lands on a
               control a keyboard user may be standing on, and `disabled` would
@@ -1312,7 +1390,7 @@ export function CheckoutPageContent({
             </p>
           ) : null}
 
-          <p className={styles.note}>{CONFIRMATION_PROMISE}</p>
+          <p className={styles.note}>{terms.confirmationPromise}</p>
         </section>
       </form>
     </>

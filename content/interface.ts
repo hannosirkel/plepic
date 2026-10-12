@@ -110,6 +110,66 @@ export interface InterfaceCopy {
     readonly retryAddingToBasket: string;
     readonly basketExpired: string;
   };
+  /** Copy written by the checkout's components. `content/shop.ts` holds the rest of that page. */
+  readonly checkout: {
+    /**
+     * What the error summary says of an address field left empty, by field
+     * name: the six of `checkout.address.fields` in `content/shop.ts`, and
+     * the phone.
+     *
+     * One sentence per field, as in `contactForm` above and for its reason.
+     * The English ones are what the form built from `missingFieldPrefix` or
+     * `missingSelectionPrefix` and a lower-cased label, kept as they were.
+     */
+    readonly missing: {
+      readonly fullName: string;
+      readonly streetAddress: string;
+      readonly postalCode: string;
+      readonly city: string;
+      readonly country: string;
+      readonly email: string;
+      readonly phone: string;
+    };
+    /** The unchosen option of the delivery method select. */
+    readonly deliveryMethodPrompt: string;
+    readonly deliveryOptionsLoading: string;
+    readonly deliveryOptionsFailed: string;
+    /** What a delivery method priced at nothing is shown as, in place of a figure. */
+    readonly deliveryFree: string;
+    /** A net delivery rate that VAT will be added to. `%amount%` is the rate, in the edition's number format. */
+    readonly deliveryNetCharge: string;
+    /** Shown where the payment form would be when the deployment has no payment key. */
+    readonly paymentUnavailable: string;
+    /** Shown where the payment form will be, until a delivery method is chosen. */
+    readonly paymentAwaitingDelivery: string;
+    readonly paymentOptionsLoading: string;
+    readonly paymentOptionsFailed: string;
+    /** A press of the order button before the payment form has loaded. */
+    readonly paymentOptionsNotReady: string;
+    readonly paymentFormLoading: string;
+    readonly paymentNotConfirmed: string;
+    /** A payment the provider has accepted and not yet settled. The visitor is taken to the return page. */
+    readonly paymentProcessing: string;
+    readonly paymentNotCompleted: string;
+    readonly verificationIncomplete: string;
+    readonly confirmedHeading: string;
+    /** `%orderNumber%` is the number the shop gave the order. */
+    readonly confirmedBody: string;
+  };
+  /**
+   * The names of the delivery methods, keyed by the method ids of
+   * `storefront/mock/shipping.json`.
+   *
+   * Medusa returns a method's name in English, and that name is also how the
+   * storefront recognises the method, so it is not translated at its source.
+   * The checkout shows the name held here in its place. The English values
+   * equal the names in that file: `storefront/tests/checkout-edition.test.tsx`
+   * holds both the keys and the values to it.
+   */
+  readonly deliveryMethodNames: {
+    readonly standard: string;
+    readonly "omniva-parcel-machine": string;
+  };
 }
 
 export const interfaceCopy: InterfaceCopy = {
@@ -179,5 +239,37 @@ export const interfaceCopy: InterfaceCopy = {
     addingToBasket: "Adding to basket…",
     retryAddingToBasket: "Try adding to basket again",
     basketExpired: "The basket expired; try adding the game again",
+  },
+  checkout: {
+    missing: {
+      fullName: "Enter full name.",
+      streetAddress: "Enter street and number.",
+      postalCode: "Enter postcode.",
+      city: "Enter town or city.",
+      country: "Choose a country.",
+      email: "Enter email address.",
+      phone: "Enter phone number.",
+    },
+    deliveryMethodPrompt: "Choose a delivery method",
+    deliveryOptionsLoading: "Updating delivery options…",
+    deliveryOptionsFailed: "Delivery options could not be loaded. Check the address and try again.",
+    deliveryFree: "Free",
+    deliveryNetCharge: "%amount% + VAT",
+    paymentUnavailable: "Payment is unavailable. Please try again later.",
+    paymentAwaitingDelivery: "Choose a delivery method to load payment options.",
+    paymentOptionsLoading: "Loading payment options…",
+    paymentOptionsFailed: "Payment options could not be loaded.",
+    paymentOptionsNotReady: "Payment options are not ready. Wait a moment and try again.",
+    paymentFormLoading: "Payment options are still loading",
+    paymentNotConfirmed: "Payment could not be confirmed. Check the details or choose another method.",
+    paymentProcessing: "Payment is still processing. We are checking the order status.",
+    paymentNotCompleted: "Payment could not be completed. Nothing has been charged.",
+    verificationIncomplete: "Complete the verification challenge before placing the order.",
+    confirmedHeading: "Order confirmed",
+    confirmedBody: "Your order number is %orderNumber%. A confirmation will be sent by email.",
+  },
+  deliveryMethodNames: {
+    standard: "Standard delivery",
+    "omniva-parcel-machine": "Omniva parcel machine",
   },
 };
