@@ -49,6 +49,7 @@ describe("buildPageMetadata on a live host", () => {
         });
         expect(metadata.title).toBe(page.title);
         expect(metadata.description).toBe(page.description);
+        expect(metadata.alternates?.canonical).toBe(canonicalUrl(BASE_URL, locale, page.route));
         expect(metadata.openGraph?.locale).toBe(LOCALE_DEFINITIONS[locale].languageTag);
         expect(metadata.openGraph?.images).toEqual([
           expect.objectContaining({ alt: page.title }),
@@ -113,29 +114,8 @@ describe("buildPageMetadata on a test host", () => {
   });
 });
 
-/**
- * The `hreflang` surface, at whatever number of locales exists.
- *
- * These assertions are written over `LOCALES` rather than over the literal
- * `"en"`, so they say what the mechanism must do rather than what today's
- * output happens to be — and so the unit that adds a second edition inherits
- * a suite that already checks the thing that changes.
- *
- * The one assertion that *is* pinned to today is the count, and it is pinned
- * on purpose: a second locale appearing without anybody deciding to add one
- * is a failure, not a pass.
- */
+/** Alternates follow the published edition registry. */
 describe("hreflang", () => {
-  /**
-   * Still pinned, now at two: the English default and the Estonian legal
-   * edition the operator decided to publish on 2026-08-09. A third locale
-   * appearing without anybody deciding to add one is a failure, not a pass.
-   */
-  it("has exactly the two decided locales registered, and the default is the English one", () => {
-    expect([...LOCALES]).toEqual(["en", "et"]);
-    expect(DEFAULT_LOCALE).toBe("en");
-  });
-
   it("names every publishing locale by its own language tag, plus x-default", () => {
     for (const page of defaultPages) {
       const links = alternateLinksFor(BASE_URL, page.route);

@@ -142,3 +142,8 @@ html {
 body {
   padding-block-end: var(--consent-banner-block-size, 0px);
 }
+
+/* Preserve Klingon q/Q and every other case-sensitive letter, including descendants. */
+:lang(tlh) {
+  text-transform: none !important;
+}

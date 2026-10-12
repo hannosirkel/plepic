@@ -16,8 +16,8 @@
  *
  * **What is not in this table:** the publisher tagline in the footer, which
  * is marketing copy and comes from the edition's site copy
- * (`content/editions.ts`) — an edition that has none yet shows the default
- * edition's, see `SiteFooter.tsx`. **What stays as it is on every edition:**
+ * (`content/editions.ts`) — an edition that has none yet omits the tagline
+ * rather than showing English marketing copy, see `SiteFooter.tsx`. **What stays as it is on every edition:**
  * proper nouns (Plepic Games, Lunar Base, Instagram, Facebook), and the
  * stored consent tokens (`granted`/`declined`), which are data, not copy.
  */
