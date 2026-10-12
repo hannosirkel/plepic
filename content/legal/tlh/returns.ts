@@ -90,7 +90,7 @@ export const returns: LegalPage = {
       covers: ["return-postage-liability", "return-address"],
       body: [
         "bIje'Ha' 'e' DamaqDI', Dorpa' 14 jaj Doch yItatlh. tatlhmeH Daq: {returnAddress}.",
-        "tep tatlhmeH 'ap Danob SoH. tep ghochlaHbogh ngeHmeH mIw yIlo', 'ej tep DangeHta' 'e' tobbogh nompuq yIpol. nompuqvam Da'angDI', Huch wInobHa'nIS, lengtaHvIS tep je. tep ghochlaHbogh ngeHmeH mIwmey tIqel; qutlhqu'bogh mIw yIwIv. latlh Doch wIpoQbe'.",
+        "tep tatlhmeH 'ap Danob SoH. tep ghochlaHbogh ngeHmeH mIw yIlo', 'ej tep DangeHta' 'e' tobbogh nompuq yIpol. nompuqvam Da'angDI', Huch wInobHa'nIS, lengtaHvIS tep je. tep ghochlaHbogh ngeHmeH mIwmey tIqel. wa' mIw qutlh law' Hoch qutlh puS; mIwvetlh yIwIv. latlh Doch wIpoQbe'.",
         "bIje'Ha' 'e' DamaqDI', Dorpa' 14 jaj DochvaD Huch Danobta'bogh, ngeHmeH 'ap motlh je pInobHa'. HIjmeH mIwmaj motlh DawIvbe'chugh, 'ej nom HIjbogh mIw, waghbogh mIw ghap DawIvchugh, ngeHmeH 'ap motlh neH pInobHa'. Doch wIHevpa', pagh tep DangeHta' 'e' tobbogh nompuq Da'angpa', Huch wIpollaH; wanI' wa'DIch neH wIloS.",
         "Huch wInobHa'meH, Huch DanobmeH mIw Dalo'pu'bogh wIlo'; pagh DanobnIS.",
         "Quj 'aplo' DapoSmoHlaH 'ej Quj DanuDlaH — ngevmeH DaqDaq DanuDlaH je. 'ach Quj Dochmey DatatlhDI', QIHlu'pu'chugh pagh naQbe'chugh, 'ej Quj DanuDmeH neH Dalo'be'mo' qaSchugh ghu'vam, Huch wInobHa'bogh wInupmoHlaH; lo'laHghach nupbogh wISIm.",

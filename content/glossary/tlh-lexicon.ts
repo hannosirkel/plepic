@@ -263,6 +263,8 @@ export const klingonLexicon = {
   yev: { wordClass: "verb", english: "pause", source: "TKD" },
   bep: { wordClass: "verb", english: "complain, object", source: "TKD" },
   Qagh: { wordClass: "verb", english: "err, be mistaken; as a noun, error, mistake", source: "TKD" },
+  tlhoj: { wordClass: "verb", english: "realize", source: "TKD" },
+  Qub: { wordClass: "verb", english: "think", source: "TKD" },
   // Agent nouns in -wI', listed so that one can take a noun suffix. Each is its verb + -wI'.
   "ngevwI'": { wordClass: "noun", english: "seller", source: "coined", construction: ["ngev"] },
   "je'wI'": { wordClass: "noun", english: "buyer; on the legal pages, the consumer", source: "coined", construction: ["je'"] },

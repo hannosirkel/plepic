@@ -44,6 +44,10 @@ Legal and shop vocabulary that `content/glossary/terms.ts` does not list is in
 `klingonLegalTerms` in `content/glossary/tlh.ts`, each with its construction.
 Use those words again before coining another.
 
+The check does not test suffix order. `-Qo'` stands last in a verb, before a
+type-9 suffix only: `lajlu'Qo'` and `vumlu'Qo'DI'`, not `lajQo'lu'`. Where that
+would put it after `-laH`, recast the sentence (`DalajnISbe'`).
+
 The word check is deliberately a guard, not a translator. A passing check says
 that each token has valid spelling and a listed root; a reviewer still checks
 grammar, meaning, and the fit of phrases in the page and rulebook.

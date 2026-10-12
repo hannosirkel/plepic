@@ -74,7 +74,7 @@ export const terms: LegalPage = {
       covers: [],
       body: [
         "wa' Doch neH wIngev. wIngevlaHbe'chugh — Hoch wIngevta'mo', pagh SeplIjDaq tep wIHIjlaHbe'mo' — pIja' 'ej Huch naQ pInobHa'. latlh Doch wISuqnISbe'.",
-        "DIlmeH Huch 'oH bIvunDI' 'anglu'bogh Huch mI''e'. Qaghmo' DIlmeH Huch muj 'anglu'chugh, 'ej Qagh 'oH 'e' leghlaHchu'chugh Hoch — SoH je — DIlmeH HuchvetlhvaD mangevnISbe'. pIja', 'ej vunmeH QIn wIqIl, pagh DIlmeH Huch lugh Dawoq 'e' wItlhob.",
+        "DIlmeH Huch 'oH bIvunDI' 'anglu'bogh Huch mI''e'. Qaghlu'ba'mo' DIlmeH Huch muj 'anglu'chugh, 'ej bIQubDI' Qagh 'oH 'e' DatlhojlaHchugh, DIlmeH HuchvetlhvaD mangevnISbe'. pIja', 'ej vunmeH QIn wIqIl, pagh DIlmeH Huch lugh Dawoq 'e' wItlhob.",
         "vunmeH QInvaD Qagh qaSchugh, wa'DIch QIn ghongeH: {merchantContactAddress}. ghu' wItI' wIneHqu'; Huch chaw' nobwI' DaghoH wIneHbe'.",
         "chutmeyvam che' {merchantLegalName} Sep chut. je'wI'pu'vaD DIbmey nob Sep DaDabbogh chut, 'ej chutvetlh pabnIS Hoch. DIbmeyvetlh teqbe' chutmeyvam.",
       ],

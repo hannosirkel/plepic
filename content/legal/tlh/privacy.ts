@@ -80,7 +80,7 @@ export const privacy: LegalPage = {
         "wa'DIch bIpawDI' pIghel: SIr'o' Daqvam lo'meH mIw wIjuvlaH'a'? bIjangpa' Qapbe' Dujuvbogh Hoch jan. bIlajQo'meH wa' leQ neH yI'uy; SIr'o' Daq laHmey Hoch Dalo'laHtaH.",
         "bIghIbmo' neH mub juvmeH mIw, vep juvmeH jan je; latlh chut meq tu'lu'be'. reH bIghIbHa'laH: tenwal bertlhamDaq rarwI' yIlo'; ghIq bIwIvqa'laH. bIghIbHa'DI' mev juvmeH mIw. 'ach De' boSlu'pu'bogh Qaw'be'.",
         "SIr'o' Daq latlh mIwmeyvaD — Quj Daje'meH, QIn jungeHmeH, Quj chutmey DalaDmeH — bIghIbnISbe'; bIlajchugh pagh bIlajQo'chugh, rap mIwmeyvam.",
-        "juvmeH mIw DalajDI' pagh DalajQo'DI', mu'lIj pol SIr'o' Daqvam; SIr'o' leghmeH janlIj polmeH Daq (local storage) lo', 'ej De' chabHom lo'be'. SIr'o' leghmeH jan De' DaQaw'pa', pagh mu'lIj DachoHpa', pollu'. wa' mu' neH qon: granted (chaw'lu'), declined (lajQo'lu') ghap.",
+        "juvmeH mIw DalajDI' pagh DalajQo'DI', mu'lIj pol SIr'o' Daqvam; SIr'o' leghmeH janlIj polmeH Daq (local storage) lo', 'ej De' chabHom lo'be'. SIr'o' leghmeH jan De' DaQaw'pa', pagh mu'lIj DachoHpa', pollu'. wa' mu' neH qon: granted (chaw'lu'), declined (lajlu'Qo') ghap.",
         "je'meH ngaSwI'lIj ngu'bogh ngoq pol SIr'o' Daqvam; SIr'o' leghmeH janlIj polmeH Daq ru' (session storage) lo', 'ej De' chabHom lo'be'. tenwal DaSoQmoHpa' neH pollu'. Doch De', Doch mI', QIn Daq, HIjmeH Daq je qonbe'.",
       ],
       table: {
@@ -114,14 +114,14 @@ export const privacy: LegalPage = {
       covers: ["third-party-processors", "third-country-transfers"],
       body: [
         "SIr'o' Daqvam Dalo'taHvIS De' vu' malja'meyvam; Hoch bIH.",
-        "SIr'o' Daqvam DNS (SIr'o' pong tetlh) vu' Cloudflare, SIr'o' Daq De' So' 'ej So'Ha', 'ej qaD nob: QIn ghItlhmeH Daq, De' chu' QIn qI'meH Daq je lo'Ha'laHbe'meH janmey, qaD nob. vaj Hoch tenwal DaleghDI', IP mI'lIj (SIr'o'Daq janlIj ngu'bogh mI') tenwal tlhobmeH De' je lo' Cloudflare. mIwvam DalajQo'laHbe': mIwvam lo'lu'be'chugh, SIr'o' Daq DaleghlaHbe'.",
+        "SIr'o' Daqvam DNS (SIr'o' pong tetlh) vu' Cloudflare, SIr'o' Daq De' So' 'ej So'Ha', 'ej qaD nob: QIn ghItlhmeH Daq, De' chu' QIn qI'meH Daq je lo'Ha'laHbe'meH janmey, qaD nob. vaj Hoch tenwal DaleghDI', IP mI'lIj (SIr'o'Daq janlIj ngu'bogh mI') tenwal tlhobmeH De' je lo' Cloudflare. mIwvam DalajnIS: mIwvam lo'lu'be'chugh, SIr'o' Daq DaleghlaHbe'.",
         "Huch nobmeH mIw vu' Stripe. Huch DanobDI', Huch chaw' De' Hev Stripe neH; not De'vam wIHev maH. Huch nobmeH mIw ta pol Stripe.",
         "SIr'o' Daq lo'meH mIw juv Google Analytics; bIghIbpu'DI' neH juv, 'ej waHmeH SIr'o' DaqmajDaq not juv.",
         "bIghIbchugh, vep juvmeH De' ngeH SIr'o' Daqvam; De'vam Hev Meta. vepmaj Qapla' wIjuvmeH ngeHlu'. ngoQmeyDajvaD De' Hevbogh lo' Meta je, 'ej lo'meH mIwvetlhvaD ngoy' Meta. De'vam boSlu'DI' 'ej ngeHlu'DI', De' SeHwI' maH — maH Meta je — 'ej nItebHa' mangoy'. bIghIbpa' pagh ngeHlu'.",
         "De' chu' QInmey ngeH Brevo, 'ej De' chu' QInmeyvaD QIn Daq Danobbogh pol; De' chu' QInmey DaqI'Ha'pa' pol.",
         "vunmeH QInmey, jangmeH QInmey je ngeH QIn De'wI'maj. QInmeyvam Hevbe' QInmey law' ngeHbogh latlh malja'.",
         "United States malja'mey bIH malja'meyvam'e': Google, Meta, Stripe, Cloudflare. vaj malja'meyvam DIlo'mo', United States SepDaq 'op De' lo'lu'. EU–US Data Privacy Framework mabDaq jeS Hoch. De' lablu'bogh Qanbe'chugh mabvetlh, mab 'ay'mey motlh lo'lu'.",
-        "De' wIngevbe'. tenwalvamDaq malja'mey ngu'lu'; vepchajvaD De'lIj lo' malja'meyvam net chaw'be'. vep juvmeH mIw neH chaw'lu', 'ej mIwvetlh DalajQo'laH (DungDaq yIlegh). SIr'o' DaqvamDaq latlh malja' tu'lu'be': Hoch malja' ngu' tenwalvam.",
+        "De' wIngevbe'. tenwalvamDaq malja'mey ngu'lu'; vepchajvaD De'lIj lo' malja'meyvam net chaw'be'. vep juvmeH mIw neH chaw'lu', 'ej mIwvetlh DalajnISbe' (DungDaq yIlegh). SIr'o' DaqvamDaq latlh malja' tu'lu'be': Hoch malja' ngu' tenwalvam.",
       ],
     },
     {
@@ -131,7 +131,7 @@ export const privacy: LegalPage = {
       body: [
         "chut meqmey: Doch Davunbogh wIngeHmeH QInmeylIj DIjangmeH je, mab wIpab; qaStaHvIS Soch DIS vunmeH QIn tamey DIpolmeH, Estonia Huch ta chut wIpab, 'ej poQ chutvam; SIr'o' Daq wIQapmoHmeH wIHubmeH je, ngoQmaj mub wIlo'; bIghIbmo' neH Qap juvmeH mIw, De' chu' QInmey je.",
         "bIvunDI', vunmeH QInvaD De' poQlu'bogh wIpol: ponglIj, HIjmeH DaqlIj, QIn DaqlIj, Doch Daje'bogh, Huch Danobbogh je. qaStaHvIS Soch DIS ta wIpol 'e' poQ Estonia Huch ta chut; bIvunDI' qaSbogh Huch DIS DorDI' tagh Soch DISvam. ghIq ta wIQaw'.",
-        "QIn jungeHDI', QIn QIn DaqlIj je DIpol; vaj pIjanglaH, 'ej rapbogh vunmeH QInmo' QIn jungeHqa'chugh, QInmey ngo' DISamlaH. QIn Qav wIHevDI' tagh cha' DIS poH; qaStaHvIS poHvam QInmey DIpol, ghIq DIQaw'.",
+        "QIn jungeHDI', QIn QIn DaqlIj je DIpol; vaj pIjanglaH, 'ej rapbogh vunmeH QInmo' QIn jungeHqa'chugh, QInmey ngo' DISamlaH. QIn Qav ngeHlu'DI' — QInlIj, QInmaj ghap — tagh cha' DIS poH; qaStaHvIS poHvam QInmey DIpol, ghIq DIQaw'.",
         "De' chu' QInmey DaqI'DI', QIn DaqlIj neH wIpol. qI'Ha'meH rarwI' ngaS Hoch QIn; rarwI'vam Dalo'DI', tetlhvo' pIteq.",
         "DIbmeyvam Daghaj: De'lIj wIpolbogh DaghellaH; De' wIlughmoH 'e' DatlhoblaH; De' wIQaw' 'e' DatlhoblaH; De' lo'meH mIw wIyevmoH 'e' DatlhoblaH; De' velqa' DatlhoblaH; De' wIlo'meH mIw DaqaDlaH. QIn ghongeH: {merchantContactAddress}. QInlIj laD nuv.",
         "maQaghchugh, SeplIjDaq De' Qanbogh qum DIvI'vaD bIbeplaH. Estonia SepDaq Andmekaitse Inspektsioon 'oH DIvI'vam'e'.",

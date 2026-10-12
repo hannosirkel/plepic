@@ -126,7 +126,7 @@ export const klingonLegalTerms = {
   localStorage: { term: "polmeH Daq", english: "the browser's local storage", loan: "local storage", note: "Coined phrase: pol (keep) + -meH (for the purpose of) + Daq (place). The loan is the name a browser shows." },
   sessionStorage: { term: "polmeH Daq ru'", english: "the browser's session storage", loan: "session storage", note: "Coined phrase: pol (keep) + -meH (for the purpose of) + Daq (place) + ru' (be temporary). The loan is the name a browser shows." },
   granted: { term: "chaw'lu'", english: "granted, the stored consent answer", loan: "granted", note: "Coined inflection: chaw' (allow) + -lu' (indefinite subject). The loan is the literal word the site stores." },
-  declined: { term: "lajQo'lu'", english: "declined, the stored consent answer", loan: "declined", note: "Coined inflection: laj (accept) + -Qo' (refuse) + -lu' (indefinite subject). The loan is the literal word the site stores." },
+  declined: { term: "lajlu'Qo'", english: "declined, the stored consent answer", loan: "declined", note: "Coined inflection: laj (accept) + -lu' (indefinite subject) + -Qo' (refuse), which stands last. The loan is the literal word the site stores." },
   dns: { term: "SIr'o' pong tetlh", english: "the domain name system", loan: "DNS", note: "Coined phrase: SIr'o' (network) + pong (name) + tetlh (list). The loan stands first and the phrase explains it." },
   ipAddress: { term: "jan ngu'bogh mI'", english: "IP address", loan: "IP", note: "Coined phrase: jan (device) + ngu' (identify) + -bogh (which) + mI' (number). The loan stands first, before the noun for number, and the phrase explains it." },
 } as const satisfies Readonly<Record<string, KlingonLegalTerm>>;

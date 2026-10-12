@@ -63,7 +63,7 @@ export const shipping: LegalPage = {
         "Hoch SepDaq tep wIngeH.",
         "Hoch HIjmeH DaqvaD HIjmeH mIw motlh DawIvlaH. European Union SepDaq HIjmeH Daq tu'lu'chugh, wa' 'ap choHbe'bogh Danob; latlh DaqDaq tu'lu'chugh, wa' 'ap choHbe'bogh Danob je, 'ach 'apvam jen law' European Union 'ap jen puS. Huch nobmeH DaqDaq 'ap SImlu'. Estonia SepDaq, Latvia SepDaq, Lithuania SepDaq ghap HIjmeH DaqlIj tu'lu'chugh, Omniva tep ngaSwI' jan DawIvlaH; mIwvam DIlnISbe'lu'.",
         "Huch wIHevDI', Dorpa' 3 malja' jaj tep wIngeH. tep wIngeHDI', European Union SepmeyDaq motlh qaStaHvIS 3–7 malja' jaj paw tep; latlh SepmeyDaq motlh qaStaHvIS 7–21 malja' jaj paw.",
-        "poHmeyvam noH neH HIjwI'; lay'be'. poHmeyvam choHlaH wanI'meyvam: Sep veHDaq tep nuDlu'DI', vumQo'lu'DI', qaStaHvIS QISmaS nungbogh cha' Hogh. paSqu'chugh tep, QIn ghongeH: {merchantContactAddress}. tep wInej.",
+        "poHmeyvam noH neH HIjwI'; lay'be'. poHmeyvam choHlaH wanI'meyvam: Sep veHDaq tep nuDlu'DI', vumlu'Qo'DI', qaStaHvIS QISmaS nungbogh cha' Hogh. paSqu'chugh tep, QIn ghongeH: {merchantContactAddress}. tep wInej.",
         "not pawchugh tep, poH chu' DawuqlaH; yapnIS poHvam. Dorpa' poHvam pawbe'chugh tep, vunmeH QIn DaqIllaH, 'ej Huch naQ pInobHa'.",
         "Hoch vunmeH QInvaD wa' ngeHmeH 'ap Danob. HIjmeH Daq DaghItlhta'DI', Huch nobmeH DaqDaq ngeHmeH 'ap SImlu'. Huch Danobpa' 'ap qar Dalegh; Huch Danobta'DI' not 'ap choHlu'.",
         "European Union HurDaq tep wIngeHchugh, pawDI' tep chaq HIjmeH 'ap, qum 'ap, HIjwI' 'ap je poQlu'. 'apmeyvam poQ HIjmeH Sep; nobnIS HevwI'; DIboSbe' maH. DISImbe', 'ej DInoHlaHbe'.",
