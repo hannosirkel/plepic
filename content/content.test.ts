@@ -1064,7 +1064,7 @@ describe("the page registry", () => {
  * `"en"`, so it states what a published edition must be rather than what
  * today's single edition happens to be — with one deliberate exception, the
  * count, which is pinned because a new locale arriving without a decision
-   * is a failure rather than progress.
+ * is a failure rather than progress.
  */
 describe("the locale dimension", () => {
   /**

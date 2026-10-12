@@ -344,9 +344,9 @@ describe("the contact form's validation errors", () => {
 });
 
 /**
- * Each view asks the page registry itself, as `HomeRoute` does: an edition
- * that does not publish the page has no site copy to render it from, and the
- * answer is a 404, not the error `siteCopyFor` throws.
+ * Each view asks the page registry itself, as `HomeRoute` does. A caller that
+ * skips the route resolver still gets a 404 for a page the edition does not
+ * publish.
  */
 describe("a route view answers 404 for an edition that does not publish its page", () => {
   const pages = pagesByLocale as Record<Locale, readonly Page[]>;
