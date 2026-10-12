@@ -214,9 +214,8 @@ export async function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
  * prefixed one cannot come to disagree.
  *
  * The page registry is asked again here, although `resolveLocalizedRoute` has
- * already asked it. An edition that does not publish the home page has, as a
- * rule, no site copy at all, and `siteCopyFor` throws for it: a caller that
- * skipped the resolver would get a 500 where a 404 is the answer.
+ * already asked it, so a caller that skips the resolver still gets a 404 for
+ * a route the edition does not publish.
  *
  * The catalogue is resolved for the locale as well as for the destination,
  * because "VAT included" under the price is one of its words.

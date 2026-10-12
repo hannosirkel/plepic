@@ -1,6 +1,6 @@
 /**
- * The glossary check. For every registered glossary, each translated string
- * of the locale's site copy and legal set is read beside the English string at
+ * The glossary check. For every translated edition, each string of its site
+ * copy, legal set and rulebook is read beside the English string at
  * the same key. A string fails when it uses a forbidden variant, when the
  * English string has a term and the translation has none of its forms, or when
  * an as-printed term is not there letter for letter.
@@ -8,9 +8,6 @@
  * An identifier or a link target is skipped: `mirror.test.ts` pins it to the
  * English string. Any other string is read, even one left as the English has
  * it, because a label a reader sees is the glossary's business either way.
- *
- * No glossary is registered until a language's first task, so the check is
- * proven here on fixtures, and the walk on the Estonian legal set.
  *
  * Rulebook text is read the same way, frame by frame, and owes one thing
  * more: the printed English word at a term's first use on a sheet.
@@ -79,8 +76,7 @@ function pairsOf(english: unknown, translated: unknown, key: string, out: Pair[]
 }
 
 function sitePairs(locale: Locale): readonly Pair[] {
-  const copy = siteCopyByLocale[locale];
-  return copy === null ? [] : pairsOf(siteCopyFor(DEFAULT_LOCALE), copy, "site");
+  return pairsOf(siteCopyFor(DEFAULT_LOCALE), siteCopyByLocale[locale], "site");
 }
 
 function legalPairs(locale: Locale): readonly Pair[] {
@@ -90,10 +86,9 @@ function legalPairs(locale: Locale): readonly Pair[] {
 }
 
 /**
- * The rulebook text each locale has so far. A locale registers here when its
- * `rulebook/text/<locale>/` lands; until then it has no rulebook pairs.
+ * The complete rulebook text for each translated edition.
  */
-const rulebookTexts: Readonly<Partial<Record<Locale, Partial<RulebookText>>>> = {
+const rulebookTexts: Readonly<Record<Exclude<Locale, typeof DEFAULT_LOCALE>, RulebookText>> = {
   de: germanRulebook, et: estonianRulebook, tlh: klingonRulebook,
 };
 
@@ -104,12 +99,11 @@ const rulebookTexts: Readonly<Partial<Record<Locale, Partial<RulebookText>>>> = 
  * first use on a sheet is the first pair of that sheet that has it.
  */
 function rulebookPairs(locale: Locale): readonly Pair[] {
+  if (locale === DEFAULT_LOCALE) return [];
   const translated = rulebookTexts[locale];
-  if (!translated) return [];
-  return reviewedSheets.flatMap((sheet) => sheet.frames).flatMap(({ id }) => {
-    const text = translated[id];
-    return text === undefined ? [] : [{ key: `rulebook.${id}`, english: englishRulebook[id], translated: text }];
-  });
+  return reviewedSheets.flatMap((sheet) => sheet.frames).map(({ id }) => ({
+    key: `rulebook.${id}`, english: englishRulebook[id], translated: translated[id],
+  }));
 }
 
 const sources = [sitePairs, legalPairs, rulebookPairs] as const;
@@ -522,8 +516,8 @@ describe("the staged Klingon interface and shop copy", () => {
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
 
-  it("include German, Estonian and Klingon", () => {
-    expect(registered.map(([locale]) => locale)).toEqual(expect.arrayContaining(["de", "et", "tlh"]));
+  it("include every translated edition", () => {
+    expect(registered.map(([locale]) => locale).toSorted()).toEqual(["de", "et", "tlh"]);
   });
 
   it("allow the printed English label beside a translated term", () => {
@@ -564,14 +558,10 @@ describe("the registered glossaries", () => {
   it("are well formed and pass the check over every translated string, less the named exceptions", () => {
     for (const [locale, glossary] of registered) {
       expect(problemsIn(glossary), locale).toEqual([]);
-      // A glossary can be prepared before its locale is registered in T019.
-      if (Object.hasOwn(siteCopyByLocale, locale)) {
-        const activeLocale = locale as Locale;
-        const pairs = sources.flatMap((pairsFor) => pairsFor(activeLocale));
-        expect(pairs.length, `${locale} has a glossary and no translated string`).toBeGreaterThan(0);
-        expect(reportFor(activeLocale, glossary, pairs, glossaryExceptions), locale).toEqual([]);
-        expect(missingOriginals(glossary, rulebookPairs(activeLocale)), locale).toEqual([]);
-      }
+      const pairs = sources.flatMap((pairsFor) => pairsFor(locale));
+      expect(pairs.length, `${locale} has no translated string`).toBeGreaterThan(0);
+      expect(reportFor(locale, glossary, pairs, glossaryExceptions), locale).toEqual([]);
+      expect(missingOriginals(glossary, rulebookPairs(locale)), locale).toEqual([]);
     }
   });
 

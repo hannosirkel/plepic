@@ -15,9 +15,8 @@ export * from "./terms.js";
 export * from "./schema.js";
 
 /**
- * A language registers here in its first task, with a sibling `<locale>.ts`
- * that holds its `Glossary`. From then on `glossary.test.ts` checks every
- * translated string of that locale.
+ * Every translated edition registers a sibling `<locale>.ts` glossary here.
+ * `glossary.test.ts` checks its site and rulebook strings together.
  */
 export const glossaries: GlossaryRegistry = { de: germanGlossary, et: estonianGlossary, tlh: klingonGlossary };
 

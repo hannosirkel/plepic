@@ -50,10 +50,8 @@ import { readerFacingLiterals } from "./helpers/reader-facing-literals.js";
 type Editions = typeof import("../../content/editions.js");
 
 /*
- * Every locale gets a marked copy of its own, the default one included and
- * `et` included, although `et` has no site copy today. That is the point: the
- * page is rendered as an edition that publishes it would render it, before
- * any such edition exists.
+ * Every locale gets a marked copy of its own, including the default edition.
+ * This checks that the rendered page uses only the requested edition's copy.
  */
 vi.mock("../../content/editions.js", async (importOriginal) => {
   const actual = await importOriginal<Editions>();
@@ -72,9 +70,8 @@ vi.mock("../../content/editions.js", async (importOriginal) => {
  * is about, so each is replaced with a fixed answer. The destination is inside
  * the EU, so the "VAT included" note is on the page to be checked.
  *
- * The page registry is replaced too. `HomeRoute` answers 404 for an edition
- * that does not publish the home page, which is every edition but the default
- * one today; here every edition publishes the default edition's routes.
+ * The page registry is replaced too, so every edition publishes the default
+ * edition's routes while this test checks their rendered copy.
  */
 vi.mock("../src/config/runtime-config.js", () => ({
   getRuntimeConfig: () => ({

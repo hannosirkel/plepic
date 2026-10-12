@@ -97,7 +97,6 @@ export const interfaceCopy: InterfaceCopy = {
     lede: "tlhIngan Hol mIw paq naQ; 'aplo'Daq tu'lu'bogh English Hol paq rur — 25 tenwal. mIllogh neH ngaSbe': permey ghaj 'ej mu'mey DawIvlaH; vaj mu'mey DanejlaH, mu'mey velqa' DaSuqlaH, 'ej jIH laDbogh jan Dalo'laH.",
     openLabel: "mIw paq yIpoSmoH (PDF)",
     downloadNote: "tIn laDmeH ta: %megabytes% De' juvmeH mI' (MB). ghogh HablI'Daq rarwI' Da'uypa', 'e' yIqel.",
-    englishRulebookNotice: "English Hol lo' mIw paq.",
   },
   product: {
     boxImageAlt: "napbogh DaqDaq poS Lunar Base 'aplo'; chIm 'aplo', 'ej 'emDajDaq Qam 'aplo' SoQmoHwI'. tlhopDajDaq Dochmeyvam lanlu': navmey ghom pup — DungDajDaq Shackleton Qu' potlh (Main Action) nav tu'lu' —, navmey 'aplo' mach, poSbogh 'ej Qambogh mIw paq, 'op toghmeH ghomey je.",

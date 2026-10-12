@@ -46,13 +46,11 @@ export interface GlossaryEntry {
 export type Glossary = Readonly<Record<TermId, GlossaryEntry>>;
 
 /**
- * The glossaries, per locale. Partial, unlike `LocalizedContent`: a language
- * registers when its glossary lands, potentially before its site locale does.
- * The default locale never does, because English is what others are checked against.
+ * Every translated edition has a glossary. The default locale has none,
+ * because English is what the translations are checked against.
  */
-// German glossary work precedes registration of `de` in the site's Locale type.
-export type GlossaryLocale = Exclude<Locale, typeof DEFAULT_LOCALE> | "de" | "tlh";
-export type GlossaryRegistry = Readonly<Partial<Record<GlossaryLocale, Glossary>>>;
+export type GlossaryLocale = Exclude<Locale, typeof DEFAULT_LOCALE>;
+export type GlossaryRegistry = Readonly<Record<GlossaryLocale, Glossary>>;
 
 /**
  * The keys whose strings the check does not read: identifiers and link

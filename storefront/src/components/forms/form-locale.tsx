@@ -9,7 +9,7 @@
  * default edition's own forms post. Their markup is what it was before a form
  * could be rendered in a second edition.
  */
-import { siteCopyByLocale, siteCopyFor, type SiteCopy } from "../../../../content/editions.js";
+import { siteCopyFor, type SiteCopy } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { isLocale } from "../../../../content/schema.js";
 
@@ -24,12 +24,10 @@ export function FormLocaleField({ locale }: { readonly locale: Locale }) {
 /**
  * The copy to answer a post in.
  *
- * It never throws, because a form press must not be answered with a 500. A
- * declared edition with no site copy is answered in the default edition too:
- * such an edition renders no form, but nothing stops a client from naming it.
+ * Invalid client input uses the default edition; every declared edition has copy.
  */
 export function siteCopyForPost(formData: FormData): SiteCopy {
   const posted = formData.get(FORM_LOCALE_FIELD);
   const locale = isLocale(posted) ? posted : DEFAULT_LOCALE;
-  return siteCopyByLocale[locale] ?? siteCopyFor(DEFAULT_LOCALE);
+  return siteCopyFor(locale);
 }
