@@ -41,6 +41,7 @@ import { legalPagesByLocale } from "./legal/index.js";
 import { DEFAULT_LOCALE, type Locale } from "./routes.js";
 import { reviewedSheets } from "../rulebook/layout/overrides.js";
 import { de as germanRulebook } from "../rulebook/text/de/index.js";
+import { et as estonianRulebook } from "../rulebook/text/et/index.js";
 import { en as englishRulebook } from "../rulebook/text/en.js";
 import type { RulebookText } from "../rulebook/text/schema.js";
 
@@ -84,7 +85,7 @@ function legalPairs(locale: Locale): readonly Pair[] {
  * The rulebook text each locale has so far. A locale registers here when its
  * `rulebook/text/<locale>/` lands; until then it has no rulebook pairs.
  */
-const rulebookTexts: Readonly<Partial<Record<Locale, RulebookText>>> = { de: germanRulebook };
+const rulebookTexts: Readonly<Partial<Record<Locale, Partial<RulebookText>>>> = { de: germanRulebook, et: estonianRulebook };
 
 /**
  * The hook for rulebook text: one pair per frame the locale has, the English
@@ -318,8 +319,7 @@ describe("the walk", () => {
       key: "rulebook.s10.f03", english: "CHECK FOR ARRIVING SHUTTLES", translated: germanRulebook["s10.f03"],
     });
     expect(pairs.find((pair) => pair.key === "rulebook.s10.f03")?.translated).not.toBe("CHECK FOR ARRIVING SHUTTLES");
-    // The Estonian edition has no rulebook text yet, so it has no rulebook pairs.
-    expect(rulebookPairs("et")).toEqual([]);
+    expect(rulebookPairs("et")).toHaveLength(reviewedSheets.slice(0, 13).flatMap((sheet) => sheet.frames).length);
   });
 
   it("pairs nested lists and objects by key, and skips what the translation lacks", () => {
