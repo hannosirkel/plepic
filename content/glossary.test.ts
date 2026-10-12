@@ -369,6 +369,17 @@ describe("the check, on fixture data", () => {
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
 
+  it("allows the printed English label beside a translated German term", () => {
+    const glossary = registered.find(([locale]) => locale === "de")?.[1];
+    expect(glossary).toBeDefined();
+    if (!glossary) return;
+    for (const term of TERM_IDS.filter((id) => TERMS[id].class === "translated-with-original")) {
+      for (const variant of glossary[term].forbidden) {
+        expect(TERMS[term].english.match(patternOf(variant)), `de.${term}: ${variant}`).toBeNull();
+      }
+    }
+  });
+
   it("has an allowed form for every term and explains any shared translation", () => {
     for (const [locale, glossary] of registered) {
       expect(Object.keys(glossary).sort(), locale).toEqual([...TERM_IDS].sort());
