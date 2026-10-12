@@ -22,6 +22,10 @@ import { thresholds } from "./thresholds.js";
  * relying on where it landed: sheet N's k-th structure element is that
  * sheet's k-th frame. The Structure check fails when the two do not line
  * up, and then the sheet's frames cannot be measured either.
+ *
+ * The one thing read from the published English PDF besides its pixels is
+ * where its text stands: the leading of each frame, and the ink two frames
+ * already share there.
  */
 
 const execute = promisify(execFile);
@@ -48,6 +52,11 @@ export type Built = { language: string | undefined; sheets: BuiltSheet[] };
 
 type Box = { left: number; right: number; top: number; bottom: number };
 type Node = { role?: string; type?: string; id?: string; children?: Node[] };
+
+const toRun = (item: { str: string; transform: number[]; width: number }, height: number): BuiltRun => ({
+  text: item.str, x: item.transform[4] ?? 0, width: item.width,
+  baseline: height - (item.transform[5] ?? 0), size: Math.hypot(item.transform[0] ?? 0, item.transform[1] ?? 0),
+});
 
 const contentIds = (node: Node): string[] => node.type === "content" && node.id ? [node.id] : (node.children ?? []).flatMap(contentIds);
 
@@ -78,10 +87,7 @@ export async function readBuilt(pdf: string): Promise<Built> {
         // List numbers and bullets are aria-hidden, so they are artifacts and belong to no element.
         const element = open.map((id) => (id === undefined ? undefined : owner.get(id))).findLast((index) => index !== undefined);
         if (element === undefined) continue;
-        elements[element]?.runs.push({
-          text: item.str, x: item.transform[4] ?? 0, width: item.width,
-          baseline: height - (item.transform[5] ?? 0), size: Math.hypot(item.transform[0] ?? 0, item.transform[1] ?? 0),
-        });
+        elements[element]?.runs.push(toRun(item, height));
       }
       sheets.push({ width, height, elements });
       page.cleanup();
@@ -90,11 +96,30 @@ export async function readBuilt(pdf: string): Promise<Built> {
   } finally { await document.cleanup(); }
 }
 
-/** One box per printed line: the em box on its baseline, which is how `layout/frames.ts` measures English. */
+/** Every run of text on each sheet of the published PDF, which is not tagged by frame. */
+export async function readPublished(pdf: string): Promise<BuiltRun[][]> {
+  const document = await getDocument({ data: new Uint8Array(await readFile(pdf)) }).promise;
+  try {
+    const sheets: BuiltRun[][] = [];
+    for (let number = 1; number <= document.numPages; number += 1) {
+      const page = await document.getPage(number);
+      const height = (page.view[3] ?? 0) - (page.view[1] ?? 0);
+      const content = await page.getTextContent();
+      sheets.push(content.items.flatMap((item) => ("str" in item && item.str.trim() ? [toRun(item, height)] : [])));
+      page.cleanup();
+    }
+    return sheets;
+  } finally { await document.cleanup(); }
+}
+
+/** The em box of a run on its baseline, which is how `layout/frames.ts` measures English. */
+const runBox = (run: BuiltRun): Box => ({ left: run.x, right: run.x + run.width, top: run.baseline - thresholds.ascent * run.size, bottom: run.baseline + (1 - thresholds.ascent) * run.size });
+
+/** One box per printed line, as wide as the line from its first run to its last. */
 export function lineBoxes(runs: readonly BuiltRun[]): Box[] {
   const lines: { baseline: number; box: Box }[] = [];
   for (const run of [...runs].sort((a, b) => a.baseline - b.baseline)) {
-    const box = { left: run.x, right: run.x + run.width, top: run.baseline - thresholds.ascent * run.size, bottom: run.baseline + (1 - thresholds.ascent) * run.size };
+    const box = runBox(run);
     const line = lines.at(-1);
     if (line && run.baseline - line.baseline < 0.3) {
       line.box = { left: Math.min(line.box.left, box.left), right: Math.max(line.box.right, box.right), top: Math.min(line.box.top, box.top), bottom: Math.max(line.box.bottom, box.bottom) };
@@ -189,18 +214,49 @@ export function checkFit(sheets: readonly ReviewedSheet[], built: Built, english
   return { name: "Fit", summary: `smallest type ${fixed(smallest * 100, 1)}% of English (floor ${thresholds.minSizeScale * 100}%), tightest leading ${fixed(tightest * 100, 1)}% (floor ${thresholds.minLeadingScale * 100}%), furthest outside a box ${fixed(furthest.by)} pt at ${furthest.id || "no frame"} (limit ${thresholds.fitSlackPt} pt)`, failures };
 }
 
-export function checkCollisions(sheets: readonly ReviewedSheet[], built: Built): CheckResult {
+/**
+ * The ink each frame has on the published sheet: a run belongs to the
+ * smallest frame whose box holds it. A label set inside a paragraph's line
+ * lies in both boxes and is the label's ink alone; the paragraph's own runs
+ * stop either side of it, and that gap is not the paragraph's ink.
+ */
+export function englishInk(sheet: ReviewedSheet, runs: readonly BuiltRun[]): Map<string, Box[]> {
+  const ink = new Map<string, Box[]>();
+  const area = (frame: ReviewedFrame) => frame.box.width * frame.box.height;
+  const slack = thresholds.inkSlackPt;
+  for (const box of runs.map(runBox)) {
+    const holds = (frame: ReviewedFrame) => {
+      const outer = english(frame);
+      return box.left >= outer.left - slack && box.right <= outer.right + slack && box.top >= outer.top - slack && box.bottom <= outer.bottom + slack;
+    };
+    const owner = sheet.frames.filter(holds).sort((a, b) => area(a) - area(b))[0];
+    if (owner) ink.set(owner.id, [...(ink.get(owner.id) ?? []), box]);
+  }
+  return ink;
+}
+
+/**
+ * Ink is compared run by run, not line by line or box by box: a paragraph
+ * that leaves a gap in its line for a label does not touch the label, and a
+ * paragraph that runs through the label does, although the label lies inside
+ * the paragraph's box either way.
+ */
+export function checkCollisions(sheets: readonly ReviewedSheet[], built: Built, published: readonly (readonly BuiltRun[])[]): CheckResult {
   const failures: string[] = [];
   let deepest = { by: 0, pair: "none" };
+  const shared = (first: readonly Box[], second: readonly Box[]) => Math.max(0, ...first.flatMap((a) => second.map((b) => overlap(a, b))));
   for (const sheet of sheets) {
-    const frames = pairs([sheet], built).map(({ frame, element }) => ({ frame, lines: lineBoxes(element?.runs ?? []) }));
+    const before = englishInk(sheet, published[sheet.sheet - 1] ?? []);
+    const frames = pairs([sheet], built).map(({ frame, element }) => ({ frame, ink: (element?.runs ?? []).map(runBox) }));
     frames.forEach((a, index) => {
       for (const b of frames.slice(index + 1)) {
-        // Frames that share ink in English, such as a label set inside a paragraph, may share it here.
-        if (overlap(english(a.frame), english(b.frame)) > 0) continue;
-        const by = Math.max(0, ...a.lines.flatMap((first) => b.lines.map((second) => overlap(first, second))));
+        const now = shared(a.ink, b.ink);
+        if (now === 0) continue;
+        // Frames whose ink overlaps in English may overlap as far here.
+        const then = shared(before.get(a.frame.id) ?? [], before.get(b.frame.id) ?? []);
+        const by = now - then;
         if (by > deepest.by) deepest = { by, pair: `${a.frame.id} and ${b.frame.id}` };
-        if (by > thresholds.collisionPt) failures.push(`${a.frame.id} and ${b.frame.id} (sheet ${sheet.sheet}) overlap by ${fixed(by, 1)} pt and do not overlap in English`);
+        if (by > thresholds.collisionPt) failures.push(`${a.frame.id} and ${b.frame.id} (sheet ${sheet.sheet}) overlap by ${fixed(now, 1)} pt and ${then > 0 ? `by ${fixed(then, 1)} pt` : "do not overlap"} in English`);
       }
     });
   }
@@ -365,7 +421,7 @@ export async function checkEdition(input: CheckInput): Promise<CheckResult[]> {
     checkSheets(sheets, built),
     checkPixels("Artwork", thresholds.artworkPixelRatio, await differing(directory, "built-artwork", "english-artwork", canvases)),
     checkFit(sheets, built, await sourceLeading(source, sheets)),
-    checkCollisions(sheets, built),
+    checkCollisions(sheets, built, await readPublished(source)),
     checkGlyphs(sheets, built, edition, parseWords(await run("pdftotext", ["-bbox", pdf, "-"])), parseFonts(await run("pdffonts", [pdf])), embeddedFontNames(fontSpecs("", input.root))),
     checkStructure(sheets, built, edition, /^Tagged:\s+yes$/m.test(await run("pdfinfo", [pdf]))),
     checkSize((await stat(pdf)).size),

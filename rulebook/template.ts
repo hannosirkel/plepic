@@ -8,16 +8,21 @@ import type { Underlay } from "./underlay.js";
 
 const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function renderRun(run: Run): string {
-  if ("anchor" in run) return ""; // The anchored frame is an independently positioned element.
+/**
+ * The frame anchored in a line stays where English has it, on its drawn
+ * circle. The line is kept clear by an empty box as wide as that circle,
+ * which the build moves to where the frame stands once the line is set.
+ */
+function renderRun(run: Run, room: (id: string) => string): string {
+  if ("anchor" in run) return `<span class="anchor" data-frame="${run.anchor}" ${room(run.anchor)}></span>`;
   let html = escape(run.text);
   if (run.bold) html = `<strong>${html}</strong>`;
   if (run.italic) html = `<em>${html}</em>`;
   return html;
 }
 
-function renderBlock(block: Block, inList = false): string {
-  const body = block.lines.map((line) => line.map(renderRun).join("")).join("<br>");
+function renderBlock(block: Block, room: (id: string) => string, inList = false): string {
+  const body = block.lines.map((line) => line.map((run) => renderRun(run, room)).join("")).join("<br>");
   if (block.kind === "bullet") return `<li class="list-item bullet"><span aria-hidden="true">•</span>${body}</li>`;
   if (block.kind === "numbered") return `<li class="list-item numbered"><span aria-hidden="true">${block.number}.</span>${body}</li>`;
   if (inList) return `<li>${body}</li>`;
@@ -53,8 +58,15 @@ export async function renderRulebookHtml(input: {
       if (!tag) throw new Error(`Unknown role ${frame.role}`);
       const name = frameFont(frame.fontFamily, frame.fontWeight, frame.fontStyle);
       const boldName = frameFont(frame.fontFamily, 700, frame.fontStyle);
+      const room = (id: string) => {
+        const label = sheet.frames.find((candidate) => candidate.id === id);
+        if (label?.room === undefined) throw new Error(`${frame.id} anchors ${id}, which is not a frame of sheet ${sheet.sheet} with room`);
+        // Only the room inside the frame's box takes room in its line: a label closing a line stands past the box, and half a point is kept against rounding.
+        const inside = frame.box.x + frame.box.width - (label.box.x + (label.box.width - label.room) / 2) - 0.5;
+        return `data-room="${label.room}" style="width:${Math.round(Math.min(Math.max(inside, 0), label.room) * 100) / 100}pt"`;
+      };
       const style = `--bold-font:'${boldName}';left:${frame.box.x}pt;top:${frame.box.y}pt;width:${frame.box.width}pt;height:${frame.box.height}pt;color:${frame.color};font-family:'${name}';font-size:${frame.fontSize}pt;text-align:${frame.alignment};${frame.indent === undefined ? "" : `--indent:${frame.indent}pt;`}`;
-      let blocks = parseMarkup(source).map((block) => renderBlock(block, tag === "ol" || tag === "ul")).join("");
+      let blocks = parseMarkup(source).map((block) => renderBlock(block, room, tag === "ol" || tag === "ul")).join("");
       if (tag === "h1" || tag === "h2") blocks = blocks.replace(/<\/?p>/g, "");
       return `<${tag} class="frame role-${frame.role}${frame.role === "label" && frame.box.height <= frame.fontSize * 1.3 ? " nowrap" : ""}" id="${frame.id}" data-size="${frame.fontSize}" style="${style}">${blocks}</${tag}>`;
     }).join("\n");
@@ -68,7 +80,7 @@ ${faces.join("\n")}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{color:#15244d}
 .sheet{position:relative;background-size:100% 100%;background-repeat:no-repeat;break-after:page;overflow:hidden}.sheet.cover{page:cover}.sheet.spread{page:spread}.sheet:last-child{break-after:auto}
 .frame{position:absolute;display:block;overflow:visible;white-space:normal;line-height:1.25;margin:0;padding:0;font-synthesis:none;text-rendering:geometricPrecision}
-.frame p,.frame div,.frame li{margin:0;padding:0}.frame p:not(:last-child),.frame li:not(:last-child){margin-bottom:.25em}.frame.role-ul,.frame.role-ol{list-style:none;margin:0;padding:0}.frame.nowrap,.role-page-number{white-space:nowrap}.frame strong{font-family:var(--bold-font);font-weight:normal}.frame em{font-style:italic}
+.frame p,.frame div,.frame li{margin:0;padding:0}.frame p:not(:last-child),.frame li:not(:last-child){margin-bottom:.25em}.frame.role-ul,.frame.role-ol{list-style:none;margin:0;padding:0}.frame.nowrap,.role-page-number{white-space:nowrap}.anchor{display:inline-block}.frame strong{font-family:var(--bold-font);font-weight:normal}.frame em{font-style:italic}
 .list-item{position:relative;padding-left:var(--indent,12pt)!important}.list-item span{position:absolute;left:0}.bullet span{font-family:'JosefinSans-Bold'}
 </style></head><body>${pages.join("\n")}</body></html>`;
 }

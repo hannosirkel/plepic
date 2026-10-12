@@ -80,6 +80,15 @@ rounds every glyph's advance to a whole pixel, the words spread, and English
 text no longer fits its own boxes: 76 of the 438 English frames then shrink,
 against 28 with it.
 
+Five circled letters stand inside a line of another frame, on sheets 9 and
+16. Each is a `label` frame of its own and stays where English has it, because
+its circle is artwork. The other frame's text names it where it stands
+(`{s09.f11a}`), and the build keeps the line clear there: it leaves the
+circle's width (`room` in `layout/overrides.ts`) empty and moves that gap
+right until it lies around the letter. A translation has to bring the name
+into the letter's own line, with no more text before it than English has;
+otherwise the gap cannot reach the letter and the frame does not fit.
+
 A frame whose text does not fit at the last step of that ladder is printed
 there, and `fit.json` marks it `"fits": false`. The build names each such
 frame, leaves `manifest.json` alone and exits non-zero. The PDF is still
@@ -108,7 +117,7 @@ frame, sheet or font at fault.
 | Sheets | 25 sheets, each within 1 pt of the English sheet's size |
 | Artwork | With the text stripped from both, each sheet differs from the English sheet in at most 2% of its pixels |
 | Fit | Every frame is set at 90% of its English size or more and never under 6 pt, with 95% of its English leading or more, and its text stands at most 3 pt outside its English box |
-| Collisions | No two frames' lines overlap by more than 1 pt, unless their boxes overlap in English |
+| Collisions | No two frames' ink overlaps by over 1 pt more than it does in the published English PDF |
 | Glyphs | `pdftotext` returns every frame's text from where the frame was printed; no replacement character; every font is embedded and is one `fonts.ts` allows |
 | Structure | The PDF is tagged, its language is the edition's, and each sheet has one structure element per frame, with headings and lists marked up |
 | Size | At most 16 MB |
@@ -120,6 +129,14 @@ structure element per frame, in the order of the HTML; that is how the check
 knows which text in the PDF belongs to which frame, wherever it landed. The
 Fit and Collisions rows are measured on that text, and the Glyphs row asks
 `pdftotext` for the words standing there.
+
+Collisions compares ink run by run: each stretch of text the PDF sets in one
+piece, as tall as its type. A box around a whole frame, or around a whole
+line, would not do. A circled letter set inside a paragraph's line lies
+inside the paragraph's box, and it collides with the paragraph only when the
+line runs through it instead of leaving it a gap. What two frames share in
+English is measured the same way on the published PDF, each run given to the
+smallest frame whose box holds it. No two frames share any ink there.
 
 Prerequisites are Ghostscript (`gs`), Poppler (`pdftotext`, `pdffonts`,
 `pdfinfo` and `pdftoppm`) and ImageMagick (`magick`). The check needs neither

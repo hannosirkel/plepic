@@ -6,7 +6,7 @@ import { rulebookSheets, type RulebookFrame, type RulebookSheet } from "./frames
  * Each sheet below says which generated frames to merge, split or drop, and
  * then lists every remaining frame once, in reading order, with its role.
  *
- * Four rules were applied to every sheet, each against the rendered page:
+ * Five rules were applied to every sheet, each against the rendered page:
  *
  * - A numbered step whose number is a white numeral on a drawn circle keeps
  *   that numeral as its own `label` frame, placed directly before the step.
@@ -20,6 +20,10 @@ import { rulebookSheets, type RulebookFrame, type RulebookSheet } from "./frames
  *   `rulebook/text/en.ts` marks the bold words.
  * - `alignment` is corrected where a frame is centred on something or set
  *   flush right against it, so a longer translation grows the right way.
+ * - A circled letter set inside a line of another frame is a `label` with
+ *   `room`: the width of its drawn circle, which stays in the artwork. The
+ *   other frame's text names the label where it stands (`{s09.f11a}`), and
+ *   its line is kept clear there.
  *
  * Boxes are ink boxes in PDF points from the top left, as in `frames.ts`.
  */
@@ -32,9 +36,10 @@ type Style = Partial<Pick<RulebookFrame, "fontFamily" | "fontWeight" | "fontStyl
 /**
  * `trimLeft` moves the left edge right by that many points. `indent` is the
  * gutter of a list frame: its numbers or bullets sit at the left edge and
- * the item text starts `indent` points in.
+ * the item text starts `indent` points in. `room` is the width a label
+ * takes in the line of the frame whose text anchors it.
  */
-type Tweak = Style & { trimLeft?: number; indent?: number };
+type Tweak = Style & { trimLeft?: number; indent?: number; room?: number };
 
 type Change =
   /** One frame with the first id, the union of the boxes, and the type of `styleOf` (default: the first). */
@@ -304,7 +309,7 @@ export const sheetOverrides = [
     order: [
       ["s09.f03", "h2"],
       // The three circled letters sit inside this paragraph's third line; its text anchors them.
-      ["s09.f04", "p"], ["s09.f11a", "label"], ["s09.f11b", "label"], ["s09.f11c", "label"],
+      ["s09.f04", "p"], ["s09.f11a", "label", { room: 11 }], ["s09.f11b", "label", { room: 11 }], ["s09.f11c", "label", { room: 11 }],
       ["s09.f05", "p"],
       ["s09.f06", "ul", { indent: 18 }],
       ["s09.f10", "p"],
@@ -462,10 +467,10 @@ export const sheetOverrides = [
       ["s16.f02", "h2"], ["s16.f03", "p"],
       ["s16.f04", "p", center],
       // Steps 1 and 4 each hold a circled A inside a line; their text anchors it.
-      ["s16.f09", "label"], ["s16.f05", "ol", { trimLeft: 14.17 }], ["s16.f13", "label"],
+      ["s16.f09", "label"], ["s16.f05", "ol", { trimLeft: 14.17 }], ["s16.f13", "label", { room: 11.5 }],
       ["s16.f10", "label"], ["s16.f06", "ol", { trimLeft: 14.17 }],
       ["s16.f11", "label"], ["s16.f07", "ol", { trimLeft: 14.17 }],
-      ["s16.f12", "label"], ["s16.f08", "ol", { trimLeft: 14.17 }], ["s16.f14", "label"],
+      ["s16.f12", "label"], ["s16.f08", "ol", { trimLeft: 14.17 }], ["s16.f14", "label", { room: 11.5 }],
       ["s16.f01", "page-number"],
       ["s16.f15a", "label", center], ["s16.f16", "label"], ["s16.f17", "label"], ["s16.f21", "label"], ["s16.f23", "label"],
       ["s16.f15b", "label", center], ["s16.f24", "label"],
@@ -683,6 +688,7 @@ export type ReviewedFrame<Id extends string = string> = Omit<RulebookFrame, "id"
   id: Id;
   role: FrameRole;
   indent?: number;
+  room?: number;
 };
 export type ReviewedSheet<Id extends string = string> = {
   sheet: number;
@@ -755,9 +761,9 @@ export function applyOverrides(
 
     const ordered = override.order.map(([id, role, tweak]): ReviewedFrame => {
       const frame = take(id);
-      const { trimLeft = 0, indent, ...style } = tweak ?? {};
+      const { trimLeft = 0, indent, room, ...style } = tweak ?? {};
       const box = { ...frame.box, x: round(frame.box.x + trimLeft), width: round(frame.box.width - trimLeft) };
-      return { ...frame, ...style, box, role, ...(indent === undefined ? {} : { indent }) };
+      return { ...frame, ...style, box, role, ...(indent === undefined ? {} : { indent }), ...(room === undefined ? {} : { room }) };
     });
     if (frames.size > 0) {
       throw new Error(`Sheet ${sheet.sheet}: no role or reading order for ${[...frames.keys()].join(", ")}`);

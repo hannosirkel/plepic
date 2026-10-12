@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkCollisions, checkFit, checkGlyphs, checkPixels, checkSheets, checkSize, checkStructure,
-  fontFailures, leadingBound, parseFonts, parseWords, sizeFloor, unread, type Built, type BuiltRun,
+  englishInk, fontFailures, leadingBound, parseFonts, parseWords, sizeFloor, unread, type Built, type BuiltRun,
 } from "./check.js";
 import type { Edition } from "./editions.js";
 import type { ReviewedFrame, ReviewedSheet } from "./layout/overrides.js";
@@ -82,13 +82,55 @@ describe("layout check: fit", () => {
 });
 
 describe("layout check: collisions", () => {
-  it("names two frames whose ink overlaps, unless they overlap in English", () => {
-    expect(checkCollisions(sheets, fitting()).failures).toEqual([]);
-    const grown = fitting();
-    grown.sheets[0]?.elements[0]?.runs.push(run("in zwei Schritten", 20, 42.8), run("und drei Zeilen", 20, 55.8));
-    expect(checkCollisions(sheets, grown).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 6.0 pt and do not overlap in English"]);
+  /** The same sheet as published: the runs of its text, which no structure ties to a frame. */
+  const published = () => [[run("Setup", 20, 29.8), run("Shuffle the cards and", 20, 59.8, 10, 99), run("deal them.", 20, 72.8)]];
+  const grown = () => {
+    const built = fitting();
+    built.sheets[0]?.elements[0]?.runs.push(run("in zwei Schritten", 20, 42.8), run("und drei Zeilen", 20, 55.8));
+    return built;
+  };
+
+  it("names two frames whose ink overlaps and does not in English", () => {
+    expect(checkCollisions(sheets, fitting(), published()).failures).toEqual([]);
+    expect(checkCollisions(sheets, grown(), published()).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 6.0 pt and do not overlap in English"]);
+  });
+
+  it("does not take overlapping boxes for overlapping ink", () => {
+    // The heading's box reaches down over the paragraph's first line, but its published ink stops above it.
     const nested: ReviewedSheet[] = [{ ...sheets[0] as ReviewedSheet, frames: [frame("s01.f01", "h1", 20, 20, 100, 40), frame("s01.f02", "p", 20, 50, 100, 23)] }];
-    expect(checkCollisions(nested, grown).failures).toEqual([]);
+    expect(checkCollisions(nested, grown(), published()).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 6.0 pt and do not overlap in English"]);
+    // Where the published heading does run into the paragraph, the built one may run as far in, and no further.
+    const overprinted = [[...published()[0] ?? [], run("in two steps", 20, 55.8)]];
+    expect(checkCollisions(nested, grown(), overprinted).failures).toEqual([]);
+    const deeper = grown();
+    deeper.sheets[0]?.elements[0]?.runs.push(run("und noch tiefer", 20, 58.8));
+    expect(checkCollisions(nested, deeper, overprinted).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 9.0 pt and by 6.0 pt in English"]);
+  });
+
+  describe("a label set inside a paragraph's line", () => {
+    // A circled letter in the second line: its box lies inside the paragraph's box, and the line leaves it a gap.
+    const labelled: ReviewedSheet[] = [{ sheet: 1, width: 283.46, height: 283.46, frames: [frame("s01.f01", "p", 20, 50, 200, 23), frame("s01.f02", "label", 80, 63, 6, 10)] }];
+    const source = [[run("Choose one of the boxes on a card", 20, 59.8), run("(e.g.", 20, 72.8), run("A", 80, 72.8, 10, 6), run(") and do it.", 95, 72.8)]];
+    const built = (line: BuiltRun[]): Built => ({ language: "de", sheets: [{ width: 282.96, height: 282.96, elements: [
+      { role: "Div", runs: [run("Wähle ein Feld auf einer Karte", 20, 59.8), ...line] },
+      { role: "Span", runs: [run("A", 80, 72.8, 10, 6)] },
+    ] }] });
+
+    it("gives the letter to the label and the runs either side to the paragraph", () => {
+      const ink = englishInk(labelled[0] as ReviewedSheet, source[0] ?? []);
+      expect(ink.get("s01.f02")).toEqual([{ left: 80, right: 86, top: expect.closeTo(63), bottom: expect.closeTo(73) }]);
+      expect(ink.get("s01.f01")).toHaveLength(3);
+    });
+
+    it("passes a line that leaves the label its gap", () => {
+      expect(checkCollisions(labelled, built([run("(z. B.", 20, 72.8), run(") und führe es aus.", 95, 72.8)]), source).failures).toEqual([]);
+    });
+
+    it("names a line that runs through the label, although the label lies inside the paragraph's box", () => {
+      expect(checkCollisions(labelled, built([run("(z. B. ) und führe es aus.", 20, 72.8)]), source).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 6.0 pt and do not overlap in English"]);
+      // A gap in the wrong place is no gap: the text after it stands on the letter.
+      expect(checkCollisions(labelled, built([run("(z. B.", 20, 72.8), run(") und", 70, 72.8)]), source).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 6.0 pt and do not overlap in English"]);
+    });
   });
 });
 

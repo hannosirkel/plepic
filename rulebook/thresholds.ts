@@ -22,7 +22,7 @@ export const thresholds = {
   artworkPixelRatio: 0.02,
   /**
    * Share of a sheet's pixels in which the English proof may differ from the
-   * published sheet. Measured: 7.65% on sheet 9, then 6.69%, 6.38% and 6.11%
+   * published sheet. Measured: 7.66% on sheet 9, then 6.69%, 6.38% and 6.11%
    * on sheets 2, 23 and 19. The built type stands up to 2.6 pt higher than the
    * published type, so nearly every glyph counts; two builds of one text
    * differ by 0.1%.
@@ -51,8 +51,21 @@ export const thresholds = {
    * doubled length (s10.f04) stands 18.7 pt below its box at the floor.
    */
   fitSlackPt: 3,
-  /** Two frames that do not overlap in English may overlap by this much. Measured: 0 pt; the doubled s10.f04 overlaps s10.f05 by 9 pt. */
+  /**
+   * Two frames' ink may overlap by this much more than it does in English.
+   * Measured: 0 pt, and no two frames share ink in the published PDF either.
+   * The doubled s10.f04 overlaps s10.f05 by 9 pt; a paragraph set through the
+   * circled letters anchored in it (s09.f04, s16.f08) overlaps each by 4.5 to
+   * 5.2 pt.
+   */
   collisionPt: 1,
+  /**
+   * A published run is the ink of a frame whose box holds it to within this.
+   * Measured: every one of the 438 frames owns its text from 0.15 pt on. 747
+   * of the 786 published runs are owned; the rest is text the review dropped
+   * or trimmed off.
+   */
+  inkSlackPt: 0.5,
 
   /** 16 MB, counted in decimal megabytes, the stricter reading. Measured: 9.4 MB. */
   maxBytes: 16_000_000,

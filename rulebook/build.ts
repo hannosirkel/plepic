@@ -9,6 +9,7 @@ import { fontSpecs, requireFonts, type FontSpec } from "./fonts.js";
 import { DoesNotFit, fitFloor, fitFrame, type Fit } from "./fit.js";
 import { sourceLeading } from "./leading.js";
 import { recordEdition } from "./manifest.js";
+import { parseMarkup } from "./text/schema.js";
 import { makeUnderlays } from "./underlay.js";
 import { renderRulebookHtml } from "./template.js";
 
@@ -30,6 +31,9 @@ export async function composeEdition(input: BuildInput): Promise<string> {
   return renderRulebookHtml({ locale: input.locale, languageTag: input.edition.tag, title: input.edition.title, sheets: input.sheets, text: input.edition.text, underlays, fonts: input.fonts });
 }
 
+/** An anchor's room may lie this many CSS pixels off its frame: the frame's letter then still stands clear of the text. */
+const anchorSlack = 2;
+
 /**
  * Fits every frame and prints the PDF. A frame that does not fit at the
  * floor of the ladder is printed there and returned: the PDF is still
@@ -50,11 +54,29 @@ export async function printEdition(html: string, input: BuildInput, output: stri
     for (const sheet of input.sheets) for (const frame of sheet.frames) {
       const leading = englishLeading[frame.id] ?? frame.fontSize * 1.25;
       const set = async (size: number, lineHeight: number) => page.locator(`[id="${frame.id}"]`).evaluate((element, value) => {
-        const node = element as typeof element & { style: { fontSize: string; lineHeight: string }; scrollHeight: number; clientHeight: number; scrollWidth: number; clientWidth: number };
+        type Placed = { style: Record<string, string>; dataset: Record<string, string>; getBoundingClientRect(): { left: number; right: number; top: number; bottom: number } };
+        const node = element as unknown as Placed & {
+          scrollHeight: number; clientHeight: number; scrollWidth: number; clientWidth: number;
+          querySelectorAll(selector: string): Iterable<Placed>; ownerDocument: { getElementById(id: string): Placed | null };
+        };
         node.style.fontSize = `${value.size}pt`;
         node.style.lineHeight = `${value.lineHeight}pt`;
-        return node.scrollHeight <= node.clientHeight + 4 && node.scrollWidth <= node.clientWidth + 4;
-      }, { size, lineHeight });
+        // Each anchor's room is pushed right until it lies around its frame. Where it cannot get there, in the frame's own line, the text does not fit.
+        let landed = true;
+        for (const anchor of node.querySelectorAll(".anchor")) {
+          const label = node.ownerDocument.getElementById(anchor.dataset.frame ?? "")?.getBoundingClientRect();
+          if (!label) throw new Error(`No frame ${anchor.dataset.frame} to anchor`);
+          const left = (label.left + label.right) / 2 - Number(anchor.dataset.room) * (96 / 72) / 2;
+          anchor.style.marginLeft = "0";
+          let room = anchor.getBoundingClientRect();
+          // A room that lies past the frame's box has no width, and stays at the end of its line.
+          const inside = room.right > room.left;
+          if (inside) anchor.style.marginLeft = `${Math.max(0, left - room.left)}px`;
+          room = anchor.getBoundingClientRect();
+          landed &&= (inside ? Math.abs(left - room.left) : Math.max(0, room.left - left)) <= value.anchorSlack && Math.abs(label.bottom - room.bottom) <= (label.bottom - label.top) / 2;
+        }
+        return landed && node.scrollHeight <= node.clientHeight + 4 && node.scrollWidth <= node.clientWidth + 4;
+      }, { size, lineHeight, anchorSlack });
       try {
         fits[frame.id] = { ...await fitFrame(frame.fontSize, leading, set), fits: true };
       } catch (error) {
@@ -86,7 +108,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL(
   const input: BuildInput = { root, locale, edition, sheets: reviewedSheets, fonts, work };
   const unfit = await printEdition(await composeEdition(input), input, pdf);
   if (unfit.length > 0) {
-    for (const id of unfit) console.error(`${id} does not fit its box at the floor of the ladder`);
+    const anchors = (id: string) => parseMarkup(edition.text[id as FrameId]).some((block) => block.lines.flat().some((run) => "anchor" in run));
+    for (const id of unfit) console.error(`${id} does not fit its box at the floor of the ladder${anchors(id) ? ", or does not bring a frame named in its text into that frame's own line" : ""}`);
     console.error(`rulebook/manifest.json was not updated. npm run rulebook:check -- ${locale} measures each frame; shorten its text and build again.`);
     process.exitCode = 1;
   } else if (locale !== "en") {
