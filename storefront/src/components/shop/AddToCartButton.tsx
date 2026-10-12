@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 
 import { emitAddToCart, emitViewItem, onAnalyticsEnabled } from "../../lib/analytics.js";
 import { createMedusaStoreClient } from "../../lib/medusa-client.js";
@@ -8,6 +10,7 @@ import type { ClientRuntimeConfig } from "../../lib/client-runtime-config.js";
 import { forgetMedusaCartId, rememberMedusaCartId, storedMedusaCartId } from "../../lib/cart-store.js";
 import { addStoreLine, createStoreCart } from "../../lib/store-cart.js";
 import { reportCartFailure } from "../../lib/cart-diagnostics.js";
+import { localizedLinkFor } from "../../lib/seo.js";
 import styles from "../../styles/mockups/call-to-action.module.css";
 
 function runtimeConfig(): ClientRuntimeConfig {
@@ -25,6 +28,7 @@ export function claimAddAttempt(inFlight: { current: boolean }): boolean {
 
 /** The canonical CTA slot's only client behaviour: create/reuse a guest cart and add this variant. */
 export function AddToCartButton({
+  locale = DEFAULT_LOCALE,
   label,
   variantId,
   analyticsVariantId,
@@ -32,6 +36,7 @@ export function AddToCartButton({
   unitAmount,
   currency,
 }: {
+  readonly locale?: Locale;
   readonly label: string;
   readonly variantId: string | null;
   readonly analyticsVariantId: string;
@@ -39,6 +44,7 @@ export function AddToCartButton({
   readonly unitAmount: number;
   readonly currency: string;
 }) {
+  const strings = siteCopyFor(locale).interface.product;
   const [state, setState] = useState<"idle" | "adding" | "error">("idle");
   const inFlight = useRef(false);
   const unavailable = variantId === null;
@@ -76,10 +82,10 @@ export function AddToCartButton({
             } catch {
               // A retired cart id must not trap a buyer in permanent retries.
               forgetMedusaCartId();
-              throw new Error("The basket expired; try adding the game again");
+              throw new Error(strings.basketExpired);
             }
             emitAddToCart({ variantId, name: productName, unitAmount, currency });
-            window.location.assign("/cart");
+            window.location.assign(localizedLinkFor(locale, "cart").href);
           } catch (error) {
             reportCartFailure("product-page-add", error);
             inFlight.current = false;
@@ -88,7 +94,7 @@ export function AddToCartButton({
         })();
       }}
     >
-      {unavailable ? "Out of stock" : state === "adding" ? "Adding to basket…" : state === "error" ? "Try adding to basket again" : label}
+      {unavailable ? strings.outOfStock : state === "adding" ? strings.addingToBasket : state === "error" ? strings.retryAddingToBasket : label}
     </button>
   );
 }

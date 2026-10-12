@@ -38,9 +38,12 @@
  * video.
  */
 
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import styles from "./video-embed.module.css";
 
 export interface VideoEmbedProps {
+  readonly locale?: Locale;
   readonly heading: string;
   /** The accessible name given to the embedded `<iframe>`. */
   readonly title: string;
@@ -61,6 +64,7 @@ export interface VideoEmbedProps {
 }
 
 export function VideoEmbed({
+  locale = DEFAULT_LOCALE,
   heading,
   title,
   youTubeId,
@@ -73,8 +77,7 @@ export function VideoEmbed({
 
       {youTubeId === null ? (
         <p className={styles.pending}>
-          <span className={styles.pendingLabel}>{title}</span> is not linked yet — it will be embedded from
-          YouTube once a published video id is configured.
+          <span className={styles.pendingLabel}>{title}</span>{siteCopyFor(locale).interface.product.videoPendingSuffix}
         </p>
       ) : (
         <div
