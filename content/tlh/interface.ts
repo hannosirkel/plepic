@@ -94,7 +94,7 @@ export const interfaceCopy: InterfaceCopy = {
   },
   rulebook: {
     heading: "Lunar Base mIw paq",
-    lede: "mIw paq naQ; 'aplo'Daq tu'lu'bogh paq rurchu' — 25 tenwal. mIllogh neH ngaSbe': permey ghaj 'ej mu'mey DawIvlaH; vaj mu'mey DanejlaH, mu'mey velqa' DaSuqlaH, 'ej jIH laDbogh jan Dalo'laH.",
+    lede: "tlhIngan Hol mIw paq naQ; 'aplo'Daq tu'lu'bogh English Hol paq rur — 25 tenwal. mIllogh neH ngaSbe': permey ghaj 'ej mu'mey DawIvlaH; vaj mu'mey DanejlaH, mu'mey velqa' DaSuqlaH, 'ej jIH laDbogh jan Dalo'laH.",
     openLabel: "mIw paq yIpoSmoH (PDF)",
     downloadNote: "tIn laDmeH ta: %megabytes% De' juvmeH mI' (MB). ghogh HablI'Daq rarwI' Da'uypa', 'e' yIqel.",
     englishRulebookNotice: "English Hol lo' mIw paq.",

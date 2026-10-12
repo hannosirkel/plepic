@@ -937,6 +937,40 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     "s24.f32": { left: 13, right: 13 },
     "s24.f28": { left: 20, right: 20 },
   },
+  tlh: {
+    // Sheet 2: contents entries run right, towards their page numbers.
+    "s02.f05c": { right: 34 }, "s02.f06e": { right: 31 }, "s02.f07a": { right: 46 }, "s02.f07c": { right: 18 }, "s02.f10c": { right: 38 },
+    // Sheet 3: each caption stays one line, centred under its cards.
+    "s03.f06a": { left: 30, right: 30 }, "s03.f05": { left: 26, right: 26 }, "s03.f06b": { left: 26, right: 26 }, "s03.f06c": { left: 46, right: 46 },
+    // Sheet 4: the list on the left panel; a two-line entry stands around its numeral, as the English fifth entry does.
+    "s04.f05": { right: 40 }, "s04.f07": { right: 18, up: 5, down: 6 }, "s04.f09": { right: 25 }, "s04.f10": { right: 40 },
+    // Sheet 4: no callout around the cards grows. Each stands on a white pill drawn for the English words, and is shortened to fit it.
+    // Sheets 5 and 6: the heading and the first step run right; the pile labels are centred under their piles.
+    "s05.f03": { right: 100 }, "s05.f06": { right: 5, down: 6 }, "s05.f10": { left: 2, right: 2, down: 8 }, "s05.f11": { left: 9.5, right: 9.5 },
+    "s06.f10": { left: 2, right: 2, up: 3, down: 5 }, "s06.f11": { left: 9.5, right: 9.5 }, "s06.f12": { right: 15 },
+    // Sheet 7: the victory conditions run right inside their panel.
+    "s07.f05": { right: 20 }, "s07.f06": { right: 48 },
+    // Sheets 8 to 12: headings and list lines run right in their column or panel.
+    "s08.f05": { right: 37 }, "s08.f12": { right: 8 }, "s08.f14": { right: 28 },
+    "s10.f04": { right: 28 }, "s10.f19": { left: 6, right: 6 },
+    "s11.f03": { right: 110 }, "s11.f08": { right: 50 }, "s11.f09a": { right: 60 }, "s11.f09c": { right: 52 }, "s11.f09d": { right: 73 }, "s11.f09e": { right: 72 }, "s11.f09f": { right: 57 },
+    "s12.f02": { right: 60 }, "s12.f03": { right: 8 }, "s12.f07": { right: 28 },
+    // Sheets 13 and 15: an action's name stays over its icon, and the word the cards print stands under the icon.
+    "s13.f06": { left: 5, right: 10, down: 40, skip: 25 }, "s13.f05": { right: 14, down: 43, skip: 28 },
+    "s13.f18": { left: 6, right: 8, down: 42, skip: 27 }, "s13.f09": { left: 7, right: 10, down: 37, skip: 22 }, "s13.f11": { right: 30 },
+    "s15.f04": { left: 4, right: 4, up: 5, down: 33, skip: 16 }, "s15.f07": { left: 9.5, right: 9.5, down: 47, skip: 32 },
+    // Sheets 16 and 17: the sample turn's steps, and the pile labels on two lines under their piles.
+    "s16.f05": { right: 22 }, "s16.f08": { right: 10, down: 5 }, "s16.f18a": { left: 3, right: 3, down: 8 }, "s16.f18b": { left: 3, right: 3, down: 8 },
+    "s17.f12a": { left: 4, right: 4 }, "s17.f13a": { right: 6, down: 8 }, "s17.f13b": { left: 3, right: 3, down: 8 },
+    // Sheet 18: the victory conditions in their narrow panel, and the caption under the first Base.
+    "s18.f06": { right: 8, down: 8 }, "s18.f07": { right: 25 }, "s18.f08": { right: 2, down: 8 }, "s18.f11": { left: 16, right: 16 },
+    // Sheet 19.
+    "s19.f03": { right: 98 }, "s19.f05": { down: 9 },
+    // Sheet 21: the diagram's labels, centred where English has them.
+    "s21.f18": { left: 26, right: 26 }, "s21.f15": { left: 3, right: 3, down: 9 }, "s21.f14": { left: 3, right: 3, down: 9 }, "s21.f17a": { left: 7, right: 7 },
+    // Sheet 24.
+    "s24.f29": { left: 10, right: 10 },
+  },
 };
 
 /** The reviewed layout with an edition's boxes grown. Each grown frame keeps its English box as `englishBox`. */
