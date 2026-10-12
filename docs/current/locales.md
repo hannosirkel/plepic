@@ -177,22 +177,45 @@ last.
 
 | Step | What lands | Reachable by a visitor |
 | --- | --- | --- |
-| Staged | Files under `content/<locale>/`, `content/legal/<locale>/` and `rulebook/text/<locale>/`. They compile, the content scans read them, and the mirror test compares them with English | No |
-| Registered | The member of `LOCALES`, every registry entry and the committed rulebook PDF | Yes |
+| Staged | `content/glossary/<locale>.ts` and the files under `content/<locale>/`, `content/legal/<locale>/` and `rulebook/text/<locale>/`. They compile. `content/content.test.ts` scans every file under `content/`, and the mirror test compares the site and legal directories with English. The glossary check does not read them | No |
+| Registered | The member of `LOCALES`, every registry entry, the glossary's entry in `glossaries` and the committed rulebook PDF | Yes |
 
 1. Write the conventions as `docs/current/translation/<language>.md`.
-2. Add `content/glossary/<locale>.ts` and register it in
-   `content/glossary/index.ts`. From then on `content/glossary.test.ts` reads
-   every string of the language.
+2. Add `content/glossary/<locale>.ts`, ending in `satisfies Glossary` as the
+   three there do. Do not register it yet. `GlossaryRegistry` in
+   `content/glossary/schema.ts` is keyed by every member of `LOCALES` except
+   the default, so an entry in `glossaries` for a locale that is not yet a
+   member fails the type check.
 3. Stage the five legal pages in `content/legal/<locale>/` and the seven site
    modules in `content/<locale>/`.
-4. Stage the rulebook text in `rulebook/text/<locale>/` and add the edition to
-   `rulebook/editions.ts`. Build and check the PDF as
+4. Stage the rulebook text in `rulebook/text/<locale>/`. Add the edition to
+   `rulebook/editions.ts` and to the `translations` table in
+   `rulebook/text/translations.test.ts`. Both are keyed by a string, so they
+   take an edition that is not yet a locale. Build and check the PDF as
    [`rulebook.md`](./rulebook.md) says.
-5. Add the locale to `LOCALES` and `LOCALE_DEFINITIONS` in
-   `content/routes.ts`. The type check then names every table under
-   [Registries](#registries) and every per-locale table in a test. Fill each.
-6. Run `bash scripts/validate`.
+5. Register the language in one change. Add the locale to `LOCALES` and
+   `LOCALE_DEFINITIONS` in `content/routes.ts`. The type check then names
+   every table under [Registries](#registries), `glossaries` in
+   `content/glossary/index.ts`, and every per-locale table in a test, among
+   them `rulebookTexts` in `content/glossary.test.ts`. Fill each.
+6. Update the lists of locales written as literals. The type check does not
+   name them. Three fail until they have the new locale: the pinned `LOCALES`
+   in `content/content.test.ts`, the expectation of the test "include every
+   translated edition" in `content/glossary.test.ts`, and the `languages`
+   list in `storefront/tests/sitemap-contract.test.ts`. Loops over
+   `["de", "et", "tlh"]`, among them those in
+   `storefront/tests/locale-routing.test.ts`,
+   `storefront/tests/sitemap-contract.test.ts` and the browser suite, do not
+   fail. They leave the new edition out until it is added.
+7. Run `bash scripts/validate`.
+
+The glossary check reads a language from step 5 on, and not before.
+`content/glossary.test.ts` walks the entries of `glossaries`. For each it reads
+the site copy from `siteCopyByLocale`, the legal pages from
+`legalPagesByLocale` and the rulebook text from its own `rulebookTexts` table.
+It does not read a directory. A staged language is held to its glossary only
+by a test that imports the staged modules by path, as the two blocks named
+"the staged Klingon ..." in that file do.
 
 Nothing else is needed for the URLs. The catch-all route, the canonical, the
 `hreflang` set, the sitemap, the selector and the `robots.txt` rules for the

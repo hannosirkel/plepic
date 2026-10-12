@@ -144,7 +144,9 @@ German, Estonian and Klingon are registered. The conventions of each language
 A language registers in `glossary/index.ts` with a sibling `<locale>.ts`. For
 every term it gives the translation, the forms a string may use, the variants
 that must not appear, and a note where the choice needs one. `glossary/schema.ts`
-describes the form syntax. From then on `glossary.test.ts` fails a translated
+describes the form syntax. The registry is keyed by every locale except the
+default, so a glossary registers in the change that adds its locale to
+`LOCALES`, not before. From then on `glossary.test.ts` fails a translated
 string on any of three findings, and names the key and the term:
 
 | Finding | Fails when |
