@@ -234,7 +234,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 11
   "s11.f03": "Sphären (Orbs)",
-  "s11.f04": "Du erhältst Sphären, wenn du Module an deine Basis (Base) baust und deine Station umdrehst (Flip).",
+  "s11.f04": "Du erhältst Sphären, wenn du Module an deine Basis (Base) baust oder deine Station umdrehst (Flip).",
   "s11.f05": "- Manche Karten zeigen vollständige Sphären.\n- Neue Sphären entstehen aus farblich passenden Sphärenhälften, wenn du Module baust (Build) und mit deiner Basis verbindest.",
   "s11.f07": "Graue Sphären sind Joker und stehen für jede Farbe. Eine graue Hälfte nimmt die Farbe der Hälfte an, mit der sie verbunden wird.",
   "s11.f08": "Beispiele für Sphären:",
