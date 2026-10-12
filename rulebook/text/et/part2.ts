@@ -93,7 +93,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s18.f07": "Mahuta oma baasi (Base) 10 kolonisti",
   "s18.f08": "(oma jaam (Station) + oma moodulid (Modules))",
   "s18.f09": "**Saavuta 5 eri teadussaavutust** oma baasis",
-  "s18.f10": "**Näita 4 mõjukaarti (Influence)**\noma käest käigu lõpus",
+  "s18.f10": "**Näita 4 mõjukaarti (Influence)**\noma käest oma käigu lõpus",
   "s18.f05": "Võib juhtuda, et mitu mängijat täidab võidutingimusi samal ajal. Sel juhul on lõplik võitja see, kes täitis kõige rohkem võidutingimusi! Kui mitu mängijat on enim täidetud võidutingimuste arvult viigis, jagavad nad võitu.",
   "s18.f02": "31",
   "s18.f11": "(ÜLAL): Kolonistivõit, baasis on 10 kolonisti.",
