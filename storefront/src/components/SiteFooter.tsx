@@ -39,7 +39,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../../content/routes.js";
-import { publisherShort } from "../../../content/publisher.js";
+import { siteCopyByLocale, siteCopyFor } from "../../../content/editions.js";
 import { resolveLinkHref } from "./mockups/link-target.js";
 import type { ExternalTargetUrls } from "../config/runtime-config.js";
 import {
@@ -107,6 +107,15 @@ export function SiteFooter({
   externalTargets = {},
 }: SiteFooterProps) {
   const strings = CHROME_STRINGS[locale];
+  /*
+   * The tagline is the edition's own. An edition that has registered its
+   * legal pages and not yet its site copy (`null` in `siteCopyByLocale`, which
+   * is `et` today) still renders this footer under every legal page, so it
+   * shows the default edition's tagline until its own exists. That is what
+   * such a footer rendered before the tagline was read by edition; asking
+   * `siteCopyFor` for it would throw and take the legal page down with it.
+   */
+  const { publisherShort } = (siteCopyByLocale[locale] ?? siteCopyFor(DEFAULT_LOCALE)).publisher;
   const social = SOCIAL_LINK_ORDER.map((entry) => ({
     ...entry,
     href: resolveLinkHref({ kind: "external", to: entry.target }, externalTargets),

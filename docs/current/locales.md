@@ -37,6 +37,7 @@ Every table keyed by locale is a total `Record<Locale, T>`. A new member of
 | `LOCALE_DEFINITIONS` | `content/routes.ts` | `languageTag` and `pathPrefix` of each edition | `<html lang>`, `hreflang`, `og:locale`, list collation, `storefront/src/lib/urls.ts` |
 | `pagesByLocale` | `content/index.ts` | The pages each edition publishes | Canonical, `hreflang`, sitemap, the router, link targets |
 | `legalPagesByLocale` | `content/legal/index.ts` | The legal pages each edition carries | `LegalRoute` in `storefront/src/app/localized-routes.tsx` |
+| `siteCopyByLocale` | `content/editions.ts` | The site copy of each edition, or `null` for an edition that has none yet (`et`) | `HomepageMockup` and the sections it composes, through `siteCopyFor`; the footer tagline in `SiteFooter` |
 | `CHROME_STRINGS` | `storefront/src/lib/chrome-strings.ts` | Header and footer labels, the draft note, the incompleteness notice | `SiteHeader`, `SiteFooter`, `LegalPageContent` |
 | `LANGUAGE_SWITCHER_LABELS` | `storefront/src/lib/chrome-strings.ts` | The switcher label of each target edition, in its own language | `SiteFooter` |
 | `TAX_VOCABULARY` | `storefront/src/lib/catalogue.ts` | The VAT qualification phrases and the shipping note | `resolveCatalogue` |
@@ -49,7 +50,7 @@ registries cannot disagree about what the Estonian edition contains.
 One table is not keyed by locale, on purpose. `LOCALIZED_ROUTE_VIEWS` in
 `storefront/src/app/localized-routes.tsx` is a
 `Partial<Record<RouteId, renderer>>`. It lists the routes that have a renderer
-that takes a locale. Today it lists the five legal routes.
+that takes a locale. Today it lists the home page and the five legal routes.
 
 Test files hold their own total tables of expected words per locale:
 `content/content.test.ts`, `storefront/tests/legal-pages.test.tsx`,
@@ -155,7 +156,10 @@ canonical, against the payload the hydration reads.
 ## Links inside an edition
 
 `localizedLinkFor(locale, routeId)` in `storefront/src/lib/seo.ts` builds
-every link in the header and the footer.
+every link in the header and the footer. The home page's calls to action
+follow the same rule through `resolveLocalizedLink` in
+`storefront/src/components/mockups/link-target.ts`, which keeps the target's
+anchor.
 
 | Case | Link |
 | --- | --- |
@@ -166,8 +170,9 @@ In the Estonian edition the five legal links stay under `/et`. The links to
 the home page, Lunar Base, About, Support and the basket cross to English and
 say so with `hreflang="en"`.
 
-Only `LegalPageContent` passes a locale to `SiteHeader` and `SiteFooter`.
-Every other page renders them for the default edition.
+`LegalPageContent` and `HomepageMockup` pass their locale to `SiteHeader` and
+`SiteFooter`, and `HomepageMockup` passes it to its calls to action. Every
+other page renders its links for the default edition.
 
 ## Canonical, `hreflang` and the sitemap
 
@@ -217,9 +222,10 @@ host says nothing about the language its visitor reads.
 
 | Item | State |
 | --- | --- |
-| Home, Lunar Base, support, rulebook page, basket, checkout | The components import the English content modules directly: `content/publisher.ts`, `content/lunar-base.ts`, `content/support.ts`, `content/shop.ts`. They have no locale-aware renderer |
+| Lunar Base, support, rulebook page, basket, checkout | The components import the English content modules directly: `content/publisher.ts`, `content/lunar-base.ts`, `content/support.ts`, `content/shop.ts`. They have no locale-aware renderer |
+| Home | The renderer takes a locale and reads `siteCopyFor(locale)`, but only `en` publishes the route. The sentence that answers a newsletter signup is written by the Server Function in `public-form-actions.ts`, in English |
 | Strings inside components | Reader-facing strings are written in components, not in `content/`. Examples: `LunarBaseMockup.tsx`, `StripePaymentReturn.tsx`, `ConsentManager.tsx` |
-| Publisher tagline in the footer | English in every edition, from `content/publisher.ts` |
+| Publisher tagline in the footer | The edition's own, from `siteCopyByLocale`. An edition with no site copy (`et`) shows the English one |
 | Price format | The fixed tag `en-IE`, in `storefront/src/lib/catalogue.ts` and `storefront/src/lib/cart.ts` |
 | Country names | `storefront/mock/countries.json` holds English names. `destinationNameIn` in `storefront/src/lib/destination.ts` asks ICU for the edition's name inside a price qualification. It answers in English when ICU has no data for the edition |
 | `robots.txt` | Disallows `/cart`, `/checkout` and `/store-api`. It names no prefixed path, because no edition serves one for the basket or the checkout |

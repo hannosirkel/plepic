@@ -1,8 +1,13 @@
 /**
  * The homepage — developed from `t2-design-assets`'s `HomepageMockup` into
- * the real route (`src/app/page.tsx` renders this directly). One responsive
- * design, desktop and mobile answered through CSS (see
+ * the real route (`HomeRoute` in `src/app/localized-routes.tsx` renders it,
+ * for the default edition and for a prefixed one). One responsive design,
+ * desktop and mobile answered through CSS (see
  * `styles/mockups/homepage.module.css`).
+ *
+ * Every sentence on it is the edition's: the component takes a `locale` and
+ * reads `siteCopyFor(locale)`, and it holds no sentence of its own
+ * (`tests/home-edition.test.tsx`).
  *
  * Renders every section `content/pages.ts` lists for the `home` route
  * (`proof`, `story`, `newsletter`) beneath a hero that needs no anchor of its
@@ -25,13 +30,8 @@
  *   mounts `TurnstileWidget` and `HoneypotField` — both built and mounted
  *   nowhere until this unit.
  */
-import { pitch, differentiator, featuredDescription } from "../../../../content/lunar-base.js";
-import {
-  homepageCallsToAction,
-  publisherSentence,
-  publisherStory,
-  newsletter,
-} from "../../../../content/publisher.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { resolveCatalogue, resolveCataloguePlaceholders, type ResolvedCatalogue } from "../../lib/catalogue.js";
 import { NewsletterForm } from "../forms/NewsletterForm.js";
 import { CallToActionLink } from "./CallToActionLink.js";
@@ -44,7 +44,17 @@ import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import styles from "../../styles/mockups/homepage.module.css";
 
 export interface HomepageMockupProps {
-  /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
+  /**
+   * The edition this page is served in. Every sentence below comes from
+   * `siteCopyFor(locale)`, and the header, the footer and each section are
+   * handed the same value.
+   */
+  readonly locale?: Locale;
+  /**
+   * Defaults to the mock catalogue's own product, resolved for `locale` — see
+   * `src/lib/catalogue.ts`. A caller that passes its own resolves it for the
+   * same edition, because the "VAT included" note is one of its words.
+   */
   readonly catalogue?: ResolvedCatalogue;
   /** From runtime configuration (`getRuntimeConfig().turnstile.siteKey`). `null` renders no widget. */
   readonly turnstileSiteKey?: string | null;
@@ -60,11 +70,16 @@ export interface HomepageMockupProps {
 }
 
 export function HomepageMockup({
-  catalogue = resolveCatalogue(),
+  locale = DEFAULT_LOCALE,
+  catalogue = resolveCatalogue(undefined, undefined, locale),
   turnstileSiteKey = null,
   nonce = undefined,
   externalTargets = {},
 }: HomepageMockupProps = {}) {
+  const copy = siteCopyFor(locale);
+  const { pitch, differentiator, featuredDescription } = copy.lunarBase;
+  const { homepageCallsToAction, publisherSentence, publisherStory, newsletter } = copy.publisher;
+  const strings = copy.interface.home;
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
   /*
    * One link in the story section, and it is the heading. `content` still
@@ -78,7 +93,7 @@ export function HomepageMockup({
 
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" />
+      <SiteHeader wordmark="primary" locale={locale} />
 
       <main className={styles.main}>
         <section className={styles.hero}>
@@ -95,6 +110,7 @@ export function HomepageMockup({
                 <CallToActionLink
                   key={action.label}
                   action={action}
+                  locale={locale}
                   resolveLabel={resolve}
                   /*
                    * "VAT included" beneath "Buy for {price}" only — identified
@@ -124,12 +140,12 @@ export function HomepageMockup({
             height={864}
             loading="eager"
             decoding="async"
-            alt="The front and back of the Lunar Base game box, showing the astronaut cover and the component and game summary on the reverse."
+            alt={strings.heroImageAlt}
           />
         </section>
 
-        <section id="proof" className={styles.section} aria-label="Proof">
-          <ProofStripSection externalTargets={externalTargets} />
+        <section id="proof" className={styles.section} aria-label={strings.proofSectionLabel}>
+          <ProofStripSection locale={locale} externalTargets={externalTargets} />
         </section>
 
         <section id="featured-game" data-layer="lunar" className={styles.featured} aria-labelledby="featured-game-heading">
@@ -143,7 +159,12 @@ export function HomepageMockup({
               </p>
             ))}
             <CallToActionLink
-              action={{ label: "Explore Lunar Base", emphasis: "primary", target: { kind: "route", to: "lunarBase" } }}
+              action={{
+                label: strings.featuredCallToActionLabel,
+                emphasis: "primary",
+                target: { kind: "route", to: "lunarBase" },
+              }}
+              locale={locale}
             />
           </div>
           <img
@@ -155,7 +176,7 @@ export function HomepageMockup({
             height={598}
             loading="lazy"
             decoding="async"
-            alt="A hand of Lunar Base cards, fanned out."
+            alt={strings.featuredImageAlt}
           />
         </section>
 
@@ -182,7 +203,7 @@ export function HomepageMockup({
             )}
           </h2>
           <div className={styles.storyLayout}>
-            <TeamPhotoSection />
+            <TeamPhotoSection locale={locale} />
             <div className={styles.storyBody}>
               {publisherStory.body.map((paragraph) => (
                 <p key={paragraph} className={styles.body}>
@@ -202,11 +223,11 @@ export function HomepageMockup({
               {paragraph}
             </p>
           ))}
-          <NewsletterForm turnstileSiteKey={turnstileSiteKey} nonce={nonce} />
+          <NewsletterForm turnstileSiteKey={turnstileSiteKey} nonce={nonce} locale={locale} />
         </section>
       </main>
 
-      <SiteFooter externalTargets={externalTargets} />
+      <SiteFooter locale={locale} externalTargets={externalTargets} />
     </div>
   );
 }

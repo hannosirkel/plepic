@@ -31,6 +31,7 @@ import {
 } from "../../content/routes.js";
 import { contentFor } from "../../content/schema.js";
 import {
+  HomeRoute,
   LegalRoute,
   LOCALIZED_ROUTE_VIEWS,
   lookupLegalPage,
@@ -209,23 +210,33 @@ describe("every published route can actually be rendered in its locale", () => {
   });
 
   /**
-   * The five legal routes are the ones whose renderer reads a locale-keyed
-   * registry. Pinned by name because the failure mode is a route quietly
-   * *leaving* the table — after which its locale URLs 404 and the suite above
-   * still passes, since a route nothing publishes needs no renderer.
+   * The routes whose renderer reads the edition it is given: the five legal
+   * routes, which read a locale-keyed registry, and the home page, which
+   * reads `siteCopyFor(locale)`. Pinned by name and by renderer because the
+   * failure mode is a route quietly *leaving* the table — after which its
+   * locale URLs 404 and the suite above still passes, since a route nothing
+   * publishes needs no renderer. A route joins this list in the change that
+   * makes its renderer locale-aware, and not before.
    */
-  it("carries the whole legal set and nothing that only looks locale-aware", () => {
-    expect(Object.keys(LOCALIZED_ROUTE_VIEWS).toSorted()).toEqual(
-      ["legalImprint", "legalPrivacy", "legalReturns", "legalShipping", "legalTerms"].toSorted(),
-    );
-    for (const routeId of Object.keys(LOCALIZED_ROUTE_VIEWS) as RouteId[]) {
-      expect(LOCALIZED_ROUTE_VIEWS[routeId]).toBe(LegalRoute);
-    }
+  it("carries the legal set and the home page, and nothing that only looks locale-aware", () => {
+    expect(LOCALIZED_ROUTE_VIEWS).toEqual({
+      home: HomeRoute,
+      legalImprint: LegalRoute,
+      legalPrivacy: LegalRoute,
+      legalReturns: LegalRoute,
+      legalShipping: LegalRoute,
+      legalTerms: LegalRoute,
+    });
   });
 
   it("finds a legal page for every legal route in every locale that publishes it", () => {
+    const legalRouteIds = (Object.keys(LOCALIZED_ROUTE_VIEWS) as RouteId[]).filter(
+      (routeId) => LOCALIZED_ROUTE_VIEWS[routeId] === LegalRoute,
+    );
+    expect(legalRouteIds).toHaveLength(5);
+
     for (const locale of LOCALES) {
-      for (const routeId of Object.keys(LOCALIZED_ROUTE_VIEWS) as RouteId[]) {
+      for (const routeId of legalRouteIds) {
         const published = pagesIn(locale).some((page) => page.route === routeId);
         const page = lookupLegalPage(routeId, locale as Locale);
         expect(page !== undefined, `${locale}:${routeId}`).toBe(published);
@@ -263,6 +274,43 @@ describe("the legal projection has one renderer", () => {
     for (const file of legalRoutes) {
       expect(file.code, `${file.name} does not render LegalRoute`).toMatch(/<LegalRoute\b/);
       expect(file.code, `${file.name} does not declare its locale`).toMatch(/DEFAULT_LOCALE/);
+    }
+  });
+});
+
+/**
+ * The same rule for the home page: `HomepageMockup` is rendered by
+ * `HomeRoute` and by nothing else, so the default edition's `/` and a
+ * prefixed edition's home page are one renderer handed two locales.
+ */
+describe("the home page has one renderer", () => {
+  it("is imported by localized-routes.tsx and by nothing else under src/", () => {
+    const importers = sourceFiles()
+      .filter((file) => /\bfrom\s+"[^"]*HomepageMockup\.js"/.test(file.code))
+      .map((file) => file.name);
+
+    expect(importers).toEqual(["app/localized-routes.tsx"]);
+  });
+
+  it("is what the default edition's home route renders", () => {
+    const home = sourceFiles().find((file) => file.name === "app/(site)/page.tsx");
+
+    expect(home?.code).toMatch(/<HomeRoute\b[^>]*\blocale=\{DEFAULT_LOCALE\}/);
+  });
+
+  /**
+   * `HomeRoute` asks the page registry itself. An edition that does not
+   * publish the home page has no site copy to render it from, and the
+   * renderer reached without the resolver must still answer 404 rather than
+   * throw `siteCopyFor`'s error, which a visitor would meet as a 500.
+   */
+  it("answers 404 for an edition that does not publish the home page", async () => {
+    const unpublished = LOCALES.filter((locale) => !pagesIn(locale).some((page) => page.route === "home"));
+
+    for (const locale of unpublished) {
+      await expect(HomeRoute({ routeId: "home", locale }), locale).rejects.toMatchObject({
+        digest: expect.stringContaining("404"),
+      });
     }
   });
 });

@@ -28,11 +28,20 @@
  * caption is: a note about the moment photographed, not a claim about the
  * company.
  */
-import { team } from "../../../content/publisher.js";
+import { siteCopyFor } from "../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import { withEmphasis } from "../lib/emphasis.js";
 import styles from "../styles/team-photo-section.module.css";
 
-export function TeamPhotoSection() {
+export interface TeamPhotoSectionProps {
+  /** The edition whose caption and `alt` this renders. */
+  readonly locale?: Locale;
+}
+
+export function TeamPhotoSection({ locale = DEFAULT_LOCALE }: TeamPhotoSectionProps = {}) {
+  const copy = siteCopyFor(locale);
+  const { team } = copy.publisher;
+
   return (
     <figure className={styles.figure}>
       <img
@@ -44,7 +53,7 @@ export function TeamPhotoSection() {
         height={900}
         loading="lazy"
         decoding="async"
-        alt="The six people who make up Plepic Games, photographed together indoors with copies of the Lunar Base box on the table in front of them."
+        alt={copy.interface.home.teamPhotoAlt}
       />
       <figcaption className={styles.caption}>
         {team.body.map((paragraph) => (
