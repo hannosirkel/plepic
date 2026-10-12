@@ -6,9 +6,8 @@
  * in braces or between percent signs, are those of the English module, which
  * also says what each string is for; only prose is Klingon.
  *
- * Staged: `siteCopyByLocale.tlh` is still `null`, so no visitor reaches this
- * copy. The mirror test, the content scans, the glossary check and the Klingon
- * word check read it from disk.
+ * Published under `/tlh` through `siteCopyByLocale`. The mirror test, content
+ * scans, glossary check and Klingon word check still read this file.
  *
  * ## Sentences a component builds from several strings
  *

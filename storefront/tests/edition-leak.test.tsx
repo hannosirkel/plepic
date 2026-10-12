@@ -112,12 +112,12 @@ describe("published editions do not leak English copy or data labels", () => {
       en: { inStock: "In stock", outOfStock: "Out of stock", players: "2–6 players" },
       de: { inStock: "Auf Lager", outOfStock: "Nicht auf Lager", players: "2–6 Personen" },
       et: { inStock: "Laos olemas", outOfStock: "Laost otsas", players: "2–6 mängijat" },
-      tlh: null,
+      tlh: { inStock: "polmeH DaqDaq tu'lu'", outOfStock: "Hoch ngevlu'pu'", players: "2–6 'ovwI'pu'" },
     };
     const englishWords = expected.en;
     if (englishWords === null) throw new Error("The English edition needs stock words");
     const paragraphs = (html: string): string[] =>
-      [...html.matchAll(/<(p|li)\b[^>]*>([^<]*)<\/\1>/g)].map((match) => match[2] ?? "");
+      [...html.matchAll(/<(p|li)\b[^>]*>([^<]*)<\/\1>/g)].map((match) => visibleText(match[2] ?? ""));
 
     for (const locale of LOCALES) {
       const words = expected[locale];

@@ -7,9 +7,8 @@
  * legal pages included, and a description written here stays within 160
  * characters.
  *
- * Staged: `pagesByLocale.tlh` still holds the legal set alone, so no visitor
- * reaches these six routes in Klingon. The mirror test, the content scans and
- * the Klingon word check read this file from disk.
+ * Published under `/tlh` through `pagesByLocale`, alongside the legal pages.
+ * The mirror test, content scans and Klingon word check still read this file.
  *
  * `je'meH ngaSwI'` (basket), `Huch nobmeH Daq` (checkout), `mIw paq`
  * (rulebook), `waw'` (Base) and `vumwI'` (Agent) are the words of

@@ -19,17 +19,24 @@ import * as etSupport from "./et/support.js";
 import * as etShop from "./et/shop.js";
 import * as etPages from "./et/pages.js";
 import { interfaceCopy as etInterfaceCopy } from "./et/interface.js";
+import * as tlhPublisher from "./tlh/publisher.js";
+import * as tlhLunarBase from "./tlh/lunar-base.js";
+import * as tlhProof from "./tlh/proof.js";
+import * as tlhSupport from "./tlh/support.js";
+import * as tlhShop from "./tlh/shop.js";
+import * as tlhPages from "./tlh/pages.js";
+import { interfaceCopy as tlhInterfaceCopy } from "./tlh/interface.js";
 import type { Locale } from "./routes.js";
 import type { LocalizedContent } from "./schema.js";
 
 /** The modules a complete site edition must provide. */
 export interface SiteCopy {
-  readonly publisher: typeof publisher | typeof dePublisher | typeof etPublisher;
-  readonly lunarBase: typeof lunarBase | typeof deLunarBase | typeof etLunarBase;
-  readonly proof: typeof proof | typeof deProof | typeof etProof;
-  readonly support: typeof support | typeof deSupport | typeof etSupport;
-  readonly shop: typeof shop | typeof deShop | typeof etShop;
-  readonly pages: typeof pages | typeof dePages | typeof etPages;
+  readonly publisher: typeof publisher | typeof dePublisher | typeof etPublisher | typeof tlhPublisher;
+  readonly lunarBase: typeof lunarBase | typeof deLunarBase | typeof etLunarBase | typeof tlhLunarBase;
+  readonly proof: typeof proof | typeof deProof | typeof etProof | typeof tlhProof;
+  readonly support: typeof support | typeof deSupport | typeof etSupport | typeof tlhSupport;
+  readonly shop: typeof shop | typeof deShop | typeof etShop | typeof tlhShop;
+  readonly pages: typeof pages | typeof dePages | typeof etPages | typeof tlhPages;
   readonly interface: InterfaceCopy;
 }
 
@@ -37,7 +44,7 @@ export const siteCopyByLocale: LocalizedContent<SiteCopy | null> = {
   en: { publisher, lunarBase, proof, support, shop, pages, interface: interfaceCopy },
   de: { publisher: dePublisher, lunarBase: deLunarBase, proof: deProof, support: deSupport, shop: deShop, pages: dePages, interface: deInterfaceCopy },
   et: { publisher: etPublisher, lunarBase: etLunarBase, proof: etProof, support: etSupport, shop: etShop, pages: etPages, interface: etInterfaceCopy },
-  tlh: null,
+  tlh: { publisher: tlhPublisher, lunarBase: tlhLunarBase, proof: tlhProof, support: tlhSupport, shop: tlhShop, pages: tlhPages, interface: tlhInterfaceCopy },
 };
 
 /** A null entry denotes an edition whose site copy has not been published. */

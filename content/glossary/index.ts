@@ -35,6 +35,13 @@ export const glossaryExceptions: readonly GlossaryException[] = [
       'The English "legal bases" refers to grounds for processing personal data, not the player\'s Base. Klingon uses "chut meqmey" for legal grounds.',
   },
   {
+    locale: "tlh",
+    key: "site.pages.pages[10].body[2].body[0]",
+    term: "base",
+    rule: "missing-term",
+    reason: "The published page registry also carries the privacy page. Its legal bases are chut meqmey, not a player's Base.",
+  },
+  {
     locale: "de",
     key: "legal.legalPrivacy.body[2].body[0]",
     term: "base",

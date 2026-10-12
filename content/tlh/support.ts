@@ -6,9 +6,8 @@
  * link targets and the contact placeholder are the English module's. Every
  * rules answer is the rulebook's answer, as in English.
  *
- * Staged: `siteCopyByLocale.tlh` is still `null`, so no visitor reaches this
- * copy. The mirror test, the content scans and the Klingon word check read it
- * from disk.
+ * Published under `/tlh` through `siteCopyByLocale`. The mirror test, the
+ * content scans and the Klingon word check still read this file.
  *
  * The rules answers use the words of `content/glossary/tlh.ts`, because they
  * will be read beside the rulebook: `mIw paq` (rulebook), `Qapla' ngoQ`

@@ -7,9 +7,8 @@
  * reasoning for each is recorded there. Nothing is added that the English
  * edition does not say.
  *
- * Staged: `siteCopyByLocale.tlh` is still `null`, so no visitor reaches this
- * copy. The mirror test, the content scans and the Klingon word check read it
- * from disk.
+ * Published under `/tlh` through `siteCopyByLocale`. The mirror test, the
+ * content scans and the Klingon word check still read this file.
  *
  * The publisher is `Se'vIr malja'`, the attested phrase for a publishing
  * house. A board game is `'echlet Quj` and a card game `nav Quj`, with the

@@ -52,8 +52,7 @@ export const CHECKOUT_RETURN_PATH = "/checkout/payment-return";
 /**
  * Every locale the site is published in.
  *
- * English, German and Estonian publish the full site. Klingon currently
- * publishes the five legal pages under its own prefix.
+ * English, German, Estonian and Klingon publish the full site.
  *
  * A locale is *not* a language: it is a published edition of this site, keyed
  * by an identifier that is also its URL segment. {@link LocaleDefinition}
