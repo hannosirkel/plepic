@@ -102,6 +102,10 @@ jobs:
       - name: Check documentation links
         # lycheeverse/lychee-action v2.9.0
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8
+        env:
+          # With a token lychee asks the GitHub API about github.com links,
+          # which is not throttled the way anonymous page requests are.
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           args: --no-progress --config lychee.toml './**/*.md'
           fail: true
