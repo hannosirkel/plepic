@@ -369,6 +369,23 @@ describe("the check, on fixture data", () => {
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
 
+  it("has an allowed form for every term and explains any shared translation", () => {
+    for (const [locale, glossary] of registered) {
+      expect(Object.keys(glossary).sort(), locale).toEqual([...TERM_IDS].sort());
+      const byTranslation = new Map<string, TermId[]>();
+      for (const term of TERM_IDS) {
+        expect(glossary[term].forms.length, `${locale}.${term}`).toBeGreaterThan(0);
+        const translation = glossary[term].term.toLocaleLowerCase(locale === "de" ? "de" : "en");
+        byTranslation.set(translation, [...(byTranslation.get(translation) ?? []), term]);
+      }
+      for (const ids of byTranslation.values()) {
+        if (ids.length > 1) {
+          for (const term of ids) expect(glossary[term].note?.trim(), `${locale}.${term}`).toBeTruthy();
+        }
+      }
+    }
+  });
+
   it("names a term with no form, an empty form, or an as-printed term that was translated", () => {
     expect(problemsIn(german)).toEqual([]);
     expect(problemsIn(fixtureGlossary({ ...renamed, hand: { term: " ", forms: [], forbidden: ["*"] } }))).toEqual([
@@ -380,9 +397,13 @@ describe("the registered glossaries", () => {
   it("are well formed and pass the check over every translated string, less the named exceptions", () => {
     for (const [locale, glossary] of registered) {
       expect(problemsIn(glossary), locale).toEqual([]);
-      const pairs = sources.flatMap((pairsFor) => pairsFor(locale));
-      expect(pairs.length, `${locale} has a glossary and no translated string`).toBeGreaterThan(0);
-      expect(reportFor(locale, glossary, pairs, glossaryExceptions), locale).toEqual([]);
+      // A glossary can be prepared before its locale is registered in T019.
+      if (Object.hasOwn(siteCopyByLocale, locale)) {
+        const activeLocale = locale as Locale;
+        const pairs = sources.flatMap((pairsFor) => pairsFor(activeLocale));
+        expect(pairs.length, `${locale} has a glossary and no translated string`).toBeGreaterThan(0);
+        expect(reportFor(activeLocale, glossary, pairs, glossaryExceptions), locale).toEqual([]);
+      }
     }
   });
 
