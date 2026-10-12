@@ -107,6 +107,19 @@ describe("layout check: collisions", () => {
     expect(checkCollisions(nested, deeper, overprinted).failures).toEqual(["s01.f01 and s01.f02 (sheet 1) overlap by 9.0 pt and by 6.0 pt in English"]);
   });
 
+  it("holds an edition's text to the box grown for it, and finds the English ink in the English box", () => {
+    // The German heading is 130 pt long: 30 pt past the English box, inside one grown 32 pt to the right.
+    const longer = fitting();
+    longer.sheets[0]?.elements[0]?.runs.splice(0, 1, run("Aufbau des Spiels für alle", 20, 29.8, 10, 130));
+    expect(checkFit(sheets, longer, leading).failures).toEqual(["s01.f01 (sheet 1) does not fit: its text runs 30.0 pt right of its box at 100% size; shorten the text"]);
+    const heading = frame("s01.f01", "h1", 20, 20, 132, 10);
+    const grownSheets: ReviewedSheet[] = [{ ...sheets[0] as ReviewedSheet, frames: [{ ...heading, englishBox: { x: 20, y: 20, width: 100, height: 10 } }, frame("s01.f02", "p", 20, 50, 100, 23)] }];
+    expect(checkFit(grownSheets, longer, leading).failures).toEqual([]);
+    // A published run that only the grown box would hold is not the heading's English ink.
+    const beside = run("Seite 3", 125, 29.8, 10, 25);
+    expect(englishInk(grownSheets[0] as ReviewedSheet, [run("Setup", 20, 29.8), beside]).get("s01.f01")).toHaveLength(1);
+  });
+
   describe("a label set inside a paragraph's line", () => {
     // A circled letter in the second line: its box lies inside the paragraph's box, and the line leaves it a gap.
     const labelled: ReviewedSheet[] = [{ sheet: 1, width: 283.46, height: 283.46, frames: [frame("s01.f01", "p", 20, 50, 200, 23), frame("s01.f02", "label", 80, 63, 6, 10)] }];

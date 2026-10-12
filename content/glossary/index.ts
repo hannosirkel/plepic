@@ -39,4 +39,12 @@ export const glossaryExceptions: readonly GlossaryException[] = [
     rule: "missing-term",
     reason: "The published page registry also carries the privacy page. Its legal bases are Rechtsgrundlagen, not a player's Base.",
   },
+  {
+    locale: "de",
+    key: "rulebook.s04.f34",
+    term: "scientificAchievement",
+    rule: "missing-term",
+    reason:
+      "A callout on sheet 4 stands on a white pill of the artwork, here about 31 pt wide, and „Wissenschaftliche“ alone measures 35 pt at the callout's 5 pt. The callout keeps the noun, „Errungenschaften“. Its numeral 7 names the entry of the list beside the cards, which has the term in full.",
+  },
 ];

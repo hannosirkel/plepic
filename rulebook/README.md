@@ -106,6 +106,38 @@ The PDF uses exactly three font families:
 `fonts.ts` is the exact face allowlist. The Minion Pro space on sheet 6 is
 dropped; no Minion Pro file is loaded. No font file is copied into Git.
 
+## Giving a translation room
+
+A translation runs longer than the English text. The build shrinks a frame's
+type as far as the ladder allows; past that there are two remedies, and
+`npm run rulebook:check -- <locale>` names every frame that needs one.
+
+| Remedy | Where | Use it when |
+| --- | --- | --- |
+| Shorten the text | `text/<locale>/` | The sheet has no room around the frame. The rule the text states must stay the same |
+| Grow the frame's box | the edition's entry in `editionBoxes`, `layout/overrides.ts` | The sheet is empty beside or under the frame: a Contents entry, a caption, a heading, a line of a list in a panel |
+
+An `editionBoxes` entry adds points to a frame's box on the sides it names
+(`left`, `right`, `up`, `down`), for that edition alone. The English layout is
+untouched, and the frame keeps its English box as `englishBox`: that is where
+the published text stands, which is what the leading and the Collisions row
+are measured against. The Fit row holds the edition's text to the grown box.
+Text starts at the top of its box and keeps the frame's alignment, so a
+centred frame grows by the same amount on both sides. A box is honest when it
+holds the text: one made too narrow, to push the type down the ladder, leaves
+the text standing outside it by nearly the 3 pt the check allows.
+
+`skip` is for a frame whose text stands around a picture. Six action names on
+sheets 13 and 15 stand over an icon in a column too narrow for the German
+name and the printed word beside it (`Abwerfen (Discard)`), and with no room
+for two lines above the icon. The name stays over the icon, `skip` leaves that
+many points empty above the text's last line, and the printed word stands
+under the icon. The box has to grow `down` by as much.
+
+Every entry is a judgment made on the rendered sheet. The check cannot tell
+empty ground from a picture, so a grown box is looked at in
+`rulebook/.work/<locale>/compare/` like everything else.
+
 ## Checking the layout
 
 Run `npm run rulebook:check -- <locale>` after a build. It prints one line per
@@ -116,7 +148,7 @@ frame, sheet or font at fault.
 | --- | --- |
 | Sheets | 25 sheets, each within 1 pt of the English sheet's size |
 | Artwork | With the text stripped from both, each sheet differs from the English sheet in at most 2% of its pixels |
-| Fit | Every frame is set at 90% of its English size or more and never under 6 pt, with 95% of its English leading or more, and its text stands at most 3 pt outside its English box |
+| Fit | Every frame is set at 90% of its English size or more and never under 6 pt, with 95% of its English leading or more, and its text stands at most 3 pt outside its box: the English box, or the one `editionBoxes` grew for the edition |
 | Collisions | No two frames' ink overlaps by over 1 pt more than it does in the published English PDF |
 | Glyphs | `pdftotext` returns every frame's text from where the frame was printed; no replacement character; every font is embedded and is one `fonts.ts` allows |
 | Structure | The PDF is tagged, its language is the edition's, and each sheet has one structure element per frame, with headings and lists marked up |

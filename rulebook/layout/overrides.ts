@@ -689,6 +689,10 @@ export type ReviewedFrame<Id extends string = string> = Omit<RulebookFrame, "id"
   role: FrameRole;
   indent?: number;
   room?: number;
+  /** Where the published English text stands, when an edition's box is another (`editionBoxes`). */
+  englishBox?: Box;
+  /** Points left empty above the text's last line, where a picture stands between its lines. */
+  skip?: number;
 };
 export type ReviewedSheet<Id extends string = string> = {
   sheet: number;
@@ -774,3 +778,91 @@ export function applyOverrides(
 
 /** The published layout as reviewed: every sheet's frames in reading order, each with its role. */
 export const reviewedSheets = applyOverrides(rulebookSheets, sheetOverrides) as readonly ReviewedSheet<FrameId>[];
+
+/**
+ * Points added to a frame's box on each named side. `skip` leaves that many
+ * points empty above the text's last line, for a frame whose text stands
+ * around a picture: its name above an icon and the printed word under it.
+ * The box has to grow `down` by as much.
+ */
+export type Grow = { left?: number; right?: number; up?: number; down?: number; skip?: number };
+
+/**
+ * Where a translation needs more room than the English text took and the
+ * sheet has it, the frame's box grows for that edition alone. A frame not
+ * named here keeps its English box, and its text is shortened to fit it.
+ * Every entry was looked at on the rendered sheet: the grown box lies on
+ * empty ground and reaches no other frame or picture.
+ */
+export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<FrameId, Grow>>>>> = {
+  de: {
+    // Sheet 1: the title, centred under the logo.
+    "s01.f01": { left: 11, right: 11 },
+    // Sheet 2: contents entries run right, towards their page numbers.
+    "s02.f01": { down: 6 }, "s02.f02": { right: 10, down: 6 },
+    "s02.f06a": { right: 20 }, "s02.f06c": { right: 13 }, "s02.f06e": { right: 5 }, "s02.f07a": { right: 46 }, "s02.f07c": { right: 18 },
+    "s02.f08a": { right: 8 }, "s02.f10c": { right: 24 }, "s02.f10e": { right: 26 },
+    // Sheet 3: each caption stays one line, centred under its cards.
+    "s03.f04": { right: 20 }, "s03.f07": { right: 8 },
+    "s03.f06a": { left: 30, right: 30 }, "s03.f05": { left: 26, right: 26 }, "s03.f06b": { left: 26, right: 26 }, "s03.f06c": { left: 46, right: 46 },
+    // Sheet 4: the list on the left panel; a two-line entry stands around its numeral, as the English fifth entry does.
+    "s04.f03": { right: 10 }, "s04.f05": { right: 40 }, "s04.f07": { right: 18, up: 5, down: 6 }, "s04.f08": { up: 5, down: 6 },
+    "s04.f09": { right: 10 }, "s04.f10": { right: 16 },
+    // Sheet 4: no callout around the cards grows. Each stands on a white pill drawn for the English words, and is shortened to fit it.
+    // Sheets 5 and 6: the pile labels, centred under their piles.
+    "s05.f06": { right: 5, down: 6 }, "s05.f10": { left: 9, right: 9 }, "s05.f11": { left: 16.5, right: 16.5 },
+    "s06.f10": { left: 9, right: 9 }, "s06.f11": { left: 18.5, right: 14.5 }, "s06.f12": { right: 6 },
+    // Sheet 7: the victory conditions run right inside their panel; the caption is centred in its own.
+    "s07.f05": { right: 20 }, "s07.f06": { right: 48 }, "s07.f07": { right: 32 }, "s07.f08": { right: 20 }, "s07.f09": { left: 25, right: 25 }, "s07.f10": { right: 15 },
+    // Sheets 8 to 12: headings and list lines run right in their column or panel.
+    "s08.f05": { right: 37 }, "s08.f09": { right: 45 }, "s08.f12": { right: 8 }, "s08.f13": { right: 10 }, "s08.f15": { right: 8 },
+    "s09.f03": { right: 40 }, "s09.f05": { right: 70 }, "s09.f10": { right: 15, down: 4 },
+    "s10.f04": { right: 25 }, "s10.f19": { left: 6, right: 6 },
+    "s11.f03": { right: 110 }, "s11.f05": { right: 6, down: 4 }, "s11.f08": { right: 50 }, "s11.f09a": { right: 60 }, "s11.f09b": { right: 60 }, "s11.f09c": { right: 48 },
+    "s11.f09d": { right: 50 }, "s11.f09e": { right: 45 }, "s11.f09f": { right: 48 },
+    "s12.f02": { right: 60 }, "s12.f03": { right: 8 }, "s12.f04": { right: 6 },
+    // Sheets 13 and 15: an action's name stays over its icon, and the word the cards print stands under the icon.
+    "s13.f03": { right: 15 }, "s13.f06": { left: 5, right: 10, down: 40, skip: 25 }, "s13.f05": { right: 14, down: 43, skip: 28 }, "s13.f07": { right: 6, down: 8 },
+    "s13.f18": { left: 6, right: 8, down: 42, skip: 27 }, "s13.f09": { right: 10, down: 37, skip: 22 }, "s13.f11": { right: 30 }, "s13.f12": { right: 14 },
+    // Sheet 14: the rules above the two diagrams.
+    "s14.f04": { right: 5, down: 4 }, "s14.f07": { right: 4 }, "s14.f08": { right: 15 },
+    // Sheet 15: each panel has room right of and under its text.
+    "s15.f04": { left: 5.5, right: 5.5, down: 37, skip: 23 }, "s15.f03": { right: 8, down: 8 }, "s15.f07": { left: 9.5, right: 9.5, down: 47, skip: 32 },
+    "s15.f06": { right: 8, down: 8 }, "s15.f09": { right: 40 }, "s15.f12": { right: 12 }, "s15.f10": { right: 20 },
+    // Sheets 16 and 17: the pile labels take two lines under their piles.
+    "s16.f07": { right: 28 }, "s16.f18a": { down: 8 }, "s16.f18b": { left: 8, right: 8, down: 8 },
+    "s17.f07": { down: 11 }, "s17.f12a": { left: 11, right: 11 }, "s17.f13a": { down: 8 }, "s17.f13b": { left: 8, right: 8, down: 8 },
+    // Sheet 18: the victory conditions in their narrow panel, and the caption under the first Base.
+    "s18.f06": { right: 8 }, "s18.f07": { right: 25 }, "s18.f08": { right: 2 }, "s18.f09": { right: 9, down: 9 }, "s18.f10": { right: 6 }, "s18.f11": { left: 16, right: 16 },
+    "s19.f03": { right: 100 }, "s19.f05": { down: 9 },
+    // Sheet 20: the left column is free under its last paragraph.
+    "s20.f03a": { right: 25 }, "s20.f04": { down: 9 }, "s20.f05": { down: 12 }, "s20.f06": { right: 25 }, "s20.f07": { right: 8 }, "s20.f08": { right: 8 }, "s20.f09": { right: 8 }, "s20.f10": { right: 23 },
+    // Sheet 21.
+    "s21.f03": { right: 110 }, "s21.f04": { right: 25 }, "s21.f05": { right: 5 }, "s21.f06": { right: 12 }, "s21.f07": { right: 20 }, "s21.f08": { right: 10 }, "s21.f18": { left: 21, right: 21 },
+    "s21.f15": { left: 9, right: 9, down: 9 }, "s21.f14": { left: 2, right: 2, down: 9 }, "s21.f17a": { left: 12, right: 12 },
+    "s22.f03": { right: 50 },
+    // Sheet 23: each Station's paragraph may run further right and down beside its card.
+    "s23.f03": { right: 8, down: 8 }, "s23.f05": { down: 11 }, "s23.f06": { right: 10, down: 10 }, "s23.f08": { right: 8, down: 11 },
+    "s24.f20": { left: 22, right: 22 }, "s24.f32": { left: 13, right: 13 },
+  },
+};
+
+/** The reviewed layout with an edition's boxes grown. Each grown frame keeps its English box as `englishBox`. */
+export function editionSheets(
+  locale: string,
+  sheets: readonly ReviewedSheet<FrameId>[] = reviewedSheets,
+  grown: Readonly<Partial<Record<FrameId, Grow>>> = editionBoxes[locale] ?? {},
+): readonly ReviewedSheet<FrameId>[] {
+  const known = new Set(sheets.flatMap((sheet) => sheet.frames.map((frame) => frame.id)));
+  for (const id of Object.keys(grown)) if (!known.has(id as FrameId)) throw new Error(`${locale}: ${id} is not a reviewed frame`);
+  return sheets.map((sheet) => ({
+    ...sheet,
+    frames: sheet.frames.map((frame) => {
+      const { left = 0, right = 0, up = 0, down = 0, skip } = grown[frame.id] ?? {};
+      if (left === 0 && right === 0 && up === 0 && down === 0 && skip === undefined) return frame;
+      const box = { x: round(frame.box.x - left), y: round(frame.box.y - up), width: round(frame.box.width + left + right), height: round(frame.box.height + up + down) };
+      if (box.x < 0 || box.y < 0 || box.x + box.width > sheet.width || box.y + box.height > sheet.height) throw new Error(`${locale}: ${frame.id} grows off sheet ${sheet.sheet}`);
+      return { ...frame, box, englishBox: frame.box, ...(skip === undefined ? {} : { skip }) };
+    }),
+  }));
+}

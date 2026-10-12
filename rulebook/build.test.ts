@@ -46,6 +46,22 @@ describe("rulebook template", () => {
     expect(html).toContain('<li class="list-item bullet"');
   });
 
+  it("leaves a frame's skip empty above its last line, and refuses one whose text is a single line", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rulebook-template-"));
+    const asset = join(dir, "art.svg");
+    const font = join(dir, "font.otf");
+    await writeFile(asset, "<svg xmlns='http://www.w3.org/2000/svg'/>");
+    await writeFile(font, "font fixture");
+    const render = (text: string) => renderRulebookHtml({
+      locale: "de", languageTag: "de", title: "Spielanleitung",
+      sheets: [{ sheet: 1, width: 283.46, height: 283.46, frames: [{ id: "s01.f01", role: "h2", box: { x: 20, y: 50, width: 40, height: 50 }, fontFamily: "MADE Evolve Sans", fontWeight: 700, fontStyle: "normal", fontSize: 10, color: "#15244d", alignment: "left", skip: 25 }] }] as unknown as Parameters<typeof renderRulebookHtml>[0]["sheets"],
+      text: { "s01.f01": text } as unknown as Parameters<typeof renderRulebookHtml>[0]["text"],
+      underlays: [{ sheet: 1, path: asset, kind: "svg", pixelRatio: 0 }], fonts: [{ name: "MADEEvolveSans-Bold", family: "MADE Evolve Sans", weight: 700, style: "normal", file: font }],
+    });
+    expect(await render("Station\numdrehen\n(Flip)")).toContain('Station<br>umdrehen<br><span class="skip" style="height:25pt"></span>(Flip)</h2>');
+    await expect(render("Umdrehen (Flip)")).rejects.toThrow("s01.f01 skips 25 pt above its last line, but its text is one line");
+  });
+
   it("keeps a line clear where a label is anchored in it, by the room the label has inside the frame's box", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rulebook-template-"));
     const asset = join(dir, "art.svg");

@@ -15,7 +15,8 @@ export async function sourceLeading(source: string, sheets: readonly ReviewedShe
         return { x: item.transform[4] ?? 0, baseline: sheet.height - (item.transform[5] ?? 0), width: item.width };
       });
       for (const frame of sheet.frames) {
-        const { x, y, width, height } = frame.box;
+        // The published baselines stand in the English box, wherever an edition sets the frame.
+        const { x, y, width, height } = frame.englishBox ?? frame.box;
         const baselines = [...new Set(runs.filter((run) =>
           run.x + run.width >= x - 1 && run.x <= x + width + 1 &&
           run.baseline >= y && run.baseline <= y + height + frame.fontSize * 0.3,
