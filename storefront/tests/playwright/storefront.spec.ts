@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { pagesByLocale } from "../../../content/index.js";
+import { pagesByLocale, siteCopyFor } from "../../../content/index.js";
 import { CHECKOUT_RETURN_PATH, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
 import { localizedPath } from "../../src/lib/urls.js";
 
@@ -48,7 +48,7 @@ const visualRoutes = [
   ["returns", "/legal/returns"],
   ["shipping", "/legal/shipping"],
   ["terms", "/legal/terms"],
-  ["localized-imprint", "/et/legal/imprint"],
+  ["localized-imprint", "/et/legal/imprint", "et"],
   ["not-found", "/definitely-not-found"],
 ] as const;
 
@@ -80,7 +80,8 @@ for (const locale of LOCALES) {
   });
 }
 
-for (const [name, path] of visualRoutes) {
+// A route in another edition names its consent dialog in that edition's words.
+for (const [name, path, locale = "en"] of visualRoutes) {
   test(`${name} preserves the default consent state without loading analytics`, async ({ page }, testInfo) => {
     const analyticsRequests: string[] = [];
     const consoleErrors: string[] = [];
@@ -105,7 +106,7 @@ for (const [name, path] of visualRoutes) {
 
     const response = await page.goto(path);
     expect(response).not.toBeNull();
-    await expect(page.getByRole("dialog", { name: "Cookie and analytics consent" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: siteCopyFor(locale).interface.consent.dialogLabel })).toBeVisible();
     await expect.poll(() => analyticsRequests).toEqual([]);
     await expect(page).toHaveScreenshot(`${name}-${testInfo.project.name}.png`, {
       // Viewport captures keep the committed evidence within the repository's
@@ -122,7 +123,7 @@ for (const [name, path] of visualRoutes) {
       expect(response?.status()).toBeLessThan(400);
       expect(consoleErrors).toEqual([]);
     }
-    await page.getByRole("button", { name: "Agree" }).click();
+    await page.getByRole("button", { name: siteCopyFor(locale).interface.consent.agree }).click();
     await expect.poll(() => analyticsRequests.length).toBeGreaterThan(0);
   });
 }
