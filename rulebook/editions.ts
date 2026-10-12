@@ -3,6 +3,7 @@ import { de } from "./text/de/index.js";
 import { en } from "./text/en.js";
 import { et } from "./text/et/index.js";
 import type { RulebookText } from "./text/schema.js";
+import { tlh } from "./text/tlh/index.js";
 
 /** The published English rulebook: the source of the layout, never rebuilt or replaced. */
 export const englishPdf = "storefront/public/documents/lunar-base-rulebook.pdf";
@@ -14,6 +15,7 @@ export const editions: Readonly<Record<string, Edition>> = {
   en: { tag: "en", title: "Lunar Base Rule Book", text: en },
   de: { tag: "de", title: "Lunar Base Spielanleitung", text: de },
   et: { tag: "et", title: "Lunar Base reegliraamat", text: et },
+  tlh: { tag: "tlh", title: "Lunar Base mIw paq", text: tlh },
 };
 
 /**

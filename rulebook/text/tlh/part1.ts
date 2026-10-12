@@ -22,6 +22,10 @@ type Sheet = "s01" | "s02" | "s03" | "s04" | "s05" | "s06" | "s07" | "s08" | "s0
  * noun takes a suffix. "Clockwise" is `poS DopDaq`, to the left: the next
  * player at a table. `wIv` is kept for the Draft action; to choose anything
  * else is `wuq`.
+ *
+ * A callout around the cards of sheet 4 stands on a white pill drawn for the
+ * English words. The two "Card cost" callouts keep `DIlmeH` alone, which is
+ * all their pill holds; entry 9 of the list beside them has the whole term.
  */
 export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   // Sheet 1
@@ -56,7 +60,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s02.f09b": "27",
   "s02.f10a": "Dor Quj",
   "s02.f10b": "31",
-  "s02.f10c": "pImbogh Quj mIw: HoS navmey",
+  "s02.f10c": "pImbogh mIw: HoS navmey",
   "s02.f10d": "33",
   "s02.f10e": "lut",
   "s02.f10f": "39",
@@ -110,7 +114,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s04.f39": "nav pong",
   "s04.f47": "4",
   "s04.f48": "9",
-  "s04.f49": "DIlmeH Huch",
+  "s04.f49": "DIlmeH",
   "s04.f44": "4",
   "s04.f45": "moQ bID",
   "s04.f54": "5",
@@ -126,7 +130,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s04.f40": "1",
   "s04.f41": "nav Segh",
   "s04.f50": "9",
-  "s04.f51": "DIlmeH Huch",
+  "s04.f51": "DIlmeH",
   "s04.f36": "2",
   "s04.f37": "nav pong",
   "s04.f57a": "5",
@@ -143,7 +147,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s05.f08": "2",
   "s05.f06": "navmey ghom DachenmoHmeH 'ay' (Module) navmey vumwI' (Agent) navmey je tIDuD. So'lu'taHvIS raS botlhDaq navmey ghom yIlan. 'anglu'bogh navmey woDlu'bogh ghomvaD retlhDajDaq Daq yIpol.",
   "s05.f02": "5",
-  "s05.f10": "navmey woDlu'bogh",
+  "s05.f10": "navmey\nwoDlu'bogh",
   "s05.f11": "navmey ghom",
   "s05.f09": "2",
   "s05.f14": "1",
@@ -160,7 +164,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s06.f05": "Hoch 'ovwI'vaD wa' Huch mI' jan yInob; 3 Huch (Credits) 'angmeH yIlIS. HuchlIj naQ DatoghmeH Huch mI' jan yIlo'.",
   "s06.f06": "qaStaHvIS DaHjaj lunungbogh 30 jaj, wa' 'ovwI' leng nI' law' Hoch leng nI' puS; taghwI' moj 'ovwI'vam, 'ej jop wa'DIch ghaj. Qujmey law' Qujlu'DI', tagh QapwI' poS DopDaq ba'bogh 'ovwI'. QapwI'pu' law' tu'lu'chugh, taghwI' wuqmeH leng mIw yIlo'qa'.",
   "s06.f02": "7",
-  "s06.f10": "navmey woDlu'bogh",
+  "s06.f10": "navmey\nwoDlu'bogh",
   "s06.f11": "navmey ghom",
   "s06.f19": "4",
   "s06.f12": "nobmeH Daq",
@@ -194,20 +198,20 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s08.f02": "11",
   "s08.f11": "ghoplIjvo' vumwI' nav Dalo'meH, mIwvam yIpab:",
   "s08.f19": "1",
-  "s08.f12": "DIlmeH HuchDaj yInob (tenwal 19 yIlaD).",
+  "s08.f12": "nav yIDIl (tenwal 19 yIlaD).",
   "s08.f20": "2",
   "s08.f13": "navDaq 'anglu'bogh Qu' Qu'mey ghap tIta'.",
   "s08.f21": "3",
   "s08.f14": "'anglu'taHvIS navmey woDlu'bogh ghomDaq yIlan.",
   "s08.f15": "chovnatlh:",
-  "s08.f16": "vumwI' nav Double Agent lo'meH 2 Huch (Credits) nobnISlu'. navvam lo'lu'DI', logh Daqmeychaj (Stations) jIrmoH (Flip) DoS wuqlu'bogh retlhDaq ba'bogh 'ovwI'pu'.",
+  "s08.f16": "vumwI' nav Double Agent lo'meH 2 Huch (Credits) nobnISlu'. lo'lu'DI', logh Daqmeychaj (Stations) jIrmoH (Flip) DoS retlhDaq ba'bogh 'ovwI'pu'.",
   "s08.f17": "1",
   "s08.f18": "2",
   "s08.f01": "12",
 
   // Sheet 9
   "s09.f03": "Qu'mey tIta'",
-  "s09.f04": "navmeyDaq veH qoDDaq Qu'mey potlh (Main Actions) 'anglu'. bIjopDI', waw'lIjDaq (Base) Data'laHbogh wa' Qu' potlh DawuqnIS (chovnatlh: {s09.f11a} {s09.f11b} {s09.f11c} ghap). veH qoDDaq 'anglu'bogh Qu' Qu'mey ghap tIta'.",
+  "s09.f04": "navmeyDaq veH qoDDaq Qu'mey potlh (Main Actions) 'anglu'. bIjopDI', waw'lIjDaq (Base) Data'laHbogh\nwa' Qu' potlh DawuqnIS (chovnatlh: {s09.f11a} {s09.f11b} {s09.f11c} ghap). veH qoDDaq 'anglu'bogh Qu' Qu'mey ghap tIta'.",
   "s09.f11a": "A",
   "s09.f11b": "B",
   "s09.f11c": "C",
@@ -223,7 +227,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 10
   "s10.f03": "paw lup Dujmey (Shuttles) 'e' yInuD",
-  "s10.f04": "bIjoptaHvIS poH DorDI', nobmeH DaqDaq (Supply) ratlhbe'chugh 'ay'mey (Modules) 'ej ratlhbe'chugh vumwI'pu' (Agents), mIwvam yIpab:",
+  "s10.f04": "bIjoptaHvIS poH DorDI', 'ay'mey (Modules) vumwI'pu' (Agents) je Hutlhchugh nobmeH Daq (Supply), mIwvam yIta':",
   "s10.f05": "1. waw'DajDaq (Base) naQbogh, SuDbogh 'ej wovbogh Hoch moQvaD (Orb) 1 Huch (Credit) Hev Hoch 'ovwI' (SuDbogh bID wov, qIjbogh bID wov je ghajbogh moQ, tlhabbogh 'ej qIjbogh moQ wov je yIqel; moQmey QIj tenwal 17).\n2. navmey ghomvo' 3 navmey tItlhap; 'anglu'taHvIS nobmeH DaqDaq tIlan. Hoch 'ovwI'vaD 1 latlh nav yIchel. natlhlu'chugh navmey ghom, ghom chu' DachenmoHmeH navmey woDlu'bogh ghom yIDuD.",
   "s10.f02": "15",
   "s10.f19": "navmey chu'",
@@ -254,11 +258,11 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s11.f12": "3",
   "s11.f09c": "qIjbogh moQ wov lumoj cha' qIjbogh bIDmey wov; tlhab.",
   "s11.f13": "4",
-  "s11.f09d": "SuDbogh moQmey Hurgh moj cha' SuDbogh bIDmey Hurgh.",
+  "s11.f09d": "SuDbogh moQmey Hurgh moj SuDbogh bIDmey Hurgh.",
   "s11.f14": "5",
   "s11.f09e": "SuDbogh moQmey Hurgh, moQmey Doq je ghaj The Oasis.",
   "s11.f15": "6",
-  "s11.f09f": "SuDbogh moQ wov lumoj SuDbogh bID wov, qIjbogh bID wov je.",
+  "s11.f09f": "SuDbogh moQ wov: SuDbogh bID wov, qIjbogh bID wov je.",
   "s11.f02": "17",
   "s11.f16a": "1",
   "s11.f16b": "2",
@@ -271,7 +275,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 12
   "s12.f02": "nav DIlmeH mIw",
-  "s12.f03": "vumwI' (Agent) nav Dalo'meH pagh 'ay' (Module) DachenmoHmeH (Build), DIlmeH HuchDaj yap DaghajnIS. DIlmeH Huch 'oH nav DungDaq nIH DopDaq 'anglu'bogh moQmey (Orbs) mI''e'. DIlmeH Huch 'angbe'bogh nav lo'meH pagh nobnISlu'.",
+  "s12.f03": "vumwI' (Agent) nav Dalo'meH pagh 'ay' (Module) DachenmoHmeH (Build), DIlmeH HuchDaj DaghajnIS. DIlmeH Huch 'oH nav DungDaq nIH DopDaq 'anglu'bogh moQmey (Orbs) mI''e'. DIlmeH Huch 'angbe'chugh nav, pagh yInob.",
   "s12.f04": "- nav DIlmeH Huch lunupmoH waw'lIjDaq (Base) rItlh rap lughajbogh moQmey. tlhab qIjbogh moQmey wov; Hoch rItlh lu'oSlaH. bIjoptaHvIS Hoch moQ Dalo'qa'laH, 'ach Hoch navvaD wa'logh neH Dalo'laH.\n- ratlhbogh DIlmeH Huch yInob; Huch (Credits) yIlo'.\n- DIlmeH Huch yap Daghajbe'chugh, nav Dalo'laHbe'.",
   "s12.f01": "19",
   "s12.f07": "**chovnatlh:** **2 SuDbogh moQmey Hurgh** (rarlu'bogh bIDmeyvo') **2 moQmey Doq** (logh Daq [Station] navlIjvo') je Daghaj.",

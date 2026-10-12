@@ -18,9 +18,9 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s14.f01": "24",
 
   // Sheet 15
-  "s15.f04": "logh Daq (Station) yIjIrmoH (Flip)",
+  "s15.f04": "logh Daq\n(Station)\nyIjIrmoH\n(Flip)",
   "s15.f03": "latlh Dop 'angmeH logh Daq (Station) navmey 'anglu'bogh tIjIrmoH. 'ay' (Module) rarbogh Daqmey tIchoHQo' (logh Daq cha' DopDaq rap moQ [Orb] bIDmey).",
-  "s15.f07": "yIngevqa' (Resell)",
+  "s15.f07": "yIngevqa'\n(Resell)",
   "s15.f06": "nobmeH Daqvo' (Supply) 1 vumwI' (Agent) nav, 'ay' nav ghap yItlhap, 'ej navmey woDlu'bogh ghomDaq yIlan. 1 Huch (Credit) DaSuq. 1 nav juSbogh mI' Dangevqa'nISchugh, Hoch navvaD mIwvam yIta'qa'.",
   "s15.f09": "Huch yISuq pagh yIchIl",
   "s15.f08": "'anglu'bogh Huch (Credits) mI' DaSuq pagh DachIl.",
@@ -37,14 +37,14 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s16.f03": "wa' joptaHvIS wa' Qu' potlh (Main Action) neH Data'chugh, QatlhlaH 'op jop. chovnatlhvam yIqel:",
   "s16.f04": "DaH jop Alice.",
   "s16.f09": "1",
-  "s16.f05": "Solicitor lo' Alice. navvam DIlmeH 2 SuDbogh moQmey Hurgh (Orbs) 2 SuDbogh 'ej wovbogh moQmey je poQlu'. waw'DajDaq (Base) 2 SuDbogh moQmey Hurgh {s16.f13} ghaj Alice; vaj 2 Huch (Credits) neH DIl.",
+  "s16.f05": "Solicitor lo'. 2 SuDbogh moQmey Hurgh (Orbs) 2 SuDbogh\nmoQmey wov je poQlu'. 2 SuDbogh moQmey Hurgh {s16.f13} ghaj Alice waw' (Base); vaj 2 Huch (Credits) neH DIl.",
   "s16.f13": "A",
   "s16.f10": "2",
   "s16.f06": "Solicitor lo'taHvIS Bob waw'vo' Inflatable Habitat nIH Alice, 'ej ghopDajDaq lan.",
   "s16.f11": "3",
   "s16.f07": "ghIq Fusion Reactor Qu' potlh wuq Alice: chenmoH (Build), lel (Draw), woD (Discard) je, tetlhvamDaq.",
   "s16.f12": "4",
-  "s16.f08": "Huch DIlbe'taHvIS ghopDajvo' Depot chenmoH (2 SuDbogh moQmey Hurgh poQ nav; 0 moj DIlmeH Huch, 2 SuDbogh moQmey Hurgh {s16.f14} ghajmo'). 'anglu'bogh DaqDaq lan.",
+  "s16.f08": "DIlbe'taHvIS ghopDajvo' Depot chenmoH (DIlmeH Huch: 2 SuDbogh moQmey Hurgh; 0 moj, 2 SuDbogh moQmey\nHurgh {s16.f14} ghajmo'). 'anglu'bogh DaqDaq lan.",
   "s16.f14": "A",
   "s16.f01": "27",
   "s16.f15a": "Alice waw'",
@@ -57,8 +57,8 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s16.f22": "Alice ghop",
   "s16.f19": "1",
   "s16.f20": "2",
-  "s16.f18a": "navmey woDlu'bogh",
-  "s16.f18b": "navmey ghom",
+  "s16.f18a": "navmey\nwoDlu'bogh",
+  "s16.f18b": "navmey\nghom",
 
   // Sheet 17
   "s17.f08": "5",
@@ -81,8 +81,8 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s17.f20a": "7",
   "s17.f20b": "8",
   "s17.f19": "8",
-  "s17.f13a": "navmey woDlu'bogh",
-  "s17.f13b": "navmey ghom",
+  "s17.f13a": "navmey\nwoDlu'bogh",
+  "s17.f13b": "navmey\nghom",
   "s17.f01": "30",
 
   // Sheet 18
@@ -100,7 +100,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s18.f01": "32",
 
   // Sheet 19
-  "s19.f03": "pImbogh Quj mIw: HoS (Influence)",
+  "s19.f03": "pImbogh mIw: HoS (Influence)",
   "s19.f10": "woQ Dalo'taHvIS gholpu'lI' tIjey.",
   "s19.f04a": "HoS",
   "s19.f04b": "QujDaq HoS navmey chellu'. Quj mIwmey naQ DaSovDI', navmey ghomDaq bIH DachellaH 'e' wIchup. Hoch Quj pImmoH navmeyvam.",
@@ -149,8 +149,8 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s21.f08": "Laika’s Memorial Qu' taHtaHvIS ghopDaj navmey woD (Discard): Beruang Engineers, Experimental Borehole je.",
   "s21.f02": "37",
   "s21.f18": "nobmeH Daq (Supply)",
-  "s21.f15": "navmey ghom",
-  "s21.f14": "navmey woDlu'bogh",
+  "s21.f15": "navmey\nghom",
+  "s21.f14": "navmey\nwoDlu'bogh",
   "s21.f17a": "Kim waw' (Base)",
   "s21.f17b": "Kim ghop",
   "s21.f16": "1",
