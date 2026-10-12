@@ -78,7 +78,7 @@ export const howItPlays: Section = {
   heading: "Käik koosneb kolmest sammust",
   body: [
     "Mängi välja agendikaarte. Oma käigu alguses võid neid välja mängida nii palju, kui suudad nende eest maksta – et oma baasi arengut kiirendada või kellelegi teisele ette jääda.",
-    "Soorita üks oma baasi põhitegevus (Main Action). Ehita moodul (Module), vali kaart, tõmba kaart, viska kaart ära, müü kaart edasi, pööra jaam (Station) ümber, varasta moodul, varasta krediite (Credits). Üks tegevus nende seast, mida sinu baas päriselt teha suudab – seepärast muudabki see, mida ehitad, seda, mida saad järgmisel käigul teha.",
+    "Soorita üks oma baasi põhitegevus (Main Action). Ehita (Build) moodul (Module), vali (Draft) kaart, tõmba (Draw) kaart, viska ära (Discard) kaart, müü edasi (Resell) kaart, pööra ümber (Flip) jaam (Station), varasta moodul, varasta krediite (Credits). Üks tegevus nende seast, mida sinu baas päriselt teha suudab – seepärast muudabki see, mida ehitad, seda, mida saad järgmisel käigul teha.",
     "Kontrolli, kas süstikud (Shuttles) saabuvad. Kui varu (Supply) saab tühjaks, teenib igaüks ühe krediidi iga oma baasis tervikuks saanud kollase kera (Orb) eest ja Maalt tuuakse uusi kaarte.",
   ],
   source: "rulebook",
@@ -100,7 +100,7 @@ export const victoryPaths: readonly ListItem[] = [
   {
     term: "Kogu 20 Kuu krediiti",
     detail:
-      "Mängi turul. Müü edasi, mida sa ei vaja, võta krediite neilt, kellel neid vaja on, ja ära ehita kunagi midagi, mida sa ei saaks endale kaks korda lubada.",
+      "Mängi turul. Müü edasi, mida sa ei vaja, võta krediite neilt, kes seda vajavad, ja ära ehita kunagi midagi, mida sa ei saaks endale kaks korda lubada.",
     source: "rulebook-victory-conditions",
   },
   {
