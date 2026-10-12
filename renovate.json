@@ -1,4 +1,32 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>hannosirkel/architecture//templates/default"]
+  "extends": ["local>hannosirkel/architecture//templates/default"],
+  "packageRules": [
+    {
+      "description": "The engines field states the oldest Node.js the shop runs on. It is raised on purpose, with the images and the documents, not because a newer release exists.",
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
+      "description": "Medusa's packages move together and an upgrade changes the commerce backend: its own pull request, so it can be tested and deployed to the test environment by itself.",
+      "matchPackageNames": ["@medusajs/**"],
+      "groupName": "Medusa"
+    },
+    {
+      "description": "React and Next.js move together: the storefront renders with them and one out of step breaks every component test.",
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "next",
+        "@types/react",
+        "@types/react-dom"
+      ],
+      "groupName": "React and Next.js"
+    },
+    {
+      "description": "Stripe's server and browser packages move together: checkout and the webhook depend on them.",
+      "matchPackageNames": ["stripe", "@stripe/**"],
+      "groupName": "Stripe"
+    }
+  ]
 }
