@@ -19,7 +19,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s14.f01": "24",
 
   // Sheet 15
-  "s15.f04": "Jaam (Station)\nPööra\n(Flip)",
+  "s15.f04": "Pööra jaam\n(Station)\nümber\n(Flip)",
   "s15.f03": "Pööra näidatud jaamakaart või -kaardid ümber, et näha oleks teine külg. Moodulite (Modules) ühendused jäävad alles (kerapooled (Orb) on jaama mõlemal küljel samad).",
   "s15.f07": "Edasimüük\n(Resell)",
   "s15.f06": "Võta varust (Supply) 1 agendi- (Agent) või moodulikaart ja pane see äravisatud kaartide pakile. Saad 1 krediidi (Credit). Kui pead edasi müüma üle 1 kaardi, korda seda iga kaardiga.",
@@ -45,7 +45,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s16.f11": "3",
   "s16.f07": "Nüüd valib Alice kaardi Fusion Reactor põhitegevuse, mis lubab tal ehitada (Build), tõmmata (Draw) ja ära visata (Discard) – selles järjekorras.",
   "s16.f12": "4",
-  "s16.f08": "Ta ehitab Depot’ käest tasuta. Selle hind on 2 sinist kera,\nmis väheneb 0-ni tänu tema 2 sinisele kerale.\n{s16.f14} Ta asetab kaardi nii, nagu näidatud.",
+  "s16.f08": "Ta ehitab Depot’ käest tasuta. Selle hind on 2 sinist kera,\nmis väheneb 0-ni tänu tema 2 sinisele\nkerale {s16.f14}. Ta asetab kaardi nii, nagu näidatud.",
   "s16.f14": "A",
   "s16.f01": "27",
   "s16.f15a": "ALICE’I BAAS",
@@ -58,7 +58,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s16.f22": "ALICE’I KÄSI",
   "s16.f19": "1",
   "s16.f20": "2",
-  "s16.f18a": "VISATUD\nKAARDID",
+  "s16.f18a": "ÄRAVISATUD\nKAARDID",
   "s16.f18b": "KAARDIPAKK",
 
   // Sheet 17
@@ -82,7 +82,7 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s17.f20a": "7",
   "s17.f20b": "8",
   "s17.f19": "8",
-  "s17.f13a": "VISATUD\nKAARDID",
+  "s17.f13a": "ÄRAVISATUD\nKAARDID",
   "s17.f13b": "KAARDIPAKK",
   "s17.f01": "30",
 
@@ -150,8 +150,8 @@ export const part2: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s21.f08": "Jätkates kaardi Laika’s Memorial rakendamist, viskab ta oma käekaardid ära (Discard): Beruang Engineers ja Experimental Borehole.",
   "s21.f02": "37",
   "s21.f18": "VARU",
-  "s21.f15": "KAARDIPAKK",
-  "s21.f14": "ÄRAVISATUD KAARDID",
+  "s21.f15": "KAARDI-\nPAKK",
+  "s21.f14": "ÄRAVISATUD\nKAARDID",
   "s21.f17a": "KIMI BAAS",
   "s21.f17b": "KIMI KÄSI",
   "s21.f16": "1",

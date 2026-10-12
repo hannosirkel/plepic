@@ -141,7 +141,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s06.f05": "Anna igale mängijale krediidiloendur, mis näitab 3 krediiti (Credits). Kasuta seda oma krediitide kogusumma jälgimiseks.",
   "s06.f06": "Alustab mängija, kes tegi viimase 30 päeva jooksul pikima reisi. Tema teeb esimese käigu. Mitme mängu korral alustab võitjast vasakul istuv mängija. Kui võitjaid oli mitu, alustab pikima reisi teinud mängija.",
   "s06.f02": "7",
-  "s06.f10": "ÄRAVISATUD KAARDID",
+  "s06.f10": "ÄRAVISATUD\nKAARDID",
   "s06.f11": "KAARDIPAKK",
   "s06.f19": "4",
   "s06.f12": "VARU",

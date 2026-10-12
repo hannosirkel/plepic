@@ -874,7 +874,7 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     "s05.f11": { left: 16.5, right: 16.5 },
     "s06.f05": { right: 18, down: 8 },
     // Sheet 6.
-    "s06.f10": { left: 20, right: 20 },
+    "s06.f10": { left: 20, right: 20, down: 11 },
     "s06.f11": { left: 18.5, right: 14.5 },
     // Sheet 7.
     "s07.f05": { right: 20 },
@@ -905,7 +905,7 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     "s13.f09": { right: 10, down: 37, skip: 22 },
     "s13.f11": { right: 30 },
     // Sheet 15.
-    "s15.f04": { left: 5.5, right: 5.5, up: 8, down: 37, skip: 26 },
+    "s15.f04": { left: 13.5, right: 7.5, up: 8, down: 37, skip: 15 },
     "s15.f07": { left: 9.5, right: 9.5, down: 47, skip: 32 },
     "s15.f09": { right: 40 },
     "s15.f12": { right: 35 },
@@ -913,11 +913,11 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     "s16.f05": { right: 15, down: 5 },
     "s16.f07": { right: 28 },
     "s16.f08": { right: 15, down: 5 },
-    "s16.f18a": { down: 8 },
-    "s16.f18b": { left: 8, right: 13, down: 8 },
+    "s16.f18a": { left: 5, right: 5, down: 8 },
+    "s16.f18b": { left: 3, right: 18, down: 8 },
     // Sheet 17.
-    "s17.f13a": { down: 8 },
-    "s17.f13b": { left: 8, right: 13, down: 8 },
+    "s17.f13a": { left: 5, right: 5, down: 8 },
+    "s17.f13b": { left: 3, right: 18, down: 8 },
     // Sheet 18.
     "s18.f06": { right: 8, down: 8 },
     "s18.f08": { right: 2, down: 8 },
@@ -929,8 +929,8 @@ export const editionBoxes: Readonly<Record<string, Readonly<Partial<Record<Frame
     "s21.f04": { right: 25 },
     "s21.f05": { right: 75 },
     "s21.f07": { right: 20 },
-    "s21.f15": { left: 12, right: 12, down: 9 },
-    "s21.f14": { left: 5, right: 5, down: 9 },
+    "s21.f15": { left: 6, right: 6, down: 9 },
+    "s21.f14": { left: 2, right: 8, down: 9 },
     "s24.f25": { down: 8 },
     // Sheet 24.
     "s24.f22": { right: 45 },
