@@ -197,6 +197,13 @@ describe("the rulebook page under the marker fixture", () => {
   it("is the default edition's page when no locale is given", () => {
     expect(renderToStaticMarkup(<RulebookPageContent />)).toBe(rulebookPage(DEFAULT_LOCALE));
   });
+
+  it("uses the English PDF and the edition's notice when its document is unpublished", () => {
+    const html = rulebookPage("et");
+    expect(html).toContain('href="/documents/lunar-base-rulebook.pdf"');
+    expect(html).toContain('hrefLang="en"');
+    expect(html).toContain(rendered("et", english.interface.rulebook.englishRulebookNotice));
+  });
 });
 
 interface PublicForm {

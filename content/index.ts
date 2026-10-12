@@ -23,6 +23,7 @@ export * from "./routes.js";
 export * from "./schema.js";
 export * from "./pages.js";
 export * from "./editions.js";
+export * from "./rulebook-documents.js";
 export * as publisher from "./publisher.js";
 export * as lunarBase from "./lunar-base.js";
 export * as proof from "./proof.js";
