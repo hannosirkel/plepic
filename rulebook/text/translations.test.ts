@@ -12,7 +12,7 @@ import { parseMarkup, plainText, type FrameId, type RulebookText } from "./schem
  */
 const translations: Readonly<Record<string, { text: Partial<RulebookText>; sheets: number }>> = {
   de: { text: de, sheets: 25 },
-  et: { text: et, sheets: 13 },
+  et: { text: et, sheets: 25 },
 };
 
 /**

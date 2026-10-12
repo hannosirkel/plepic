@@ -159,7 +159,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s07.f05": "Kogu 20 Kuu krediiti (Credits)",
   "s07.f06": "**Mahuta oma baasi (Base) 10 kolonisti**\n(oma jaam (Station) + oma moodulid (Modules))",
   "s07.f07": "**Saavuta 5 eri teadussaavutust** oma baasis",
-  "s07.f08": "**Näita 4 mõjukaarti (Influence)**\noma käest käigu lõpus",
+  "s07.f08": "**Näita 4 mõjukaarti (Influence)**\noma käest oma käigu lõpus",
   "s07.f02": "9",
   "s07.f10": "Kolonistid ja teadussaavutused on jaama- ja moodulikaartidel. Krediite saab mitmel viisil. Mõjukaardid on edasijõudnutele mõeldud eriline kaarditüüp.",
   "s07.f09": "Mängu teadussaavutused",
