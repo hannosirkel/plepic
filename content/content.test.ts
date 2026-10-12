@@ -1143,10 +1143,13 @@ describe("the locale dimension", () => {
     expect(contentFor(legalPagesByLocale, DEFAULT_LOCALE)).toBe(legalPages);
   });
 
-  it("keeps English site copy available and Estonian legal-only", () => {
-    expect(siteCopyFor("en")).toBe(siteCopyByLocale.en);
-    expect(siteCopyByLocale.et).toBeNull();
-    expect(() => siteCopyFor("et")).toThrow(/et.*site copy/);
+  it("keeps site copy available in every edition, each from its own modules", () => {
+    for (const locale of LOCALES) {
+      expect(siteCopyByLocale[locale], locale).not.toBeNull();
+      expect(siteCopyFor(locale)).toBe(siteCopyByLocale[locale]);
+      expect(siteCopyFor(locale).pages.pages, locale).toBe(pagesByLocale[locale]);
+    }
+    expect(siteCopyFor("et").shop).not.toBe(siteCopyFor("en").shop);
   });
 
   /**

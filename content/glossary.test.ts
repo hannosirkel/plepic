@@ -305,8 +305,9 @@ describe("the walk", () => {
     expect(title?.english).toBe(legalPagesByLocale.en.find((page) => page.route === "legalTerms")?.title);
     expect(title?.translated).toBe(legalPagesByLocale.et.find((page) => page.route === "legalTerms")?.title);
     expect(title?.translated).not.toBe(title?.english);
-    // The Estonian edition publishes no site copy, so it has no site pairs.
-    expect(sitePairs("et")).toEqual([]);
+    // The Estonian edition publishes its site copy, so every English site string has a pair.
+    expect(sitePairs("et").length).toBe(sitePairs(DEFAULT_LOCALE).length);
+    expect(sitePairs("et").find((pair) => pair.key === "site.shop.checkout.orderButtonLabel")?.translated).toBe("Maksa kohe");
   });
 
   it("pairs every German rulebook frame with the English frame of the same id, in reading order", () => {

@@ -108,6 +108,7 @@ export const interfaceCopy: InterfaceCopy = {
     safetyIncompletePlural: "Diese Herstellerangaben sind unvollständig: %missing% wurden für diese Bereitstellung nicht konfiguriert.",
     videoPendingSuffix: " ist noch nicht verlinkt – das Video wird von YouTube eingebettet, sobald eine veröffentlichte Video-ID konfiguriert ist.",
     outOfStock: "Nicht auf Lager",
+    playerCount: "%min%–%max% Personen",
     addingToBasket: "Wird in den Warenkorb gelegt…",
     retryAddingToBasket: "Noch einmal in den Warenkorb legen",
     basketExpired: "Der Warenkorb ist abgelaufen; leg das Spiel noch einmal hinein",

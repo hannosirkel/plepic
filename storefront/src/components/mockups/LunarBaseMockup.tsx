@@ -163,7 +163,11 @@ export function LunarBaseMockup({
               {heroFacts.map((fact) => (
                 <li key={fact.text}>{resolve(fact.text)}</li>
               ))}
-              <li>{catalogue.playerCount}</li>
+              <li>
+                {strings.playerCount
+                  .replace("%min%", String(catalogue.players.min))
+                  .replace("%max%", String(catalogue.players.max))}
+              </li>
             </ul>
 
             {/* Price, stock and Buy inside the hero, immediately under the
@@ -183,7 +187,9 @@ export function LunarBaseMockup({
               {destinationSelector === undefined ? null : (
                 <div className={styles.heroDestination}>{destinationSelector}</div>
               )}
-              <p className={styles.heroAvailability}>{catalogue.availabilityLabel}</p>
+              <p className={styles.heroAvailability}>
+                {catalogue.inStock ? purchase.availability : strings.outOfStock}
+              </p>
               <div className={styles.heroActions}>
                 {primaryPurchaseAction ?? <CallToActionLink action={heroBuyAction} resolveLabel={resolve} locale={locale} />}
               </div>

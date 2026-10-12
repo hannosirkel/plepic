@@ -108,6 +108,8 @@ export interface InterfaceCopy {
     readonly safetyIncompletePlural: string;
     readonly videoPendingSuffix: string;
     readonly outOfStock: string;
+    /** The player range in the product page's hero. `%min%` and `%max%` come from the catalogue. */
+    readonly playerCount: string;
     readonly addingToBasket: string;
     readonly retryAddingToBasket: string;
     readonly basketExpired: string;
@@ -271,6 +273,7 @@ export const interfaceCopy: InterfaceCopy = {
     videoPendingSuffix:
       " pole veel lingitud – see lisatakse YouTube’ist, kui avaldatud video tunnus on seadistatud.",
     outOfStock: "Laost otsas",
+    playerCount: "%min%–%max% mängijat",
     addingToBasket: "Ostukorvi lisamine…",
     retryAddingToBasket: "Proovi uuesti ostukorvi lisada",
     basketExpired: "Ostukorv aegus; proovi mäng uuesti lisada",

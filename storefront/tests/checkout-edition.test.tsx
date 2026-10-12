@@ -1211,7 +1211,7 @@ describe("payment return, consent, and 404 under the marker fixture", () => {
     const pages = pagesByLocale as Record<Locale, readonly Page[]>;
     const published = pages.et;
     const actual = await vi.importActual<typeof import("../../content/index.js")>("../../content/index.js");
-    pages.et = actual.pagesByLocale.et;
+    pages.et = actual.pagesByLocale.et.filter((page) => page.route !== "checkout");
     try {
       expect(resolveLocalizedRoute("et", ["checkout", "payment-return"])).toBeNull();
     } finally {
