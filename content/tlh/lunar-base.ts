@@ -30,7 +30,7 @@ export const featuredDescription: Prose = [
 ];
 
 export const replayability: Statement = {
-  text: "4 pImbogh Qapla' ngoQmey, pImbogh Dupmey, navmey rarbogh ghu', latlh HoS (Influence) navmey je ngaS Quj; vaj pIj Qujqa'laHlu' 'ej Qatlhghach ghurmoHlu'.",
+  text: "4 pImbogh Qapla' ngoQmey, pImbogh Dupmey, navmey rarbogh ghu', latlh HoS (Influence) navmey je ngaS Quj; HoS navmeyvam Quj mIw luchoHmoH. vaj pIj Qujqa'laHlu' 'ej Qatlhghach ghurmoHlu'.",
   source: "official-wording",
 };
 
@@ -47,7 +47,7 @@ export const specifications: readonly FeatureSpec[] = [
   },
   {
     term: "pIj Qujqa'laHlu'",
-    detail: ["Hoch Quj pIm. latlh navmey chel ghap pImbogh chutmey lo'."],
+    detail: ["Hoch Quj pIm. latlh navmey tIchel ghap pImbogh chutmey tIlo'."],
     source: "official-wording",
   },
   {
@@ -57,7 +57,7 @@ export const specifications: readonly FeatureSpec[] = [
   },
   {
     term: "qengmeH ngeD",
-    detail: ["qengmeH mach 'aplo'. Dat yIqeng!"],
+    detail: ["buqlIjDaq 'ellaHbogh qengmeH mach 'aplo'. Dat yIqeng!"],
     source: "E12",
   },
   { term: "'ovwI' De'", detail: ["2 - 6 'ovwI'", "10 + ben"], source: "E9" },
@@ -102,7 +102,7 @@ export const teaserVideos: readonly {
 ];
 
 export const victoryPathsIntro: Statement = {
-  text: "logh qaD DaQapmeH, logh Daq HoS yIlo'. waw'Daq waw' ngan law' yIDabmoH, QeD Qapla' yISuq, maS Huch yIboS, ghap HoS (Influence) law' Hoch HoS puS yISuq.",
+  text: "logh qaD DaQapmeH, logh Daq HoS yIlo'. waw'lIjDaq waw' nganpu' law' Hoch latlh waw'meyDaq waw' nganpu' puS 'e' yIchav, QeD Qapla' yISuq, maS Huch yIboS, ghap HoS (Influence) law' Hoch HoS puS yISuq.",
   source: "official-wording",
 };
 
@@ -183,7 +183,7 @@ export const inTheBoxSummary: Statement = {
 
 export const travelsWell: Section = {
   anchor: "travels-well",
-  heading: "qengbogh tep ngaSwI'lIjDaq lanlaHlu'",
+  heading: "DaH DaqengtaHbogh tep ngaSwI'lIjDaq lanlaHlu'",
   body: [
     "12 × 12 × 4 juvmeH mI' (centimetres) tIn 'aplo', 'ej 200 juvmeH mI' (grams) ngI'. qengbogh tep ngaSwI' 'ay'Daq ngeDqu' lanmeH.",
     "Quj Daghajbogh, Quj DaQujbogh je pIm. tach, machbogh juH, nuvpu' ghom wanI' cha'DIch jaj je leng 'aplo'vam; rep wa'maH wa' DorDI' Quj tIn, 'aplo'vam lo'qa'lu'.",
@@ -206,7 +206,7 @@ export const factions: readonly ListItem[] = [
   },
   {
     term: "Selene Labs",
-    detail: "QublaHqu'bogh nuvpu' je', 'ej jul ghomvo' ghoSmeH HeDaq lulan.",
+    detail: "QublaHqu'bogh nuvpu' je', 'ej jul ghomvo' ghoSmeH HeDaq lan.",
     source: "official-wording",
   },
   {
@@ -276,7 +276,7 @@ export const productFaq: readonly FaqEntry[] = [
   {
     question: "nuqDaq ngeHlu'?",
     answer: [
-      "Dat. 3 malja' jaj qaStaHvIS vunmeH QInmey ngeHlu'. European Union qo'Daq 3 jajvo' 7 jajDaq paw motlh tep; latlh SepmeyDaq 7 jajvo' 21 jajDaq paw.",
+      "Dat. 3 malja' jaj qaStaHvIS vunmeH QInmey ngeHlu'. European Union qo'Daq 3 malja' jajvo' 7 malja' jajDaq paw motlh tep; latlh SepmeyDaq 7 malja' jajvo' 21 malja' jajDaq paw.",
     ],
     source: "delivery-estimates",
   },
@@ -311,7 +311,7 @@ export const productSafety = {
     body: [
       "{merchantLegalName}, {merchantRegisteredAddress}.",
       "QIn Daq: {merchantContactAddress}. ghogh HablI': {merchantPhoneNumber}.",
-      "{merchantLegalName} Qujvam chenmoHmoH, 'ej pongDaj lo'taHvIS ngev; vaj European Union Quj Hung chutDaq chenmoHwI' 'oH. Longpack Co., Ltd., Shanghai, China SepDaq, Quj ghItlh 'ej 'ay'mey rarbogh mab chenmoHwI' 'oH; chenmoHwI' mab chenmoHwI' rurbe'.",
+      "Qujvam chenmoHmeH mIwmeyDaj pabtaHvIS, {merchantLegalName} Qujvam chenmoHmoH, 'ej pongDaj lo'taHvIS ngev; vaj European Union Quj Hung chutDaq chenmoHwI' 'oH. Longpack Co., Ltd., Shanghai, China SepDaq, Quj ghItlh 'ej 'ay'mey rarbogh mab chenmoHwI' 'oH; chenmoHwI' mab chenmoHwI' rurbe'.",
     ],
   },
   safety: {
