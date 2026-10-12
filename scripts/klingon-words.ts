@@ -55,6 +55,8 @@ export const KLINGON_PROPER_NOUNS = [
   "Rodney Smith", "Watch It Played",
   // Evidence ids and the retired route that the proof module's unrendered reasons cite.
   "E3", "E6", "E7", "E10", "E11", "/about",
+  // The video host the interface copy names.
+  "YouTube",
   // Cookie names. `_ga` also covers `_ga_*`.
   "_ga", "_fbp", "plepic_destination",
 ] as const;
@@ -65,7 +67,7 @@ export const KLINGON_PROPER_NOUNS = [
  */
 export const KLINGON_LOANS: readonly string[] = [
   "VAT", "DNS", "IP", "local storage", "session storage", "granted", "declined",
-  "centimetres", "grams", "aluminium",
+  "centimetres", "grams", "aluminium", "MB", "PDF",
 ];
 
 /** English card vocabulary may appear only as a bracketed aid at first use. */

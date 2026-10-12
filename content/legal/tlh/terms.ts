@@ -12,9 +12,10 @@
  *   Disputes Committee discharges the obligation on its own.
  * - The checkout-acknowledgement section is written to match the checkout
  *   screen. It quotes the button as `DaH yIDIl`, "pay for it now": the Klingon
- *   of `orderButtonLabel` in `content/shop.ts`. **The Klingon `shop.ts` is not
- *   written yet; when it lands its `orderButtonLabel` must be these two words,
- *   or this sentence changes in the same commit.**
+ *   of `orderButtonLabel` in `content/shop.ts`. **`orderButtonLabel` in
+ *   `content/tlh/shop.ts` is these two words; `content/glossary.test.ts` holds
+ *   the two together, and a change to one changes the other in the same
+ *   commit.**
  *
  * Route, anchors, `covers`, section order, the external target id and every
  * placeholder token are identical to the English page.

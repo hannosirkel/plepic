@@ -23,7 +23,11 @@ import { describe, expect, it } from "vitest";
 
 import { siteCopyByLocale, siteCopyFor } from "./editions.js";
 import * as englishProduct from "./lunar-base.js";
+import { interfaceCopy as englishInterface } from "./interface.js";
+import * as englishShop from "./shop.js";
+import { interfaceCopy as klingonInterface } from "./tlh/interface.js";
 import * as klingonProduct from "./tlh/lunar-base.js";
+import * as klingonShop from "./tlh/shop.js";
 import {
   GLOSSARY_RULES,
   IDENTIFIER_KEYS,
@@ -39,7 +43,7 @@ import {
   type Term,
   type TermId,
 } from "./glossary/index.js";
-import { klingonGlossary } from "./glossary/tlh.js";
+import { klingonGlossary, klingonLegalTerms } from "./glossary/tlh.js";
 import { legalPagesByLocale } from "./legal/index.js";
 import { DEFAULT_LOCALE, type Locale } from "./routes.js";
 import { reviewedSheets } from "../rulebook/layout/overrides.js";
@@ -472,6 +476,38 @@ describe("the staged Klingon product copy", () => {
     const pairs = pairsOf(englishProduct, klingonProduct, "site.lunarBase");
     expect(pairs.length).toBeGreaterThan(100);
     expect(reportFor("tlh", klingonGlossary, pairs, [])).toEqual([]);
+  });
+});
+
+describe("the staged Klingon interface and shop copy", () => {
+  const stringsOf = (value: unknown): string[] => pairsOf(value, value, "").map((pair) => pair.translated);
+  const legal = legalPagesByLocale.tlh.flatMap(stringsOf);
+
+  it("uses the agreed terms in every translated interface and shop string", () => {
+    const pairs = [
+      ...pairsOf(englishInterface, klingonInterface, "site.interface"),
+      ...pairsOf(englishShop, klingonShop, "site.shop"),
+    ];
+    expect(pairs.length).toBeGreaterThan(250);
+    expect(pairs.filter((pair) => pair.key.startsWith("site.shop.")).length).toBeGreaterThan(100);
+    expect(reportFor("tlh", klingonGlossary, pairs, [])).toEqual([]);
+  });
+
+  it("names the basket, the checkout, the parcel machine and withdrawal as the Klingon legal pages do", () => {
+    const shop = stringsOf(klingonShop);
+    for (const term of ["basket", "checkout", "parcelMachine", "withdrawal"] as const) {
+      const used = (strings: readonly string[]) =>
+        strings.some((text) => hitsIn(text, wanted(term, klingonGlossary[term].forms)).length > 0);
+      expect(used(shop), `${term}: not in the shop copy`).toBe(true);
+      expect(used(legal), `${term}: not in the legal pages`).toBe(true);
+    }
+  });
+
+  it("labels the order button with the words the Klingon terms page quotes", () => {
+    const label = klingonShop.checkout.orderButtonLabel;
+    expect(label).toBe(klingonLegalTerms.payNow.term);
+    expect(klingonShop.COMPLIANT_ORDER_BUTTON_LABELS).toContain(label);
+    expect(legal.some((text) => text.includes(`"${label}"`))).toBe(true);
   });
 });
 
