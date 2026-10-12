@@ -7,9 +7,8 @@
  * the reasoning for each is recorded there. Nothing is added that the English
  * edition does not say.
  *
- * Staged: `siteCopyByLocale.tlh` is still `null`, so no visitor reaches this
- * copy. The mirror test, the content scans and the Klingon word check read it
- * from disk.
+ * Published under `/tlh` through `siteCopyByLocale`. The mirror test, the
+ * content scans and the Klingon word check still read this file.
  *
  * The reviewers spoke and wrote in English. Each quotation here is a
  * translation of the attributed passage, keyed to the same source id.

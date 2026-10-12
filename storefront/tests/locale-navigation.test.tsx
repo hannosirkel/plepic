@@ -96,12 +96,13 @@ function internalAnchorsIn(html: string): readonly { tag: string; href: string }
  * The retired `about` route is replaced by `home`. An edition that publishes
  * its home page keeps the link there, at the address written here.
  */
-const RETIRED_ABOUT_HREF: Readonly<Partial<Record<Locale, string>>> = { de: "/de", et: "/et" };
+const RETIRED_ABOUT_HREF: Readonly<Partial<Record<Locale, string>>> = { de: "/de", et: "/et", tlh: "/tlh" };
 
 /** The label of each complete translated edition's language selector, as literals. */
 const COMPLETE_EDITIONS = [
   { locale: "de", selectorLabel: "Sprache" },
   { locale: "et", selectorLabel: "Keel" },
+  { locale: "tlh", selectorLabel: "Hol" },
 ] as const;
 
 function renderedPage(locale: Locale, route: RouteId): string {
@@ -373,7 +374,7 @@ describe("every non-default edition has inbound links, via the language switcher
  * the page registry and `localizedPath`, never read back from the component.
  */
 describe("the language selector", () => {
-  const SELECTOR = /<nav[^>]*aria-label="(?:Language|Keel)"[^>]*>[\s\S]*?<\/nav>/g;
+  const SELECTOR = /<nav[^>]*aria-label="(?:Language|Sprache|Keel|Hol)"[^>]*>[\s\S]*?<\/nav>/g;
   /** Every selector in `html`, in document order. */
   const selectorsIn = (html: string): readonly string[] => [...html.matchAll(SELECTOR)].map((match) => match[0]);
   /** The first `<header>` or `<footer>` element of `html`, whole. */
@@ -424,7 +425,7 @@ describe("the language selector", () => {
     });
   }
 
-  it("/games/lunar-base: offers the German and the Estonian product page, in the header and in the footer", () => {
+  it("/games/lunar-base: offers all translated product pages, in the header and in the footer", () => {
     for (const html of [
       renderToStaticMarkup(<SiteHeader wordmark="dark" route="lunarBase" />),
       renderToStaticMarkup(<SiteFooter route="lunarBase" />),
@@ -435,6 +436,7 @@ describe("the language selector", () => {
         { label: "English", href: undefined },
         { label: "Deutsch", href: "/de/games/lunar-base" },
         { label: "Eesti", href: "/et/games/lunar-base" },
+        { label: "tlhIngan Hol", href: "/tlh/games/lunar-base" },
       ]);
     }
   });
@@ -454,6 +456,7 @@ describe("the language selector", () => {
         expect(entriesOf(selectors[0] ?? "")).toEqual([
           { label: "English", href: undefined },
           { label: "Deutsch", href: "/de/games/lunar-base" },
+          { label: "tlhIngan Hol", href: "/tlh/games/lunar-base" },
         ]);
         expect(html).not.toContain("/et/games/lunar-base");
       }
@@ -490,11 +493,13 @@ describe("the language selector", () => {
       { label: "English", href: undefined },
       { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: "/et" },
+      { label: "tlhIngan Hol", href: "/tlh" },
     ]);
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="et" />))).toEqual([
       { label: "English", href: "/" },
       { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: undefined },
+      { label: "tlhIngan Hol", href: "/tlh" },
     ]);
 
     const missing = selectorsIn(renderToStaticMarkup(await NotFoundContent({ locale: "et" })));
@@ -503,6 +508,7 @@ describe("the language selector", () => {
       { label: "English", href: "/" },
       { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: undefined },
+      { label: "tlhIngan Hol", href: "/tlh" },
     ]);
   });
 

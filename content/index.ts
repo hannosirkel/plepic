@@ -18,8 +18,8 @@
 import { pages } from "./pages.js";
 import { pages as dePages } from "./de/pages.js";
 import { pages as etPages } from "./et/pages.js";
+import { pages as tlhPages } from "./tlh/pages.js";
 import type { LocalizedContent, Page } from "./schema.js";
-import { legalPagesByLocale } from "./legal/index.js";
 
 export * from "./routes.js";
 export * from "./schema.js";
@@ -43,8 +43,8 @@ export * as legal from "./legal/index.js";
  * inside the copy. `pages.ts` stays a flat list of the English pages and is
  * not locale-aware; it is what the `en` entry is built from.
  *
- * **An edition need not publish every route**. Three editions do:
- * English, German and Estonian each publish their full page list, which is
+ * **An edition need not publish every route**. All four editions do:
+ * English, German, Estonian and Klingon each publish their full page list, which is
  * the edition's own `pages.ts` — its marketing and shop pages joined with its
  * legal set. The sitemap, the canonical and the `hreflang` alternates are all
  * computed from this registry, so a route an edition does not publish simply
@@ -65,5 +65,5 @@ export const pagesByLocale: LocalizedContent<readonly Page[]> = {
    * disagreeing about what the edition's legal set contains.
    */
   et: etPages,
-  tlh: legalPagesByLocale.tlh,
+  tlh: tlhPages,
 };

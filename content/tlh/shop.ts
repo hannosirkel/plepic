@@ -6,9 +6,8 @@
  * prose is Klingon. The English module records why each string says what it
  * says, and that reasoning is not repeated here.
  *
- * Staged: `siteCopyByLocale.tlh` is still `null`, so no visitor reaches this
- * copy. The mirror test, the content scans, the glossary check and the Klingon
- * word check read it from disk.
+ * Published under `/tlh` through `siteCopyByLocale`. The mirror test, content
+ * scans, glossary check and Klingon word check still read this file.
  *
  * ## What is not here, as in English
  *

@@ -143,7 +143,7 @@ describe("localized paths", () => {
 });
 
 describe("resolveLocalizedRoute", () => {
-  for (const locale of ["de", "et"] as const) {
+  for (const locale of ["de", "et", "tlh"] as const) {
     it(`serves every active English route under ${locale}, plus the checkout return`, () => {
       expect(pagesIn("en").map((page) => page.route).toSorted()).toEqual(
         ROUTE_IDS.filter((routeId) => !Object.hasOwn(RETIRED_ROUTES, routeId)).toSorted(),
@@ -163,12 +163,6 @@ describe("resolveLocalizedRoute", () => {
 
   it("refuses the default edition's own identifier", () => {
     expect(resolveLocalizedRoute(DEFAULT_LOCALE, ["legal", "imprint"])).toBeNull();
-  });
-
-  it("serves Klingon legal pages and leaves the product route unpublished", () => {
-    expect(resolveLocalizedRoute("tlh", ["legal", "imprint"]))
-      .toEqual({ locale: "tlh", routeId: "legalImprint" });
-    expect(resolveLocalizedRoute("tlh", ["games", "lunar-base"])).toBeNull();
   });
 
   it("refuses an unknown first segment", () => {

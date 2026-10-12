@@ -233,9 +233,34 @@ const translatedEditions = {
     checkoutHeading: "Tellimuse vormistamine",
     paymentReturnHeading: "Lõpeta tellimus",
   },
+  tlh: {
+    name: "Klingon",
+    headings: {
+      home: /Lunar Base 'oH 2-6/,
+      lunarBase: /Lunar Base 'oH 2-6/,
+      support: /Quj mIwmey, QaH je/,
+      rulebook: /Lunar Base mIw paq/,
+      cart: /je'meH ngaSwI'lIj/,
+      checkout: /^Huch nobmeH Daq$/,
+      legalImprint: /^chut QIn$/,
+      legalTerms: /^ngevmeH chutmey$/,
+      legalPrivacy: /^De' QanmeH mIw$/,
+      legalShipping: /^ngeHmeH mIw, HIjmeH mIw je$/,
+      legalReturns: /^tep tatlhmeH mIw, je'Ha'meH DIb je$/,
+    },
+    menuButton: "wIvmeH tetlh",
+    selectorLabel: "Hol",
+    ownLanguage: "tlhIngan Hol",
+    buyGroup: "Lunar Base yIje'",
+    addToBasket: "je'meH ngaSwI'Daq yIchel",
+    basketHeading: "je'meH ngaSwI'lIj",
+    toCheckout: "Huch nobmeH Daq yIghoS",
+    checkoutHeading: "Huch nobmeH Daq",
+    paymentReturnHeading: "vunmeH QInlIj yIrInmoH",
+  },
 } as const;
 
-for (const locale of ["de", "et"] as const) {
+for (const locale of ["de", "et", "tlh"] as const) {
   const edition = translatedEditions[locale];
   const home = localizedPath(locale, ROUTE_PATHS.home);
 
@@ -247,6 +272,14 @@ for (const locale of ["de", "et"] as const) {
       expect(response?.status()).toBe(200);
       await expect(page.locator("html")).toHaveAttribute("lang", locale);
       await expect(page.getByRole("heading", { level: 1 })).toContainText(edition.headings[routeId]);
+      if (locale === "tlh") {
+        const heading = page.getByRole("heading", { level: 1 }).first();
+        const navigation = page.locator("header nav[aria-label] a").first();
+        if (!(await navigation.isVisible())) await page.getByRole("button", { name: edition.menuButton, exact: true }).click();
+        await expect(navigation).toBeVisible();
+        expect(await navigation.evaluate((element) => getComputedStyle(element).textTransform)).toBe("none");
+        expect(await heading.evaluate((element) => getComputedStyle(element).textTransform)).toBe("none");
+      }
     });
   }
 
