@@ -7,8 +7,7 @@ export interface RulebookDocument {
   readonly sheetCount: number;
 }
 
-/** Null means this edition uses the English rulebook until its PDF is published. */
-export const rulebookDocuments: LocalizedContent<RulebookDocument | null> = {
+export const rulebookDocuments: LocalizedContent<RulebookDocument> = {
   en: { fileName: "lunar-base-rulebook.pdf", megabytes: 8.9, sheetCount: 25 },
   de: { fileName: "lunar-base-rulebook-de.pdf", megabytes: 9.5, sheetCount: 25 },
   et: { fileName: "lunar-base-rulebook-et.pdf", megabytes: 9.5, sheetCount: 25 },

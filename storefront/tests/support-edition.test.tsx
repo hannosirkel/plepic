@@ -202,7 +202,7 @@ describe("the rulebook page under the marker fixture", () => {
     const html = rulebookPage("et");
     expect(html).toContain('href="/documents/lunar-base-rulebook-et.pdf"');
     expect(html).toContain('hrefLang="et"');
-    expect(html).not.toContain(rendered("et", english.interface.rulebook.englishRulebookNotice));
+    expect(html).not.toContain("Reegliraamat on inglise keeles.");
   });
 });
 
@@ -314,21 +314,6 @@ describe("a post that names no edition this site has is answered in the default 
       });
     }
 
-    it(`${form.name}: a declared edition that has no site copy`, async () => {
-      const copies = fixture as Record<string, unknown>;
-      const withoutCopy = LOCALES.find((locale) => locale !== DEFAULT_LOCALE)!;
-      const published = copies[withoutCopy];
-      copies[withoutCopy] = null;
-      try {
-        stage.relayed = true;
-        const post = new FormData();
-        post.set("locale", withoutCopy);
-
-        expect((await form.action(null, post)).message).toBe(markedFor(DEFAULT_LOCALE, form.sent));
-      } finally {
-        copies[withoutCopy] = published;
-      }
-    });
   }
 });
 
