@@ -21,6 +21,7 @@ export interface SiteCopy {
 
 export const siteCopyByLocale: LocalizedContent<SiteCopy | null> = {
   en: { publisher, lunarBase, proof, support, shop, pages, interface: interfaceCopy },
+  de: null,
   et: null,
 };
 

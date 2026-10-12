@@ -47,12 +47,12 @@ export type Glossary = Readonly<Record<TermId, GlossaryEntry>>;
 
 /**
  * The glossaries, per locale. Partial, unlike `LocalizedContent`: a language
- * registers when its glossary lands, and the default locale never does,
- * because English is what the others are checked against.
+ * registers when its glossary lands, potentially before its site locale does.
+ * The default locale never does, because English is what others are checked against.
  */
-export type GlossaryRegistry = Readonly<
-  Partial<Record<Exclude<Locale, typeof DEFAULT_LOCALE>, Glossary>>
->;
+// German glossary work precedes registration of `de` in the site's Locale type.
+export type GlossaryLocale = Exclude<Locale, typeof DEFAULT_LOCALE> | "de";
+export type GlossaryRegistry = Readonly<Partial<Record<GlossaryLocale, Glossary>>>;
 
 /**
  * The keys whose strings the check does not read: identifiers and link

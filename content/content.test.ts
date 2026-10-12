@@ -619,6 +619,11 @@ const COOKIE_TABLE_LANGUAGE: Readonly<
     hedgedDuration: /^(?:Up to |Varies)/,
     consentStatements: ["only with your consent", "do not require consent"],
   },
+  de: {
+    columns: ["Cookie", "Anbieter", "Zweck", "Speicherdauer"],
+    hedgedDuration: /^(?:Bis zu |Unterschiedlich)/,
+    consentStatements: ["nur mit Ihrer Einwilligung", "bedürfen keiner Einwilligung"],
+  },
   et: {
     columns: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
     hedgedDuration: /^(?:Kuni |Varieerub)/,
@@ -1053,19 +1058,19 @@ describe("the page registry", () => {
  * Everything here is written over `LOCALES` rather than over the literal
  * `"en"`, so it states what a published edition must be rather than what
  * today's single edition happens to be — with one deliberate exception, the
- * count, which is pinned because a second locale arriving without a decision
+ * count, which is pinned because a new locale arriving without a decision
  * is a failure rather than progress.
  */
 describe("the locale dimension", () => {
   /**
-   * Still pinned, now at two. A locale appearing — or disappearing — without
+   * Pinned at three. A locale appearing — or disappearing — without
    * anybody deciding it is a failure, not progress. `et` is the operator's
    * decision of 2026-08-09: the legal set translated for the Estonian
    * consumer, after the second qualified legal read found consumer-facing
    * terms in English only.
    */
-  it("has exactly the two decided locales, and the default is the English one", () => {
-    expect([...LOCALES]).toEqual(["en", "et"]);
+  it("has exactly the three decided locales, and the default is the English one", () => {
+    expect([...LOCALES]).toEqual(["en", "de", "et"]);
     expect(DEFAULT_LOCALE).toBe("en");
   });
 

@@ -23,6 +23,7 @@ export * from "./routes.js";
 export * from "./schema.js";
 export * from "./pages.js";
 export * from "./editions.js";
+export * from "./rulebook-documents.js";
 export * as publisher from "./publisher.js";
 export * as lunarBase from "./lunar-base.js";
 export * as proof from "./proof.js";
@@ -56,6 +57,7 @@ export * as legal from "./legal/index.js";
  */
 export const pagesByLocale: LocalizedContent<readonly Page[]> = {
   en: pages,
+  de: legalPagesByLocale["de"],
   /*
    * The Estonian edition publishes the legal set and nothing else — the
    * reason the dimension exists is the legal-language obligation, not a

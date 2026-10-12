@@ -7,6 +7,7 @@
  */
 
 import type { GlossaryException, GlossaryRegistry } from "./schema.js";
+import { germanGlossary } from "./de.js";
 
 export * from "./terms.js";
 export * from "./schema.js";
@@ -16,10 +17,19 @@ export * from "./schema.js";
  * that holds its `Glossary`. From then on `glossary.test.ts` checks every
  * translated string of that locale.
  */
-export const glossaries: GlossaryRegistry = {};
+export const glossaries: GlossaryRegistry = { de: germanGlossary };
 
 /**
  * The strings the check would fail and that stand as written. An entry that
  * no longer suppresses a failure fails the test, so the list cannot rot.
  */
-export const glossaryExceptions: readonly GlossaryException[] = [];
+export const glossaryExceptions: readonly GlossaryException[] = [
+  {
+    locale: "de",
+    key: "legal.legalPrivacy.body[2].body[0]",
+    term: "base",
+    rule: "missing-term",
+    reason:
+      'The English "legal bases" is the plural of "legal basis" under data protection law, and no player\'s Base is meant. The German says „Rechtsgrundlagen“, the regulation\'s own word.',
+  },
+];
