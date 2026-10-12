@@ -51,6 +51,7 @@ import { de as germanRulebook } from "../rulebook/text/de/index.js";
 import { et as estonianRulebook } from "../rulebook/text/et/index.js";
 import { en as englishRulebook } from "../rulebook/text/en.js";
 import type { RulebookText } from "../rulebook/text/schema.js";
+import { tlh as klingonRulebook } from "../rulebook/text/tlh/index.js";
 
 const contentDir = dirname(fileURLToPath(import.meta.url));
 const terms: Readonly<Record<TermId, Term>> = TERMS;
@@ -92,7 +93,9 @@ function legalPairs(locale: Locale): readonly Pair[] {
  * The rulebook text each locale has so far. A locale registers here when its
  * `rulebook/text/<locale>/` lands; until then it has no rulebook pairs.
  */
-const rulebookTexts: Readonly<Partial<Record<Locale, RulebookText>>> = { de: germanRulebook, et: estonianRulebook };
+const rulebookTexts: Readonly<Partial<Record<Locale, Partial<RulebookText>>>> = {
+  de: germanRulebook, et: estonianRulebook, tlh: klingonRulebook,
+};
 
 /**
  * The hook for rulebook text: one pair per frame the locale has, the English
@@ -327,6 +330,11 @@ describe("the walk", () => {
     });
     expect(pairs.find((pair) => pair.key === "rulebook.s10.f03")?.translated).not.toBe("CHECK FOR ARRIVING SHUTTLES");
     expect(rulebookPairs("et").map((pair) => pair.key)).toEqual(Object.keys(englishRulebook).map((id) => `rulebook.${id}`));
+    // The Klingon edition has sheets 1 to 13 so far: a pair for each frame it has, and none for a later sheet.
+    const klingon = rulebookPairs("tlh");
+    expect(klingon.map((pair) => pair.key)).toEqual(Object.keys(klingonRulebook).map((id) => `rulebook.${id}`));
+    expect(klingon.length).toBeGreaterThan(200);
+    expect(klingon.at(-1)?.key).toBe("rulebook.s13.f01");
   });
 
   it("pairs nested lists and objects by key, and skips what the translation lacks", () => {
