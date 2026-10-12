@@ -90,7 +90,7 @@ export const interfaceCopy: InterfaceCopy = {
     englishRulebookNotice: "Die Spielanleitung ist auf Englisch.",
   },
   product: {
-    boxImageAlt: "Die geöffnete Schachtel von Lunar Base vor schlichtem Hintergrund, der Deckel hinter dem leeren Einsatz aufgestellt; davor ein sauber ausgerichteter Stapel Karten, auf dem die Shackleton-Hauptaktionskarte liegt, eine kleine Kartenschachtel, die aufgeschlagen stehende Spielanleitung und mehrere runde Zählscheiben.",
+    boxImageAlt: "Die geöffnete Schachtel von Lunar Base vor schlichtem Hintergrund, der Deckel hinter dem leeren Einsatz aufgestellt; davor ein sauber ausgerichteter Stapel Karten, auf dem die Shackleton-Hauptaktionskarte (Main Action) liegt, eine kleine Kartenschachtel, die aufgeschlagen stehende Spielanleitung und mehrere runde Zählscheiben.",
     victoryHeading: "Vier Wege zum Sieg",
     boxHeading: "Was in der Schachtel steckt",
     cardsImageAlt: "Eine aufgefächerte Hand mit Karten aus Lunar Base.",
