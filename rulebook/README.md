@@ -46,3 +46,42 @@ The frame map deliberately contains only live text. Future layout reviews
 should compare a rendered translated sheet with the published one so these
 picture elements stay in place. `layout/residual-english.md` goes through the
 same pictures sheet by sheet.
+
+## Building the translated PDF
+
+Run `RULEBOOK_FONT_DIR=/path/to/Fonts npm run rulebook:build -- en` to build the
+English proof in the ignored `rulebook/.work/en/` directory. The published
+English PDF remains untouched. A translated edition builds to
+`storefront/public/documents/lunar-base-rulebook-<locale>.pdf` once its text
+module has been added to `build.ts`.
+
+Prerequisites are Ghostscript (`gs`), Poppler (`pdftocairo` and `pdftoppm`),
+Playwright Chromium (`npx playwright install chromium`), and the directory of
+MADE Evolve Sans OTF files specified by `RULEBOOK_FONT_DIR`. ImageMagick's
+`magick compare` is used to measure vector rendering differences. A missing
+command, browser or mapped font file stops the build with an error.
+
+The build strips live text with Ghostscript, makes SVG artwork underlays with
+Poppler, and chooses a 300 dpi raster underlay whenever the vector render
+exceeds a 0.5% pixel difference from the stripped PDF. The choice and ratio
+are recorded in `rulebook/.work/<locale>/underlays.json`. The comparison
+blurs both renders by one pixel and allows a 20% colour tolerance so edge
+antialiasing and soft shadows do not force a raster underlay. The HTML uses the
+reviewed frame order and roles. A frame starts at its English size and can
+shrink to 90%, with measured English line spacing that can shrink to 95%
+at each size step and a 6 pt minimum. Paragraphs and list items have spacing
+between blocks. Frames already smaller than 6 pt in the published English
+layout keep their original size. Selected sizes and line-spacing scales are
+recorded in `fit.json`. Chromium prints a tagged
+PDF at the sheet sizes.
+
+The PDF uses exactly three font families:
+
+| Family | File source | Licence |
+| --- | --- | --- |
+| MADE Evolve Sans | OTF files in `RULEBOOK_FONT_DIR`, read only | Desktop licence permits read-only PDF embedding; font files may not be redistributed |
+| Lato 2.0 | `lato-font` devDependency, Italic, Medium Italic, Bold Italic and Heavy Italic | SIL Open Font License 1.1; its packaged README contains the OFL text |
+| Josefin Sans | `@fontsource/josefin-sans` devDependency, Bold | SIL Open Font License 1.1 |
+
+`fonts.ts` is the exact face allowlist. The Minion Pro space on sheet 6 is
+dropped; no Minion Pro file is loaded. No font file is copied into Git.
