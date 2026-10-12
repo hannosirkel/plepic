@@ -27,7 +27,7 @@ export default defineConfig({
       {
         test: {
           name: "repo",
-          include: ["content/**/*.test.ts", "design/**/*.test.ts", "scripts/**/*.test.ts"],
+          include: ["content/**/*.test.ts", "design/**/*.test.ts", "rulebook/**/*.test.ts", "scripts/**/*.test.ts"],
           environment: "node",
         },
       },
