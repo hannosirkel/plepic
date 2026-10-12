@@ -184,7 +184,7 @@ describe("the home page under the marker fixture", () => {
     it(`is what the home route renders for ${locale}, price note included`, async () => {
       const served = renderToStaticMarkup(await HomeRoute({ routeId: "home", locale }));
 
-      expect(served).toContain(catalogueFor(locale).vatIncludedNote);
+      expect(served).toContain(catalogueFor(locale).vatIncludedNote.replaceAll("'", "&#x27;"));
       expect(served).toBe(html);
     });
   }

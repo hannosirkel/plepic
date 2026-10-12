@@ -79,6 +79,7 @@ const EXPECTED_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
   en: "English",
   de: "Deutsch",
   et: "Eesti",
+  tlh: "tlhIngan Hol",
 };
 
 /** Every anchor tag in `html` that points into this site, with its href. */
@@ -413,6 +414,14 @@ describe("the language selector", () => {
       expect(selector).toMatch(/<a[^>]* href="\/legal\/imprint" lang="en" hrefLang="en">English<\/a>/);
       expect(selector, "the current edition must not be a link").not.toMatch(/<a[^>]*>Eesti/);
     });
+
+    it(`/legal/imprint: the ${part} offers tlhIngan Hol with its language tag`, () => {
+      const selectors = selectorsIn(partOf(renderedPage("en", "legalImprint"), part));
+      expect(selectors).toHaveLength(1);
+      expect(selectors[0]).toMatch(
+        /<a[^>]* href="\/tlh\/legal\/imprint" lang="tlh" hrefLang="tlh">tlhIngan Hol<\/a>/,
+      );
+    });
   }
 
   it("/games/lunar-base: offers the German and the Estonian product page, in the header and in the footer", () => {
@@ -590,6 +599,17 @@ const EXPECTED_CHROME: Readonly<
       ">Saatmine<",
       ">Tagastamine<",
       ">Privaatsus<",
+    ],
+  },
+  tlh: {
+    header: [
+      ">De&#x27;maj<", ">QaH<", ">wIvmeH tetlh<", ">je&#x27;meH ngaSwI&#x27;<",
+      'aria-label="wIvmeH rarwI&#x27;mey"', 'aria-label="Plepic Games, tenwal wa&#x27;DIch"',
+    ],
+    footer: [
+      'aria-label="chut De&#x27;"', 'aria-label="Hol"',
+      ">chut QIn<", ">ngevmeH chutmey<", ">ngeHmeH mIw, HIjmeH mIw je<",
+      ">tep tatlhmeH mIw, je&#x27;Ha&#x27;meH DIb je<", ">De&#x27; QanmeH mIw<",
     ],
   },
 };

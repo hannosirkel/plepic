@@ -165,6 +165,12 @@ describe("resolveLocalizedRoute", () => {
     expect(resolveLocalizedRoute(DEFAULT_LOCALE, ["legal", "imprint"])).toBeNull();
   });
 
+  it("serves Klingon legal pages and leaves the product route unpublished", () => {
+    expect(resolveLocalizedRoute("tlh", ["legal", "imprint"]))
+      .toEqual({ locale: "tlh", routeId: "legalImprint" });
+    expect(resolveLocalizedRoute("tlh", ["games", "lunar-base"])).toBeNull();
+  });
+
   it("refuses an unknown first segment", () => {
     expect(resolveLocalizedRoute("nonsense", ["legal", "imprint"])).toBeNull();
     expect(resolveLocalizedRoute("nonsense", undefined)).toBeNull();

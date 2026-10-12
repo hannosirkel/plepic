@@ -52,15 +52,15 @@ export const CHECKOUT_RETURN_PATH = "/checkout/payment-return";
 /**
  * Every locale the site is published in.
  *
- * The English default, German and Estonian editions are published, and each
- * publishes the full site: every route English serves, under its own prefix.
+ * English, German and Estonian publish the full site. Klingon currently
+ * publishes the five legal pages under its own prefix.
  *
  * A locale is *not* a language: it is a published edition of this site, keyed
  * by an identifier that is also its URL segment. {@link LocaleDefinition}
  * carries the BCP 47 language tag the edition is written in, because the two
  * are different facts and only one of them belongs in a URL.
  */
-export const LOCALES = ["en", "de", "et"] as const;
+export const LOCALES = ["en", "de", "et", "tlh"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -118,6 +118,7 @@ export const LOCALE_DEFINITIONS: Readonly<Record<Locale, LocaleDefinition>> = {
    */
   de: { languageTag: "de", numberFormatTag: "de-DE", pathPrefix: "/de" },
   et: { languageTag: "et", numberFormatTag: "et-EE", pathPrefix: "/et" },
+  tlh: { languageTag: "tlh", numberFormatTag: "en-IE", pathPrefix: "/tlh" },
 };
 
 /**

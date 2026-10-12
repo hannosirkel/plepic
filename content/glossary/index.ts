@@ -27,6 +27,14 @@ export const glossaries: GlossaryRegistry = { de: germanGlossary, et: estonianGl
  */
 export const glossaryExceptions: readonly GlossaryException[] = [
   {
+    locale: "tlh",
+    key: "legal.legalPrivacy.body[2].body[0]",
+    term: "base",
+    rule: "missing-term",
+    reason:
+      'The English "legal bases" refers to grounds for processing personal data, not the player\'s Base. Klingon uses "chut meqmey" for legal grounds.',
+  },
+  {
     locale: "de",
     key: "legal.legalPrivacy.body[2].body[0]",
     term: "base",

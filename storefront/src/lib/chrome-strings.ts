@@ -170,6 +170,30 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
           `tekstis tähistatud: ${missing.join(", ")}. Kuni need on esitamata, ei ole see ` +
           `leht täielik õiguslik teade ja sellele ei saa sellisena tugineda.`,
   },
+  tlh: {
+    brandHomeLabel: "Plepic Games, tenwal wa'DIch",
+    primaryNavLabel: "wIvmeH rarwI'mey",
+    navAbout: "De'maj",
+    navSupport: "QaH",
+    menuLabel: "wIvmeH tetlh",
+    closeMenuLabel: "wIvmeH tetlh yISoQmoH",
+    basketLabel: "je'meH ngaSwI'",
+    legalNavLabel: "chut De'",
+    legalLinkLabels: {
+      legalImprint: "chut QIn",
+      legalTerms: "ngevmeH chutmey",
+      legalShipping: "ngeHmeH mIw, HIjmeH mIw je",
+      legalReturns: "tep tatlhmeH mIw, je'Ha'meH DIb je",
+      legalPrivacy: "De' QanmeH mIw",
+    },
+    languageNavLabel: "Hol",
+    socialNavLabel: "ghom rarwI'mey",
+    draftNote: "qonmeH ghItlh; SIr'o' Daq vu'wI' lajbe'pu'.",
+    noticeHeading: "chut QInvam naQbe'.",
+    noticeBody: (missing) =>
+      `DaqvamvaD De'vam lanlu'be'pu'; bIngDaq ngu'lu': ${missing.join(", ")}. ` +
+      "De'vam lanlu'pa', chut QInvam naQbe'; naQ 'e' yIHarQo'.",
+  },
 };
 
 /**
@@ -182,4 +206,5 @@ export const LANGUAGE_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
   en: "English",
   de: "Deutsch",
   et: "Eesti",
+  tlh: "tlhIngan Hol",
 };

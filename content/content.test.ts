@@ -629,6 +629,11 @@ const COOKIE_TABLE_LANGUAGE: Readonly<
     hedgedDuration: /^(?:Kuni |Varieerub)/,
     consentStatements: ["ainult sinu nõusolekul", "ega vaja nõusolekut"],
   },
+  tlh: {
+    columns: ["De' chabHom", "nobwI'", "ngoQ", "poH"],
+    hedgedDuration: /^(?:'aqroS: |pIm)/,
+    consentStatements: ["bIghIbchugh neH", "bIghIbnISbe'"],
+  },
 };
 
 /**
@@ -1063,14 +1068,14 @@ describe("the page registry", () => {
  */
 describe("the locale dimension", () => {
   /**
-   * Pinned at three. A locale appearing — or disappearing — without
+   * Pinned at four. A locale appearing — or disappearing — without
    * anybody deciding it is a failure, not progress. `et` is the operator's
    * decision of 2026-08-09: the legal set translated for the Estonian
    * consumer, after the second qualified legal read found consumer-facing
    * terms in English only.
    */
-  it("has exactly the three decided locales, and the default is the English one", () => {
-    expect([...LOCALES]).toEqual(["en", "de", "et"]);
+  it("has exactly the four decided locales, and the default is the English one", () => {
+    expect([...LOCALES]).toEqual(["en", "de", "et", "tlh"]);
     expect(DEFAULT_LOCALE).toBe("en");
   });
 
@@ -1143,8 +1148,12 @@ describe("the locale dimension", () => {
     expect(contentFor(legalPagesByLocale, DEFAULT_LOCALE)).toBe(legalPages);
   });
 
-  it("keeps site copy available in every edition, each from its own modules", () => {
+  it("keeps published site copy available in each edition, each from its own modules", () => {
     for (const locale of LOCALES) {
+      if (siteCopyByLocale[locale] === null) {
+        expect(pagesByLocale[locale].every((page) => page.route.startsWith("legal")), locale).toBe(true);
+        continue;
+      }
       expect(siteCopyByLocale[locale], locale).not.toBeNull();
       expect(siteCopyFor(locale)).toBe(siteCopyByLocale[locale]);
       expect(siteCopyFor(locale).pages.pages, locale).toBe(pagesByLocale[locale]);
