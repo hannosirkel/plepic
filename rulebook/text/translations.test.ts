@@ -10,7 +10,7 @@ import { parseMarkup, plainText, type FrameId, type RulebookText } from "./schem
  * first `sheets` sheets and no frame of a later one.
  */
 const translations: Readonly<Record<string, { text: Partial<RulebookText>; sheets: number }>> = {
-  de: { text: de, sheets: 13 },
+  de: { text: de, sheets: 25 },
 };
 
 /**

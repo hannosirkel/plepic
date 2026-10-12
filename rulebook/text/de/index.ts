@@ -1,9 +1,8 @@
 import type { RulebookText } from "../schema.js";
 import { part1 } from "./part1.js";
+import { part2 } from "./part2.js";
 
 /**
- * The German rulebook text. It holds sheets 1 to 13 and is a partial record
- * until sheets 14 to 25 land; it then becomes the total `RulebookText`, and
- * a missing frame stops compiling.
+ * The complete German rulebook text. A missing frame stops compiling.
  */
-export const de: Partial<RulebookText> = { ...part1 };
+export const de: RulebookText = { ...part1, ...part2 };
