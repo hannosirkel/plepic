@@ -331,9 +331,8 @@ export const PRICE_HEADLINE_SEPARATOR = " · ";
  *
  * ## What is localised, and what deliberately is not
  *
- * Only the strings a **localised page can render**. `LOCALIZED_ROUTE_VIEWS`
- * serves the legal set and nothing else, and the only catalogue tokens those
- * pages use are `{price}`, `{priceNet}`, `{priceGross}`, `{priceVat}` and
+ * Only the strings a **localised page can render**. The catalogue tokens
+ * these pages use are `{price}`, `{priceNet}`, `{priceGross}`, `{priceVat}` and
  * `{vatRate}` — all figures, formatted by `Intl` — plus
  * `{priceTaxQualifier}`, which is prose. The shipping note reaches the same
  * page through the pin against `callout.detail`. Both are here.

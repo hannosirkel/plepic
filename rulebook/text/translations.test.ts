@@ -4,6 +4,7 @@ import { de } from "./de/index.js";
 import { en } from "./en.js";
 import { et } from "./et/index.js";
 import { parseMarkup, plainText, type FrameId, type RulebookText } from "./schema.js";
+import { tlh } from "./tlh/index.js";
 
 /**
  * Every translated edition, read beside the English text frame by frame.
@@ -13,6 +14,7 @@ import { parseMarkup, plainText, type FrameId, type RulebookText } from "./schem
 const translations: Readonly<Record<string, { text: Partial<RulebookText>; sheets: number }>> = {
   de: { text: de, sheets: 25 },
   et: { text: et, sheets: 25 },
+  tlh: { text: tlh, sheets: 25 },
 };
 
 /**

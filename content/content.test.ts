@@ -1069,10 +1069,8 @@ describe("the page registry", () => {
 describe("the locale dimension", () => {
   /**
    * Pinned at four. A locale appearing — or disappearing — without
-   * anybody deciding it is a failure, not progress. `et` is the operator's
-   * decision of 2026-08-09: the legal set translated for the Estonian
-   * consumer, after the second qualified legal read found consumer-facing
-   * terms in English only.
+   * anybody deciding it is a failure, not progress. All four editions now
+   * publish the full site and a rulebook.
    */
   it("has exactly the four decided locales, and the default is the English one", () => {
     expect([...LOCALES]).toEqual(["en", "de", "et", "tlh"]);
@@ -1150,15 +1148,17 @@ describe("the locale dimension", () => {
 
   it("keeps published site copy available in each edition, each from its own modules", () => {
     for (const locale of LOCALES) {
-      if (siteCopyByLocale[locale] === null) {
-        expect(pagesByLocale[locale].every((page) => page.route.startsWith("legal")), locale).toBe(true);
-        continue;
-      }
-      expect(siteCopyByLocale[locale], locale).not.toBeNull();
       expect(siteCopyFor(locale)).toBe(siteCopyByLocale[locale]);
       expect(siteCopyFor(locale).pages.pages, locale).toBe(pagesByLocale[locale]);
     }
     expect(siteCopyFor("et").shop).not.toBe(siteCopyFor("en").shop);
+  });
+
+  it("publishes the same route ids in every edition", () => {
+    const englishRoutes = pagesByLocale.en.map((page) => page.route).toSorted();
+    for (const locale of LOCALES) {
+      expect(pagesByLocale[locale].map((page) => page.route).toSorted(), locale).toEqual(englishRoutes);
+    }
   });
 
   /**

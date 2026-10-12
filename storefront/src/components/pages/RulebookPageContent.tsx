@@ -53,10 +53,7 @@ export function RulebookPageContent({
   locale = DEFAULT_LOCALE,
 }: RulebookPageContentProps = {}) {
   const copy = siteCopyFor(locale).interface.rulebook;
-  const ownDocument = rulebookDocuments[locale];
-  const document = ownDocument ?? rulebookDocuments[DEFAULT_LOCALE];
-  if (document === null) throw new Error("missing-default-rulebook-pdf");
-  const documentLocale = ownDocument === null ? DEFAULT_LOCALE : locale;
+  const document = rulebookDocuments[locale];
   // The figure stays a text node of its own, as it was when the sentence was written here.
   const [beforeSize, afterSize] = copy.downloadNote.split("%megabytes%");
   // One decimal, written as the edition writes it: a comma in German and Estonian.
@@ -74,7 +71,7 @@ export function RulebookPageContent({
           <h1 className={styles.heading}>{copy.heading}</h1>
           <p className={styles.lede}>{copy.lede}</p>
           <div className={styles.actions}>
-            <a className={`${ctaStyles.cta} ${ctaStyles.primary}`} href={`${DOCUMENTS_PATH}/${document.fileName}`} hrefLang={documentLocale}>
+            <a className={`${ctaStyles.cta} ${ctaStyles.primary}`} href={`${DOCUMENTS_PATH}/${document.fileName}`} hrefLang={locale}>
               {copy.openLabel}
             </a>
           </div>
@@ -83,7 +80,6 @@ export function RulebookPageContent({
             {megabytes}
             {afterSize}
           </p>
-          {ownDocument === null && <p className={styles.note}>{copy.englishRulebookNotice}</p>}
         </div>
       </main>
 

@@ -40,16 +40,13 @@ export interface SiteCopy {
   readonly interface: InterfaceCopy;
 }
 
-export const siteCopyByLocale: LocalizedContent<SiteCopy | null> = {
+export const siteCopyByLocale: LocalizedContent<SiteCopy> = {
   en: { publisher, lunarBase, proof, support, shop, pages, interface: interfaceCopy },
   de: { publisher: dePublisher, lunarBase: deLunarBase, proof: deProof, support: deSupport, shop: deShop, pages: dePages, interface: deInterfaceCopy },
   et: { publisher: etPublisher, lunarBase: etLunarBase, proof: etProof, support: etSupport, shop: etShop, pages: etPages, interface: etInterfaceCopy },
   tlh: { publisher: tlhPublisher, lunarBase: tlhLunarBase, proof: tlhProof, support: tlhSupport, shop: tlhShop, pages: tlhPages, interface: tlhInterfaceCopy },
 };
 
-/** A null entry denotes an edition whose site copy has not been published. */
 export function siteCopyFor(locale: Locale): SiteCopy {
-  const copy = siteCopyByLocale[locale];
-  if (copy === null) throw new Error(locale + " has no site copy");
-  return copy;
+  return siteCopyByLocale[locale];
 }

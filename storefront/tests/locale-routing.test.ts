@@ -329,10 +329,8 @@ describe("the home page has one renderer", () => {
   });
 
   /**
-   * `HomeRoute` asks the page registry itself. An edition that does not
-   * publish the home page has no site copy to render it from, and the
-   * renderer reached without the resolver must still answer 404 rather than
-   * throw `siteCopyFor`'s error, which a visitor would meet as a 500.
+   * `HomeRoute` asks the page registry itself. A caller that skips the route
+   * resolver still gets a 404 when the edition does not publish the home page.
    */
   it("answers 404 for an edition that does not publish the home page", async () => {
     // Every edition publishes the home page now, so each has it withheld in turn.
