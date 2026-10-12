@@ -49,7 +49,7 @@ export interface ChromeStrings {
   readonly legalNavLabel: string;
   /** The footer's five legal links, labelled as their edition's pages are titled. */
   readonly legalLinkLabels: Readonly<Record<LegalRouteId, string>>;
-  /** `aria-label` of the language-switcher `<nav>`. */
+  /** `aria-label` of the language selector's `<nav>`. */
   readonly languageNavLabel: string;
   /**
    * `aria-label` of the footer's social `<nav>`.
@@ -145,13 +145,12 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
 };
 
 /**
- * The language switcher's link labels, keyed by the **target** edition and
- * written in the target's own language — a reader looking for their language
- * must be able to recognise it without already reading the page's. The
- * rendered anchor also carries `lang` and `hreflang` set to the target's
- * language tag, for the same reason spoken aloud to a screen reader.
+ * The name of each edition's language, written in that language: a reader
+ * looking for their language must be able to recognise it without reading
+ * the page's. `LanguageSelector` renders one per listed edition, and marks
+ * it with `lang` so a screen reader pronounces it as its speakers do.
  */
 export const LANGUAGE_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
-  en: "In English",
-  et: "Eesti keeles",
+  en: "English",
+  et: "Eesti",
 };

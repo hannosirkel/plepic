@@ -1019,8 +1019,8 @@ describe("the checkout route", () => {
     return [
       // Header and footer labels: `src/lib/chrome-strings.ts`, keyed by locale.
       ...stringsIn(CHROME_STRINGS[locale]),
-      // The footer's links to the other editions, each named in its own language.
-      ...LOCALES.filter((other) => other !== locale).map((other) => LANGUAGE_SWITCHER_LABELS[other]),
+      // The language selector names every edition in its own language, on every edition.
+      ...Object.values(LANGUAGE_SWITCHER_LABELS),
       // The game's and the publisher's names, and the platforms' own.
       "Lunar Base",
       "Plepic Games",
@@ -1193,7 +1193,10 @@ describe("payment return, consent, and 404 under the marker fixture", () => {
       expect(missing).toContain(markedFor(locale, english.interface.notFound.body));
       expect(missing).toContain(`href="/${locale}"`);
       expect(unmarkedText(banner, [])).toEqual([]);
-      expect(unmarkedText(missing, [])).toEqual([]);
+      // The 404 carries the language selector: its label, and each edition's name.
+      expect(
+        unmarkedText(missing, [CHROME_STRINGS[locale].languageNavLabel, ...Object.values(LANGUAGE_SWITCHER_LABELS)]),
+      ).toEqual([]);
       const metadata = await localizedMetadata({
         params: Promise.resolve({ locale, segments: ["not-a-route"] }),
       });

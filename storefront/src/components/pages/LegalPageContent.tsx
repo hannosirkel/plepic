@@ -237,7 +237,7 @@ export function LegalPageContent({
 
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" locale={locale} />
+      <SiteHeader wordmark="primary" locale={locale} route={page.route} />
 
       <main className={styles.main}>
         <div className={styles.intro}>

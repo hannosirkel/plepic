@@ -148,7 +148,7 @@ export function LunarBaseMockup({
 
   return (
     <div data-layer="lunar" className={styles.page}>
-      <SiteHeader wordmark="dark" locale={locale} />
+      <SiteHeader wordmark="dark" locale={locale} route="lunarBase" />
 
       <main className={styles.main}>
         <section id="aboutgame" className={styles.hero}>
@@ -376,7 +376,7 @@ export function LunarBaseMockup({
         </section>
       </main>
 
-      <SiteFooter externalTargets={externalTargets} locale={locale} />
+      <SiteFooter externalTargets={externalTargets} locale={locale} route="lunarBase" />
     </div>
   );
 }

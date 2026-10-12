@@ -33,7 +33,7 @@ export interface ShopPageShellProps {
 export function ShopPageShell({ children, externalTargets = {}, locale = DEFAULT_LOCALE, route }: ShopPageShellProps) {
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" locale={locale} />
+      <SiteHeader wordmark="primary" locale={locale} route={route} />
       <main className={styles.main}>{children}</main>
       <SiteFooter externalTargets={externalTargets} locale={locale} route={route} />
     </div>

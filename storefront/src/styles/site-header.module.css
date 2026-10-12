@@ -24,11 +24,27 @@
   width: auto;
 }
 
+/*
+ * The panel: the primary links, then the language selector. Where the row is
+ * too narrow for both, the selector wraps under the links.
+ */
 .nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
+  column-gap: var(--nav-link-gap);
+}
+
+.primary {
+  display: flex;
+  align-items: center;
   gap: var(--nav-link-gap);
+}
+
+/* Placement and colour only: `language-selector.module.css` owns the rest. */
+.language {
+  color: var(--nav-fg);
 }
 
 .link {
@@ -130,9 +146,10 @@
     width: var(--nav-sheet-width);
     max-width: 100%;
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
     justify-content: flex-start;
-    gap: var(--space-2xs);
+    row-gap: var(--space-2xs);
     padding: var(--space-3xl) var(--space-lg) var(--space-xl);
     background: var(--nav-sheet-bg);
     border-inline-start: var(--nav-border-width) solid var(--nav-border-color);
@@ -161,9 +178,22 @@
       visibility 0s linear var(--duration-base);
   }
 
+  .primary {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2xs);
+  }
+
   .link {
     padding-block: var(--space-sm);
     font-size: var(--step-1);
+    color: var(--text);
+  }
+
+  .language {
+    margin-block-start: var(--space-sm);
+    padding-block-start: var(--space-sm);
+    border-block-start: var(--nav-border-width) solid var(--nav-border-color);
     color: var(--text);
   }
 

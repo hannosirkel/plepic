@@ -37,7 +37,7 @@ import { HomeRoute } from "../src/app/localized-routes.js";
 import { ReviewComposite } from "../src/components/ReviewComposite.js";
 import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
-import { CHROME_STRINGS } from "../src/lib/chrome-strings.js";
+import { CHROME_STRINGS, LANGUAGE_SWITCHER_LABELS } from "../src/lib/chrome-strings.js";
 import { destinationForCode } from "../src/lib/destination.js";
 import {
   editionsMarkedIn,
@@ -130,6 +130,8 @@ function wordsFromElsewhere(locale: Locale): readonly string[] {
   return [
     // Header and footer labels: `src/lib/chrome-strings.ts`, keyed by locale.
     ...stringsIn(CHROME_STRINGS[locale]),
+    // The language selector names every edition in its own language, on every edition.
+    ...Object.values(LANGUAGE_SWITCHER_LABELS),
     // The note under the price: `TAX_VOCABULARY` in `src/lib/catalogue.ts`, keyed by locale.
     catalogue.vatIncludedNote,
     // The product's name is printed on the box and is the same in every edition.

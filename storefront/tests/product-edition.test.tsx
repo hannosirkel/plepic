@@ -6,7 +6,7 @@ import { LunarBaseMockup } from "../src/components/mockups/LunarBaseMockup.js";
 import { FeatureSpecStrip } from "../src/components/FeatureSpecStrip.js";
 import { buildProductJsonLd } from "../src/lib/product-jsonld.js";
 import { mockCatalogue, resolveCatalogue } from "../src/lib/catalogue.js";
-import { CHROME_STRINGS } from "../src/lib/chrome-strings.js";
+import { CHROME_STRINGS, LANGUAGE_SWITCHER_LABELS } from "../src/lib/chrome-strings.js";
 import { editionsMarkedIn, markedFor, unmarkedText } from "./helpers/marker-site-copy.js";
 
 type Editions = typeof import("../../content/editions.js");
@@ -43,6 +43,8 @@ describe("the product page under the marker fixture", () => {
     it(`shows no unmarked sentence in ${locale}`, () => {
       expect(unmarkedText(html, [
         ...stringsIn(CHROME_STRINGS[locale]),
+        // The language selector names every edition in its own language, on every edition.
+        ...Object.values(LANGUAGE_SWITCHER_LABELS),
         resolveCatalogue(undefined, undefined, locale).productName,
         resolveCatalogue(undefined, undefined, locale).vatIncludedNote,
         "Plepic Games", "Instagram", "Facebook",

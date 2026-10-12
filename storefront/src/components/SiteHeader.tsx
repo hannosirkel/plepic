@@ -26,11 +26,17 @@
  * an in-sheet close action, Escape handling, and focus return. `Basket` stays
  * outside the sheet because the store's primary commercial affordance should
  * not require opening navigation first.
+ *
+ * The panel holds two landmarks side by side, the primary navigation and the
+ * language selector, so it is a `<div>` and not a `<nav>` around both. On a
+ * narrow viewport the whole panel is the sheet, and the selector is inside
+ * it under the links.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
+import { DEFAULT_LOCALE, type Locale, type RouteId } from "../../../content/routes.js";
 import { CHROME_STRINGS } from "../lib/chrome-strings.js";
+import { LanguageSelector } from "./LanguageSelector.js";
 import { localizedLinkFor } from "../lib/seo.js";
 import styles from "../styles/site-header.module.css";
 
@@ -53,12 +59,19 @@ export interface SiteHeaderProps {
    * pages render what they always have.
    */
   readonly locale?: Locale;
+  /**
+   * The route of the page this header sits on, handed to `LanguageSelector`
+   * so each edition's link leads to this same page there. Every route view
+   * passes it. Absent, the links lead to each edition's home page.
+   */
+  readonly route?: RouteId;
 }
 
 export function SiteHeader({
   wordmark,
   instanceId = "site-nav",
   locale = DEFAULT_LOCALE,
+  route,
 }: SiteHeaderProps) {
   const wordmarkSrc = wordmark === "dark" ? "/brand/plepic-wordmark-dark.svg" : "/brand/plepic-wordmark-primary.svg";
   const panelId = `${instanceId}-panel`;
@@ -102,24 +115,23 @@ export function SiteHeader({
         onClick={() => closeMenu()}
       />
 
-      <nav
-        id={panelId}
-        className={`${styles.nav} ${isOpen ? styles.navOpen : ""}`}
-        aria-label={strings.primaryNavLabel}
-      >
+      <div id={panelId} className={`${styles.nav} ${isOpen ? styles.navOpen : ""}`}>
         <button ref={closeButtonRef} className={styles.closeButton} type="button" onClick={() => closeMenu()}>
           {strings.closeMenuLabel}
         </button>
-        <a className={styles.link} {...localizedLinkFor(locale, "lunarBase")}>
-          Lunar Base
-        </a>
-        <a className={styles.link} {...localizedLinkFor(locale, "about")}>
-          {strings.navAbout}
-        </a>
-        <a className={styles.link} {...localizedLinkFor(locale, "support")}>
-          {strings.navSupport}
-        </a>
-      </nav>
+        <nav className={styles.primary} aria-label={strings.primaryNavLabel}>
+          <a className={styles.link} {...localizedLinkFor(locale, "lunarBase")}>
+            Lunar Base
+          </a>
+          <a className={styles.link} {...localizedLinkFor(locale, "about")}>
+            {strings.navAbout}
+          </a>
+          <a className={styles.link} {...localizedLinkFor(locale, "support")}>
+            {strings.navSupport}
+          </a>
+        </nav>
+        <LanguageSelector className={styles.language} locale={locale} route={route} />
+      </div>
 
       <div className={styles.actions}>
         <button

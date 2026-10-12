@@ -31,7 +31,7 @@ import { NewsletterForm } from "../src/components/forms/NewsletterForm.js";
 import { submitContact, submitNewsletter } from "../src/components/forms/public-form-actions.js";
 import { RulebookPageContent } from "../src/components/pages/RulebookPageContent.js";
 import { SupportPageContent } from "../src/components/pages/SupportPageContent.js";
-import { CHROME_STRINGS } from "../src/lib/chrome-strings.js";
+import { CHROME_STRINGS, LANGUAGE_SWITCHER_LABELS } from "../src/lib/chrome-strings.js";
 import { editionsMarkedIn, markedFor, unmarkedText } from "./helpers/marker-site-copy.js";
 import { readerFacingLiterals } from "./helpers/reader-facing-literals.js";
 
@@ -102,6 +102,8 @@ function wordsFromElsewhere(locale: Locale): readonly string[] {
   return [
     // Header and footer labels: `src/lib/chrome-strings.ts`, keyed by locale.
     ...stringsIn(CHROME_STRINGS[locale]),
+    // The language selector names every edition in its own language, on every edition.
+    ...Object.values(LANGUAGE_SWITCHER_LABELS),
     // The game's name, as printed on the box: the header's link to its page.
     "Lunar Base",
     // The publisher's name, as the footer wordmark's `alt`, and the platforms' own names.

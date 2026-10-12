@@ -72,6 +72,9 @@
  * does not resolve. The proxy forwards the original pathname in a request
  * header; an unknown prefix falls back to the default edition.
  *
+ * The language selector is here too, given no route, because a 404 is none:
+ * each of its links leads to that edition's home page.
+ *
  * See `src/styles/pages/not-found.module.css` for why the link's colour is a
  * token pair rather than a value, and what that buys.
  *
@@ -85,6 +88,7 @@ import { headers } from "next/headers";
 import { siteCopyByLocale } from "../../../content/editions.js";
 import { interfaceCopy } from "../../../content/interface.js";
 import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, ROUTE_PATHS, type Locale } from "../../../content/routes.js";
+import { LanguageSelector } from "../components/LanguageSelector.js";
 import { localeForPathSegment, localizedPath } from "../lib/urls.js";
 import styles from "../styles/pages/not-found.module.css";
 
@@ -111,6 +115,7 @@ export async function NotFoundContent({ locale: givenLocale }: { readonly locale
             {copy.homeLink}
           </a>
         </p>
+        <LanguageSelector locale={locale} />
       </div>
     </main>
   );

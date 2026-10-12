@@ -93,7 +93,7 @@ export function HomepageMockup({
 
   return (
     <div data-layer="publisher" className={styles.page}>
-      <SiteHeader wordmark="primary" locale={locale} />
+      <SiteHeader wordmark="primary" locale={locale} route="home" />
 
       <main className={styles.main}>
         <section className={styles.hero}>
@@ -227,7 +227,7 @@ export function HomepageMockup({
         </section>
       </main>
 
-      <SiteFooter locale={locale} externalTargets={externalTargets} />
+      <SiteFooter locale={locale} route="home" externalTargets={externalTargets} />
     </div>
   );
 }

@@ -1,0 +1,41 @@
+/*
+ * The language selector. See `src/components/LanguageSelector.tsx`.
+ *
+ * This file owns the row and the two states of an entry. It sets no colour:
+ * the selector sits on the header's surface and on the footer's dark one, so
+ * each entry inherits the colour of whatever holds it. A host passes a class
+ * for placement and colour only, and declares nothing this file declares, so
+ * the order the two stylesheets load in cannot change the result.
+ *
+ * No `text-transform`, here or in a host. A language is named as its speakers
+ * write it, and Klingon spelling is case-sensitive.
+ */
+.selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-sm);
+  font-size: var(--step--1);
+}
+
+/* The padding makes each link a target at least 24px tall (WCAG 2.2 2.5.8). */
+.entry {
+  min-width: 0;
+  padding-block: var(--space-2xs);
+  color: inherit;
+}
+
+a.entry {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+a.entry:hover,
+a.entry:focus-visible {
+  text-decoration-thickness: var(--border-width-thick);
+}
+
+/* The edition being read: not a link, so not underlined, and heavier. */
+.current {
+  font-weight: var(--font-weight-bold);
+}
