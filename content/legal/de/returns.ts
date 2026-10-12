@@ -21,9 +21,8 @@
  * Route, anchors, `covers`, sources, section order and every placeholder token
  * are identical to the English page; only prose is German.
  *
- * **Staged, not published.** The German edition is in neither `LOCALES` nor
- * `legalPagesByLocale` yet; `content/mirror.test.ts` and the scans of
- * `content/content.test.ts` read this file from disk.
+ * Published in the German legal set. The mirror and content scans continue to
+ * check this file.
  *
  * `reviewStatus` is `operator-approved`: the operator approved every
  * translation of the site-translation job in advance on 2026-10-10, legal

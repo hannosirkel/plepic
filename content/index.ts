@@ -17,6 +17,7 @@
  */
 import { legalPagesByLocale } from "./legal/index.js";
 import { pages } from "./pages.js";
+import { pages as dePages } from "./de/pages.js";
 import type { LocalizedContent, Page } from "./schema.js";
 
 export * from "./routes.js";
@@ -41,11 +42,8 @@ export * as legal from "./legal/index.js";
  * inside the copy. `pages.ts` stays a flat list of the English pages and is
  * not locale-aware; it is what the `en` entry is built from.
  *
- * **An edition need not publish every route.** `Record<Locale, …>` is total,
- * so a new locale must appear here, but what it maps to is that edition's own
- * page list — which may legitimately be the five legal pages and nothing
- * else, because the reason this dimension exists is a legal-language
- * obligation and not a decision to translate the marketing site. The sitemap,
+ * **An edition need not publish every route.** German now publishes its full
+ * page list; Estonian still publishes only its five legal pages. The sitemap,
  * the canonical and the `hreflang` alternates are all computed from this
  * registry, so a route an edition does not publish simply has no URL, no
  * sitemap entry and no alternate in that locale, rather than a URL that
@@ -57,7 +55,7 @@ export * as legal from "./legal/index.js";
  */
 export const pagesByLocale: LocalizedContent<readonly Page[]> = {
   en: pages,
-  de: legalPagesByLocale["de"],
+  de: dePages,
   /*
    * The Estonian edition publishes the legal set and nothing else — the
    * reason the dimension exists is the legal-language obligation, not a

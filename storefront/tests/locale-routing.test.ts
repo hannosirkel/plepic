@@ -142,6 +142,18 @@ describe("localized paths", () => {
 });
 
 describe("resolveLocalizedRoute", () => {
+  it("serves every active English route in German, plus the checkout return", () => {
+    for (const page of pagesIn("en")) {
+      const segments = ROUTE_PATHS[page.route].split("/").filter(Boolean);
+      expect(resolveLocalizedRoute("de", segments), page.route).toEqual({
+        locale: "de", routeId: page.route,
+      });
+    }
+    expect(resolveLocalizedRoute("de", ["checkout", "payment-return"])).toEqual({
+      locale: "de", routeId: "checkout", view: "checkoutReturn",
+    });
+  });
+
   it("refuses the default edition's own identifier", () => {
     expect(resolveLocalizedRoute(DEFAULT_LOCALE, ["legal", "imprint"])).toBeNull();
   });

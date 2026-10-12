@@ -41,6 +41,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { legalPagesByLocale } from "../../content/legal/index.js";
+import { pagesByLocale } from "../../content/index.js";
 import {
   DEFAULT_LOCALE,
   LOCALES,
@@ -59,6 +60,13 @@ import { LanguageSelector } from "../src/components/LanguageSelector.js";
 import { LegalPageContent } from "../src/components/pages/LegalPageContent.js";
 import { SiteFooter } from "../src/components/SiteFooter.js";
 import { SiteHeader } from "../src/components/SiteHeader.js";
+import { HomepageMockup } from "../src/components/mockups/HomepageMockup.js";
+import { LunarBaseMockup } from "../src/components/mockups/LunarBaseMockup.js";
+import { SupportPageContent } from "../src/components/pages/SupportPageContent.js";
+import { RulebookPageContent } from "../src/components/pages/RulebookPageContent.js";
+import { BasketPageContent } from "../src/components/shop/BasketPageContent.js";
+import { CheckoutPageContent } from "../src/components/shop/CheckoutPageContent.js";
+import { CartProvider } from "../src/lib/cart-store.js";
 
 const ROUTE_IDS = Object.keys(ROUTE_PATHS) as readonly RouteId[];
 
@@ -83,14 +91,22 @@ function internalAnchorsIn(html: string): readonly { tag: string; href: string }
     .filter((anchor) => anchor.href.startsWith("/"));
 }
 
-function renderedPage(locale: Locale, route: string): string {
+function renderedPage(locale: Locale, route: RouteId): string {
   const page = contentFor(legalPagesByLocale, locale).find(
     (candidate) => candidate.route === route,
   );
-  expect(page, `${locale} does not carry ${route}`).toBeDefined();
-  return renderToStaticMarkup(
-    <LegalPageContent page={page!} locale={locale} values={NO_CONFIGURATION_VALUES} />,
+  if (page !== undefined) return renderToStaticMarkup(
+    <LegalPageContent page={page} locale={locale} values={NO_CONFIGURATION_VALUES} />,
   );
+  switch (route) {
+    case "home": return renderToStaticMarkup(<HomepageMockup locale={locale} />);
+    case "lunarBase": return renderToStaticMarkup(<LunarBaseMockup locale={locale} />);
+    case "support": return renderToStaticMarkup(<SupportPageContent locale={locale} turnstileSiteKey={null} nonce={undefined} merchantContactAddress={null} />);
+    case "rulebook": return renderToStaticMarkup(<RulebookPageContent locale={locale} />);
+    case "cart": return renderToStaticMarkup(<CartProvider scenario={null} latencyMs={0}><BasketPageContent locale={locale} /></CartProvider>);
+    case "checkout": return renderToStaticMarkup(<CartProvider scenario="filled" latencyMs={0}><CheckoutPageContent locale={locale} scenario="filled" latencyMs={0} turnstileSiteKey={null} nonce={undefined} /></CartProvider>);
+    default: throw new Error(`No render fixture for ${locale}:${route}`);
+  }
 }
 
 describe("localizedLinkFor answers from the registries, not from itself", () => {
@@ -108,7 +124,8 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
-        const expected = published.has(routeId)
+        const germanRetired = locale === "de" && routeId === "about";
+        const expected = germanRetired ? "/de" : published.has(routeId)
           ? localizedPath(locale, ROUTE_PATHS[routeId])
           : ROUTE_PATHS[routeId];
         if (published.has(routeId)) ownEdition += 1;
@@ -140,7 +157,8 @@ describe("localizedLinkFor answers from the registries, not from itself", () => 
       const published = new Set(pagesIn(locale).map((page) => page.route));
 
       for (const routeId of ROUTE_IDS) {
-        const servedBy = published.has(routeId) ? locale : DEFAULT_LOCALE;
+        const servedBy = published.has(routeId) || (locale === "de" && routeId === "about")
+          ? locale : DEFAULT_LOCALE;
         const { hrefLang } = localizedLinkFor(locale, routeId);
         expect(
           hrefLang,
@@ -258,6 +276,25 @@ describe("every edition's pages link within the edition", () => {
   });
 });
 
+describe("the complete German edition keeps its navigation in German", () => {
+  for (const page of pagesByLocale["de"]) {
+    it(`de:${page.route} has no cross-edition route link outside the selector`, () => {
+      const html = renderedPage("de", page.route)
+        .replace(/<nav[^>]*aria-label="Sprache"[^>]*>[\s\S]*?<\/nav>/g, "");
+      const anchors = internalAnchorsIn(html);
+      expect(anchors.length).toBeGreaterThan(0);
+      for (const { href } of anchors) {
+        if (href.startsWith("/documents/")) continue;
+        const path = href.split("#", 1)[0] ?? href;
+        const parsed = parseLocalizedPath(path);
+        const routeId = routeIdForPath(parsed.path);
+        expect(routeId, `${href} is not a declared route`).toBeDefined();
+        expect(parsed.locale, `${page.route} links to ${href} outside German`).toBe("de");
+      }
+    });
+  }
+});
+
 describe("every non-default edition has inbound links, via the language switcher", () => {
   for (const locale of LOCALES) {
     if (locale === DEFAULT_LOCALE) continue;
@@ -350,7 +387,10 @@ describe("the language selector", () => {
     ]) {
       const selectors = selectorsIn(html);
       expect(selectors).toHaveLength(1);
-      expect(entriesOf(selectors[0] ?? "")).toEqual([{ label: "English", href: undefined }]);
+      expect(entriesOf(selectors[0] ?? "")).toEqual([
+        { label: "English", href: undefined },
+        { label: "Deutsch", href: "/de/games/lunar-base" },
+      ]);
       expect(html).not.toContain("/et");
     }
   });
@@ -379,12 +419,14 @@ describe("the language selector", () => {
   });
 
   it("on the 404, which is no route, links each edition's home page", async () => {
-    // `et` publishes no home page yet, so the English 404 offers no way to one.
+    // `et` publishes no home page yet; German does.
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="en" />))).toEqual([
       { label: "English", href: undefined },
+      { label: "Deutsch", href: "/de" },
     ]);
     expect(entriesOf(renderToStaticMarkup(<LanguageSelector locale="et" />))).toEqual([
       { label: "English", href: "/" },
+      { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: undefined },
     ]);
 
@@ -392,6 +434,7 @@ describe("the language selector", () => {
     expect(missing, "the 404 page must hold the selector").toHaveLength(1);
     expect(entriesOf(missing[0] ?? "")).toEqual([
       { label: "English", href: "/" },
+      { label: "Deutsch", href: "/de" },
       { label: "Eesti", href: undefined },
     ]);
   });

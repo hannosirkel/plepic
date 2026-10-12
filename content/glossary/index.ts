@@ -32,4 +32,11 @@ export const glossaryExceptions: readonly GlossaryException[] = [
     reason:
       'The English "legal bases" is the plural of "legal basis" under data protection law, and no player\'s Base is meant. The German says „Rechtsgrundlagen“, the regulation\'s own word.',
   },
+  {
+    locale: "de",
+    key: "site.pages.pages[10].body[2].body[0]",
+    term: "base",
+    rule: "missing-term",
+    reason: "The published page registry also carries the privacy page. Its legal bases are Rechtsgrundlagen, not a player's Base.",
+  },
 ];

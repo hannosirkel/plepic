@@ -2441,7 +2441,9 @@ describe("the served document declares its language and its alternates", () => {
   it("gives a 404 no canonical and no alternates, in the payload hydration reads", async () => {
     const unescaped = (body: string) => body.replace(/\\/g, "");
     const CANONICAL = [/rel="canonical"/, /"rel":"canonical"/];
-    const ALTERNATE = [/rel="alternate"/, /"rel":"alternate"/, /hrefLang/];
+    // The language selector now links to German even on a 404, and its anchors
+    // carry hrefLang; only alternate metadata is forbidden here.
+    const ALTERNATE = [/rel="alternate"/, /"rel":"alternate"/];
 
     const page = unescaped((await requestWithHost(server.port, "/legal/imprint", HOST)).body);
     expect(

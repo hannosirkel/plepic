@@ -17,19 +17,13 @@
  *
  * ## The button-label sentence quotes the label the checkout carries today
  *
- * The English sentence names the actual label, "Pay now". While the German
- * edition publishes its legal pages only, a German reader's checkout is the
- * English one and its button reads exactly that, so the sentence quotes
- * „Pay now“ and glosses it in German. **When the German checkout copy lands
- * and gives the button a German label, this sentence changes in the same
- * commit** — the rule the English header states for its own page.
+ * The German checkout button and this page both say „Jetzt bezahlen“.
  *
  * Route, anchors, `covers`, section order, the link target and every
  * placeholder token are identical to the English page; only prose is German.
  *
- * **Staged, not published.** The German edition is in neither `LOCALES` nor
- * `legalPagesByLocale` yet; `content/mirror.test.ts` and the scans of
- * `content/content.test.ts` read this file from disk.
+ * Published in the German legal set. The mirror and content scans continue to
+ * check this file.
  *
  * `reviewStatus` is `operator-approved`: the operator approved every
  * translation of the site-translation job in advance on 2026-10-10, legal
@@ -61,7 +55,7 @@ export const terms: LegalPage = {
       covers: ["checkout-acknowledgement"],
       body: [
         "Mit Ihrer Bestellung geben Sie ein Kaufangebot ab. Der Vertrag kommt zustande, wenn wir Ihnen eine Versandbestätigung senden – nicht, wenn Sie die Schaltfläche betätigen, und nicht, wenn die Zahlung autorisiert wird.",
-        "Die letzte Schaltfläche an der Kasse ist mit „Pay now“ (deutsch: „Jetzt bezahlen“) beschriftet – eine der eindeutigen Formulierungen, die die Leitlinien der Europäischen Kommission für eine Schaltfläche anerkennen, mit der eine zahlungspflichtige Bestellung aufgegeben wird. Unmittelbar darüber sehen Sie auf einem Bildschirm: die Ware, den Preis der Ware, die Versandkosten, den Gesamtbetrag, die Lieferadresse und die voraussichtliche Lieferzeit.",
+        "Die letzte Schaltfläche an der Kasse ist mit „Jetzt bezahlen“ beschriftet – eine der eindeutigen Formulierungen, die die Leitlinien der Europäischen Kommission für eine Schaltfläche anerkennen, mit der eine zahlungspflichtige Bestellung aufgegeben wird. Unmittelbar darüber sehen Sie auf einem Bildschirm: die Ware, den Preis der Ware, die Versandkosten, den Gesamtbetrag, die Lieferadresse und die voraussichtliche Lieferzeit.",
         "Mit dem Aufgeben der Bestellung bestätigen Sie, dass Sie diese Bedingungen und die Datenschutzerklärung gelesen haben und akzeptieren, dass Sie wie auf dieser Website beschrieben kaufen und dass Sie mindestens 18 Jahre alt sind oder mit dem Einverständnis einer Person bestellen, die es ist.",
         "Sie erhalten per E-Mail eine Bestätigung mit der Bestellung, dem gezahlten Gesamtbetrag und diesen Bedingungen. Bewahren Sie sie auf – sie ist Ihre Ausfertigung des Vertrags.",
         "Wir akzeptieren über Stripe Karten, Apple Pay, Google Pay und PayPal, sofern Stripe sie für Ihr Gerät und Ihren Standort bereitstellt. Ihre Kartennummer sehen und speichern wir nie. Schlägt die Zahlung fehl oder wird sie später rückgängig gemacht, wird die Bestellung nicht ausgeführt.",

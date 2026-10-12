@@ -7,10 +7,8 @@
  * is not repeated here: anything believed wrong in the English is a finding
  * against the English, never a thing to fix here first.
  *
- * **Staged, not published.** The `de` entry of `siteCopyByLocale` is still
- * `null`, so no visitor can reach this copy; registering it is a later task
- * of the same plan. Until then `content/mirror.test.ts` and the scans of
- * `content/content.test.ts` read this file from disk.
+ * Published under `/de` through `siteCopyByLocale`. The mirror and content
+ * scans continue to check this file.
  *
  * The reader is addressed as „du“, as `docs/working/site-translation/de.md`
  * sets for marketing copy. The register is the English one: deliberately small

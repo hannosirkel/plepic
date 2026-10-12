@@ -1061,7 +1061,7 @@ describe("the checkout route", () => {
     });
   }
 
-  it("answers 404 for an edition that does not publish the checkout, which is every prefixed one today", async () => {
+  it("answers 404 when an edition does not publish the checkout", async () => {
     const pages = pagesByLocale as Record<Locale, readonly Page[]>;
     const actual = await vi.importActual<typeof import("../../content/index.js")>("../../content/index.js");
 
@@ -1070,9 +1070,9 @@ describe("the checkout route", () => {
       expect(resolveLocalizedRoute(locale, ["checkout"])).toEqual({ locale, routeId: "checkout" });
 
       const published = pages[locale];
-      pages[locale] = actual.pagesByLocale[locale];
+      pages[locale] = actual.pagesByLocale[locale].filter((page) => page.route !== "checkout");
       try {
-        expect(actual.pagesByLocale[locale].some((page) => page.route === "checkout"), locale).toBe(false);
+        expect(pages[locale].some((page) => page.route === "checkout"), locale).toBe(false);
         expect(resolveLocalizedRoute(locale, ["checkout"]), locale).toBeNull();
         await expect(requested(locale, {})).rejects.toMatchObject({ digest: expect.stringContaining("404") });
       } finally {
