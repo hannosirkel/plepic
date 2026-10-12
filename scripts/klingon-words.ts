@@ -1,5 +1,6 @@
 /** A conservative spelling and root check for translated Klingon prose. */
 import { klingonLexicon } from "../content/glossary/tlh-lexicon.js";
+import type { KlingonLexiconEntry } from "../content/glossary/tlh-lexicon.js";
 import { TERM_IDS, TERMS } from "../content/glossary/terms.js";
 
 const CONSONANT = "(?:tlh|ch|gh|ng|[bDHjlmnpqQrStvwy'])";
@@ -42,7 +43,14 @@ export const KLINGON_PROPER_NOUNS = [
   "Estonian Consumer Protection and Technical Regulatory Authority",
   "Andmekaitse Inspektsioon", "äriregister", "EU–US Data Privacy Framework",
   // Countries, as the shop names them: a carrier needs the real name.
-  "Estonia", "Latvia", "Lithuania", "United States",
+  "Estonia", "Latvia", "Lithuania", "United States", "Finland", "Denmark",
+  // Places, companies and events the publisher and proof copy name.
+  "Tallinn", "Kickstarter", "AireCon", "Brætspilscaféen",
+  // Reviewers and their outlets, as the quotations attribute them.
+  "Paul Grogan", "Gaming Rules", "Hairy Game Lords", "Tabletop Games Blog",
+  "Rodney Smith", "Watch It Played",
+  // Evidence ids and the retired route that the proof module's unrendered reasons cite.
+  "E3", "E6", "E7", "E10", "E11", "/about",
   // Cookie names. `_ga` also covers `_ga_*`.
   "_ga", "_fbp", "plepic_destination",
 ] as const;
@@ -66,8 +74,8 @@ export interface KlingonWordIssue {
 }
 
 function hasRoot(word: string, wordClass: "noun" | "verb"): boolean {
-  const entry = klingonLexicon[word as keyof typeof klingonLexicon];
-  return entry?.wordClass === wordClass;
+  const entry: KlingonLexiconEntry | undefined = klingonLexicon[word as keyof typeof klingonLexicon];
+  return entry?.wordClass === wordClass || entry?.alsoWordClass === wordClass;
 }
 
 function canStripSuffixes(word: string, wordClass: "noun" | "verb", depth = 0): boolean {
