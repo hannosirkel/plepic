@@ -97,6 +97,8 @@
 .heading {
   margin: 0;
   max-width: 48rem;
+  /* The German story title is one long word, linked or plain. */
+  overflow-wrap: anywhere;
   font-size: var(--step-5);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);

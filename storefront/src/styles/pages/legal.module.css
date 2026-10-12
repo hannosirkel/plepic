@@ -34,6 +34,7 @@
 
 .heading {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: clamp(3rem, 7vw, 6rem);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);

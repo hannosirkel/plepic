@@ -6,11 +6,8 @@
  * titles and descriptions are German. Both are unique within the edition, the
  * legal pages included, and a description stays within 160 characters.
  *
- * **Staged, not published.** The `de` entry of `pagesByLocale` still holds
- * the legal set alone, so no visitor can reach a marketing page of this
- * edition; registering this list is a later task of the same plan. Until then
- * `content/mirror.test.ts` and the scans of `content/content.test.ts` read
- * this file from disk.
+ * Published under `/de` through `pagesByLocale`, alongside the German legal pages.
+ * The mirror and content scans continue to check this file.
  *
  * „Warenkorb“, „Kasse“ and „Spielanleitung“ are the words of
  * `content/glossary/de.ts`.

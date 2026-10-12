@@ -82,7 +82,7 @@
 import type { Metadata } from "next";
 
 import { pagesByLocale } from "../../../content/index.js";
-import { contentFor, type Page } from "../../../content/schema.js";
+import { contentFor, finalRouteFor, type Page } from "../../../content/schema.js";
 import {
   DEFAULT_LOCALE,
   LOCALES,
@@ -159,6 +159,14 @@ export interface LocalizedLink {
  * route the target edition publishes and can serve.
  */
 export function localizedLinkFor(locale: Locale, routeId: RouteId): LocalizedLink {
+  // A retired route has no localized renderer. Once an edition publishes its
+  // replacement, keep navigation in that edition instead of sending it to English.
+  if (locale !== DEFAULT_LOCALE && lookupPage(routeId, locale) === undefined) {
+    const replacement = finalRouteFor(routeId);
+    if (replacement !== routeId && lookupPage(replacement, locale) !== undefined) {
+      return { href: localizedPath(locale, ROUTE_PATHS[replacement]) };
+    }
+  }
   const target = lookupPage(routeId, locale) !== undefined ? locale : DEFAULT_LOCALE;
   return {
     href: localizedPath(target, ROUTE_PATHS[routeId]),

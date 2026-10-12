@@ -6,10 +6,8 @@
  * link targets and placeholders are those of the English module; only prose is
  * German.
  *
- * **Staged, not published.** The `de` entry of `siteCopyByLocale` is still
- * `null`, so no visitor can reach this copy; registering it is a later task
- * of the same plan. Until then `content/mirror.test.ts` and the scans of
- * `content/content.test.ts` read this file from disk.
+ * Published under `/de` through `siteCopyByLocale`. The mirror and content
+ * scans continue to check this file.
  *
  * The reader is addressed as „du“. Game terms are the ones in
  * `content/glossary/de.ts`, because the rules answers are read beside the

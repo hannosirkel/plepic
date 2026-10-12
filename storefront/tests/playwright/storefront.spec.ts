@@ -177,6 +177,92 @@ test("language selector moves between the English and the Estonian imprint", asy
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
+const germanHeadings = {
+  home: /Lunar Base ist ein Strategiespiel mit Karten/,
+  lunarBase: /Lunar Base ist ein Strategiespiel mit Karten/,
+  support: /Regeln und Hilfe/,
+  rulebook: /Spielanleitung zu Lunar Base/,
+  cart: /Dein Warenkorb/,
+  checkout: /^Kasse$/,
+  legalImprint: /^Impressum$/,
+  legalTerms: /^Verkaufsbedingungen$/,
+  legalPrivacy: /^Datenschutz$/,
+  legalShipping: /^Versand und Lieferung$/,
+  legalReturns: /^Rücksendungen und Widerrufsrecht$/,
+} as const;
+
+for (const published of pagesByLocale["de"]) {
+  const routeId = published.route;
+  if (routeId === "about") throw new Error("The retired About route must not be published");
+  test(`German ${routeId} serves its translated page`, async ({ page }) => {
+    const response = await page.goto(localizedPath("de", ROUTE_PATHS[routeId]));
+    expect(response?.status()).toBe(200);
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(germanHeadings[routeId]);
+  });
+}
+
+test("German selector returns to English and the bare home stays English", async ({ page }, testInfo) => {
+  await page.goto("/de");
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menü", exact: true }).click();
+  const selector = page.locator("header").getByRole("navigation", { name: "Sprache" });
+  await selector.getByRole("link", { name: "English" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await page.locator("header").getByRole("navigation", { name: "Language" })
+    .getByRole("link", { name: "Deutsch" }).click();
+  await expect(page).toHaveURL("/de");
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+test("German buyer adds Lunar Base and reaches checkout in German", async ({ page }, testInfo) => {
+  const cartId = `cart_german_${testInfo.project.name}_${testInfo.workerIndex}`;
+  await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
+  await page.goto("/de/games/lunar-base");
+  await page.getByRole("dialog").getByRole("button").last().click();
+  await page.getByLabel("Lunar Base kaufen").getByRole("button", { name: "In den Warenkorb" }).click();
+  await expect(page).toHaveURL("/de/cart");
+  await expect(page.getByRole("heading", { name: "Dein Warenkorb", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Zur Kasse" }).click();
+  await expect(page).toHaveURL("/de/checkout");
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  await expect(page.getByRole("heading", { name: "Kasse", exact: true })).toBeVisible();
+});
+
+test("German payment return is served in German", async ({ page }) => {
+  const response = await page.goto("/de/checkout/payment-return");
+  expect(response?.status()).toBe(200);
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  await expect(page.getByRole("heading", { name: "Bestellung abschließen" })).toBeVisible();
+});
+
+test("German controls fit at 320 px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  const paths = [
+    ...pagesByLocale["de"].map((published) => localizedPath("de", ROUTE_PATHS[published.route])),
+    "/de/checkout/payment-return",
+  ];
+  for (const route of paths) {
+    const path = route === "/de/cart" || route === "/de/checkout" ? `${route}?mock=filled` : route;
+    await page.goto(path);
+    await expect.poll(() => page.locator("body").evaluate((body) => getComputedStyle(body).fontFamily))
+      .toContain("MADE Evolve Sans");
+    const overflows = await page.locator("button, a, select, label, summary, dt, dd, legend, h1, h2, h3").evaluateAll((elements) => elements
+      .filter((element) => {
+        const box = element.getBoundingClientRect();
+        if (element.closest("header")) return false;
+        return box.width > 0 && box.height > 0 && (
+          element.scrollWidth > element.clientWidth + 1 || box.left < -1 || box.right > innerWidth + 1
+        );
+      })
+      .map((element) => ({ tag: element.tagName, text: element.textContent?.trim().slice(0, 80), width: element.clientWidth, scroll: element.scrollWidth })));
+    expect(overflows, path).toEqual([]);
+  }
+});
+
 test("below-fold product media loads when reached and approved videos use privacy-enhanced frames", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop") {
     await page.setViewportSize({ width: 1000, height: 900 });

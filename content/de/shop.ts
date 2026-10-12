@@ -6,10 +6,8 @@
  * prose is German. The English module records why each string says what it
  * says, and that reasoning is not repeated here.
  *
- * **Staged, not published.** The `de` entry of `siteCopyByLocale` is still
- * `null`, so no visitor can reach this copy; registering it is a later task
- * of the same plan. Until then `content/mirror.test.ts` and the scans of
- * `content/content.test.ts` read this file from disk.
+ * Published under `/de` through `siteCopyByLocale`. The mirror and content
+ * scans continue to check this file.
  *
  * ## What is not here, as in English
  *
@@ -20,11 +18,8 @@
  * ## The order button's label
  *
  * `orderButtonLabel` is „Jetzt bezahlen“: the German of "Pay now", and the
- * gloss `content/legal/de/terms.ts` already gives for the label. That page
- * still quotes the English label, because a German reader's checkout is the
- * English one until this module is registered. **The task that registers it
- * changes that sentence to quote „Jetzt bezahlen“ in the same commit**, as the
- * page's own header requires.
+ * label quoted by `content/legal/de/terms.ts`, so the checkout and its legal
+ * explanation agree.
  *
  * ## Address
  *
