@@ -84,7 +84,7 @@ function legalPairs(locale: Locale): readonly Pair[] {
  * The rulebook text each locale has so far. A locale registers here when its
  * `rulebook/text/<locale>/` lands; until then it has no rulebook pairs.
  */
-const rulebookTexts: Readonly<Partial<Record<Locale, Partial<RulebookText>>>> = { de: germanRulebook };
+const rulebookTexts: Readonly<Partial<Record<Locale, RulebookText>>> = { de: germanRulebook };
 
 /**
  * The hook for rulebook text: one pair per frame the locale has, the English
@@ -93,7 +93,8 @@ const rulebookTexts: Readonly<Partial<Record<Locale, Partial<RulebookText>>>> = 
  * first use on a sheet is the first pair of that sheet that has it.
  */
 function rulebookPairs(locale: Locale): readonly Pair[] {
-  const translated = rulebookTexts[locale] ?? {};
+  const translated = rulebookTexts[locale];
+  if (!translated) return [];
   return reviewedSheets.flatMap((sheet) => sheet.frames).flatMap(({ id }) => {
     const text = translated[id];
     return text === undefined ? [] : [{ key: `rulebook.${id}`, english: englishRulebook[id], translated: text }];
@@ -310,7 +311,7 @@ describe("the walk", () => {
 
   it("pairs every German rulebook frame with the English frame of the same id, in reading order", () => {
     const pairs = rulebookPairs("de");
-    expect(pairs.length).toBeGreaterThan(200);
+    expect(pairs.length).toBe(Object.keys(englishRulebook).length);
     expect(pairs.map((pair) => pair.key)).toEqual(Object.keys(germanRulebook).map((id) => `rulebook.${id}`));
     expect(pairs.find((pair) => pair.key === "rulebook.s10.f03")).toEqual({
       key: "rulebook.s10.f03", english: "CHECK FOR ARRIVING SHUTTLES", translated: germanRulebook["s10.f03"],
