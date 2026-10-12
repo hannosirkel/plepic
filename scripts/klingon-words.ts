@@ -42,7 +42,14 @@ export const KLINGON_PROPER_NOUNS = [
   "Estonian Consumer Protection and Technical Regulatory Authority",
   "Andmekaitse Inspektsioon", "äriregister", "EU–US Data Privacy Framework",
   // Countries, as the shop names them: a carrier needs the real name.
-  "Estonia", "Latvia", "Lithuania", "United States",
+  "Estonia", "Latvia", "Lithuania", "United States", "Finland", "Denmark",
+  // Places, companies and events the publisher and proof copy name.
+  "Tallinn", "Kickstarter", "AireCon", "Brætspilscaféen",
+  // Reviewers and their outlets, as the quotations attribute them.
+  "Paul Grogan", "Gaming Rules", "Hairy Game Lords", "Tabletop Games Blog",
+  "Rodney Smith", "Watch It Played",
+  // Evidence ids and the retired route that the proof module's unrendered reasons cite.
+  "E3", "E6", "E7", "E10", "E11", "/about",
   // Cookie names. `_ga` also covers `_ga_*`.
   "_ga", "_fbp", "plepic_destination",
 ] as const;

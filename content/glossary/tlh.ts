@@ -1,4 +1,4 @@
-/** Klingon terms. A note names the roots of every new phrase or compound. `klingonLegalTerms` holds the legal vocabulary. */
+/** Klingon terms. A note names the roots of every new phrase or compound. `klingonLegalTerms` holds the legal vocabulary and the site vocabulary `terms.ts` does not list. */
 import type { Glossary } from "./schema.js";
 
 export const klingonGlossary = {
@@ -19,7 +19,7 @@ export const klingonGlossary = {
   draw: { term: "lel", forms: ["lel*"], forbidden: [], note: "lel means take out; take a card from the deck." },
   discard: { term: "woD", forms: ["woD*"], forbidden: [], note: "woD means throw away." },
   resell: { term: "ngevqa'", forms: ["ngevqa'*"], forbidden: [], note: "Coined inflection: ngev (sell) + -qa' (again)." },
-  build: { term: "chenmoH", forms: ["chenmoH*"], forbidden: [], note: "chenmoH means build." },
+  build: { term: "chenmoH", forms: ["chenmoH*", "yIchenmoH*", "tIchenmoH*"], forbidden: [], note: "chenmoH means build. A command takes the prefix yI- or tI-, so the forms list both." },
   flip: { term: "jIrmoH", forms: ["jIrmoH*"], forbidden: [], note: "Coined inflection: jIr (rotate) + -moH (cause to)." },
   deck: { term: "navmey ghom", forms: ["navmey ghom*"], forbidden: [], note: "Coined phrase: nav (paper) + -mey (plural) + ghom (group), a card stack." },
   hand: { term: "ghop", forms: ["ghop*"], forbidden: [], note: "ghop is the hand, used for held cards." },
@@ -42,7 +42,8 @@ export const klingonGlossary = {
 } as const satisfies Glossary;
 
 /**
- * A word or phrase of the legal pages that `terms.ts` does not list.
+ * A word or phrase of the legal pages or of the site copy that `terms.ts` does
+ * not list.
  *
  * `terms.ts` holds the words a player meets on a card, in the rulebook and in
  * the shop, and `glossary.test.ts` holds every language to them. Legal
@@ -129,4 +130,34 @@ export const klingonLegalTerms = {
   declined: { term: "lajlu'Qo'", english: "declined, the stored consent answer", loan: "declined", note: "Coined inflection: laj (accept) + -lu' (indefinite subject) + -Qo' (refuse), which stands last. The loan is the literal word the site stores." },
   dns: { term: "SIr'o' pong tetlh", english: "the domain name system", loan: "DNS", note: "Coined phrase: SIr'o' (network) + pong (name) + tetlh (list). The loan stands first and the phrase explains it." },
   ipAddress: { term: "jan ngu'bogh mI'", english: "IP address", loan: "IP", note: "Coined phrase: jan (device) + ngu' (identify) + -bogh (which) + mI' (number). The loan stands first, before the noun for number, and the phrase explains it." },
+
+  // The publisher and the game (T038). The product copy and the rulebook use these words again.
+  publisher: { term: "Se'vIr malja'", english: "publisher, publishing house", note: "Attested phrase of the paq'batlh word list: Se'vIr (publication) + malja' (business)." },
+  boardGame: { term: "'echlet Quj", english: "board game", note: "Coined phrase: 'echlet (board) + Quj (game), the attested phrase for a game board turned round." },
+  cardGame: { term: "nav Quj", english: "card game", note: "Coined phrase: nav (paper), the glossary's word for a card, + Quj (game)." },
+  strategyGame: { term: "Dup Quj", english: "strategy game", note: "Coined phrase: Dup (strategy) + Quj (game)." },
+  campaign: { term: "Huch boSmeH Qu'", english: "crowdfunding campaign", note: "Coined phrase: Huch (money) + boS (collect) + -meH (for the purpose of) + Qu' (task, mission)." },
+  originStory: { term: "mung lut", english: "origin story", note: "Coined phrase: mung (origin) + lut (story)." },
+  artwork: { term: "mIllogh", english: "artwork, illustration", note: "Attested noun: mIllogh (picture, depiction)." },
+  video: { term: "HaSta", english: "video", note: "Attested noun: HaSta (video, moving images). On a ship it is the visual display." },
+  review: { term: "Quj chovbogh mu'mey", english: "review of the game", note: "Coined phrase: Quj (game) + chov (assess, evaluate) + -bogh (which) + mu' (word) in the plural." },
+  tournament: { term: "qaD mIr", english: "tournament", note: "Attested phrase of the qep'a' 2018 word list: qaD (challenge) + mIr (chain)." },
+  retailChain: { term: "ngevmeH Daq mIr", english: "retail chain", note: "Coined phrase: ngev (sell) + -meH (for the purpose of) + Daq (place) + mIr (chain)." },
+  componentList: { term: "Quj Dochmey tetlh", english: "list of the game's components", note: "Coined phrase: Quj (game) + Doch (thing) in the plural + tetlh (list)." },
+  form: { term: "QIn ghItlhmeH Daq", english: "contact form", note: "Coined phrase: QIn (message) + ghItlh (write) + -meH (for the purpose of) + Daq (place). The sign-up form is built the same way on the verb for subscribing." },
+
+  // Table talk of the rules help (T038), for the rulebook text to use again.
+  player: { term: "'ovwI'", english: "player", note: "Attested noun of the qep'a' 2020 word list: 'ovwI' (competitor, player of a competitive game)." },
+  turn: { term: "jop", english: "to take one's turn", note: "Attested verb of the qep'a' 2019 word list: jop (take one's turn in a game). With -taHvIS it says during a turn." },
+  shuffle: { term: "DuD", english: "to shuffle", note: "Attested verb: DuD (mix), used for shuffling cards." },
+  playCard: { term: "lo'", english: "to play a card", note: "Attested verb: lo' (use), used for playing a card." },
+  takeAction: { term: "ta'", english: "to carry out an action, to meet a condition", note: "Attested verb: ta' (accomplish), used with the glossary's Main Action and its victory condition." },
+  question: { term: "mu'tlhegh", english: "a question", note: "Attested noun: mu'tlhegh (sentence), with the verb ghel (ask a question). Klingon has no noun for a question." },
+  faq: { term: "pIj ghellu'bogh mu'tlheghmey", english: "frequently asked questions", note: "Coined phrase: pIj (often) + ghel (ask a question) + -lu' (indefinite subject) + -bogh (which) + mu'tlhegh (sentence) in the plural." },
+
+  // Editorial words of the proof module's reasons, which no page renders.
+  proofStrip: { term: "nompuq tetlh", english: "proof strip", note: "Coined phrase: nompuq (evidence) + tetlh (roll, list)." },
+  evidenceManifest: { term: "nompuq ta", english: "evidence manifest", note: "Coined phrase: nompuq (evidence) + ta (record)." },
+  headline: { term: "per'a'", english: "headline", note: "Coined inflection: per (label) + -'a' (augmentative)." },
+  operator: { term: "SIr'o' Daq vu'wI'", english: "the site's operator", note: "Coined phrase: SIr'o' (web) + Daq (place) + vu' (manage) + -wI' (one who does)." },
 } as const satisfies Readonly<Record<string, KlingonLegalTerm>>;
