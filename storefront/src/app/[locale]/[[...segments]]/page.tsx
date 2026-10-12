@@ -24,8 +24,10 @@ import { notFound } from "next/navigation";
 import { isTestHost, loadSiteHostConfig } from "../../../config/hosts.js";
 import { buildPageMetadata } from "../../../lib/seo.js";
 import { getRequestHost } from "../../../lib/request-host.js";
-import { LOCALIZED_ROUTE_VIEWS, resolveLocalizedRoute } from "../../localized-routes.js";
-import { NOT_FOUND_TITLE } from "../../not-found-content.js";
+import { CheckoutReturnRoute, LOCALIZED_ROUTE_VIEWS, resolveLocalizedRoute } from "../../localized-routes.js";
+import { siteCopyByLocale } from "../../../../../content/editions.js";
+import { interfaceCopy } from "../../../../../content/interface.js";
+import { localeForPathSegment } from "../../../lib/urls.js";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +60,9 @@ export async function generateMetadata({
    * always attaches both.
    */
   if (resolved === null) {
-    return { title: NOT_FOUND_TITLE, robots: { index: false, follow: false } };
+    const edition = localeForPathSegment(locale);
+    const title = (edition === undefined ? interfaceCopy : siteCopyByLocale[edition]?.interface ?? interfaceCopy).notFound.title;
+    return { title, robots: { index: false, follow: false } };
   }
 
   const hostConfig = loadSiteHostConfig();
@@ -82,7 +86,9 @@ export default async function LocalizedPage({
   const resolved = resolveLocalizedRoute(locale, segments);
   if (resolved === null) notFound();
 
-  const View = LOCALIZED_ROUTE_VIEWS[resolved.routeId];
+  const View = resolved.view === "checkoutReturn"
+    ? CheckoutReturnRoute
+    : LOCALIZED_ROUTE_VIEWS[resolved.routeId];
   /*
    * Unreachable through `resolveLocalizedRoute`, which returns null for a
    * route with no view. Written out rather than asserted away, because the

@@ -79,6 +79,7 @@ export async function SiteDocument({ locale, children }: SiteDocumentProps) {
         <RuntimeConfigScript config={clientConfig} nonce={nonce} />
         {children}
         <ConsentManager
+          locale={locale}
           isTestHost={testHost}
           measurementId={runtimeConfig.analytics.measurementId}
           nonce={nonce}

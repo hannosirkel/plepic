@@ -151,6 +151,7 @@ export function proxy(request: NextRequest): NextResponse {
   requestHeaders.set("content-security-policy", csp);
   // What application code reads the bare value from.
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-plepic-path", request.nextUrl.pathname);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   // What the browser enforces.

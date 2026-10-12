@@ -68,10 +68,9 @@
  * cannot. The tag comes from the locale definition; a literal here is the
  * exact thing `tests/locale-routing.test.ts` refuses.
  *
- * The 404 is the default edition's, unconditionally. A prefixed URL that did
- * not resolve did not identify an edition — that is *why* it did not
- * resolve — so answering in the site's own language is the only defensible
- * choice.
+ * A recognised path prefix selects the edition even when the rest of the path
+ * does not resolve. The proxy forwards the original pathname in a request
+ * header; an unknown prefix falls back to the default edition.
  *
  * See `src/styles/pages/not-found.module.css` for why the link's colour is a
  * token pair rather than a value, and what that buys.
@@ -82,32 +81,34 @@
  * decorated error page here would be scope this unit has no authority for.
  */
 
-import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
+import { headers } from "next/headers";
+import { siteCopyByLocale } from "../../../content/editions.js";
+import { interfaceCopy } from "../../../content/interface.js";
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, ROUTE_PATHS, type Locale } from "../../../content/routes.js";
+import { localeForPathSegment, localizedPath } from "../lib/urls.js";
 import styles from "../styles/pages/not-found.module.css";
 
 /**
- * The heading and the document title, as one string.
- *
- * A browser tab showing the raw URL is what a 404 with no `<title>` looks
- * like. The title is set from the localized route's `generateMetadata` and
- * from each `not-found.tsx`'s own `metadata`; keeping it here means the tab
- * and the heading cannot come to say different things.
+ * The default edition's title; prefixed 404 metadata reads the edition copy.
  */
-export const NOT_FOUND_TITLE = "Page not found";
+export const NOT_FOUND_TITLE = interfaceCopy.notFound.title;
 
-export function NotFoundContent() {
+export async function NotFoundContent({ locale: givenLocale }: { readonly locale?: Locale } = {}) {
+  const path = givenLocale === undefined ? (await headers()).get("x-plepic-path") ?? "" : "";
+  const locale = givenLocale ?? localeForPathSegment(path.split("/")[1] ?? "") ?? DEFAULT_LOCALE;
+  const copy = (siteCopyByLocale[locale]?.interface ?? interfaceCopy).notFound;
   return (
     <main
       className={styles.page}
-      lang={LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag}
+      lang={LOCALE_DEFINITIONS[locale].languageTag}
       data-layer="publisher"
     >
       <div className={styles.content}>
-        <h1 className={styles.heading}>{NOT_FOUND_TITLE}</h1>
-        <p className={styles.body}>That address does not match a page on this site.</p>
+        <h1 className={styles.heading}>{copy.title}</h1>
+        <p className={styles.body}>{copy.body}</p>
         <p className={styles.body}>
-          <a className={styles.link} href={ROUTE_PATHS.home}>
-            Go to the home page
+          <a className={styles.link} href={localizedPath(locale, ROUTE_PATHS.home)}>
+            {copy.homeLink}
           </a>
         </p>
       </div>
