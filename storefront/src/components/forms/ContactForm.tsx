@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * The contact form on `/support/lunar-base` — content/support.ts's
- * `contactForm` copy, mounted with `TurnstileWidget` and `HoneypotField` for
- * the same reason `NewsletterForm` is: both were built and mounted nowhere
- * until this unit. Server-side verification is Task 5's.
+ * The contact form on `/support/lunar-base` — the `contactForm` copy of the
+ * edition's `support` module, mounted with `TurnstileWidget` and
+ * `HoneypotField` for the same reason `NewsletterForm` is: both were built
+ * and mounted nowhere until this unit. Server-side verification is Task 5's.
  *
  * Four required fields (name, email, subject, message), each with its own
  * native validation and an error tied to it with `aria-describedby` and
@@ -34,9 +34,11 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { contact, contactForm } from "../../../../content/support.js";
+import { siteCopyFor, type SiteCopy } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { FormLocaleField } from "./form-locale.js";
 import { submitContact } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
@@ -44,6 +46,11 @@ import styles from "../../styles/forms.module.css";
 export interface ContactFormProps {
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
+  /**
+   * The edition whose labels and validation errors this renders, and the one
+   * the Server Function answers in: the form posts it, see `./form-locale.tsx`.
+   */
+  readonly locale?: Locale;
 }
 
 interface FieldSpec {
@@ -52,16 +59,42 @@ interface FieldSpec {
   readonly type: "text" | "email";
   readonly multiline?: boolean;
   readonly autoComplete: string;
+  /** What the field says when it is left empty. */
+  readonly missing: string;
+  /** What it says when the browser rejects a value. Only a typed field can be given one. */
+  readonly invalid?: string;
 }
 
-const FIELDS: readonly FieldSpec[] = [
-  { name: "name", label: contactForm.nameLabel, type: "text", autoComplete: "name" },
-  { name: "email", label: contactForm.emailLabel, type: "email", autoComplete: "email" },
-  { name: "subject", label: contactForm.subjectLabel, type: "text", autoComplete: "off" },
-  { name: "message", label: contactForm.messageLabel, type: "text", multiline: true, autoComplete: "off" },
-];
+/** The four fields, with the labels and validation errors of one edition's copy. */
+export function contactFields(copy: SiteCopy): readonly FieldSpec[] {
+  const labels = copy.support.contactForm;
+  const errors = copy.interface.contactForm;
 
-export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
+  return [
+    { name: "name", label: labels.nameLabel, type: "text", autoComplete: "name", missing: errors.nameMissing },
+    {
+      name: "email",
+      label: labels.emailLabel,
+      type: "email",
+      autoComplete: "email",
+      missing: errors.emailMissing,
+      invalid: errors.emailInvalid,
+    },
+    { name: "subject", label: labels.subjectLabel, type: "text", autoComplete: "off", missing: errors.subjectMissing },
+    {
+      name: "message",
+      label: labels.messageLabel,
+      type: "text",
+      multiline: true,
+      autoComplete: "off",
+      missing: errors.messageMissing,
+    },
+  ];
+}
+
+export function ContactForm({ turnstileSiteKey, nonce, locale = DEFAULT_LOCALE }: ContactFormProps) {
+  const copy = siteCopyFor(locale);
+  const fields = contactFields(copy);
   const baseId = useId();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [outcome, submit] = useActionState<PublicFormOutcome | null, FormData>(
@@ -94,7 +127,7 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
     const nextErrors: Record<string, string> = {};
     let firstInvalid: HTMLElement | null = null;
 
-    for (const field of FIELDS) {
+    for (const field of fields) {
       const element = form.elements.namedItem(field.name) as
         | HTMLInputElement
         | HTMLTextAreaElement
@@ -102,8 +135,8 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
       if (element === null) continue;
       if (!element.validity.valid) {
         nextErrors[field.name] = element.validity.valueMissing
-          ? `Enter ${field.label.toLowerCase()}.`
-          : `Enter a valid ${field.label.toLowerCase()}.`;
+          ? field.missing
+          : (field.invalid ?? field.missing);
         firstInvalid ??= element;
       }
     }
@@ -123,12 +156,13 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
   return (
     <form
       className={styles.form}
-      aria-label={contact.heading}
+      aria-label={copy.support.contact.heading}
       action={submit}
       onSubmit={handleSubmit}
       noValidate
     >
-      {FIELDS.map((field) => {
+      <FormLocaleField locale={locale} />
+      {fields.map((field) => {
         const fieldId = `${baseId}-${field.name}`;
         const errorId = `${fieldId}-error`;
         const error = errors[field.name];
@@ -185,11 +219,11 @@ export function ContactForm({ turnstileSiteKey, nonce }: ContactFormProps) {
       <HoneypotField formName="contact" />
 
       <div className={styles.turnstile}>
-        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="contact" />
+        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="contact" locale={locale} />
       </div>
 
       <button type="submit" className={styles.submit}>
-        {contactForm.submitLabel}
+        {copy.support.contactForm.submitLabel}
       </button>
     </form>
   );

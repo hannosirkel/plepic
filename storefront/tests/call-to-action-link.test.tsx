@@ -12,8 +12,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import type { CallToAction } from "../../content/schema.js";
+import { pagesByLocale } from "../../content/index.js";
+import { ROUTE_PATHS, type Locale, type RouteId } from "../../content/routes.js";
+import type { CallToAction, Page } from "../../content/schema.js";
 import { CallToActionLink } from "../src/components/mockups/CallToActionLink.js";
+import styles from "../src/styles/mockups/call-to-action.module.css";
 
 function ariaLabel(html: string): string | undefined {
   return /aria-label="([^"]*)"/.exec(html)?.[1];
@@ -87,5 +90,60 @@ describe("CallToActionLink: resolution reaches the accessible name, not only the
     const html = renderToStaticMarkup(<CallToActionLink action={action} />);
     expect(html).toContain("<span");
     expect(html).not.toContain("aria-label");
+  });
+});
+
+/*
+ * The registries here are the real ones, and `et` publishes every route. The
+ * second answer therefore withholds the product page from the edition for the
+ * length of one test. The hrefs are written out rather than computed, so the
+ * link rule is not asked to check itself.
+ */
+describe("CallToActionLink: a route target is linked in the edition it is rendered for", () => {
+  const anchorTag = (html: string): string => /<a\s[^>]*>/.exec(html)?.[0] ?? "";
+  const CTA_CLASS = `${styles.cta} ${styles.quiet}`;
+
+  it("keeps the edition's prefix, and the anchor, for a route the edition publishes", () => {
+    const action: CallToAction = {
+      label: "Returns",
+      emphasis: "quiet",
+      target: { kind: "route", to: "legalReturns", anchor: "buy" },
+    };
+    const tag = anchorTag(renderToStaticMarkup(<CallToActionLink action={action} locale="et" />));
+    expect(tag).toContain('href="/et/legal/returns#buy"');
+    expect(tag).not.toContain("hrefLang");
+  });
+
+  it("links the default edition, anchor kept and language named, for a route the edition does not publish", () => {
+    const buyTag = (): string => anchorTag(
+      renderToStaticMarkup(<CallToActionLink action={buyAction} resolveLabel={resolvePrice} locale="et" />),
+    );
+    expect(buyTag()).toContain('href="/et/games/lunar-base#buy"');
+    expect(buyTag()).not.toContain("hrefLang");
+
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+    const published = pages.et;
+    pages.et = published.filter((page) => page.route !== "lunarBase");
+    try {
+      expect(buyTag()).toContain('href="/games/lunar-base#buy"');
+      expect(buyTag()).toContain('hrefLang="en"');
+    } finally {
+      pages.et = published;
+    }
+  });
+
+  /* English must not change: with no locale, every route is its bare `ROUTE_PATHS` entry. */
+  it("is the unprefixed, unannotated link for every route when no locale is given", () => {
+    for (const to of Object.keys(ROUTE_PATHS) as RouteId[]) {
+      const plain: CallToAction = { label: "Go", emphasis: "quiet", target: { kind: "route", to } };
+      const anchored: CallToAction = { ...plain, target: { kind: "route", to, anchor: "buy" } };
+
+      expect(renderToStaticMarkup(<CallToActionLink action={plain} />)).toBe(
+        `<a class="${CTA_CLASS}" href="${ROUTE_PATHS[to]}">Go</a>`,
+      );
+      expect(renderToStaticMarkup(<CallToActionLink action={anchored} />)).toBe(
+        `<a class="${CTA_CLASS}" href="${ROUTE_PATHS[to]}#buy">Go</a>`,
+      );
+    }
   });
 });

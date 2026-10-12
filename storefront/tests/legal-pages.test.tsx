@@ -177,6 +177,21 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
       "this page is not a complete legal notice and should not be relied on as one",
     draftNote: "Draft, pending the operator’s approval.",
   },
+  de: {
+    markerPrefix: "[nicht konfiguriert: ",
+    imprintMarkers: [
+      "[nicht konfiguriert: eingetragener Firmenname]",
+      "[nicht konfiguriert: eingetragene Geschäftsanschrift]",
+      "[nicht konfiguriert: Handelsregisternummer]",
+      "[nicht konfiguriert: Umsatzsteuer-Identifikationsnummer]",
+      "[nicht konfiguriert: Kontakt-E-Mail-Adresse]",
+      "[nicht konfiguriert: Telefonnummer]",
+    ],
+    returnsMarker: "[nicht konfiguriert: Rücksendeadresse]",
+    noticeHeading: "Dieser rechtliche Hinweis ist unvollständig.",
+    noticeBodyFragment: "dieser rechtliche Hinweis unvollständig und Sie sollten sich nicht darauf verlassen",
+    draftNote: "Entwurf; die Freigabe durch den Betreiber steht noch aus.",
+  },
   et: {
     markerPrefix: "[seadistamata: ",
     imprintMarkers: [
@@ -192,6 +207,21 @@ const EDITION_FAILURE_LANGUAGE: Readonly<
     noticeBodyFragment:
       "ei ole see leht täielik õiguslik teade ja sellele ei saa sellisena tugineda",
     draftNote: "Mustand, ootab haldaja heakskiitu.",
+  },
+  tlh: {
+    markerPrefix: "[lanlu'be'pu': ",
+    imprintMarkers: [
+      "[lanlu'be'pu': malja' pong qonlu'bogh]",
+      "[lanlu'be'pu': malja' Daq qonlu'bogh]",
+      "[lanlu'be'pu': malja' mI' qonlu'bogh]",
+      "[lanlu'be'pu': ngevmeH 'ap mI']",
+      "[lanlu'be'pu': QIn ngeHmeH Daq]",
+      "[lanlu'be'pu': ghogh HablI' mI']",
+    ],
+    returnsMarker: "[lanlu'be'pu': tep tatlhmeH Daq]",
+    noticeHeading: "chut QInvam naQbe'.",
+    noticeBodyFragment: "chut QInvam naQbe'; naQ 'e' yIHarQo'",
+    draftNote: "qonmeH ghItlh; SIr'o' Daq vu'wI' lajbe'pu'.",
   },
 };
 
@@ -669,6 +699,14 @@ const VAT_CALLOUT_LANGUAGE: Readonly<
       "Shipping is calculated at checkout, and VAT is added to it for delivery inside the " +
       "European Union. Non-EU taxes and duties, if any, are not included.",
   },
+  de: {
+    vatAdded: "Mehrwertsteuer hinzugefügt, Lieferland: Estland",
+    noVatAdded: "keine Mehrwertsteuer hinzugefügt, Lieferland: Vereinigte Staaten",
+    shippingNote:
+      "Der Versand wird an der Kasse berechnet, und bei Lieferung innerhalb der Europäischen " +
+      "Union kommt darauf Mehrwertsteuer hinzu. Steuern und Zölle von Ländern außerhalb der EU, " +
+      "falls welche anfallen, sind nicht enthalten.",
+  },
   et: {
     vatAdded: "käibemaks lisatud, kättetoimetamisel sihtkohta Eesti",
     noVatAdded: "käibemaksu ei lisata, kättetoimetamisel sihtkohta Ameerika Ühendriigid",
@@ -676,6 +714,14 @@ const VAT_CALLOUT_LANGUAGE: Readonly<
       "Saatekulu arvutatakse tellimuse vormistamisel ja Euroopa Liidu sisese kättetoimetamise " +
       "puhul lisandub sellele käibemaks. Väljaspool Euroopa Liitu kohalduvad maksud ja lõivud, " +
       "kui neid on, hinnas ei sisaldu.",
+  },
+  tlh: {
+    vatAdded: "ngevmeH 'ap chellu'; Estonia SepDaq HIjlu'",
+    noVatAdded: "ngevmeH 'ap chellu'be'; United States SepDaq HIjlu'",
+    shippingNote:
+      "Huch nobmeH DaqDaq ngeHmeH 'ap SImlu'. European Union SepDaq tep HIjlu'chugh, " +
+      "ngeHmeH 'apDaq ngevmeH 'ap (VAT) chellu'. latlh Sep qum 'ap, HIjmeH 'ap je " +
+      "yughbe' DIlmeH Huch.",
   },
 };
 
@@ -968,7 +1014,9 @@ describe("the VAT section makes one statement about tax", () => {
   it("scopes every statement of the gross figure to the European Union, in every edition", () => {
     const euWords: Readonly<Record<Locale, RegExp>> = {
       en: /European Union/,
+      de: /Europäischen Union/,
       et: /Euroopa Liidu/,
+      tlh: /European Union/,
     };
 
     for (const locale of LOCALES) {

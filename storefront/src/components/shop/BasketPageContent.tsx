@@ -113,7 +113,8 @@
 
 import { useId, useState } from "react";
 
-import { basket, checkout as checkoutCopy, unavailableFigure } from "../../../../content/shop.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../../lib/catalogue.js";
 import { destinationForCode } from "../../lib/destination.js";
 import {
@@ -131,7 +132,7 @@ import {
 import { useCart } from "../../lib/cart-store.js";
 import type { LinePending } from "../../lib/mock-cart-actions.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
-import { resolveLinkHref } from "../mockups/link-target.js";
+import { resolveLocalizedLink } from "../mockups/link-target.js";
 import styles from "../../styles/pages/shop.module.css";
 
 /**
@@ -139,22 +140,20 @@ import styles from "../../styles/pages/shop.module.css";
  * see `basket.quantityError` in `content/shop.ts` for why the two numbers are
  * not written into the copy.
  */
-const QUANTITY_ERROR_MESSAGE =
-  `${basket.quantityError.prefix}${String(MIN_QUANTITY_PER_LINE)}` +
-  `${basket.quantityError.rangeSeparator}${String(MAX_QUANTITY_PER_LINE)}` +
-  `${basket.quantityError.suffix}`;
+function quantityErrorMessage(basket: ReturnType<typeof siteCopyFor>["shop"]["basket"]): string {
+  return `${basket.quantityError.prefix}${String(MIN_QUANTITY_PER_LINE)}` +
+    `${basket.quantityError.rangeSeparator}${String(MAX_QUANTITY_PER_LINE)}` +
+    `${basket.quantityError.suffix}`;
+}
 
-/**
- * What "Add … to your basket" says when the line is already at the limit —
- * composed with `MAX_QUANTITY_PER_LINE` for the same reason as the message
- * above. The add action refuses rather than clamping; see
- * `src/lib/mock-cart-actions.ts`.
- */
-const LIMIT_ERROR_MESSAGE = `${basket.limitError.prefix}${String(MAX_QUANTITY_PER_LINE)}${basket.limitError.suffix}`;
+function limitErrorMessage(basket: ReturnType<typeof siteCopyFor>["shop"]["basket"]): string {
+  return `${basket.limitError.prefix}${String(MAX_QUANTITY_PER_LINE)}${basket.limitError.suffix}`;
+}
 
-function BasketLine({ line }: { readonly line: CartLine }) {
+function BasketLine({ line, locale }: { readonly line: CartLine; readonly locale: Locale }) {
+  const { basket } = siteCopyFor(locale).shop;
   const { pending, updateQuantity, remove, destinationCode } = useCart();
-  const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode));
+  const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode), locale);
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
   const fieldId = useId();
   const errorId = `${fieldId}-error`;
@@ -190,7 +189,7 @@ function BasketLine({ line }: { readonly line: CartLine }) {
         <h3 className={styles.lineName}>{line.productName}</h3>
         <p className={styles.lineUnitPrice}>
           <span className={styles.rowLabel}>{basket.columns.unitPrice}</span>{" "}
-          {formatAmount(line.unitAmount, line.currency)}
+          {formatAmount(line.unitAmount, line.currency, locale)}
         </p>
       </div>
 
@@ -266,19 +265,19 @@ function BasketLine({ line }: { readonly line: CartLine }) {
       <div className={styles.alertAnchor} role="alert">
         {field.rejection === null ? null : (
           <p id={errorId} className={styles.fieldError}>
-            {QUANTITY_ERROR_MESSAGE}
+            {quantityErrorMessage(basket)}
           </p>
         )}
       </div>
 
       <p className={styles.lineTotal}>
         <span className={styles.rowLabel}>{basket.columns.lineTotal}</span>{" "}
-        <strong>{available ? formatAmount(lineAmount(line), line.currency) : "—"}</strong>
+        <strong>{available ? formatAmount(lineAmount(line), line.currency, locale) : "—"}</strong>
       </p>
 
       {busy ? (
         <p className={styles.pending} role="status">
-          {pendingLabel(state)}
+          {pendingLabel(state, locale)}
         </p>
       ) : null}
     </li>
@@ -286,7 +285,8 @@ function BasketLine({ line }: { readonly line: CartLine }) {
 }
 
 /** What the `role="status"` line says while an action is in flight. */
-function pendingLabel(state: LinePending | undefined): string {
+function pendingLabel(state: LinePending | undefined, locale: Locale): string {
+  const { basket } = siteCopyFor(locale).shop;
   switch (state) {
     case "removing":
       return basket.removingLabel;
@@ -297,9 +297,10 @@ function pendingLabel(state: LinePending | undefined): string {
   }
 }
 
-export function BasketPageContent() {
+export function BasketPageContent({ locale = DEFAULT_LOCALE }: { readonly locale?: Locale }) {
+  const { basket, checkout: checkoutCopy, unavailableFigure } = siteCopyFor(locale).shop;
   const { lines, failure, add, busy, destinationCode } = useCart();
-  const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode));
+  const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode), locale);
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
   /*
@@ -336,7 +337,7 @@ export function BasketPageContent() {
           will still be there in a moment. */}
       {failure === null ? null : (
         <p className={styles.error} role="alert">
-          {failure === "limit" ? LIMIT_ERROR_MESSAGE : checkoutCopy.errors.actionFailed}
+          {failure === "limit" ? limitErrorMessage(basket) : checkoutCopy.errors.actionFailed}
         </p>
       )}
 
@@ -358,7 +359,7 @@ export function BasketPageContent() {
             >
               {resolve(basket.empty.addLabel)}
             </button>
-            <CallToActionLink action={basket.empty.browse} />
+            <CallToActionLink action={basket.empty.browse} locale={locale} />
           </div>
           {busy ? (
             <p className={styles.pending} role="status">
@@ -376,7 +377,7 @@ export function BasketPageContent() {
             </h2>
             <ul className={styles.lines}>
               {lines.map((line) => (
-                <BasketLine key={line.id} line={line} />
+                <BasketLine key={line.id} line={line} locale={locale} />
               ))}
             </ul>
           </section>
@@ -397,7 +398,7 @@ export function BasketPageContent() {
                 <dd>
                   {totals.goodsAmount === null
                     ? unavailableFigure
-                    : formatAmount(totals.goodsAmount, totals.currency)}
+                    : formatAmount(totals.goodsAmount, totals.currency, locale)}
                 </dd>
               </div>
               <div className={styles.summaryRow}>
@@ -417,7 +418,7 @@ export function BasketPageContent() {
               {totals.goodsTaxAmount !== null && totals.goodsTaxAmount > 0 ? (
                 <div className={styles.summaryRow}>
                   <dt>{resolve(checkoutCopy.order.vatLabel)}</dt>
-                  <dd>{formatAmount(totals.goodsTaxAmount, totals.currency)}</dd>
+                  <dd>{formatAmount(totals.goodsTaxAmount, totals.currency, locale)}</dd>
                 </div>
               ) : null}
               <div className={`${styles.summaryRow} ${styles.summaryTotal}`}>
@@ -430,7 +431,7 @@ export function BasketPageContent() {
               {blocked ? (
                 <p className={styles.error}>{checkoutCopy.errors.unavailableLine}</p>
               ) : (
-                <CallToActionLink action={basket.checkout} />
+                <CallToActionLink action={basket.checkout} locale={locale} />
               )}
             </div>
           </section>
@@ -449,7 +450,7 @@ export function BasketPageContent() {
         <ul className={styles.linkList}>
           {basket.beforeYouBuy.links.map((link) => (
             <li key={link.label}>
-              <a href={resolveLinkHref(link.target)}>{link.label}</a>
+              <a {...resolveLocalizedLink(locale, link.target)}>{link.label}</a>
             </li>
           ))}
         </ul>

@@ -39,7 +39,7 @@
  * file hold the header to it from the stylesheet, which is the only place it
  * is decidable without a layout engine.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -177,7 +177,7 @@ describe("the mobile header adapts the navigation instead of deleting it", () =>
 
   it("uses a button disclosure with an explicit relationship and close control", () => {
     expect(html).toMatch(/<button[^>]*aria-expanded="false"[^>]*aria-controls="site-nav-panel"[^>]*>Menu<\/button>/);
-    expect(html).toMatch(/<nav[^>]*id="site-nav-panel"/);
+    expect(html).toMatch(/<div[^>]*id="site-nav-panel"/);
     expect(html).toContain(">Close menu</button>");
     expect(html).not.toContain('type="checkbox"');
   });
@@ -189,8 +189,16 @@ describe("the mobile header adapts the navigation instead of deleting it", () =>
         <SiteHeader wordmark="dark" instanceId="two" />
       </>,
     );
-    const ids = [...both.matchAll(/<nav[^>]*\bid="([^"]*)"/g)].map((match) => match[1]);
+    const ids = [...both.matchAll(/\bid="([^"]*-panel)"/g)].map((match) => match[1]);
+    expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("holds the language selector inside the panel, beside the primary navigation and not within it", () => {
+    // The selector is the panel's last child, so on a narrow viewport it is in the sheet.
+    expect(html).toMatch(
+      /<div[^>]*id="site-nav-panel"[^>]*>.*<nav[^>]*aria-label="Primary"[^>]*>(?:(?!<nav).)*<\/nav><nav[^>]*aria-label="Language"[^>]*>(?:(?!<nav).)*<\/nav><\/div>/s,
+    );
   });
 
   it("hides no navigation link without a sheet to hold it", () => {
@@ -206,6 +214,34 @@ describe("the mobile header adapts the navigation instead of deleting it", () =>
         `var(${token})`,
       );
     }
+  });
+});
+
+/**
+ * The selector links to *this* page in each other edition only when it is
+ * told which page this is. A view that leaves `route` out still renders, and
+ * still shows a selector: one whose every link leads to a home page. Nothing
+ * a render of today's pages shows would tell the two apart on a route only
+ * one edition publishes, so the source is held to it instead.
+ */
+describe("every page tells its chrome which route it is", () => {
+  const srcDir = join(storefrontDir, "src");
+  const uses = readdirSync(srcDir, { recursive: true, encoding: "utf8" })
+    .filter((name) => name.endsWith(".tsx"))
+    .flatMap((name) =>
+      [...readFileSync(join(srcDir, name), "utf8").matchAll(/<(?:SiteHeader|SiteFooter|ShopPageShell)\b[^>]*>/g)].map(
+        (match) => ({ name, tag: match[0] }),
+      ),
+    );
+
+  it("finds the header, the footer and the shop shell in use", () => {
+    for (const component of ["SiteHeader", "SiteFooter", "ShopPageShell"]) {
+      expect(uses.some((use) => use.tag.startsWith(`<${component}`)), component).toBe(true);
+    }
+  });
+
+  it("passes route at every use", () => {
+    expect(uses.filter((use) => !/\sroute=/.test(use.tag)).map((use) => `${use.name}: ${use.tag}`)).toEqual([]);
   });
 });
 

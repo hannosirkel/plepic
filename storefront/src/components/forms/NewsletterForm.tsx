@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * The newsletter signup form — content/publisher.ts's `newsletter` copy,
- * mounted with `TurnstileWidget` and `HoneypotField`. The Server Function
- * posts bounded fields to Medusa, which verifies Turnstile and performs the
- * provider subscription without storing the address locally. This component
- * takes the site key from runtime configuration and makes the form itself
- * fully keyboard- and screen-reader-operable — required field, native email
- * validation, and an error tied to its field with `aria-describedby` and
- * `aria-invalid`, per the checkbox's "errors announced and tied to their
- * field."
+ * The newsletter signup form — the `newsletter` copy of the edition's
+ * `publisher` module, mounted with `TurnstileWidget` and `HoneypotField`. The
+ * Server Function posts bounded fields to Medusa, which verifies Turnstile and
+ * performs the provider subscription without storing the address locally.
+ * This component takes the site key from runtime configuration and makes the
+ * form itself fully keyboard- and screen-reader-operable — required field,
+ * native email validation, and an error tied to its field with
+ * `aria-describedby` and `aria-invalid`, per the checkbox's "errors announced
+ * and tied to their field."
  *
  * ## The address never reaches the URL, in any state of this page
  *
@@ -43,9 +43,11 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { newsletter } from "../../../../content/publisher.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import { FormLocaleField } from "./form-locale.js";
 import { submitNewsletter } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
 import styles from "../../styles/forms.module.css";
@@ -53,9 +55,22 @@ import styles from "../../styles/forms.module.css";
 export interface NewsletterFormProps {
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
+  /**
+   * The edition whose labels and validation errors this renders, and the one
+   * the Server Function in `./public-form-actions.ts` answers in: the form
+   * posts it, see `./form-locale.tsx`.
+   */
+  readonly locale?: Locale;
 }
 
-export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps) {
+export function NewsletterForm({
+  turnstileSiteKey,
+  nonce,
+  locale = DEFAULT_LOCALE,
+}: NewsletterFormProps) {
+  const copy = siteCopyFor(locale);
+  const { newsletter } = copy.publisher;
+  const errors = copy.interface.newsletterForm;
   const fieldId = useId();
   const errorId = useId();
   const [error, setError] = useState<string | null>(null);
@@ -98,11 +113,7 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
 
     if (!email.validity.valid) {
       event.preventDefault();
-      setError(
-        email.validity.valueMissing
-          ? "Enter your email address."
-          : "Enter a valid email address.",
-      );
+      setError(email.validity.valueMissing ? errors.emailMissing : errors.emailInvalid);
       email.focus();
       return;
     }
@@ -120,6 +131,7 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
       noValidate
     >
       <input type="hidden" name="newsletter-consent" value="on" />
+      <FormLocaleField locale={locale} />
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel} htmlFor={fieldId}>
           {newsletter.fieldLabel}
@@ -189,7 +201,7 @@ export function NewsletterForm({ turnstileSiteKey, nonce }: NewsletterFormProps)
       <HoneypotField formName="newsletter" />
 
       <div className={styles.turnstile}>
-        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="newsletter" />
+        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="newsletter" locale={locale} />
       </div>
 
       <p className={styles.consentNote}>{newsletter.consentNote}</p>

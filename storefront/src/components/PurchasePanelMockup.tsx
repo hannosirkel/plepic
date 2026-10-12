@@ -56,10 +56,10 @@
  * makes possible and what the qualification exists to prevent.
  *
  * `availability` is likewise never a resolved placeholder in
- * `content/lunar-base.ts` (it is the literal string "In stock") — this
- * component renders `catalogue.availabilityLabel` rather than that literal,
- * so a future non-`InStock` mock catalogue state changes what a buyer reads
- * here instead of silently contradicting it.
+ * `content/lunar-base.ts` (it is the edition's own "In stock") — this
+ * component renders it only while `catalogue.inStock` holds and the edition's
+ * `outOfStock` otherwise, so a future non-`InStock` mock catalogue state
+ * changes what a buyer reads here instead of silently contradicting it.
  *
  * The wrapper carries `role="group"` rather than a bare `aria-label`. A
  * `<div>` with no role is `role="generic"`, and `aria-label` is not honoured
@@ -67,7 +67,8 @@
  * with no accessible name at all. `group` is the smallest role that takes
  * one.
  */
-import { purchase } from "../../../content/lunar-base.js";
+import { siteCopyFor } from "../../../content/editions.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 import {
   PRICE_HEADLINE_SEPARATOR,
   resolveCatalogue,
@@ -79,6 +80,7 @@ import type { ReactNode } from "react";
 import styles from "../styles/purchase-panel.module.css";
 
 export interface PurchasePanelMockupProps {
+  readonly locale?: Locale;
   /** Defaults to the mock catalogue's own product — see `src/lib/catalogue.ts`. */
   readonly catalogue?: ResolvedCatalogue;
   /** Replaces only the existing primary CTA slot with the cart client island. */
@@ -86,13 +88,16 @@ export interface PurchasePanelMockupProps {
 }
 
 export function PurchasePanelMockup({
-  catalogue = resolveCatalogue(),
+  locale = DEFAULT_LOCALE,
+  catalogue = resolveCatalogue(undefined, undefined, locale),
   primaryAction,
 }: PurchasePanelMockupProps = {}) {
+  const copy = siteCopyFor(locale);
+  const { purchase } = copy.lunarBase;
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
 
   return (
-    <div className={styles.panel} role="group" aria-label={`Buy ${catalogue.productName}`}>
+    <div className={styles.panel} role="group" aria-label={resolve(copy.interface.product.buyAccessibleLabel)}>
       <p className={styles.productName}>{resolve(purchase.productName)}</p>
       {/* One paragraph, two type sizes, one inline flow — see this file's doc
           comment and `purchase-panel.module.css`. The figure and the tax
@@ -105,7 +110,9 @@ export function PurchasePanelMockup({
       </p>
       <p className={styles.breakdown}>{catalogue.priceTaxBreakdown}</p>
       <p className={styles.note}>{catalogue.priceShippingNote}</p>
-      <p className={styles.availability}>{catalogue.availabilityLabel}</p>
+      <p className={styles.availability}>
+        {catalogue.inStock ? purchase.availability : copy.interface.product.outOfStock}
+      </p>
 
       <dl className={styles.meta}>
         {purchase.notes.map((note) => (
@@ -119,7 +126,7 @@ export function PurchasePanelMockup({
       <div className={styles.actions}>
         {purchase.callsToAction.map((action) => (
           action.emphasis === "primary" && primaryAction !== undefined ? primaryAction :
-          <CallToActionLink key={action.label} action={action} resolveLabel={resolve} />
+          <CallToActionLink key={action.label} action={action} resolveLabel={resolve} locale={locale} />
         ))}
       </div>
     </div>

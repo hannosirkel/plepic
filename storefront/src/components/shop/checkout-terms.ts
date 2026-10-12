@@ -25,18 +25,46 @@
  *
  * `content/legal/` is read-only to this unit. Nothing here edits it; this is a
  * reader.
+ *
+ * ## In another edition the sentence is found by its place, not its words
+ *
+ * The opening words are English, and a translated page does not begin its
+ * paragraphs with them. So a sentence is located in the default edition's
+ * page, by section anchor and opening words, and read from the **same
+ * section and the same position** of the edition's own page. That is safe
+ * because `content/mirror.test.ts` holds every translated legal page to the
+ * English one in anchors and list lengths: the paragraph at that position is
+ * the translation of the one found. Both pages come from
+ * `legalPagesByLocale`, so an edition is read from its own files and from no
+ * others.
  */
 
-import { returns } from "../../../../content/legal/returns.js";
-import { shipping } from "../../../../content/legal/shipping.js";
-import { terms } from "../../../../content/legal/terms.js";
-import type { LegalPage } from "../../../../content/schema.js";
+import { legalPagesByLocale } from "../../../../content/legal/index.js";
+import { DEFAULT_LOCALE, type Locale, type RouteId } from "../../../../content/routes.js";
+import { contentFor, type LegalPage } from "../../../../content/schema.js";
 
-function paragraph(page: LegalPage, anchor: string, opening: string, obligation: string): string {
-  const section = page.body.find((candidate) => candidate.anchor === anchor);
-  const found = section?.body.find((text) => text.startsWith(opening));
+function legalPage(locale: Locale, route: RouteId): LegalPage {
+  const page = contentFor(legalPagesByLocale, locale).find((candidate) => candidate.route === route);
+  if (page === undefined) {
+    throw new Error(`the ${locale} edition has no legal page for the route "${route}"`);
+  }
+  return page;
+}
 
-  if (found === undefined) {
+function paragraph(
+  locale: Locale,
+  route: RouteId,
+  anchor: string,
+  opening: string,
+  obligation: string,
+): string {
+  const page = legalPage(DEFAULT_LOCALE, route);
+  const index =
+    page.body
+      .find((candidate) => candidate.anchor === anchor)
+      ?.body.findIndex((text) => text.startsWith(opening)) ?? -1;
+
+  if (index === -1) {
     throw new Error(
       `the checkout screen cannot find the ${obligation} sentence in content/legal/${page.route} ` +
         `(section "${anchor}", opening "${opening}"). content/legal/terms.ts says its checkout ` +
@@ -45,70 +73,116 @@ function paragraph(page: LegalPage, anchor: string, opening: string, obligation:
     );
   }
 
+  const found = legalPage(locale, route).body.find((candidate) => candidate.anchor === anchor)?.body[index];
+  if (found === undefined) {
+    throw new Error(
+      `the ${locale} edition's ${route} page has no paragraph ${String(index + 1)} in section ` +
+        `"${anchor}", where the default edition states the ${obligation} sentence. A translated ` +
+        "legal page mirrors the English one section for section and paragraph for paragraph.",
+    );
+  }
+
   return found;
 }
 
-/**
- * "Placing an order is an offer to buy. The contract exists when we send you a
- * dispatch confirmation, not when you press the button…" — Article 8(2) CRD's
- * companion disclosure: what pressing the button does and does not do.
+/** The sentences the checkout screen is obliged to say, in one edition's words. */
+export interface CheckoutTerms {
+  /**
+   * "Placing an order is an offer to buy. The contract exists when we send you a
+   * dispatch confirmation, not when you press the button…" — Article 8(2) CRD's
+   * companion disclosure: what pressing the button does and does not do.
+   */
+  readonly contractFormation: string;
+  /**
+   * The consent line. Rendered immediately above the order button because it
+   * says the confirmation is given **by placing the order** — which is why the
+   * screen carries no separate tick box: a tick box would contradict the
+   * sentence the qualified reader wrote.
+   */
+  readonly consentLine: string;
+  /** The durable-medium promise — Article 8(7) CRD. */
+  readonly confirmationPromise: string;
+  /** The processor and card-number statement the payment step is built around. */
+  readonly cardStatement: string;
+  /**
+   * Return postage — Articles 6(1)(i) and 14(1) CRD. Only enforceable if
+   * disclosed **before** the contract is concluded, which is why it is on this
+   * screen and not only on `/legal/returns`.
+   */
+  readonly returnPostage: string;
+  /**
+   * The delivery estimate, in the shipping page's own words — one of the six
+   * disclosures `content/legal/terms.ts` requires on the screen carrying the
+   * order button.
+   */
+  readonly deliveryEstimate: string;
+}
+
+const termsByLocale = new Map<Locale, CheckoutTerms>();
+
+/** {@link CheckoutTerms} as `locale`'s legal pages state them. */
+export function checkoutTermsFor(locale: Locale): CheckoutTerms {
+  let terms = termsByLocale.get(locale);
+  if (terms === undefined) {
+    terms = {
+      contractFormation: paragraph(
+        locale,
+        "legalTerms",
+        "checkout-acknowledgement",
+        "Placing an order is an offer to buy",
+        "contract formation",
+      ),
+      consentLine: paragraph(
+        locale,
+        "legalTerms",
+        "checkout-acknowledgement",
+        "By placing the order you confirm",
+        "consent",
+      ),
+      confirmationPromise: paragraph(
+        locale,
+        "legalTerms",
+        "checkout-acknowledgement",
+        "You will receive a confirmation by email",
+        "confirmation",
+      ),
+      cardStatement: paragraph(
+        locale,
+        "legalTerms",
+        "checkout-acknowledgement",
+        "We accept cards, Apple Pay, Google Pay and PayPal",
+        "card number",
+      ),
+      returnPostage: paragraph(
+        locale,
+        "legalReturns",
+        "returns-process",
+        "You pay the cost of returning the parcel",
+        "return postage",
+      ),
+      deliveryEstimate: paragraph(
+        locale,
+        "legalShipping",
+        "delivery",
+        "Orders are dispatched within",
+        "delivery estimate",
+      ),
+    };
+    termsByLocale.set(locale, terms);
+  }
+  return terms;
+}
+
+/*
+ * The default edition's six, under the names they have always had. They are
+ * resolved at import, so a reworded English sentence still fails the moment
+ * this module loads and not on the first visit to the checkout.
  */
-export const CONTRACT_FORMATION = paragraph(
-  terms,
-  "checkout-acknowledgement",
-  "Placing an order is an offer to buy",
-  "contract formation",
-);
+const english = checkoutTermsFor(DEFAULT_LOCALE);
 
-/**
- * The consent line. Rendered immediately above the order button because it
- * says the confirmation is given **by placing the order** — which is why the
- * screen carries no separate tick box: a tick box would contradict the
- * sentence the qualified reader wrote.
- */
-export const CONSENT_LINE = paragraph(
-  terms,
-  "checkout-acknowledgement",
-  "By placing the order you confirm",
-  "consent",
-);
-
-/** The durable-medium promise — Article 8(7) CRD. */
-export const CONFIRMATION_PROMISE = paragraph(
-  terms,
-  "checkout-acknowledgement",
-  "You will receive a confirmation by email",
-  "confirmation",
-);
-
-/** The processor and card-number statement the payment step is built around. */
-export const CARD_STATEMENT = paragraph(
-  terms,
-  "checkout-acknowledgement",
-  "We accept cards, Apple Pay, Google Pay and PayPal",
-  "card number",
-);
-
-/**
- * Return postage — Articles 6(1)(i) and 14(1) CRD. Only enforceable if
- * disclosed **before** the contract is concluded, which is why it is on this
- * screen and not only on `/legal/returns`.
- */
-export const RETURN_POSTAGE = paragraph(
-  returns,
-  "returns-process",
-  "You pay the cost of returning the parcel",
-  "return postage",
-);
-
-/**
- * The delivery estimate, in the shipping page's own words — one of the six
- * disclosures `content/legal/terms.ts` requires on the screen carrying the
- * order button.
- */
-export const DELIVERY_ESTIMATE = paragraph(
-  shipping,
-  "delivery",
-  "Orders are dispatched within",
-  "delivery estimate",
-);
+export const CONTRACT_FORMATION = english.contractFormation;
+export const CONSENT_LINE = english.consentLine;
+export const CONFIRMATION_PROMISE = english.confirmationPromise;
+export const CARD_STATEMENT = english.cardStatement;
+export const RETURN_POSTAGE = english.returnPostage;
+export const DELIVERY_ESTIMATE = english.deliveryEstimate;

@@ -1,20 +1,10 @@
-import { SupportPageContent } from "../../../../components/pages/SupportPageContent.js";
-import { getRuntimeConfig } from "../../../../config/runtime-config.js";
-import { getRequestNonce } from "../../../../lib/nonce.js";
+import { DEFAULT_LOCALE } from "../../../../../../content/routes.js";
 import { makeMetadata } from "../../../../lib/page-shell.js";
+import { SupportRoute } from "../../../localized-routes.js";
 
 export const generateMetadata = makeMetadata("support");
 
-export default async function SupportPage() {
-  const runtimeConfig = getRuntimeConfig();
-  const nonce = await getRequestNonce();
-
-  return (
-    <SupportPageContent
-      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
-      nonce={nonce}
-      merchantContactAddress={runtimeConfig.merchant.contactAddress}
-      externalTargets={runtimeConfig.externalTargets}
-    />
-  );
+/** The default edition uses the same renderer as prefixed editions. */
+export default function SupportPage() {
+  return <SupportRoute routeId="support" locale={DEFAULT_LOCALE} />;
 }

@@ -47,32 +47,10 @@
  * be arguing with its own header. A test host is never indexable, whatever
  * the page registry says.
  *
- * ## `hreflang` on a route only one edition publishes, and why it is emitted
+ * ## `hreflang` for every published route
  *
- * There are two locales, `en` and `et`, but they do not publish the same
- * routes: `content/index.ts` gives the Estonian edition the legal set and
- * nothing else. So most routes still form an alternate set of **one**, and the
- * temptation on those is to emit no `rel="alternate"` links at all, on the
- * grounds that a set of one has nothing to point at. They are emitted
- * regardless, and the reasoning is worth stating because the opposite decision
- * is indistinguishable from having forgotten:
- *
- * - **A one-page set is a valid set, and it is self-referential.** The
- *   `hreflang` protocol requires every page in a set to name every page in
- *   the set *including itself*. `<link rel="alternate" hreflang="en" href="…">`
- *   pointing at this page's own canonical is exactly what a correct set of one
- *   looks like. It is not a placeholder for the real thing; it *is* the real
- *   thing, at n=1.
- * - **`x-default` is not a no-op even at n=1.** It says which URL serves a
- *   reader whose language matches no edition — a statement about this site
- *   that is true and useful today, and that a further edition does not change.
- * - **Absence is the failure mode this unit exists to avoid.** "No alternates
- *   because this route has one edition" and "no alternates because nothing
- *   computes them" produce identical HTML. Emitting them means the mechanism
- *   is exercised on every page, on every build, by the tests that already run
- *   — so the unit that publishes an existing route in a further edition adds a
- *   key to a registry and reads the result, rather than discovering on the day
- *   that the emitter was never written.
+ * All four editions publish the same routes. Every alternate set includes each
+ * edition's URL, including the current page, and `x-default` points to English.
  *
  * The annotations are computed from which locales actually **publish** the
  * route, never from `LOCALES` wholesale: an edition that does not carry a page
@@ -82,7 +60,7 @@
 import type { Metadata } from "next";
 
 import { pagesByLocale } from "../../../content/index.js";
-import { contentFor, type Page } from "../../../content/schema.js";
+import { contentFor, finalRouteFor, type Page } from "../../../content/schema.js";
 import {
   DEFAULT_LOCALE,
   LOCALES,
@@ -159,6 +137,14 @@ export interface LocalizedLink {
  * route the target edition publishes and can serve.
  */
 export function localizedLinkFor(locale: Locale, routeId: RouteId): LocalizedLink {
+  // A retired route has no localized renderer. Once an edition publishes its
+  // replacement, keep navigation in that edition instead of sending it to English.
+  if (locale !== DEFAULT_LOCALE && lookupPage(routeId, locale) === undefined) {
+    const replacement = finalRouteFor(routeId);
+    if (replacement !== routeId && lookupPage(replacement, locale) !== undefined) {
+      return { href: localizedPath(locale, ROUTE_PATHS[replacement]) };
+    }
+  }
   const target = lookupPage(routeId, locale) !== undefined ? locale : DEFAULT_LOCALE;
   return {
     href: localizedPath(target, ROUTE_PATHS[routeId]),

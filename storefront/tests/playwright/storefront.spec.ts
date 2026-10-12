@@ -1,4 +1,21 @@
 import { expect, test, type Page } from "@playwright/test";
+import { pagesByLocale, siteCopyFor } from "../../../content/index.js";
+import { CHECKOUT_RETURN_PATH, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
+import { localizedPath } from "../../src/lib/urls.js";
+
+test("Klingon lang prevents uppercase on a header navigation link", async ({ page }) => {
+  await page.goto("/");
+  const link = page.locator("header nav[aria-label] a").first();
+  if (!(await link.isVisible())) await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await expect(link).toBeVisible();
+  const transform = () => link.evaluate((element) => getComputedStyle(element).textTransform);
+  expect(await transform()).toBe("uppercase");
+  await link.evaluate((element) => element.setAttribute("lang", "tlh"));
+  expect(await transform()).toBe("none");
+  await link.evaluate((element) => element.removeAttribute("lang"));
+  await page.locator("html").evaluate((element) => element.setAttribute("lang", "tlh"));
+  expect(await transform()).toBe("none");
+});
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://challenges.cloudflare.com/**", async (route) => {
@@ -31,7 +48,7 @@ const visualRoutes = [
   ["returns", "/legal/returns"],
   ["shipping", "/legal/shipping"],
   ["terms", "/legal/terms"],
-  ["localized-imprint", "/et/legal/imprint"],
+  ["localized-imprint", "/et/legal/imprint", "et"],
   ["not-found", "/definitely-not-found"],
 ] as const;
 
@@ -39,7 +56,32 @@ async function dismissConsentForInteraction(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Decline" }).click();
 }
 
-for (const [name, path] of visualRoutes) {
+for (const locale of LOCALES) {
+  if (!pagesByLocale[locale].some((page) => page.route === "lunarBase")) continue;
+
+  test(`${locale} destination change keeps the product page in its edition`, async ({ page }) => {
+    const path = localizedPath(locale, ROUTE_PATHS.lunarBase);
+    await page.goto(path);
+    await page.getByRole("dialog").getByRole("button").last().click();
+
+    const selector = page.locator('select[name="destination"]');
+    await expect(selector).toHaveValue("US");
+    const headline = page.locator('[class*="priceHeadline"]');
+    const before = await headline.textContent();
+    await selector.selectOption("EE");
+
+    await expect(selector).toHaveValue("EE");
+    await expect.poll(() => page.evaluate(() => document.cookie)).toContain("plepic_destination=EE");
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect.poll(() => headline.textContent()).not.toBe(before);
+    await expect(headline).toContainText(new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
+      style: "currency", currency: "EUR",
+    }).format(31));
+  });
+}
+
+// A route in another edition names its consent dialog in that edition's words.
+for (const [name, path, locale = "en"] of visualRoutes) {
   test(`${name} preserves the default consent state without loading analytics`, async ({ page }, testInfo) => {
     const analyticsRequests: string[] = [];
     const consoleErrors: string[] = [];
@@ -64,7 +106,7 @@ for (const [name, path] of visualRoutes) {
 
     const response = await page.goto(path);
     expect(response).not.toBeNull();
-    await expect(page.getByRole("dialog", { name: "Cookie and analytics consent" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: siteCopyFor(locale).interface.consent.dialogLabel })).toBeVisible();
     await expect.poll(() => analyticsRequests).toEqual([]);
     await expect(page).toHaveScreenshot(`${name}-${testInfo.project.name}.png`, {
       // Viewport captures keep the committed evidence within the repository's
@@ -81,7 +123,7 @@ for (const [name, path] of visualRoutes) {
       expect(response?.status()).toBeLessThan(400);
       expect(consoleErrors).toEqual([]);
     }
-    await page.getByRole("button", { name: "Agree" }).click();
+    await page.getByRole("button", { name: siteCopyFor(locale).interface.consent.agree }).click();
     await expect.poll(() => analyticsRequests.length).toBeGreaterThan(0);
   });
 }
@@ -93,7 +135,8 @@ test("mobile menu supports disclosure semantics, Escape, close, and focus return
 
   const menu = page.getByRole("button", { name: "Menu", exact: true });
   const navigation = page.getByRole("navigation", { name: "Primary" });
-  const close = navigation.getByRole("button", { name: "Close menu" });
+  // The sheet holds the primary navigation and the language selector; its close control is its own.
+  const close = page.getByRole("button", { name: "Close menu" });
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await menu.focus();
   await page.keyboard.press("Enter");
@@ -113,6 +156,197 @@ test("mobile menu supports disclosure semantics, Escape, close, and focus return
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(menu).toBeFocused();
 });
+
+test("language selector moves between the English and the Estonian imprint", async ({ page }, testInfo) => {
+  await page.goto("/legal/imprint");
+  await dismissConsentForInteraction(page);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+
+  // To Estonian by the header's selector, which on a narrow viewport is inside the navigation sheet.
+  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menu", exact: true }).click();
+  const inHeader = page.locator("header").getByRole("navigation", { name: "Language" });
+  await expect(inHeader.getByText("English")).toHaveAttribute("aria-current", "true");
+  await inHeader.getByRole("link", { name: "Eesti" }).click();
+  await expect(page).toHaveURL("/et/legal/imprint");
+  await expect(page.locator("html")).toHaveAttribute("lang", "et");
+
+  // And back by the footer's, which is labelled in the edition being read.
+  const inFooter = page.locator("footer").getByRole("navigation", { name: "Keel" });
+  await expect(inFooter.getByText("Eesti")).toHaveAttribute("aria-current", "true");
+  await inFooter.getByRole("link", { name: "English" }).click();
+  await expect(page).toHaveURL("/legal/imprint");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+/*
+ * What a translated edition shows a browser, written out per edition and
+ * never read from `content/`: a table that imported its expectations would
+ * agree with whatever the edition says. No screenshot baseline is taken here.
+ */
+const translatedEditions = {
+  de: {
+    name: "German",
+    headings: {
+      home: /Lunar Base ist ein Strategiespiel mit Karten/,
+      lunarBase: /Lunar Base ist ein Strategiespiel mit Karten/,
+      support: /Regeln und Hilfe/,
+      rulebook: /Spielanleitung zu Lunar Base/,
+      cart: /Dein Warenkorb/,
+      checkout: /^Kasse$/,
+      legalImprint: /^Impressum$/,
+      legalTerms: /^Verkaufsbedingungen$/,
+      legalPrivacy: /^Datenschutz$/,
+      legalShipping: /^Versand und Lieferung$/,
+      legalReturns: /^Rücksendungen und Widerrufsrecht$/,
+    },
+    menuButton: "Menü",
+    selectorLabel: "Sprache",
+    ownLanguage: "Deutsch",
+    buyGroup: "Lunar Base kaufen",
+    addToBasket: "In den Warenkorb",
+    basketHeading: "Dein Warenkorb",
+    toCheckout: "Zur Kasse",
+    checkoutHeading: "Kasse",
+    paymentReturnHeading: "Bestellung abschließen",
+  },
+  et: {
+    name: "Estonian",
+    headings: {
+      home: /Lunar Base on strateegiline kaardimäng/,
+      lunarBase: /Lunar Base on strateegiline kaardimäng/,
+      support: /Reeglid ja abi/,
+      rulebook: /Lunar Base reegliraamat/,
+      cart: /Sinu ostukorv/,
+      checkout: /^Tellimuse vormistamine$/,
+      legalImprint: /^Õigusteave$/,
+      legalTerms: /^Müügitingimused$/,
+      legalPrivacy: /^Privaatsus$/,
+      legalShipping: /^Saatmine ja kättetoimetamine$/,
+      legalReturns: /^Tagastamine ja taganemisõigus$/,
+    },
+    menuButton: "Menüü",
+    selectorLabel: "Keel",
+    ownLanguage: "Eesti",
+    buyGroup: "Osta Lunar Base",
+    addToBasket: "Lisa ostukorvi",
+    basketHeading: "Sinu ostukorv",
+    toCheckout: "Mine tellimuse vormistamise juurde",
+    checkoutHeading: "Tellimuse vormistamine",
+    paymentReturnHeading: "Lõpeta tellimus",
+  },
+  tlh: {
+    name: "Klingon",
+    headings: {
+      home: /Lunar Base 'oH 2-6/,
+      lunarBase: /Lunar Base 'oH 2-6/,
+      support: /Quj mIwmey, QaH je/,
+      rulebook: /Lunar Base mIw paq/,
+      cart: /je'meH ngaSwI'lIj/,
+      checkout: /^Huch nobmeH Daq$/,
+      legalImprint: /^chut QIn$/,
+      legalTerms: /^ngevmeH chutmey$/,
+      legalPrivacy: /^De' QanmeH mIw$/,
+      legalShipping: /^ngeHmeH mIw, HIjmeH mIw je$/,
+      legalReturns: /^tep tatlhmeH mIw, je'Ha'meH DIb je$/,
+    },
+    menuButton: "wIvmeH tetlh",
+    selectorLabel: "Hol",
+    ownLanguage: "tlhIngan Hol",
+    buyGroup: "Lunar Base yIje'",
+    addToBasket: "je'meH ngaSwI'Daq yIchel",
+    basketHeading: "je'meH ngaSwI'lIj",
+    toCheckout: "Huch nobmeH Daq yIghoS",
+    checkoutHeading: "Huch nobmeH Daq",
+    paymentReturnHeading: "vunmeH QInlIj yIrInmoH",
+  },
+} as const;
+
+for (const locale of ["de", "et", "tlh"] as const) {
+  const edition = translatedEditions[locale];
+  const home = localizedPath(locale, ROUTE_PATHS.home);
+
+  for (const published of pagesByLocale[locale]) {
+    const routeId = published.route;
+    if (routeId === "about") throw new Error("The retired About route must not be published");
+    test(`${edition.name} ${routeId} serves its translated page`, async ({ page }) => {
+      const response = await page.goto(localizedPath(locale, ROUTE_PATHS[routeId]));
+      expect(response?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("lang", locale);
+      await expect(page.getByRole("heading", { level: 1 })).toContainText(edition.headings[routeId]);
+      if (locale === "tlh") {
+        const heading = page.getByRole("heading", { level: 1 }).first();
+        const navigation = page.locator("header nav[aria-label] a").first();
+        if (!(await navigation.isVisible())) await page.getByRole("button", { name: edition.menuButton, exact: true }).click();
+        await expect(navigation).toBeVisible();
+        expect(await navigation.evaluate((element) => getComputedStyle(element).textTransform)).toBe("none");
+        expect(await heading.evaluate((element) => getComputedStyle(element).textTransform)).toBe("none");
+      }
+    });
+  }
+
+  test(`${edition.name} selector returns to English and the bare home stays English`, async ({ page }, testInfo) => {
+    await page.goto(home);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    if (testInfo.project.name === "mobile") await page.getByRole("button", { name: edition.menuButton, exact: true }).click();
+    const selector = page.locator("header").getByRole("navigation", { name: edition.selectorLabel });
+    await selector.getByRole("link", { name: "English" }).click();
+    await expect(page).toHaveURL("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.locator("header").getByRole("navigation", { name: "Language" })
+      .getByRole("link", { name: edition.ownLanguage }).click();
+    await expect(page).toHaveURL(home);
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  });
+
+  test(`${edition.name} buyer adds Lunar Base and reaches checkout in ${edition.name}`, async ({ page }, testInfo) => {
+    const cartId = `cart_${locale}_${testInfo.project.name}_${testInfo.workerIndex}`;
+    await page.addInitScript((id) => sessionStorage.setItem("plepic.medusa.cart-id", id), cartId);
+    await page.goto(localizedPath(locale, ROUTE_PATHS.lunarBase));
+    await page.getByRole("dialog").getByRole("button").last().click();
+    await page.getByLabel(edition.buyGroup).getByRole("button", { name: edition.addToBasket }).click();
+    await expect(page).toHaveURL(localizedPath(locale, ROUTE_PATHS.cart));
+    await expect(page.getByRole("heading", { name: edition.basketHeading, exact: true })).toBeVisible();
+    await page.getByRole("link", { name: edition.toCheckout }).click();
+    await expect(page).toHaveURL(localizedPath(locale, ROUTE_PATHS.checkout));
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.getByRole("heading", { name: edition.checkoutHeading, exact: true })).toBeVisible();
+  });
+
+  test(`${edition.name} payment return is served in ${edition.name}`, async ({ page }) => {
+    const response = await page.goto(localizedPath(locale, CHECKOUT_RETURN_PATH));
+    expect(response?.status()).toBe(200);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.getByRole("heading", { name: edition.paymentReturnHeading })).toBeVisible();
+  });
+
+  test(`${edition.name} controls fit at 320 px`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    const cart = localizedPath(locale, ROUTE_PATHS.cart);
+    const checkout = localizedPath(locale, ROUTE_PATHS.checkout);
+    const paths = [
+      ...pagesByLocale[locale].map((published) => localizedPath(locale, ROUTE_PATHS[published.route])),
+      localizedPath(locale, CHECKOUT_RETURN_PATH),
+    ];
+    for (const route of paths) {
+      const path = route === cart || route === checkout ? `${route}?mock=filled` : route;
+      await page.goto(path);
+      await expect.poll(() => page.locator("body").evaluate((body) => getComputedStyle(body).fontFamily))
+        .toContain("MADE Evolve Sans");
+      const overflows = await page.locator("button, a, select, label, summary, dt, dd, legend, h1, h2, h3").evaluateAll((elements) => elements
+        .filter((element) => {
+          const box = element.getBoundingClientRect();
+          if (element.closest("header")) return false;
+          return box.width > 0 && box.height > 0 && (
+            element.scrollWidth > element.clientWidth + 1 || box.left < -1 || box.right > innerWidth + 1
+          );
+        })
+        .map((element) => ({ tag: element.tagName, text: element.textContent?.trim().slice(0, 80), width: element.clientWidth, scroll: element.scrollWidth })));
+      expect(overflows, path).toEqual([]);
+    }
+  });
+}
 
 test("below-fold product media loads when reached and approved videos use privacy-enhanced frames", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop") {

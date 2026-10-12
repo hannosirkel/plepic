@@ -22,37 +22,61 @@
  * renderer, so the silent-404 case is a red test rather than a page a
  * translator wrote and nobody could reach.
  *
- * ## Why the table holds only the legal set today
+ * ## Why the table is not every route yet
  *
- * The legal pages are projections of `content/legal/*` through one component,
- * so pointing that component at another locale's content is the whole change.
- * The marketing pages are not: `SupportPageContent`,
- * `HomepageMockup` and `LunarBaseMockup` import `content/publisher.ts`,
- * `content/lunar-base.ts` and `content/support.ts` directly, and no amount of
- * routing makes those read a locale. Making them locale-aware is a change to
- * those components and those content modules, and both are outside this
- * unit's authority. Listing them here anyway — so the table looked complete —
- * would be exactly the "answers 200 with the wrong words" failure above.
+ * A route enters the table when its renderer reads the edition's copy and no
+ * other. The legal pages were first: they are projections of `content/legal/*`
+ * through one component, so pointing that component at another locale's
+ * content was the whole change. The home page followed, once `HomepageMockup`
+ * and the sections it composes took a `locale` and read `siteCopyFor(locale)`.
+ * The Lunar Base page followed with the same copy source for its page,
+ * purchase controls and structured data. The support page and the rulebook
+ * page followed with theirs, and with a contact form whose answer is written
+ * in the edition the form was rendered in.
  *
- * The basket and the checkout are absent for the same reason and one more:
- * they are non-indexable, they compose `src/components/shop/`, and
- * `robots.txt` disallows their two literal paths. A `/xx/cart` that 404s
- * needs no robots rule; one that rendered would need one.
+ * The basket now reads its edition's copy, and its prefixed URL is disallowed
+ * in `robots.txt`. The checkout followed: its form, its validation errors,
+ * the sentences it reads out of the edition's legal pages, and the country
+ * and delivery method names that reach it from data. `robots.txt` disallows
+ * its prefixed URL too. No edition but the default publishes it yet, so it is
+ * in the table and still answers 404 under every prefix.
  */
 
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { HomepageMockup } from "../components/mockups/HomepageMockup.js";
+import { LunarBaseMockup } from "../components/mockups/LunarBaseMockup.js";
+import { JsonLdScript } from "../components/JsonLdScript.js";
+import { AddToCartButton } from "../components/shop/AddToCartButton.js";
+import { DestinationSelector } from "../components/shop/DestinationSelector.js";
+import { BasketPageContent } from "../components/shop/BasketPageContent.js";
+import { isOrderNotPlaced, ORDER_OUTCOME_PARAM } from "../components/shop/checkout-order-post.js";
+import { CheckoutPageContent } from "../components/shop/CheckoutPageContent.js";
+import { StripePaymentReturn } from "../components/shop/StripePaymentReturn.js";
+import { ShopPageShell } from "../components/shop/ShopPageShell.js";
+import { CartProvider } from "../lib/cart-store.js";
+import { isMockLayerEnabled, MOCK_SCENARIO_PARAM, parseMockScenario } from "../lib/mock-cart-actions.js";
+import { getRequestHost } from "../lib/request-host.js";
 import { LegalPageContent } from "../components/pages/LegalPageContent.js";
+import { RulebookPageContent } from "../components/pages/RulebookPageContent.js";
+import { SupportPageContent } from "../components/pages/SupportPageContent.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
 import { legalPagesByLocale } from "../../../content/legal/index.js";
+import { siteCopyFor } from "../../../content/editions.js";
+import { CHECKOUT_RETURN_PATH, ROUTE_PATHS } from "../../../content/routes.js";
 import { contentFor, type LegalPage } from "../../../content/schema.js";
 import type { Locale, RouteId } from "../../../content/routes.js";
-import { resolveCatalogue } from "../lib/catalogue.js";
+import { mockCatalogue, resolveCatalogue } from "../lib/catalogue.js";
 import { placeholderValuesFrom } from "../lib/configuration-placeholders.js";
 import { getRequestDestination } from "../lib/destination-request.js";
+import { getRequestNonce } from "../lib/nonce.js";
 import { lookupPage } from "../lib/seo.js";
-import { localeForPathSegment, routeIdForPath } from "../lib/urls.js";
+import { loadStoreCatalogueProduct } from "../lib/store-product.js";
+import { loadStoreProduct } from "../lib/store-product.js";
+import { buildProductJsonLd } from "../lib/product-jsonld.js";
+import { loadSiteHostConfig } from "../config/hosts.js";
+import { absoluteUrl, localizedPath, localeForPathSegment, routeIdForPath } from "../lib/urls.js";
 
 /** The legal page `locale` publishes for `routeId`, or `undefined`. */
 export function lookupLegalPage(routeId: RouteId, locale: Locale): LegalPage | undefined {
@@ -62,6 +86,80 @@ export function lookupLegalPage(routeId: RouteId, locale: Locale): LegalPage | u
 export interface LocalizedRouteProps {
   readonly routeId: RouteId;
   readonly locale: Locale;
+  readonly searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/** The basket in the requested edition; a destination change keeps its URL prefix. */
+export async function BasketRoute({ routeId, locale, searchParams }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+  const [params, host, destination] = await Promise.all([
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getRequestHost(),
+    getRequestDestination(),
+  ]);
+  const scenario = isMockLayerEnabled(host, loadSiteHostConfig().testHostnames)
+    ? parseMockScenario(params[MOCK_SCENARIO_PARAM])
+    : null;
+  return (
+    <ShopPageShell locale={locale} route="cart" externalTargets={getRuntimeConfig().externalTargets}>
+      <CartProvider scenario={scenario} destinationCode={destination.code}>
+        <BasketPageContent locale={locale} />
+      </CartProvider>
+    </ShopPageShell>
+  );
+}
+
+/**
+ * The checkout, in one locale.
+ *
+ * What `app/(site)/checkout/page.tsx` resolves per request is resolved here
+ * the same way: the `?mock=` state and whether the hostname honours it, and
+ * the outcome of a submission the browser made itself. That file's doc
+ * comment gives the reason for each.
+ *
+ * The form still posts to the unprefixed order handler, and a payment
+ * provider returns to `CHECKOUT_RETURN_PATH` under this edition's prefix:
+ * `StripePaymentElement` builds that address from the locale it is given.
+ */
+export async function CheckoutRoute({ routeId, locale, searchParams }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+  const [params, nonce, host, destination] = await Promise.all([
+    searchParams ?? Promise.resolve({} as Record<string, string | string[] | undefined>),
+    getRequestNonce(),
+    getRequestHost(),
+    getRequestDestination(),
+  ]);
+  const runtimeConfig = getRuntimeConfig();
+  const scenario = isMockLayerEnabled(host, loadSiteHostConfig().testHostnames)
+    ? parseMockScenario(params[MOCK_SCENARIO_PARAM])
+    : null;
+
+  return (
+    <ShopPageShell locale={locale} route="checkout" externalTargets={runtimeConfig.externalTargets}>
+      <CartProvider scenario={scenario} destinationCode={destination.code}>
+        <CheckoutPageContent
+          locale={locale}
+          turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+          nonce={nonce}
+          stripePublishableKey={runtimeConfig.stripe.publishableKey}
+          scenario={scenario}
+          unhydratedOrderAttempt={isOrderNotPlaced(params[ORDER_OUTCOME_PARAM])}
+        />
+      </CartProvider>
+    </ShopPageShell>
+  );
+}
+
+/** The payment provider's return, borrowing checkout's page and metadata. */
+export async function CheckoutReturnRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+  const nonce = await getRequestNonce();
+  const runtimeConfig = getRuntimeConfig();
+  return (
+    <ShopPageShell locale={locale} route="checkout" externalTargets={runtimeConfig.externalTargets}>
+      <StripePaymentReturn locale={locale} turnstileSiteKey={runtimeConfig.turnstile.siteKey} nonce={nonce} />
+    </ShopPageShell>
+  );
 }
 
 /**
@@ -109,6 +207,117 @@ export async function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
 }
 
 /**
+ * The home page, in one locale.
+ *
+ * `app/(site)/page.tsx` and the localized router both render this, for the
+ * reason {@link LegalRoute} gives: one renderer, so the default edition and a
+ * prefixed one cannot come to disagree.
+ *
+ * The page registry is asked again here, although `resolveLocalizedRoute` has
+ * already asked it, so a caller that skips the resolver still gets a 404 for
+ * a route the edition does not publish.
+ *
+ * The catalogue is resolved for the locale as well as for the destination,
+ * because "VAT included" under the price is one of its words.
+ */
+export async function HomeRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+
+  const runtimeConfig = getRuntimeConfig();
+  const [nonce, destination, catalogueProduct] = await Promise.all([
+    getRequestNonce(),
+    getRequestDestination(),
+    loadStoreCatalogueProduct({
+      backendUrl: runtimeConfig.medusa.backendUrl,
+      publishableKey: runtimeConfig.medusa.publishableKey,
+      presentation: mockCatalogue,
+    }),
+  ]);
+
+  return (
+    <HomepageMockup
+      locale={locale}
+      catalogue={resolveCatalogue(catalogueProduct, destination, locale)}
+      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+      nonce={nonce}
+      externalTargets={runtimeConfig.externalTargets}
+    />
+  );
+}
+
+/** The product page and its structured data, resolved for one edition. */
+export async function LunarBaseRoute({ routeId, locale }: LocalizedRouteProps) {
+  const page = lookupPage(routeId, locale);
+  if (page === undefined) notFound();
+
+  const runtime = getRuntimeConfig();
+  const [nonce, destination, store] = await Promise.all([
+    getRequestNonce(),
+    getRequestDestination(),
+    loadStoreProduct({
+      backendUrl: runtime.medusa.backendUrl,
+      publishableKey: runtime.medusa.publishableKey,
+      presentation: mockCatalogue,
+    }),
+  ]);
+  const catalogue = resolveCatalogue(store.catalogue, destination, locale);
+  const analyticsProduct = store.catalogue;
+  const copy = siteCopyFor(locale);
+  // Keep the crawler's product name tied to the Store name shown on this page.
+  const jsonLd = buildProductJsonLd({
+    product: store.catalogue,
+    url: absoluteUrl(loadSiteHostConfig().baseUrl, localizedPath(locale, ROUTE_PATHS.lunarBase)),
+    description: page.description,
+  });
+  const addLabel = copy.lunarBase.purchase.callsToAction.find((action) => action.emphasis === "primary")?.label;
+  if (addLabel === undefined) throw new Error("The product has no primary purchase action");
+
+  return (
+    <>
+      <LunarBaseMockup
+        locale={locale}
+        externalTargets={runtime.externalTargets}
+        catalogue={catalogue}
+        merchant={placeholderValuesFrom(runtime.merchant)}
+        destinationSelector={<DestinationSelector destinationCode={destination.code} locale={locale} />}
+        primaryPurchaseAction={<AddToCartButton locale={locale} label={addLabel} variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
+      />
+      <JsonLdScript data={jsonLd} nonce={nonce} />
+    </>
+  );
+}
+
+/**
+ * The support page, in one locale.
+ *
+ * The page registry is asked first, for the reason {@link HomeRoute} gives:
+ * an edition that does not publish the page has no copy to render it from.
+ */
+export async function SupportRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+
+  const runtimeConfig = getRuntimeConfig();
+  const nonce = await getRequestNonce();
+
+  return (
+    <SupportPageContent
+      locale={locale}
+      turnstileSiteKey={runtimeConfig.turnstile.siteKey}
+      nonce={nonce}
+      merchantContactAddress={runtimeConfig.merchant.contactAddress}
+      externalTargets={runtimeConfig.externalTargets}
+    />
+  );
+}
+
+/** The rulebook page, in one locale. It links one file, the same in every edition. */
+export function RulebookRoute({ routeId, locale }: LocalizedRouteProps) {
+  if (lookupPage(routeId, locale) === undefined) notFound();
+
+  return <RulebookPageContent locale={locale} externalTargets={getRuntimeConfig().externalTargets} />;
+}
+
+/**
  * Routes with a locale-aware renderer, and the renderer for each.
  *
  * `Partial<Record<RouteId, …>>` rather than a total record: absence is the
@@ -119,6 +328,12 @@ export async function LegalRoute({ routeId, locale }: LocalizedRouteProps) {
 export const LOCALIZED_ROUTE_VIEWS: Partial<
   Readonly<Record<RouteId, (props: LocalizedRouteProps) => ReactNode | Promise<ReactNode>>>
 > = {
+  home: HomeRoute,
+  lunarBase: LunarBaseRoute,
+  support: SupportRoute,
+  rulebook: RulebookRoute,
+  cart: BasketRoute,
+  checkout: CheckoutRoute,
   legalImprint: LegalRoute,
   legalTerms: LegalRoute,
   legalShipping: LegalRoute,
@@ -129,6 +344,7 @@ export const LOCALIZED_ROUTE_VIEWS: Partial<
 export interface ResolvedLocalizedRoute {
   readonly locale: Locale;
   readonly routeId: RouteId;
+  readonly view?: "checkoutReturn";
 }
 
 /**
@@ -152,7 +368,14 @@ export function resolveLocalizedRoute(
   const locale = localeForPathSegment(localeSegment);
   if (locale === undefined) return null;
 
-  const routeId = routeIdForPath(`/${(segments ?? []).join("/")}`);
+  const path = `/${(segments ?? []).join("/")}`;
+  if (path === CHECKOUT_RETURN_PATH) {
+    return lookupPage("checkout", locale) === undefined
+      ? null
+      : { locale, routeId: "checkout", view: "checkoutReturn" };
+  }
+
+  const routeId = routeIdForPath(path);
   if (routeId === undefined) return null;
 
   if (lookupPage(routeId, locale) === undefined) return null;

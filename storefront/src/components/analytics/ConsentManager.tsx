@@ -37,6 +37,10 @@
 import Script from "next/script";
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 
+import { siteCopyByLocale } from "../../../../content/editions.js";
+import { interfaceCopy } from "../../../../content/interface.js";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { localizedPath } from "../../lib/urls.js";
 import { legalPrivacyPath } from "../../lib/route-paths.js";
 import ctaStyles from "../../styles/mockups/call-to-action.module.css";
 import styles from "../../styles/consent-manager.module.css";
@@ -53,12 +57,14 @@ import {
 } from "../../lib/consent-reserved-space.js";
 
 export interface ConsentManagerProps {
+  readonly locale?: Locale;
   readonly isTestHost: boolean;
   readonly measurementId: string | null;
   readonly nonce: string | undefined;
 }
 
-export function ConsentManager({ isTestHost, measurementId, nonce }: ConsentManagerProps) {
+export function ConsentManager({ isTestHost, measurementId, nonce, locale = DEFAULT_LOCALE }: ConsentManagerProps) {
+  const copy = (siteCopyByLocale[locale]?.interface ?? interfaceCopy).consent;
   const [mounted, setMounted] = useState(false);
   const [decision, setDecision] = useState<ConsentDecision | null>(null);
   const [bannerOpen, setBannerOpen] = useState(false);
@@ -136,6 +142,7 @@ gtag('config', ${JSON.stringify(measurementId)}, { anonymize_ip: true });`}
 
       {bannerOpen ? (
         <ConsentBanner
+          locale={locale}
           ref={bannerRef}
           onAccept={() => decide("granted")}
           onDecline={() => decide("declined")}
@@ -145,11 +152,11 @@ gtag('config', ${JSON.stringify(measurementId)}, { anonymize_ip: true });`}
           <button
             type="button"
             onClick={() => setBannerOpen(true)}
-            aria-label="Change your privacy choices"
+            aria-label={copy.reopenLabel}
             data-testid="consent-reopen"
             className={styles.reopen}
           >
-            Privacy choices
+            {copy.choicesLabel}
           </button>
         </div>
       )}
@@ -158,6 +165,7 @@ gtag('config', ${JSON.stringify(measurementId)}, { anonymize_ip: true });`}
 }
 
 export interface ConsentBannerProps {
+  readonly locale?: Locale;
   readonly onAccept: () => void;
   readonly onDecline: () => void;
   /** The measured element. `ConsentManager` observes it and reserves its height as page. */
@@ -178,22 +186,23 @@ export interface ConsentBannerProps {
  * storage and measures nothing. It is handed a ref because the element it
  * renders is the one whose height has to be paid for in page.
  */
-export function ConsentBanner({ onAccept, onDecline, ref }: ConsentBannerProps) {
+export function ConsentBanner({ onAccept, onDecline, ref, locale = DEFAULT_LOCALE }: ConsentBannerProps) {
+  const copy = (siteCopyByLocale[locale]?.interface ?? interfaceCopy).consent;
   return (
     <div
       ref={ref}
       role="dialog"
-      aria-label="Cookie and analytics consent"
+      aria-label={copy.dialogLabel}
       data-testid="consent-banner"
       className={styles.banner}
     >
       <div className={styles.bannerInner}>
         <p className={styles.bannerText}>
-          We use Google Analytics to see how the site is used, and only once you agree. See the{" "}
-          <a className={styles.bannerLink} href={legalPrivacyPath}>
-            privacy page
+          {copy.introduction}{" "}
+          <a className={styles.bannerLink} href={localizedPath(locale, legalPrivacyPath)}>
+            {copy.privacyLink}
           </a>{" "}
-          for the lawful basis and every processor involved.
+          {copy.conclusion}
         </p>
         <div className={styles.bannerActions}>
           <button
@@ -202,7 +211,7 @@ export function ConsentBanner({ onAccept, onDecline, ref }: ConsentBannerProps) 
             data-testid="consent-accept"
             className={`${ctaStyles.cta} ${ctaStyles.primary}`}
           >
-            Agree
+            {copy.agree}
           </button>
           <button
             type="button"
@@ -210,7 +219,7 @@ export function ConsentBanner({ onAccept, onDecline, ref }: ConsentBannerProps) 
             data-testid="consent-decline"
             className={`${ctaStyles.cta} ${ctaStyles.secondary}`}
           >
-            Decline
+            {copy.decline}
           </button>
         </div>
       </div>

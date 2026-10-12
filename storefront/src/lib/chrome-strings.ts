@@ -11,14 +11,15 @@
  * renders comes from this table, keyed by the locale being served.
  *
  * Total over `Locale`, exactly like every other registry in the locale
- * dimension: a third edition does not compile until its chrome strings are
+ * dimension: a new edition does not compile until its chrome strings are
  * written down, rather than inheriting English labels nobody decided on.
  *
- * **What deliberately stays English on every edition:** the publisher
- * tagline (`content/publisher.ts` — marketing copy, whose translation is a
- * content decision this table must not smuggle in), proper nouns (Plepic
- * Games, Lunar Base, Instagram, Facebook), and the stored consent tokens
- * (`granted`/`declined`), which are data, not copy.
+ * **What is not in this table:** the publisher tagline in the footer, which
+ * is marketing copy and comes from the edition's site copy
+ * (`content/editions.ts`) — an edition that has none yet omits the tagline
+ * rather than showing English marketing copy, see `SiteFooter.tsx`. **What stays as it is on every edition:**
+ * proper nouns (Plepic Games, Lunar Base, Instagram, Facebook), and the
+ * stored consent tokens (`granted`/`declined`), which are data, not copy.
  */
 
 import type { Locale, RouteId } from "../../../content/routes.js";
@@ -48,7 +49,7 @@ export interface ChromeStrings {
   readonly legalNavLabel: string;
   /** The footer's five legal links, labelled as their edition's pages are titled. */
   readonly legalLinkLabels: Readonly<Record<LegalRouteId, string>>;
-  /** `aria-label` of the language-switcher `<nav>`. */
+  /** `aria-label` of the language selector's `<nav>`. */
   readonly languageNavLabel: string;
   /**
    * `aria-label` of the footer's social `<nav>`.
@@ -65,8 +66,7 @@ export interface ChromeStrings {
   /**
    * The incompleteness notice's body, from the reader-facing labels of the
    * missing disclosures. A function rather than a template string because
-   * both languages inflect around the count, and neither inflection is the
-   * other's.
+   * each language inflects around the count.
    */
   readonly noticeBody: (missing: readonly string[]) => string;
 }
@@ -100,6 +100,35 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
         : `These details have not been configured for this deployment, and they are marked ` +
           `in the text below: ${missing.join(", ")}. Until they are supplied, this page is ` +
           `not a complete legal notice and should not be relied on as one.`,
+  },
+  de: {
+    brandHomeLabel: "Plepic Games, Startseite",
+    primaryNavLabel: "Hauptnavigation",
+    navAbout: "Über uns",
+    navSupport: "Hilfe",
+    menuLabel: "Menü",
+    closeMenuLabel: "Menü schließen",
+    basketLabel: "Warenkorb",
+    legalNavLabel: "Rechtliche Informationen",
+    legalLinkLabels: {
+      legalImprint: "Impressum",
+      legalTerms: "Verkaufsbedingungen",
+      legalShipping: "Versand und Lieferung",
+      legalReturns: "Rücksendungen und Widerrufsrecht",
+      legalPrivacy: "Datenschutz",
+    },
+    languageNavLabel: "Sprache",
+    socialNavLabel: "Soziale Medien",
+    draftNote: "Entwurf; die Freigabe durch den Betreiber steht noch aus.",
+    noticeHeading: "Dieser rechtliche Hinweis ist unvollständig.",
+    noticeBody: (missing) =>
+      missing.length === 1
+        ? `Diese Angabe wurde für diese Bereitstellung noch nicht konfiguriert und ist im ` +
+          `folgenden Text gekennzeichnet: ${missing.join(", ")}. Solange sie fehlt, ist ` +
+          `dieser rechtliche Hinweis unvollständig und Sie sollten sich nicht darauf verlassen.`
+        : `Diese Angaben wurden für diese Bereitstellung noch nicht konfiguriert und sind im ` +
+          `folgenden Text gekennzeichnet: ${missing.join(", ")}. Solange sie fehlen, ist ` +
+          `dieser rechtliche Hinweis unvollständig und Sie sollten sich nicht darauf verlassen.`,
   },
   et: {
     brandHomeLabel: "Plepic Games, avaleht",
@@ -141,16 +170,41 @@ export const CHROME_STRINGS: Readonly<Record<Locale, ChromeStrings>> = {
           `tekstis tähistatud: ${missing.join(", ")}. Kuni need on esitamata, ei ole see ` +
           `leht täielik õiguslik teade ja sellele ei saa sellisena tugineda.`,
   },
+  tlh: {
+    brandHomeLabel: "Plepic Games, tenwal wa'DIch",
+    primaryNavLabel: "wIvmeH rarwI'mey",
+    navAbout: "De'maj",
+    navSupport: "QaH",
+    menuLabel: "wIvmeH tetlh",
+    closeMenuLabel: "wIvmeH tetlh yISoQmoH",
+    basketLabel: "je'meH ngaSwI'",
+    legalNavLabel: "chut De'",
+    legalLinkLabels: {
+      legalImprint: "chut QIn",
+      legalTerms: "ngevmeH chutmey",
+      legalShipping: "ngeHmeH mIw, HIjmeH mIw je",
+      legalReturns: "tep tatlhmeH mIw, je'Ha'meH DIb je",
+      legalPrivacy: "De' QanmeH mIw",
+    },
+    languageNavLabel: "Hol",
+    socialNavLabel: "ghom rarwI'mey",
+    draftNote: "qonmeH ghItlh; SIr'o' Daq vu'wI' lajbe'pu'.",
+    noticeHeading: "chut QInvam naQbe'.",
+    noticeBody: (missing) =>
+      `DaqvamvaD De'vam lanlu'be'pu'; bIngDaq ngu'lu': ${missing.join(", ")}. ` +
+      "De'vam lanlu'pa', chut QInvam naQbe'; naQ 'e' yIHarQo'.",
+  },
 };
 
 /**
- * The language switcher's link labels, keyed by the **target** edition and
- * written in the target's own language — a reader looking for their language
- * must be able to recognise it without already reading the page's. The
- * rendered anchor also carries `lang` and `hreflang` set to the target's
- * language tag, for the same reason spoken aloud to a screen reader.
+ * The name of each edition's language, written in that language: a reader
+ * looking for their language must be able to recognise it without reading
+ * the page's. `LanguageSelector` renders one per listed edition, and marks
+ * it with `lang` so a screen reader pronounces it as its speakers do.
  */
 export const LANGUAGE_SWITCHER_LABELS: Readonly<Record<Locale, string>> = {
-  en: "In English",
-  et: "Eesti keeles",
+  en: "English",
+  de: "Deutsch",
+  et: "Eesti",
+  tlh: "tlhIngan Hol",
 };

@@ -676,13 +676,41 @@ describe("binary assets are derivatives, not masters", () => {
  * accidental substitution (a different file at the same path) fails this
  * hash check immediately, rather than silently shipping something nobody
  * re-verified as tagged and selectable.
+ *
+ * A translated rulebook, `lunar-base-rulebook-<locale>.pdf`, is built in this
+ * repository from the master and the edition's text, so its pin is the hash
+ * the build recorded in `rulebook/manifest.json`, which `npm run
+ * rulebook:check` verified as tagged, in the edition's language and with
+ * every frame's text extractable. The pin is not copied here: one that could
+ * drift from the manifest would be two answers to one question. A translated
+ * PDF the manifest does not record matches nothing and fails.
  */
 const RULEBOOK_MASTER_SHA256 = "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee";
 const MAX_PDF_ASSET_BYTES = 10_000_000;
+const TRANSLATED_RULEBOOK = /^public\/documents\/lunar-base-rulebook-([A-Za-z0-9-]+)\.pdf$/;
+const builtRulebooks = (JSON.parse(readFileSync(join(storefrontDir, "../rulebook/manifest.json"), "utf8")) as {
+  editions: Record<string, { pdf: { sha256: string } }>;
+}).editions;
 
-describe("the committed rulebook PDF is the exact, verified master", () => {
+/** The hash a committed PDF has to have: the master's, or the one its build recorded. */
+function pinnedSha256(name: string): string | undefined {
+  const locale = TRANSLATED_RULEBOOK.exec(name)?.[1];
+  return locale === undefined ? RULEBOOK_MASTER_SHA256 : builtRulebooks[locale]?.pdf.sha256;
+}
+
+describe("each committed rulebook PDF is the exact file that was verified", () => {
   it("found the rulebook to hold to the policy", () => {
     expect(pdfFiles.length).toBeGreaterThan(0);
+  });
+
+  it("pins the master by its own hash, a translated rulebook by its build's record, and an unrecorded one by nothing", () => {
+    expect(pinnedSha256("public/documents/lunar-base-rulebook.pdf")).toBe(RULEBOOK_MASTER_SHA256);
+    expect(pinnedSha256("public/documents/other.pdf")).toBe(RULEBOOK_MASTER_SHA256);
+    // Destructured, because the scan above reads a dotted locale as a hostname.
+    const { de: german } = builtRulebooks;
+    expect(german?.pdf.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(pinnedSha256("public/documents/lunar-base-rulebook-de.pdf")).toBe(german?.pdf.sha256);
+    expect(pinnedSha256("public/documents/lunar-base-rulebook-xx.pdf")).toBeUndefined();
   });
 
   for (const file of pdfFiles) {
@@ -692,13 +720,14 @@ describe("the committed rulebook PDF is the exact, verified master", () => {
       expect(file.bytes).toBeLessThan(MAX_PDF_ASSET_BYTES);
     });
 
-    it(`${file.name} matches the sha256 of the verified tagged-and-selectable master`, () => {
+    it(`${file.name} matches the sha256 pinned for it: the verified master's, or the one its build recorded`, () => {
       const actual = createHash("sha256").update(file.bytesRead).digest("hex");
       expect(
         actual,
-        `${file.name} does not match the master this guard pinned — re-verify it with pdfinfo/pdftotext ` +
-          "(Tagged: yes, not encrypted, real extractable text) before updating RULEBOOK_MASTER_SHA256",
-      ).toBe(RULEBOOK_MASTER_SHA256);
+        `${file.name} does not match the hash pinned for it — re-verify the master with pdfinfo/pdftotext ` +
+          "(Tagged: yes, not encrypted, real extractable text) before updating RULEBOOK_MASTER_SHA256; " +
+          "rebuild a translated rulebook with npm run rulebook:build and check it with npm run rulebook:check",
+      ).toBe(pinnedSha256(file.name));
     });
   }
 });

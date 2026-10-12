@@ -37,7 +37,7 @@
  * a named, visible gap and a notice, never a silently dropped line. Article 19
  * is not satisfied by a page that looks complete.
  */
-import { productSafety } from "../../../content/lunar-base.js";
+import { siteCopyFor } from "../../../content/editions.js";
 import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../content/routes.js";
 import {
   labelFor,
@@ -50,22 +50,17 @@ export interface ProductSafetyBlockProps {
   /** From runtime configuration (`getRuntimeConfig().merchant`), projected. */
   readonly values: ConfigurationPlaceholderValues;
   /**
-   * The edition this block is served in. It selects the collation for the
-   * incompleteness list below and nothing else.
-   *
-   * It does **not** select the copy. `productSafety` comes from
-   * `content/lunar-base.ts`, which is not locale-registered — the product
-   * page has no localized renderer for exactly that reason, so this block is
-   * only ever served in the default edition today. The parameter exists so
-   * that the day the product page does get one, the sort is already right
-   * rather than pinned to a literal nobody remembers to change.
+   * Selects the safety copy, the gap notice, and the collation used for
+   * the incompleteness list.
    */
   readonly locale?: Locale;
 }
 
 export function ProductSafetyBlock({ values, locale = DEFAULT_LOCALE }: ProductSafetyBlockProps) {
-  const manufacturer = resolveRequiredProse(productSafety.manufacturer.body, values);
-  const safety = resolveRequiredProse(productSafety.safety.body, values);
+  const copy = siteCopyFor(locale);
+  const { productSafety } = copy.lunarBase;
+  const manufacturer = resolveRequiredProse(productSafety.manufacturer.body, values, locale);
+  const safety = resolveRequiredProse(productSafety.safety.body, values, locale);
   /*
    * Sorted by the label a reader sees, not by the token behind it — and with
    * an explicit collation, because `localeCompare` with none takes the
@@ -84,8 +79,8 @@ export function ProductSafetyBlock({ values, locale = DEFAULT_LOCALE }: ProductS
 
       {missing.length > 0 ? (
         <p role="alert" className={styles.notice} data-testid="product-safety-incomplete-notice">
-          This manufacturer information is incomplete: {missing.map((token) => labelFor(token, locale)).join(", ")}{" "}
-          {missing.length === 1 ? "has" : "have"} not been configured for this deployment.
+          {(missing.length === 1 ? copy.interface.product.safetyIncompleteSingle : copy.interface.product.safetyIncompletePlural)
+            .replace("%missing%", missing.map((token) => labelFor(token, locale)).join(", "))}
         </p>
       ) : null}
 

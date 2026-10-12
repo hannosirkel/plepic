@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_LOCALE, LOCALES, ROUTE_PATHS } from "../../content/routes.js";
+import { CHECKOUT_RETURN_PATH, DEFAULT_LOCALE, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../content/routes.js";
 import { alternateLinksFor, pagesIn } from "../src/lib/seo.js";
 import { buildSitemapEntries } from "../src/lib/sitemap-contract.js";
 import { canonicalUrl, localizedPath } from "../src/lib/urls.js";
@@ -22,12 +22,44 @@ describe("buildSitemapEntries: the sitemap contract", () => {
     expect(new Set(actual).size).toBe(entries.length);
   });
 
+  /*
+   * Written out, not derived: the test above reads its expectation from the
+   * page registry, so it would agree with an edition that published nothing.
+   */
+  it("gives each translated edition one entry per indexable route, and names it in every alternate set", () => {
+    const indexable = [
+      "", "/games/lunar-base", "/support/lunar-base", "/support/lunar-base/rulebook",
+      "/legal/imprint", "/legal/terms", "/legal/privacy", "/legal/shipping", "/legal/returns",
+    ];
+    for (const locale of ["de", "et", "tlh"] as const) {
+      const paths = entries.filter((entry) => entry.locale === locale).map((entry) => entry.path);
+      expect(paths.toSorted(), locale).toEqual(indexable.map((path) => `/${locale}${path}`).toSorted());
+    }
+    expect(entries).toHaveLength(indexable.length * LOCALES.length);
+    for (const entry of entries) {
+      const languages = ["de", "en", "et", "tlh", "x-default"];
+      expect(Object.keys(entry.alternates).toSorted(), entry.path).toEqual(languages);
+      expect(entry.alternates.et, entry.path).toBe(`${BASE_URL}/et${ROUTE_PATHS[entry.routeId] === "/" ? "" : ROUTE_PATHS[entry.routeId]}`);
+      expect(entry.alternates.tlh, entry.path).toBe(`${BASE_URL}/tlh${ROUTE_PATHS[entry.routeId] === "/" ? "" : ROUTE_PATHS[entry.routeId]}`);
+    }
+  });
+
   it("never lists /cart or /checkout, in any locale", () => {
     for (const locale of LOCALES) {
       for (const route of ["cart", "checkout"] as const) {
         const path = localizedPath(locale, ROUTE_PATHS[route]);
         expect(entries.some((entry) => entry.path === path)).toBe(false);
       }
+    }
+  });
+
+  it("keeps payment return outside route ids and every edition's sitemap", () => {
+    expect(Object.keys(ROUTE_PATHS)).toEqual([
+      "home", "lunarBase", "about", "support", "rulebook", "cart", "checkout",
+      "legalImprint", "legalTerms", "legalPrivacy", "legalShipping", "legalReturns",
+    ]);
+    for (const locale of LOCALES) {
+      expect(entries.some((entry) => entry.path === localizedPath(locale, CHECKOUT_RETURN_PATH))).toBe(false);
     }
   });
 
@@ -72,13 +104,17 @@ describe("buildSitemapEntries: the sitemap contract", () => {
   });
 
   /**
-   * One `hreflang` map, two consumers. If the sitemap computed its own, the
+   * One `hreflang` map, shared by the page and sitemap. If the sitemap computed its own, the
    * two would be free to disagree about which editions of a page exist — and
    * a crawler reading both would have no way to tell which was stale.
    */
   it("annotates every entry with the same alternates the page itself emits", () => {
     for (const entry of entries) {
       expect(entry.alternates).toEqual(alternateLinksFor(BASE_URL, entry.routeId));
+      const publishing = LOCALES.filter((locale) => pagesIn(locale).some((page) => page.route === entry.routeId));
+      expect(Object.keys(entry.alternates).toSorted()).toEqual(
+        [...publishing.map((locale) => LOCALE_DEFINITIONS[locale].languageTag), "x-default"].toSorted(),
+      );
     }
   });
 });

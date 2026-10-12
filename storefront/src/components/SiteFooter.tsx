@@ -31,24 +31,13 @@
  * and both are exercised — a footer given no `externalTargets`, which is every
  * static mockup, still renders the text-only form.
  */
-import {
-  DEFAULT_LOCALE,
-  LOCALE_DEFINITIONS,
-  ROUTE_PATHS,
-  type ExternalTargetId,
-  type Locale,
-  type RouteId,
-} from "../../../content/routes.js";
-import { publisherShort } from "../../../content/publisher.js";
+import { DEFAULT_LOCALE, type ExternalTargetId, type Locale, type RouteId } from "../../../content/routes.js";
+import { siteCopyByLocale } from "../../../content/editions.js";
+import { LanguageSelector } from "./LanguageSelector.js";
 import { resolveLinkHref } from "./mockups/link-target.js";
 import type { ExternalTargetUrls } from "../config/runtime-config.js";
-import {
-  CHROME_STRINGS,
-  LANGUAGE_SWITCHER_LABELS,
-  type LegalRouteId,
-} from "../lib/chrome-strings.js";
-import { localesPublishing, localizedLinkFor } from "../lib/seo.js";
-import { localizedPath } from "../lib/urls.js";
+import { CHROME_STRINGS, type LegalRouteId } from "../lib/chrome-strings.js";
+import { localizedLinkFor } from "../lib/seo.js";
 import styles from "../styles/site-footer.module.css";
 
 /** Light-on-dark, unconditionally — see the file comment above. */
@@ -69,23 +58,12 @@ export interface SiteFooterProps {
    * `CHROME_STRINGS[locale]`; the legal links stay inside the edition, per
    * `localizedLinkFor`. Defaults to the default locale, so an English page's
    * labels and link targets are unchanged.
-   *
-   * **Not "the English pages render exactly what they always have".** That
-   * sentence stood here through a review pass and was wrong: this is the
-   * component that adds the language-switcher `<nav>`, so the five English
-   * legal pages each gained ten lines of markup. No URL moved and nothing else
-   * changed — but the claim as written overstated it, which is precisely the
-   * error the switcher's own doc four lines below does not make.
    */
   readonly locale?: Locale;
   /**
-   * The route of the page this footer sits on. When given, and when another
-   * edition publishes the same route, the footer renders a language
-   * switcher: one link per other publishing edition, at that edition's own
-   * URL for **this** page, labelled in the target's own language with `lang`
-   * and `hreflang` saying so. This is the one place a reader can cross
-   * editions without retyping a URL — before it existed, `/et` had no
-   * internal inbound link at all and no way back out but the browser bar.
+   * The route of the page this footer sits on, handed to `LanguageSelector`
+   * so each edition's link leads to this same page there. Every route view
+   * passes it. Absent, the links lead to each edition's home page.
    */
   readonly route?: RouteId;
   /**
@@ -107,6 +85,7 @@ export function SiteFooter({
   externalTargets = {},
 }: SiteFooterProps) {
   const strings = CHROME_STRINGS[locale];
+  const publisherShort = siteCopyByLocale[locale]?.publisher.publisherShort;
   const social = SOCIAL_LINK_ORDER.map((entry) => ({
     ...entry,
     href: resolveLinkHref({ kind: "external", to: entry.target }, externalTargets),
@@ -114,47 +93,23 @@ export function SiteFooter({
   const navigableSocial = social.filter(
     (entry): entry is (typeof social)[number] & { href: string } => entry.href !== undefined,
   );
-  const alternates =
-    route === undefined
-      ? []
-      : localesPublishing(route)
-          .filter((candidate) => candidate !== locale)
-          .map((candidate) => ({
-            locale: candidate,
-            href: localizedPath(candidate, ROUTE_PATHS[route]),
-            label: LANGUAGE_SWITCHER_LABELS[candidate],
-            languageTag: LOCALE_DEFINITIONS[candidate].languageTag,
-          }));
-
   return (
     <footer className={styles.footer}>
       <div className={styles.top}>
         <img className={styles.wordmark} src={FOOTER_WORDMARK_SRC} alt="Plepic Games" width={140} height={47} />
-        <p className={styles.tagline}>{publisherShort.text}</p>
+        {publisherShort === undefined ? null : <p className={styles.tagline}>{publisherShort.text}</p>}
       </div>
 
-      <nav className={styles.legal} aria-label={strings.legalNavLabel}>
-        {LEGAL_LINK_ORDER.map((legalRoute) => (
-          <a key={legalRoute} {...localizedLinkFor(locale, legalRoute)}>
-            {strings.legalLinkLabels[legalRoute]}
-          </a>
-        ))}
-      </nav>
-
-      {alternates.length > 0 ? (
-        <nav className={styles.legal} aria-label={strings.languageNavLabel}>
-          {alternates.map((alternate) => (
-            <a
-              key={alternate.locale}
-              href={alternate.href}
-              lang={alternate.languageTag}
-              hrefLang={alternate.languageTag}
-            >
-              {alternate.label}
+      <div className={styles.links}>
+        <nav className={styles.legal} aria-label={strings.legalNavLabel}>
+          {LEGAL_LINK_ORDER.map((legalRoute) => (
+            <a key={legalRoute} {...localizedLinkFor(locale, legalRoute)}>
+              {strings.legalLinkLabels[legalRoute]}
             </a>
           ))}
         </nav>
-      ) : null}
+        <LanguageSelector locale={locale} route={route} />
+      </div>
 
       {navigableSocial.length === social.length ? (
         <nav className={styles.social} aria-label={strings.socialNavLabel}>

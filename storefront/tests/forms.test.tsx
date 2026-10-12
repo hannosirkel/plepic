@@ -32,7 +32,9 @@ vi.mock("../src/config/runtime-config.js", () => ({
   getRuntimeConfig: () => ({ medusa: { backendUrl: "http://backend.test", publishableKey: "pk_test" } }),
 }));
 
+import { siteCopyByLocale } from "../../content/editions.js";
 import { newsletter as newsletterCopy } from "../../content/publisher.js";
+import { LOCALES } from "../../content/routes.js";
 import { ContactForm } from "../src/components/forms/ContactForm.js";
 import { NewsletterForm } from "../src/components/forms/NewsletterForm.js";
 import {
@@ -243,6 +245,33 @@ describe("a forged previous state cannot become part of the answer", () => {
       }
     });
   }
+});
+
+/**
+ * The edition a form was rendered in comes back as a posted field, so it is
+ * whatever the client sent. `tests/support-edition.test.tsx` shows the answer
+ * follows the edition under a fixture; this checks the same rule against the
+ * complete copy shipped for every declared edition.
+ */
+describe("the answer's edition is a posted value, and only a usable one is believed", () => {
+  const post = (locale: string): FormData => {
+    const form = newsletterForm();
+    form.set("locale", locale);
+    return form;
+  };
+
+  it("answers in English, without throwing, for a value that is not a declared locale", async () => {
+    for (const value of ["xx", "EN", "", "constructor", "<b>et</b>"]) {
+      expect((await submitNewsletter(null, post(value))).message, value).toBe(newsletterCopy.successMessage);
+    }
+  });
+
+  it("answers every declared locale in its own copy", async () => {
+    for (const locale of LOCALES) {
+      const expected = siteCopyByLocale[locale].publisher.newsletter.successMessage;
+      expect((await submitNewsletter(null, post(locale))).message, locale).toBe(expected);
+    }
+  });
 });
 
 describe("the Turnstile widget renders at a size that fits the card it sits in", () => {

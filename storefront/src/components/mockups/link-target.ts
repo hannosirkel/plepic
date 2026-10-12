@@ -51,9 +51,10 @@
  * from a dead link and should be built as one when it exists, not kept warm
  * here on the strength of a case that turned out not to be one.
  */
-import { ROUTE_PATHS } from "../../../../content/routes.js";
+import { ROUTE_PATHS, type Locale } from "../../../../content/routes.js";
 import type { LinkTarget } from "../../../../content/schema.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
+import { localizedLinkFor } from "../../lib/seo.js";
 
 export function resolveLinkHref(
   target: LinkTarget,
@@ -69,4 +70,36 @@ export function resolveLinkHref(
     default:
       return undefined;
   }
+}
+
+export interface ResolvedLink {
+  /** `undefined` exactly where {@link resolveLinkHref} answers `undefined`. */
+  readonly href: string | undefined;
+  /** Set when a route target had to cross into the default edition -- see `localizedLinkFor`. */
+  readonly hrefLang?: string;
+}
+
+/**
+ * {@link resolveLinkHref} for a page served in `locale`.
+ *
+ * A route target is answered by `localizedLinkFor` in `src/lib/seo.ts`, the
+ * rule the header and the footer already follow: the edition's own URL where
+ * the edition publishes the route, the default edition's URL and its language
+ * tag where it does not. The target's anchor is kept either way. An in-page
+ * anchor and an external target have no edition, and resolve as they always
+ * have.
+ *
+ * For the default locale this is {@link resolveLinkHref}'s answer with no
+ * `hrefLang`, so a caller that passes no locale renders what it rendered
+ * before this existed.
+ */
+export function resolveLocalizedLink(
+  locale: Locale,
+  target: LinkTarget,
+  externalUrls: ExternalTargetUrls = {},
+): ResolvedLink {
+  if (target.kind !== "route") return { href: resolveLinkHref(target, externalUrls) };
+
+  const link = localizedLinkFor(locale, target.to);
+  return target.anchor ? { ...link, href: `${link.href}#${target.anchor}` } : link;
 }

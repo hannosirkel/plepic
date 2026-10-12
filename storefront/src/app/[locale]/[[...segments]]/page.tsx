@@ -14,11 +14,8 @@
  * those are not this site's URLs, and serving them would give every page two
  * canonicals.
  *
- * `searchParams` is deliberately not threaded through. No route with a
- * locale-aware renderer reads one — `?mock=` belongs to the basket and the
- * checkout, which have no localized renderer and therefore no localized URL.
- * Adding the parameter before a route needs it would be adding an untested
- * path into request handling.
+ * `searchParams` reaches the basket renderer so `?mock=` selects the same
+ * server-rendered state under a prefixed edition as under the default URL.
  */
 
 import type { Metadata } from "next";
@@ -27,8 +24,10 @@ import { notFound } from "next/navigation";
 import { isTestHost, loadSiteHostConfig } from "../../../config/hosts.js";
 import { buildPageMetadata } from "../../../lib/seo.js";
 import { getRequestHost } from "../../../lib/request-host.js";
-import { LOCALIZED_ROUTE_VIEWS, resolveLocalizedRoute } from "../../localized-routes.js";
-import { NOT_FOUND_TITLE } from "../../not-found-content.js";
+import { CheckoutReturnRoute, LOCALIZED_ROUTE_VIEWS, resolveLocalizedRoute } from "../../localized-routes.js";
+import { siteCopyByLocale } from "../../../../../content/editions.js";
+import { interfaceCopy } from "../../../../../content/interface.js";
+import { parseLocalizedPath } from "../../../lib/urls.js";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +60,9 @@ export async function generateMetadata({
    * always attaches both.
    */
   if (resolved === null) {
-    return { title: NOT_FOUND_TITLE, robots: { index: false, follow: false } };
+    const edition = parseLocalizedPath(`/${locale}`).locale;
+    const title = (siteCopyByLocale[edition]?.interface ?? interfaceCopy).notFound.title;
+    return { title, robots: { index: false, follow: false } };
   }
 
   const hostConfig = loadSiteHostConfig();
@@ -76,14 +77,18 @@ export async function generateMetadata({
 
 export default async function LocalizedPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<LocalizedRouteParams>;
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale, segments } = await params;
   const resolved = resolveLocalizedRoute(locale, segments);
   if (resolved === null) notFound();
 
-  const View = LOCALIZED_ROUTE_VIEWS[resolved.routeId];
+  const View = resolved.view === "checkoutReturn"
+    ? CheckoutReturnRoute
+    : LOCALIZED_ROUTE_VIEWS[resolved.routeId];
   /*
    * Unreachable through `resolveLocalizedRoute`, which returns null for a
    * route with no view. Written out rather than asserted away, because the
@@ -92,5 +97,5 @@ export default async function LocalizedPage({
    */
   if (View === undefined) notFound();
 
-  return <View routeId={resolved.routeId} locale={resolved.locale} />;
+  return <View routeId={resolved.routeId} locale={resolved.locale} searchParams={searchParams} />;
 }

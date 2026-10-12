@@ -35,6 +35,7 @@ import {
   SOURCES,
 } from "./evidence.js";
 import { pagesByLocale } from "./index.js";
+import { siteCopyByLocale, siteCopyFor } from "./editions.js";
 import { legalPages, legalPagesByLocale } from "./legal/index.js";
 import { pages } from "./pages.js";
 import { proofStrip, quotations } from "./proof.js";
@@ -273,13 +274,12 @@ describe("file coverage", () => {
    * from the walk above, and there is no honest reason for copy to be computed,
    * so the rule is simply that content exports none.
    *
-   * `schema.ts` is the one exception: it holds the model's placeholder helpers
-   * and no copy. `index.ts` inherits them by re-export, and is held to
-   * introducing none of its own.
+   * `schema.ts` holds model helpers; `editions.ts` holds the site-copy accessor.
+   * Both are copy-free helper modules. The barrel may re-export these helpers.
    */
   it("exports no functions outside the model", () => {
     const offenders = scanned
-      .filter((file) => file.name !== "schema.ts" && file.name !== "index.ts")
+      .filter((file) => !["schema.ts", "editions.ts", "index.ts"].includes(file.name))
       .flatMap((file) => file.functions.map((path) => `${file.name}${path}`));
 
     expect(offenders).toEqual([]);
@@ -293,7 +293,7 @@ describe("file coverage", () => {
         ),
       );
 
-    const model = names("schema.ts");
+    const model = new Set([...names("schema.ts"), ...names("editions.ts")]);
     expect(model.size).toBeGreaterThan(0);
     for (const exported of names("index.ts")) {
       expect(model.has(exported), `index.ts exports ${exported}, which schema.ts does not`).toBe(
@@ -619,10 +619,20 @@ const COOKIE_TABLE_LANGUAGE: Readonly<
     hedgedDuration: /^(?:Up to |Varies)/,
     consentStatements: ["only with your consent", "do not require consent"],
   },
+  de: {
+    columns: ["Cookie", "Anbieter", "Zweck", "Speicherdauer"],
+    hedgedDuration: /^(?:Bis zu |Unterschiedlich)/,
+    consentStatements: ["nur mit Ihrer Einwilligung", "bedürfen keiner Einwilligung"],
+  },
   et: {
     columns: ["Küpsis", "Teenusepakkuja", "Otstarve", "Kestus"],
     hedgedDuration: /^(?:Kuni |Varieerub)/,
     consentStatements: ["ainult sinu nõusolekul", "ega vaja nõusolekut"],
+  },
+  tlh: {
+    columns: ["De' chabHom", "nobwI'", "ngoQ", "poH"],
+    hedgedDuration: /^(?:'aqroS: |pIm)/,
+    consentStatements: ["bIghIbchugh neH", "bIghIbnISbe'"],
   },
 };
 
@@ -1053,19 +1063,17 @@ describe("the page registry", () => {
  * Everything here is written over `LOCALES` rather than over the literal
  * `"en"`, so it states what a published edition must be rather than what
  * today's single edition happens to be — with one deliberate exception, the
- * count, which is pinned because a second locale arriving without a decision
+ * count, which is pinned because a new locale arriving without a decision
  * is a failure rather than progress.
  */
 describe("the locale dimension", () => {
   /**
-   * Still pinned, now at two. A locale appearing — or disappearing — without
-   * anybody deciding it is a failure, not progress. `et` is the operator's
-   * decision of 2026-08-09: the legal set translated for the Estonian
-   * consumer, after the second qualified legal read found consumer-facing
-   * terms in English only.
+   * Pinned at four. A locale appearing — or disappearing — without
+   * anybody deciding it is a failure, not progress. All four editions now
+   * publish the full site and a rulebook.
    */
-  it("has exactly the two decided locales, and the default is the English one", () => {
-    expect([...LOCALES]).toEqual(["en", "et"]);
+  it("has exactly the four decided locales, and the default is the English one", () => {
+    expect([...LOCALES]).toEqual(["en", "de", "et", "tlh"]);
     expect(DEFAULT_LOCALE).toBe("en");
   });
 
@@ -1124,6 +1132,7 @@ describe("the locale dimension", () => {
   it("registers every locale in every locale-keyed registry", () => {
     for (const [name, registry] of [
       ["pagesByLocale", pagesByLocale],
+      ["siteCopyByLocale", siteCopyByLocale],
       ["legalPagesByLocale", legalPagesByLocale],
     ] as const) {
       expect(Object.keys(registry).toSorted(), name).toEqual([...LOCALES].toSorted());
@@ -1135,6 +1144,21 @@ describe("the locale dimension", () => {
       expect(contentFor(pagesByLocale, locale)).toBe(pagesByLocale[locale]);
     }
     expect(contentFor(legalPagesByLocale, DEFAULT_LOCALE)).toBe(legalPages);
+  });
+
+  it("keeps published site copy available in each edition, each from its own modules", () => {
+    for (const locale of LOCALES) {
+      expect(siteCopyFor(locale)).toBe(siteCopyByLocale[locale]);
+      expect(siteCopyFor(locale).pages.pages, locale).toBe(pagesByLocale[locale]);
+    }
+    expect(siteCopyFor("et").shop).not.toBe(siteCopyFor("en").shop);
+  });
+
+  it("publishes the same route ids in every edition", () => {
+    const englishRoutes = pagesByLocale.en.map((page) => page.route).toSorted();
+    for (const locale of LOCALES) {
+      expect(pagesByLocale[locale].map((page) => page.route).toSorted(), locale).toEqual(englishRoutes);
+    }
   });
 
   /**

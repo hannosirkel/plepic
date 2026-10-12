@@ -4,7 +4,10 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { loadStripe } from "@stripe/stripe-js";
 import { forwardRef, useImperativeHandle, useMemo } from "react";
 
+import { siteCopyFor } from "../../../../content/editions.js";
+import { CHECKOUT_RETURN_PATH, DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { stripeConfirmationForStatus, type StripeConfirmation } from "../../lib/store-payment.js";
+import { localizedPath } from "../../lib/urls.js";
 
 export interface StripePaymentElementHandle {
   readonly confirm: () => Promise<StripeConfirmation>;
@@ -12,10 +15,12 @@ export interface StripePaymentElementHandle {
 
 interface InnerPaymentElementProps {
   readonly returnUrl: string;
+  readonly locale: Locale;
 }
 
 const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentElementProps>(
-  function InnerPaymentElement({ returnUrl }, ref) {
+  function InnerPaymentElement({ returnUrl, locale }, ref) {
+    const copy = siteCopyFor(locale).interface.checkout;
     const stripe = useStripe();
     const elements = useElements();
 
@@ -24,7 +29,7 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
       () => ({
         async confirm() {
           if (stripe === null || elements === null) {
-            return { ok: false, pending: false, reportFailure: false, message: "Payment options are still loading" };
+            return { ok: false, pending: false, reportFailure: false, message: copy.paymentFormLoading };
           }
           const result = await stripe.confirmPayment({
             elements,
@@ -36,15 +41,20 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
               ok: false,
               pending: false,
               reportFailure: true,
-              message: "Payment could not be confirmed. Check the details or choose another method.",
+              message: copy.paymentNotConfirmed,
             };
           }
           const confirmation = stripeConfirmationForStatus(result.paymentIntent?.status);
-          if (!confirmation.ok && confirmation.pending) window.location.assign(returnUrl);
-          return confirmation;
+          if (confirmation.ok) return confirmation;
+          if (confirmation.pending) window.location.assign(returnUrl);
+          // What happened is `stripeConfirmationForStatus`'s to say. The sentence is the edition's.
+          return {
+            ...confirmation,
+            message: confirmation.pending ? copy.paymentProcessing : copy.paymentNotConfirmed,
+          };
         },
       }),
-      [elements, returnUrl, stripe],
+      [copy, elements, returnUrl, stripe],
     );
 
     return (
@@ -89,29 +99,44 @@ const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentE
 export interface StripePaymentElementProps {
   readonly publishableKey: string | null;
   readonly clientSecret: string | null;
+  /** The edition the checkout is served in. The default edition's when absent. */
+  readonly locale?: Locale;
+}
+
+/**
+ * Where Stripe sends a visitor back to after a redirect-based payment: the
+ * return page of the edition they paid from, on the origin they paid on.
+ *
+ * So a visitor who paid from `/et/checkout` returns under `/et`. The origin
+ * is the browser's own, never a configured one: no per-environment value is
+ * built into this bundle.
+ */
+export function checkoutReturnUrl(origin: string, locale: Locale): string {
+  return `${origin}${localizedPath(locale, CHECKOUT_RETURN_PATH)}`;
 }
 
 /** Loads Stripe.js only once Medusa has produced an amount-bound client secret. */
 export const StripePaymentElement = forwardRef<
   StripePaymentElementHandle,
   StripePaymentElementProps
->(function StripePaymentElement({ publishableKey, clientSecret }, ref) {
+>(function StripePaymentElement({ publishableKey, clientSecret, locale = DEFAULT_LOCALE }, ref) {
+  const copy = siteCopyFor(locale).interface.checkout;
   const stripe = useMemo(
     () => (publishableKey === null || clientSecret === null ? null : loadStripe(publishableKey)),
     [clientSecret, publishableKey],
   );
 
   if (publishableKey === null) {
-    return <p role="alert">Payment is unavailable. Please try again later.</p>;
+    return <p role="alert">{copy.paymentUnavailable}</p>;
   }
   if (clientSecret === null || stripe === null) {
-    return <p role="status">Choose a delivery method to load payment options.</p>;
+    return <p role="status">{copy.paymentAwaitingDelivery}</p>;
   }
 
-  const returnUrl = `${window.location.origin}/checkout/payment-return`;
+  const returnUrl = checkoutReturnUrl(window.location.origin, locale);
   return (
     <Elements key={clientSecret} stripe={stripe} options={{ clientSecret }}>
-      <InnerPaymentElement ref={ref} returnUrl={returnUrl} />
+      <InnerPaymentElement ref={ref} returnUrl={returnUrl} locale={locale} />
     </Elements>
   );
 });

@@ -25,14 +25,21 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  RETIRED_ROUTES,
   ROUTE_PATHS,
   type Locale,
   type RouteId,
 } from "../../content/routes.js";
-import { contentFor } from "../../content/schema.js";
+import { contentFor, type Page } from "../../content/schema.js";
 import {
+  BasketRoute,
+  CheckoutRoute,
+  HomeRoute,
+  LunarBaseRoute,
   LegalRoute,
   LOCALIZED_ROUTE_VIEWS,
+  RulebookRoute,
+  SupportRoute,
   lookupLegalPage,
   resolveLocalizedRoute,
 } from "../src/app/localized-routes.js";
@@ -136,6 +143,24 @@ describe("localized paths", () => {
 });
 
 describe("resolveLocalizedRoute", () => {
+  for (const locale of ["de", "et", "tlh"] as const) {
+    it(`serves every active English route under ${locale}, plus the checkout return`, () => {
+      expect(pagesIn("en").map((page) => page.route).toSorted()).toEqual(
+        ROUTE_IDS.filter((routeId) => !Object.hasOwn(RETIRED_ROUTES, routeId)).toSorted(),
+      );
+      for (const page of pagesIn("en")) {
+        const segments = ROUTE_PATHS[page.route].split("/").filter(Boolean);
+        expect(resolveLocalizedRoute(locale, segments), page.route).toEqual({
+          locale, routeId: page.route,
+        });
+      }
+      expect(resolveLocalizedRoute(locale, ["about"])).toBeNull();
+      expect(resolveLocalizedRoute(locale, ["checkout", "payment-return"])).toEqual({
+        locale, routeId: "checkout", view: "checkoutReturn",
+      });
+    });
+  }
+
   it("refuses the default edition's own identifier", () => {
     expect(resolveLocalizedRoute(DEFAULT_LOCALE, ["legal", "imprint"])).toBeNull();
   });
@@ -209,23 +234,39 @@ describe("every published route can actually be rendered in its locale", () => {
   });
 
   /**
-   * The five legal routes are the ones whose renderer reads a locale-keyed
-   * registry. Pinned by name because the failure mode is a route quietly
-   * *leaving* the table — after which its locale URLs 404 and the suite above
-   * still passes, since a route nothing publishes needs no renderer.
+   * The routes whose renderer reads the edition it is given: the five legal
+   * routes, which read a locale-keyed registry, and the home page, the Lunar
+   * Base page, the support page, the rulebook page, the basket and the
+   * checkout, which read `siteCopyFor(locale)`. Pinned by name and by renderer because the
+   * failure mode is a route quietly *leaving* the table — after which its
+   * locale URLs 404 and the suite above still passes, since a route nothing
+   * publishes needs no renderer. A route joins this list in the change that
+   * makes its renderer locale-aware, and not before.
    */
-  it("carries the whole legal set and nothing that only looks locale-aware", () => {
-    expect(Object.keys(LOCALIZED_ROUTE_VIEWS).toSorted()).toEqual(
-      ["legalImprint", "legalPrivacy", "legalReturns", "legalShipping", "legalTerms"].toSorted(),
-    );
-    for (const routeId of Object.keys(LOCALIZED_ROUTE_VIEWS) as RouteId[]) {
-      expect(LOCALIZED_ROUTE_VIEWS[routeId]).toBe(LegalRoute);
-    }
+  it("carries the legal set and the home page, and nothing that only looks locale-aware", () => {
+    expect(LOCALIZED_ROUTE_VIEWS).toEqual({
+      home: HomeRoute,
+      lunarBase: LunarBaseRoute,
+      support: SupportRoute,
+      rulebook: RulebookRoute,
+      cart: BasketRoute,
+      checkout: CheckoutRoute,
+      legalImprint: LegalRoute,
+      legalPrivacy: LegalRoute,
+      legalReturns: LegalRoute,
+      legalShipping: LegalRoute,
+      legalTerms: LegalRoute,
+    });
   });
 
   it("finds a legal page for every legal route in every locale that publishes it", () => {
+    const legalRouteIds = (Object.keys(LOCALIZED_ROUTE_VIEWS) as RouteId[]).filter(
+      (routeId) => LOCALIZED_ROUTE_VIEWS[routeId] === LegalRoute,
+    );
+    expect(legalRouteIds).toHaveLength(5);
+
     for (const locale of LOCALES) {
-      for (const routeId of Object.keys(LOCALIZED_ROUTE_VIEWS) as RouteId[]) {
+      for (const routeId of legalRouteIds) {
         const published = pagesIn(locale).some((page) => page.route === routeId);
         const page = lookupLegalPage(routeId, locale as Locale);
         expect(page !== undefined, `${locale}:${routeId}`).toBe(published);
@@ -263,6 +304,49 @@ describe("the legal projection has one renderer", () => {
     for (const file of legalRoutes) {
       expect(file.code, `${file.name} does not render LegalRoute`).toMatch(/<LegalRoute\b/);
       expect(file.code, `${file.name} does not declare its locale`).toMatch(/DEFAULT_LOCALE/);
+    }
+  });
+});
+
+/**
+ * The same rule for the home page: `HomepageMockup` is rendered by
+ * `HomeRoute` and by nothing else, so the default edition's `/` and a
+ * prefixed edition's home page are one renderer handed two locales.
+ */
+describe("the home page has one renderer", () => {
+  it("is imported by localized-routes.tsx and by nothing else under src/", () => {
+    const importers = sourceFiles()
+      .filter((file) => /\bfrom\s+"[^"]*HomepageMockup\.js"/.test(file.code))
+      .map((file) => file.name);
+
+    expect(importers).toEqual(["app/localized-routes.tsx"]);
+  });
+
+  it("is what the default edition's home route renders", () => {
+    const home = sourceFiles().find((file) => file.name === "app/(site)/page.tsx");
+
+    expect(home?.code).toMatch(/<HomeRoute\b[^>]*\blocale=\{DEFAULT_LOCALE\}/);
+  });
+
+  /**
+   * `HomeRoute` asks the page registry itself. A caller that skips the route
+   * resolver still gets a 404 when the edition does not publish the home page.
+   */
+  it("answers 404 for an edition that does not publish the home page", async () => {
+    // Every edition publishes the home page now, so each has it withheld in turn.
+    const pages = pagesByLocale as Record<Locale, readonly Page[]>;
+
+    for (const locale of LOCALES) {
+      if (locale === DEFAULT_LOCALE) continue;
+      const published = pages[locale];
+      pages[locale] = published.filter((page) => page.route !== "home");
+      try {
+        await expect(HomeRoute({ routeId: "home", locale }), locale).rejects.toMatchObject({
+          digest: expect.stringContaining("404"),
+        });
+      } finally {
+        pages[locale] = published;
+      }
     }
   });
 });

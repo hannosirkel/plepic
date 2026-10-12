@@ -12,6 +12,40 @@ describe("RulebookPageContent", () => {
 
   it("points at the committed PDF under storefront/public/", () => {
     expect(html).toContain('href="/documents/lunar-base-rulebook.pdf"');
+    expect(html).toContain('hrefLang="en"');
+    expect(html).toContain("It is a 8.9 MB download");
+    expect(html).not.toContain("The rulebook is in English.");
+  });
+
+  it("links the German edition's own PDF, says what the file is and how large, and no longer calls the rulebook English", () => {
+    const german = renderToStaticMarkup(<RulebookPageContent locale="de" />);
+    expect(german).toContain('href="/documents/lunar-base-rulebook-de.pdf"');
+    expect(german).toContain('hrefLang="de"');
+    expect(german).not.toContain('href="/documents/lunar-base-rulebook.pdf"');
+    expect(german).toContain("Die vollständige Spielanleitung auf Deutsch");
+    expect(german).toContain("Der Download ist 9,5 MB groß");
+    expect(german).not.toContain("Die Spielanleitung ist auf Englisch.");
+  });
+
+  it("links the Estonian PDF and writes its size with a decimal comma", () => {
+    const estonian = renderToStaticMarkup(<RulebookPageContent locale="et" />);
+    expect(estonian).toContain('href="/documents/lunar-base-rulebook-et.pdf"');
+    expect(estonian).toContain('hrefLang="et"');
+    expect(estonian).toContain("Eestikeelne Lunar Base reegliraamat");
+    expect(estonian).toContain("Faili suurus on 9,5 MB");
+    expect(estonian).not.toContain("Reegliraamat on inglise keeles.");
+  });
+
+  it("links the Klingon PDF, says what the file is and how large, and no longer calls the rulebook English", () => {
+    const klingon = renderToStaticMarkup(<RulebookPageContent locale="tlh" />);
+    expect(klingon).toContain('href="/documents/lunar-base-rulebook-tlh.pdf"');
+    expect(klingon).toContain('hrefLang="tlh"');
+    expect(klingon).not.toContain('href="/documents/lunar-base-rulebook.pdf"');
+    expect(klingon).toContain("tlhIngan Hol mIw paq naQ");
+    expect(klingon).toContain("9.5");
+    expect(klingon).toContain("(MB)");
+    // The notice's own words, up to its first apostrophe, which the markup escapes.
+    expect(klingon).not.toContain("English Hol lo");
   });
 
   it("never links to the file-sharing host the rulebook used to live on — a completion criterion of the plan", () => {
