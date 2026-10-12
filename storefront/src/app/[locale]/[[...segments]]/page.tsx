@@ -14,11 +14,8 @@
  * those are not this site's URLs, and serving them would give every page two
  * canonicals.
  *
- * `searchParams` is deliberately not threaded through. No route with a
- * locale-aware renderer reads one — `?mock=` belongs to the basket and the
- * checkout, which have no localized renderer and therefore no localized URL.
- * Adding the parameter before a route needs it would be adding an untested
- * path into request handling.
+ * `searchParams` reaches the basket renderer so `?mock=` selects the same
+ * server-rendered state under a prefixed edition as under the default URL.
  */
 
 import type { Metadata } from "next";
@@ -76,8 +73,10 @@ export async function generateMetadata({
 
 export default async function LocalizedPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<LocalizedRouteParams>;
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale, segments } = await params;
   const resolved = resolveLocalizedRoute(locale, segments);
@@ -92,5 +91,5 @@ export default async function LocalizedPage({
    */
   if (View === undefined) notFound();
 
-  return <View routeId={resolved.routeId} locale={resolved.locale} />;
+  return <View routeId={resolved.routeId} locale={resolved.locale} searchParams={searchParams} />;
 }

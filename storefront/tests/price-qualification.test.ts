@@ -32,6 +32,8 @@
 import { describe, expect, it } from "vitest";
 
 import { checkout } from "../../content/shop.js";
+import { LOCALES, LOCALE_DEFINITIONS } from "../../content/routes.js";
+import { formatAmount } from "../src/lib/cart.js";
 import { resolveCatalogue } from "../src/lib/catalogue.js";
 import { destinationForCode, destinationForCountryName } from "../src/lib/destination.js";
 import {
@@ -98,6 +100,16 @@ const ESTONIA = destinationForCountryName("Estonia")!;
 const UNITED_STATES = destinationForCode("US");
 const estonianQualifier = resolveCatalogue(undefined, ESTONIA).priceQualifiers;
 const defaultQualifier = resolveCatalogue(undefined, UNITED_STATES).priceQualifiers;
+
+it("formats an amount with each edition's number format tag", () => {
+  for (const locale of LOCALES) {
+    const expected = new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
+      style: "currency", currency: "EUR",
+    }).format(7);
+    expect(formatAmount(700, "EUR", locale)).toBe(expected);
+  }
+  expect(formatAmount(700, "EUR", "en")).toBe("€7.00");
+});
 
 describe("the checkout's price qualification", () => {
   /**

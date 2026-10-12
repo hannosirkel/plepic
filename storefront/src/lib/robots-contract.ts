@@ -11,6 +11,7 @@
  */
 
 import type { MetadataRoute } from "next";
+import { DEFAULT_LOCALE, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
 
 export interface RobotsContractInput {
   readonly isTestHost: boolean;
@@ -28,7 +29,15 @@ export function buildRobotsRules(input: RobotsContractInput): MetadataRoute.Robo
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/cart", "/checkout", "/store-api"],
+      disallow: [
+        ROUTE_PATHS.cart,
+        ROUTE_PATHS.checkout,
+        ...LOCALES.filter((locale) => locale !== DEFAULT_LOCALE).flatMap((locale) => [
+          `${LOCALE_DEFINITIONS[locale].pathPrefix}${ROUTE_PATHS.cart}`,
+          `${LOCALE_DEFINITIONS[locale].pathPrefix}${ROUTE_PATHS.checkout}`,
+        ]),
+        "/store-api",
+      ],
     },
     sitemap: `${input.baseUrl}/sitemap.xml`,
   };

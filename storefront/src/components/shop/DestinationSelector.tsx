@@ -50,9 +50,12 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
+import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { siteCopyFor } from "../../../../content/editions.js";
 
 import {
   deliveryCountries,
+  destinationNameIn,
   DESTINATION_COOKIE_MAX_AGE_SECONDS,
   DESTINATION_COOKIE_NAME,
 } from "../../lib/destination.js";
@@ -75,6 +78,7 @@ export function rememberDestination(code: string): void {
 }
 
 export interface DestinationSelectorProps {
+  readonly locale?: Locale;
   /** The destination currently in effect, as an ISO 3166-1 alpha-2 code. */
   readonly destinationCode: string;
   /** The label a reader sees. Defaults to the wording the product surfaces use. */
@@ -83,24 +87,13 @@ export interface DestinationSelectorProps {
   readonly hint?: string;
 }
 
-export const DESTINATION_SELECTOR_LABEL = "Delivering to";
-
-/**
- * The sentence under the control.
- *
- * It states the limit rather than the feature, because the limit is the part a
- * reader needs: changing this changes the figure on the screen and nothing
- * about the bill.
- */
-export const DESTINATION_SELECTOR_HINT =
-  "This decides which price is shown, not what you are charged. " +
-  "The charge follows the delivery address you confirm at checkout.";
-
 export function DestinationSelector({
   destinationCode,
-  label = DESTINATION_SELECTOR_LABEL,
-  hint = DESTINATION_SELECTOR_HINT,
+  locale = DEFAULT_LOCALE,
+  label,
+  hint,
 }: DestinationSelectorProps) {
+  const copy = siteCopyFor(locale).interface.destinationSelector;
   const router = useRouter();
   const baseId = useId();
   const [selected, setSelected] = useState(destinationCode);
@@ -111,7 +104,7 @@ export function DestinationSelector({
   return (
     <div className={styles.selector}>
       <label className={styles.label} htmlFor={fieldId}>
-        {label}
+        {label ?? copy.label}
       </label>
       <select
         id={fieldId}
@@ -131,17 +124,17 @@ export function DestinationSelector({
       >
         {deliveryCountries.map((country) => (
           <option key={country.code} value={country.code}>
-            {country.name}
+            {destinationNameIn(country, locale)}
           </option>
         ))}
       </select>
       <p id={hintId} className={styles.hint}>
-        {hint}
+        {hint ?? copy.hint}
       </p>
       {/* Always in the document so the change is announced rather than merely
           appearing, and empty when nothing is happening. */}
       <p className={styles.status} role="status">
-        {pending ? "Updating the price…" : ""}
+        {pending ? copy.updatingPrice : ""}
       </p>
     </div>
   );

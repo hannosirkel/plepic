@@ -68,6 +68,8 @@ export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE = "en" satisfies Locale;
 
 export interface LocaleDefinition {
+  /** ICU tag used to format currency in this edition. */
+  readonly numberFormatTag: string;
   /**
    * BCP 47 language tag. Three things read it and nothing else may invent
    * one: the served document's `lang` attribute, the `hreflang` annotation on
@@ -99,14 +101,14 @@ export interface LocaleDefinition {
  * second locale creates.
  */
 export const LOCALE_DEFINITIONS: Readonly<Record<Locale, LocaleDefinition>> = {
-  en: { languageTag: "en", pathPrefix: "" },
+  en: { languageTag: "en", numberFormatTag: "en-IE", pathPrefix: "" },
   /*
    * `en` keeps the unprefixed paths it has always served — every existing
    * link into this site depends on that — and `et` is declared with its own
    * prefix rather than deriving one, per the field's own rule that "which
    * edition gets the unprefixed URLs" is a decision recorded in data.
    */
-  et: { languageTag: "et", pathPrefix: "/et" },
+  et: { languageTag: "et", numberFormatTag: "et-EE", pathPrefix: "/et" },
 };
 
 /**

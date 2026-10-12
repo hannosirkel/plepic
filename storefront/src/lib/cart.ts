@@ -83,6 +83,7 @@
  * "nothing is being stated", not "nothing".
  */
 
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../content/routes.js";
 import { mockCatalogue, type CatalogueAvailability, type CatalogueProduct } from "./catalogue.js";
 import {
   defaultDestination,
@@ -540,8 +541,8 @@ export function isAvailable(line: CartLine): boolean {
 }
 
 /** Formats minor units as a currency string. The one formatting entry point. */
-export function formatAmount(amount: number, currency: string): string {
-  return new Intl.NumberFormat("en-IE", { style: "currency", currency }).format(amount / 100);
+export function formatAmount(amount: number, currency: string, locale: Locale = DEFAULT_LOCALE): string {
+  return new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, { style: "currency", currency }).format(amount / 100);
 }
 
 export function lineAmount(line: CartLine): number {
