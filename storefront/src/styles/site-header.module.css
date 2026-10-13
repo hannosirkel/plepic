@@ -8,9 +8,24 @@
   gap: var(--space-md);
   min-height: var(--nav-height);
   padding-inline: max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
+  border-bottom: var(--nav-border-width) solid var(--nav-border-color);
+}
+
+/*
+ * The frosted background is a layer of its own, not a property of `.header`.
+ * `backdrop-filter` makes its element the containing block of every
+ * `position: fixed` descendant, so on the header it sized the narrow-viewport
+ * sheet and the scrim by the header's box instead of the viewport's: the
+ * sheet was as tall as the header and its links were drawn over the page with
+ * nothing behind them.
+ */
+.header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: color-mix(in srgb, var(--nav-bg) 94%, transparent);
   backdrop-filter: blur(14px);
-  border-bottom: var(--nav-border-width) solid var(--nav-border-color);
 }
 
 .brand {
