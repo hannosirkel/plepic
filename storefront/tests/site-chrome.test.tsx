@@ -303,6 +303,17 @@ describe("nothing off-screen or inert is left in the tab order", () => {
     );
   });
 
+  it("keeps the header from becoming the containing block of the fixed sheet", () => {
+    for (const property of ["backdrop-filter", "filter", "transform", "perspective", "contain", "will-change"]) {
+      expect(
+        blockFor(wideCss, ".header"),
+        `\`${property}\` on the header makes it the containing block of its \`position: fixed\` ` +
+          "descendants: the sheet is then as tall as the header, not the viewport, and the links " +
+          "overflow it with no background behind them. Put the effect on `.header::before`",
+      ).not.toMatch(new RegExp(`(^|[;\\s])${property}\\s*:`));
+    }
+  });
+
   it("shows the button disclosure only where the sheet exists", () => {
     expect(blockFor(wideCss, ".menuButton"), "the desktop menu button must be absent").toMatch(/display:\s*none/);
     expect(blockFor(narrowCss, ".menuButton"), "the mobile menu button must be visible").toMatch(/display:\s*inline-flex/);
