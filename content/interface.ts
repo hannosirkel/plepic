@@ -111,6 +111,16 @@ export interface InterfaceCopy {
     readonly addingToBasket: string;
     readonly retryAddingToBasket: string;
     readonly basketExpired: string;
+    /**
+     * The box at the top of the product page that leads to the online game,
+     * `PLAY_ONLINE_PATH` in `content/routes.ts`. The game is in English only:
+     * every other edition says so in `body`.
+     */
+    readonly playOnline: {
+      readonly heading: string;
+      readonly body: string;
+      readonly linkLabel: string;
+    };
   };
   /** Copy written by the checkout's components. `content/shop.ts` holds the rest of that page. */
   readonly checkout: {
@@ -267,6 +277,11 @@ export const interfaceCopy: InterfaceCopy = {
     addingToBasket: "Adding to basket…",
     retryAddingToBasket: "Try adding to basket again",
     basketExpired: "The basket expired; try adding the game again",
+    playOnline: {
+      heading: "Play online",
+      body: "Play Lunar Base in your browser for free, against other people or computer opponents. No account needed.",
+      linkLabel: "Play Lunar Base online",
+    },
   },
   checkout: {
     missing: {

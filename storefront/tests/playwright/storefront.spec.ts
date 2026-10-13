@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { pagesByLocale, siteCopyFor } from "../../../content/index.js";
-import { CHECKOUT_RETURN_PATH, LOCALES, LOCALE_DEFINITIONS, ROUTE_PATHS } from "../../../content/routes.js";
+import { CHECKOUT_RETURN_PATH, LOCALES, LOCALE_DEFINITIONS, PLAY_ONLINE_PATH, ROUTE_PATHS } from "../../../content/routes.js";
 import { localizedPath } from "../../src/lib/urls.js";
 
 test("Klingon lang prevents uppercase on a header navigation link", async ({ page }) => {
@@ -77,6 +77,16 @@ for (const locale of LOCALES) {
     await expect(headline).toContainText(new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
       style: "currency", currency: "EUR",
     }).format(31));
+  });
+}
+
+for (const locale of LOCALES) {
+  // Not clicked: the game is another process, and this suite serves the storefront alone.
+  test(`${locale} product page shows the way to the online game on its first screen`, async ({ page }) => {
+    await page.goto(localizedPath(locale, ROUTE_PATHS.lunarBase));
+    const link = page.locator(`main a[href="${PLAY_ONLINE_PATH}"]`);
+    await expect(link).toHaveCount(1);
+    await expect(link).toBeInViewport({ ratio: 1 });
   });
 }
 

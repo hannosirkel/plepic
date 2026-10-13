@@ -38,6 +38,8 @@ describe("the product page under the marker fixture", () => {
       expect(editionsMarkedIn(html)).toEqual([locale]);
       expect(html).toContain(markedFor(locale, english.lunarBase.pitch.text));
       expect(html).toContain(markedFor(locale, english.interface.product.victoryHeading));
+      expect(html).toContain(markedFor(locale, english.interface.product.playOnline.heading));
+      expect(html).toContain(markedFor(locale, english.interface.product.playOnline.linkLabel));
     });
 
     it(`shows no unmarked sentence in ${locale}`, () => {

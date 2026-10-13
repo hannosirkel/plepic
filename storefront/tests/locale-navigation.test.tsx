@@ -46,6 +46,7 @@ import {
   DEFAULT_LOCALE,
   LOCALES,
   LOCALE_DEFINITIONS,
+  PLAY_ONLINE_PATH,
   ROUTE_PATHS,
   type Locale,
   type RouteId,
@@ -327,6 +328,8 @@ describe("a complete translated edition keeps its navigation in its own edition"
         expect(anchors.length).toBeGreaterThan(0);
         for (const { href } of anchors) {
           if (href.startsWith("/documents/")) continue;
+          // The online game is not a route and has no edition; `tests/play-online.test.tsx` holds its link.
+          if (href === PLAY_ONLINE_PATH) continue;
           const path = href.split("#", 1)[0] ?? href;
           const parsed = parseLocalizedPath(path);
           const routeId = routeIdForPath(parsed.path);

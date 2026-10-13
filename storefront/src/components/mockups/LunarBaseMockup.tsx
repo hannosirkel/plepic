@@ -56,7 +56,7 @@
  * instead of at opposite ends of the page.
  */
 import { siteCopyFor } from "../../../../content/editions.js";
-import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, PLAY_ONLINE_PATH, type Locale } from "../../../../content/routes.js";
 import type { CallToAction } from "../../../../content/schema.js";
 import {
   PRICE_HEADLINE_SEPARATOR,
@@ -76,6 +76,7 @@ import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
 import { VideoEmbed } from "../video/VideoEmbed.js";
 import { CallToActionLink } from "./CallToActionLink.js";
+import ctaStyles from "../../styles/mockups/call-to-action.module.css";
 import styles from "../../styles/mockups/lunar-base.module.css";
 
 export interface LunarBaseMockupProps {
@@ -152,6 +153,33 @@ export function LunarBaseMockup({
 
       <main className={styles.main}>
         <section id="aboutgame" className={styles.hero}>
+          {/* The way to the online game, first in the hero: top right on a
+              wide viewport, above everything else on a narrow one. The
+              operator's report of 2026-10-13 was that no page of this site
+              linked to the game at all.
+
+              A plain anchor on purpose. The game is not a route of this
+              application: a path rule in front of it sends
+              `PLAY_ONLINE_PATH` to another process, so the browser has to ask
+              the server for it. The game is in English only and has one
+              address, so the link takes no edition prefix, and from any other
+              edition it says which language it leads to, as every link that
+              leaves an edition does.
+
+              Its title is a paragraph, not a heading: the box stands before
+              the pitch, and the pitch is the page's `<h1>` and its first
+              heading (`tests/design-assets.test.tsx`). */}
+          <div className={styles.playOnline} data-play-online="">
+            <p className={styles.playOnlineHeading}>{resolve(strings.playOnline.heading)}</p>
+            <p className={styles.playOnlineBody}>{resolve(strings.playOnline.body)}</p>
+            <a
+              className={`${ctaStyles.cta} ${ctaStyles.secondary} ${styles.playOnlineLink}`}
+              href={PLAY_ONLINE_PATH}
+              hrefLang={locale === DEFAULT_LOCALE ? undefined : LOCALE_DEFINITIONS[DEFAULT_LOCALE].languageTag}
+            >
+              {resolve(strings.playOnline.linkLabel)}
+            </a>
+          </div>
           <div className={styles.heroCopy}>
             {/* The page's one <h1>. This is the visually dominant text on the
                 page — `--step-5`, bold — and it is the product's own pitch, so
