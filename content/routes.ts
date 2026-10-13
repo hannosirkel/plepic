@@ -45,6 +45,18 @@ export type RoutePath = (typeof ROUTE_PATHS)[RouteId];
  */
 export const CHECKOUT_RETURN_PATH = "/checkout/payment-return";
 
+/**
+ * Where the online Lunar Base game is served.
+ *
+ * Beside {@link ROUTE_PATHS} and not inside it, because it is not a route of
+ * this site. A path rule in front of the storefront sends this path to
+ * another process, so the storefront has no page, no metadata and no sitemap
+ * entry for it. The game is in English only and has one address: never
+ * prefix it with `localizedPath`. A page links to it with a plain anchor, so
+ * the browser asks the server for it and no client-side router looks it up.
+ */
+export const PLAY_ONLINE_PATH = "/play/lunar-base";
+
 /* ------------------------------------------------------------------------
  * Locales — a dimension of the content model, not a copy of it
  * --------------------------------------------------------------------- */

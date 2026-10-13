@@ -334,6 +334,20 @@ anchor.
 Every edition publishes every route, so the second row does not occur today.
 The rule stays: it is what a link does if an edition ever lacks a route.
 
+One link leaves every edition. The Lunar Base page has a "Play online" box
+that links to the online game at `PLAY_ONLINE_PATH`, declared beside
+`ROUTE_PATHS` in `content/routes.ts`. The game is not a route of this
+application: a path rule in front of the storefront sends that path to
+another process. The game is in English only and has one address.
+
+| Property | Behaviour |
+| --- | --- |
+| Address | The bare path in every edition. It never takes an edition prefix |
+| Element | A plain anchor, so the browser asks the server. Not the framework's client-side link |
+| Language | `hreflang` is the default edition's language tag on every other edition, and absent on the default one |
+| Copy | `product.playOnline` in each edition's `interface.ts`. Every edition but the default says that the game is in English |
+| Sitemap, `robots.txt` | The path is in neither. The sitemap lists this application's pages only |
+
 ## Canonical, `hreflang` and the sitemap
 
 All three are computed from `pagesByLocale`. No second list of routes or
@@ -374,6 +388,7 @@ host says nothing about the language its visitor reads.
 | Submitted form values | The checkout submits the English country name and recognises a delivery method by the name Medusa returns |
 | Order handler | The checkout form posts to the unprefixed order handler from every edition |
 | Country names in Klingon | English, as the shop names them. A carrier needs the real name |
+| The online game | English only, at one address. See [Links inside an edition](#links-inside-an-edition) |
 | Paths | English path words under every prefix |
 | Cards and card pictures | The cards are printed in English. Card titles and Station names stay as printed in every edition |
 | Product data in Medusa | Not translated. The site's product copy comes from `content/` |
@@ -407,5 +422,6 @@ All of these run in `bash scripts/validate`, except the last row.
 | `storefront/tests/redirect-map.test.ts` | Redirects carry no locale |
 | `storefront/tests/destination.test.ts` | Country names per edition |
 | `storefront/tests/legal-pages.test.tsx` | The legal pages of each edition render in that edition's words |
+| `storefront/tests/play-online.test.tsx` | The Play online box renders in every edition with that edition's words, links to the bare game path, and names English from every other edition |
 | `storefront/tests/home-edition.test.tsx`, `product-edition.test.tsx`, `support-edition.test.tsx`, `basket-edition.test.tsx`, `checkout-edition.test.tsx` | Each page group reads its words from the edition it is given |
 | Browser suite, CI only | A translated route renders, the selector moves between editions, and Klingon text keeps its case |

@@ -111,6 +111,16 @@ export interface InterfaceCopy {
     readonly addingToBasket: string;
     readonly retryAddingToBasket: string;
     readonly basketExpired: string;
+    /**
+     * The box at the top of the product page that leads to the online game,
+     * `PLAY_ONLINE_PATH` in `content/routes.ts`. The game is in English only:
+     * every other edition says so in `body`.
+     */
+    readonly playOnline: {
+      readonly heading: string;
+      readonly body: string;
+      readonly linkLabel: string;
+    };
   };
   /** Copy written by the checkout's components. `content/shop.ts` holds the rest of that page. */
   readonly checkout: {
@@ -274,6 +284,11 @@ export const interfaceCopy: InterfaceCopy = {
     addingToBasket: "Ostukorvi lisamine…",
     retryAddingToBasket: "Proovi uuesti ostukorvi lisada",
     basketExpired: "Ostukorv aegus; proovi mäng uuesti lisada",
+    playOnline: {
+      heading: "Mängi veebis",
+      body: "Mängi Lunar Base’i tasuta otse brauseris – teiste inimeste või arvuti vastu. Kontot pole vaja. Veebimäng on inglise keeles.",
+      linkLabel: "Mängi Lunar Base’i veebis",
+    },
   },
   checkout: {
     missing: {

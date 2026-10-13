@@ -123,6 +123,11 @@ export const interfaceCopy: InterfaceCopy = {
     addingToBasket: "je'meH ngaSwI'Daq chellu'taH…",
     retryAddingToBasket: "je'meH ngaSwI'Daq yIchelqa'",
     basketExpired: "Dorpu' je'meH ngaSwI' poH; Quj yIchelqa'",
+    playOnline: {
+      heading: "SIr'o'Daq yIQuj",
+      body: "SIr'o'Daq Lunar Base yIQuj; DIlnISbe'lu'. latlh nuvpu' De'wI' gholmey ghap DaqaDlaH. bIqI'nISbe'. English Hol lo' SIr'o' Qujvam.",
+      linkLabel: "SIr'o'Daq Lunar Base yIQuj",
+    },
   },
   checkout: {
     missing: {

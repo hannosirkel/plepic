@@ -164,6 +164,33 @@ The manifest now carries E9 to E11 and the copy points at them.
 so explicitly. A plausible "10+" would be an invention on a specification table,
 which is the worst possible place for one.
 
+## Play online
+
+The product page opens with a box that leads to the online game
+(`product.playOnline` in `interface.ts`, and `PLAY_ONLINE_PATH` in
+`routes.ts`):
+
+> **Play online.** Play Lunar Base in your browser for free, against other
+> people or computer opponents. No account needed.
+
+Four claims, and where each comes from. None has an entry in the evidence
+manifest: they describe the publisher's own online game and not the boxed
+product, and their source is that game's repository, `hannosirkel/lunar-base`
+(its `README.md`).
+
+| Claim | Basis |
+|---|---|
+| In your browser | The game is a web client. Nothing is installed |
+| For free | The game has no payment step of any kind |
+| Other people or computer opponents | A game has 2 to 6 seats, and any number of them may be non-human |
+| No account | A visitor enters a name and reaches the lobby. Nothing is registered |
+
+The game is in English only. The German, Estonian and Klingon editions say so
+in the same paragraph, because the link takes their reader out of the edition.
+
+The box does not say that the online game is the whole boxed game, and does not
+name the player who answers for a non-human seat.
+
 ## What is in the box
 
 > A total of 90 cards — 6 Stations, 26 Agents, 8 Influences and 50 Modules —

@@ -111,6 +111,11 @@ export const interfaceCopy: InterfaceCopy = {
     addingToBasket: "Wird in den Warenkorb gelegt…",
     retryAddingToBasket: "Noch einmal in den Warenkorb legen",
     basketExpired: "Der Warenkorb ist abgelaufen; leg das Spiel noch einmal hinein",
+    playOnline: {
+      heading: "Online spielen",
+      body: "Spiel Lunar Base kostenlos im Browser – gegen andere oder gegen den Computer. Ein Konto brauchst du nicht. Das Online-Spiel ist auf Englisch.",
+      linkLabel: "Lunar Base online spielen",
+    },
   },
   checkout: {
     missing: {

@@ -14,8 +14,14 @@
   padding: clamp(var(--space-2xl), 8vw, 8rem) max(var(--gutter), calc((100vw - var(--content-wide)) / 2 + var(--gutter)));
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(24rem, 0.98fr);
+  /* The first row is as tall as the Play online box and no taller, so the
+     box render stands directly under it and not half a hero further down. */
+  grid-template-rows: auto 1fr;
   align-items: center;
-  gap: clamp(var(--space-xl), 6vw, var(--space-4xl));
+  --hero-gap: clamp(var(--space-xl), 6vw, var(--space-4xl));
+  /* Rows are closer than columns: the right column stacks the Play online
+     box on the box render, and the two belong together. */
+  gap: var(--space-lg) var(--hero-gap);
   background-color: var(--surface);
   background-image:
     linear-gradient(90deg, color-mix(in srgb, var(--surface) 98%, transparent) 0%, color-mix(in srgb, var(--surface) 78%, transparent) 48%, color-mix(in srgb, var(--surface) 35%, transparent) 100%),
@@ -24,7 +30,62 @@
   background-position: center;
 }
 
+/*
+ * The Play online box. Three children share the hero's grid, placed by line
+ * and not by auto-flow, because the box comes first in the document and
+ * stands in the second column: top right beside the pitch on a wide viewport.
+ * The pitch column spans both rows of the right column.
+ *
+ * A raised, opaque surface: on the right the hero's photograph shows through
+ * the gradient, and body text needs a ground whose contrast is known.
+ * `--text` and `--text-muted` on `--surface-raised` are pairs
+ * `design/README.md` records for this layer.
+ */
+.playOnline {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  align-self: start;
+  box-sizing: border-box;
+  width: min(100%, 26rem);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: var(--surface-raised);
+  border: var(--border-width) solid var(--border-interactive);
+  border-inline-start: var(--border-width-thick) solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.playOnlineHeading {
+  margin: 0;
+  font-size: var(--step-2);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-heading);
+  color: var(--text);
+}
+
+.playOnlineBody {
+  margin: 0;
+  font-size: var(--step--1);
+  line-height: var(--line-height-body);
+  color: var(--text-muted);
+}
+
+/* A long label wraps inside the box and does not widen it. */
+.playOnlineLink {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-top: var(--space-3xs);
+  text-align: center;
+}
+
 .heroCopy {
+  grid-column: 1;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -160,6 +221,9 @@
 }
 
 .heroImage {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
   width: min(100%, 42rem);
   height: auto;
   justify-self: end;
@@ -427,15 +491,29 @@
 }
 
 @media (max-width: 860px) {
+  /* One column: the Play online box, the box render, then the pitch. */
   .hero {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+    row-gap: var(--hero-gap);
     padding-block: var(--space-3xl);
   }
 
+  .playOnline {
+    grid-column: 1;
+    justify-self: stretch;
+    width: auto;
+  }
+
   .heroImage {
-    grid-row: 1;
+    grid-column: 1;
+    grid-row: 2;
     justify-self: center;
     max-width: 40rem;
+  }
+
+  .heroCopy {
+    grid-row: 3;
   }
 
   .travelsSection {
@@ -452,6 +530,14 @@
     min-height: auto;
     padding-block: var(--space-xl) var(--space-3xl);
     gap: var(--space-lg);
+  }
+
+  .playOnline {
+    padding: var(--space-sm);
+  }
+
+  .playOnlineLink {
+    width: 100%;
   }
 
   .pitch {
