@@ -147,6 +147,18 @@ test("mobile menu supports disclosure semantics, Escape, close, and focus return
   await expect(navigation.getByRole("link", { name: "Lunar Base" })).toBeFocused();
   await expect(navigation.getByRole("link", { name: "Lunar Base" })).toBeVisible();
 
+  // The sheet is the links' background. It must span the viewport and hold every link,
+  // or the links are drawn straight over the page behind them.
+  const sheet = page.locator(`#${await menu.getAttribute("aria-controls")}`);
+  await expect.poll(async () => (await sheet.boundingBox())?.x).toBeLessThan(page.viewportSize()!.width / 2);
+  const sheetBox = (await sheet.boundingBox())!;
+  expect(sheetBox.y).toBe(0);
+  expect(sheetBox.height).toBe(page.viewportSize()!.height);
+  for (const link of await sheet.getByRole("link").all()) {
+    const linkBox = (await link.boundingBox())!;
+    expect(linkBox.y + linkBox.height, await link.innerText()).toBeLessThanOrEqual(sheetBox.height);
+  }
+
   await page.keyboard.press("Escape");
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(menu).toBeFocused();
