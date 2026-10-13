@@ -131,6 +131,15 @@ export const klingonLegalTerms = {
   dns: { term: "SIr'o' pong tetlh", english: "the domain name system", loan: "DNS", note: "Coined phrase: SIr'o' (network) + pong (name) + tetlh (list). The loan stands first and the phrase explains it." },
   ipAddress: { term: "jan ngu'bogh mI'", english: "IP address", loan: "IP", note: "Coined phrase: jan (device) + ngu' (identify) + -bogh (which) + mI' (number). The loan stands first, before the noun for number, and the phrase explains it." },
 
+  // The online game, as the privacy page describes it.
+  gameServer: { term: "Quj De'wI'", english: "the game server", note: "Coined phrase: Quj (game) + De'wI' (computer)." },
+  serverMemory: { term: "qawmeH Daq", english: "the memory of a server", note: "Coined phrase: qaw (remember) + -meH (for the purpose of) + Daq (place). Not the browser's storage, which is built on pol (keep)." },
+  gameLog: { term: "Quj ta", english: "the log of a game", note: "Coined phrase: Quj (game) + ta (record)." },
+  session: { term: "Quj poH", english: "a session of the online game", note: "Coined phrase: Quj (game) + poH (period of time)." },
+  computerOpponent: { term: "De'wI' ghol", english: "computer opponent", note: "Coined phrase: De'wI' (computer) + ghol (opponent)." },
+  seatNumber: { term: "'ovwI' mI'", english: "seat number", note: "Coined phrase: 'ovwI' (player) + mI' (number)." },
+  seed: { term: "Quj taghmeH mI'", english: "the seed a game starts from", note: "Coined phrase: Quj (game) + tagh (begin a process) + -meH (for the purpose of) + mI' (number)." },
+
   // The publisher and the game (T038). The product copy and the rulebook use these words again.
   publisher: { term: "Se'vIr malja'", english: "publisher, publishing house", note: "Attested phrase of the paq'batlh word list: Se'vIr (publication) + malja' (business)." },
   boardGame: { term: "'echlet Quj", english: "board game", note: "Coined phrase: 'echlet (board) + Quj (game), the attested phrase for a game board turned round." },

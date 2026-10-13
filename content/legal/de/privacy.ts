@@ -39,6 +39,14 @@
  * of this German wording is recorded here, and the approval is not a standing
  * one for whatever this page may later say: a change to its substance needs
  * its own reading.
+ *
+ * The two paragraphs about the online game, of 2026-10-13, are such a change:
+ * the TypeSafe paragraph in `processors` and „Wenn Sie Lunar Base online
+ * spielen“ in `contact`. `../privacy.ts` records where their facts come from
+ * and what they leave open. Nobody qualified has read this German wording. A
+ * game is „Partie“ where one sitting is meant and „Spiel“ for the product, a
+ * seat is „Platz“, and the server's memory is „Arbeitsspeicher“, so that it
+ * cannot be read as the browser's „Sitzungsspeicher“ two sentences later.
  */
 
 import type { LegalPage } from "../../schema.js";
@@ -106,6 +114,7 @@ export const privacy: LegalPage = {
         "Wenn Sie einwilligen, sendet diese Website ein Signal zur Werbemessung an Meta, damit wir sehen können, ob unsere Werbung wirkt. Meta nutzt das Empfangene auch für eigene Zwecke und in eigener Verantwortung; für die Erhebung und Übermittlung dieser Daten sind wir und Meta gemeinsam Verantwortliche. Vor Ihrer Einwilligung wird nichts gesendet.",
         "Brevo versendet den Newsletter und speichert die Adresse, die Sie uns dafür genannt haben, bis Sie sich abmelden.",
         "E-Mails zu Bestellungen und Kontaktanfragen werden über unseren eigenen Mailserver versandt. Sie werden nicht an einen Anbieter für Massen-E-Mails weitergegeben.",
+        "TypeSafe betreibt Jev, einen Computergegner, den das Online-Spiel Lunar Base anbietet. Wenn die Person, die eine Partie anlegt, Jev wählt, sendet der Spielserver an TypeSafe, was Jevs Platz von dieser Partie sehen kann: seine Karten, die Punktestände, die letzten Züge und die anstehende Entscheidung, jedes Mal, wenn Jev eine Entscheidung zu treffen hat. Die Spielenden erscheinen darin nur als Platznummern. Es wird kein Spielername und keine IP-Adresse gesendet. TypeSafe gibt an, dass sein Dienst in den Vereinigten Staaten gehostet wird; diese Daten werden also dort verarbeitet.",
         "Google, Meta, Stripe und Cloudflare sind US-Unternehmen, und ihre Nutzung bedeutet, dass einige Daten in den Vereinigten Staaten verarbeitet werden. Jedes von ihnen nimmt am Datenschutzrahmen EU-USA teil, und wo dieser eine Übermittlung nicht abdeckt, gelten Standardvertragsklauseln.",
         "Wir verkaufen keine Daten. Abgesehen von der Werbemessung, die Sie oben ablehnen können, darf kein hier genanntes Unternehmen Ihre Daten für eigene Werbung nutzen, und auf dieser Website gibt es keinen Dritten, der oben nicht genannt ist.",
       ],
@@ -119,6 +128,7 @@ export const privacy: LegalPage = {
         "Wenn Sie bestellen, speichern wir, was eine Bestellung braucht: Ihren Namen, Ihre Lieferadresse, Ihre E-Mail-Adresse, was Sie gekauft und was Sie gezahlt haben. Das estnische Rechnungslegungsrecht verpflichtet uns, den Datensatz sieben Jahre ab dem Ende des Geschäftsjahres aufzubewahren, in das die Bestellung fällt, und danach löschen wir ihn.",
         "Wenn Sie uns schreiben, bewahren wir die Nachricht und Ihre Adresse auf, damit wir antworten können und damit wir den Schriftwechsel wiederfinden, wenn Sie sich wegen derselben Bestellung noch einmal melden. Wir bewahren ihn zwei Jahre nach der letzten Nachricht des Schriftwechsels auf und löschen ihn dann.",
         "Wenn Sie den Newsletter abonnieren, speichern wir Ihre E-Mail-Adresse und sonst nichts. Jede Nachricht enthält einen Abmeldelink, und wenn Sie ihn nutzen, werden Sie ausgetragen.",
+        "Wenn Sie Lunar Base online spielen, fragt das Spiel nach einem Spielernamen und nach nichts sonst: Es gibt kein Konto und keine Anmeldung. Der Name wird den anderen Spielenden angezeigt und nur im Arbeitsspeicher des Spielservers gehalten, solange Ihre Sitzung dauert. Eine zufällige Sitzungskennung bleibt im Sitzungsspeicher (session storage) Ihres Browsers gespeichert, bis Sie den Tab schließen, damit Sie Ihren Platz behalten, wenn Sie die Seite neu laden. Der Server führt zu jeder Partie ein Protokoll, das den zufälligen Startwert der Partie und die getroffenen Entscheidungen nach Platznummer enthält, aber keinen Namen und keine IP-Adresse. Eine tägliche Bereinigung löscht ein Protokoll, sobald es 30 Tage alt ist. Der Spielserver verwendet Ihre IP-Adresse nur, um zu begrenzen, wie viele Verbindungen und neue Partien von einer Adresse kommen; er hält die Adresse im Arbeitsspeicher und schreibt sie in kein Protokoll. Eine Anfrage, die er ablehnt, protokolliert er mit einem kurzen Kennzeichen, das aus der Adresse und einem Zufallswert abgeleitet ist, nicht mit der Adresse selbst.",
         "Sie können Auskunft darüber verlangen, was wir über Sie gespeichert haben, und verlangen, dass wir es berichtigen, dass wir es löschen oder dass wir seine Verwendung aussetzen; Sie können eine Kopie verlangen oder der Art widersprechen, wie wir es verwenden. Schreiben Sie an {merchantContactAddress}, und ein Mensch wird es lesen.",
         "Wenn wir dabei etwas falsch machen, können Sie sich bei Ihrer nationalen Datenschutzbehörde beschweren. In Estland ist das die Andmekaitse Inspektsioon.",
         "Verantwortlicher ist {merchantLegalName}, {merchantRegisteredAddress}.",

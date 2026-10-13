@@ -38,6 +38,8 @@ export const KLINGON_PROPER_NOUNS = [
   // Companies and products the legal pages name.
   "Stripe", "Apple Pay", "Google Pay", "PayPal", "Google Analytics", "Google",
   "Meta", "Cloudflare", "Brevo", "Omniva",
+  // The company and the computer opponent the privacy page names for the online game.
+  "TypeSafe", "Jev",
   // Institutions and legal instruments, under the names the English pages use.
   "European Union", "European Commission", "Consumer Disputes Committee",
   "Estonian Consumer Protection and Technical Regulatory Authority",
