@@ -114,6 +114,44 @@
  * been told about, precisely so a first-party cookie cannot appear without this
  * table growing.
  *
+ * ## The online game, 2026-10-13
+ *
+ * Lunar Base can be played online under `/play/lunar-base` on this domain. A
+ * separate process serves it, from the public repository
+ * `plepicgames/lunar-base`, and the product page is about to link to it. Two
+ * paragraphs say what that process does with a visitor's data, and every
+ * claim in them is taken from that repository's `docs/current/` and its
+ * decisions 0007 and 0010, not from this one:
+ *
+ * - **In `contact`, after the newsletter**, because that section already runs
+ *   "when you order", "when you write to us", "when you subscribe": the player
+ *   name (server memory only, no account), the session identifier the game
+ *   keeps in session storage, the game log (seed and choices by seat number,
+ *   deleted 30 days after the game) and the IP address (connection and
+ *   new-game limits only, never logged).
+ * - **In `processors`, before the transfer paragraph**, because that section
+ *   says "this is all of them" and ends "there is no third party on this site
+ *   that is not named above". When a game's creator chooses the Jev opponent,
+ *   the game server sends TypeSafe what Jev's seat can see of the game. That is
+ *   a company handling data on this site, so it is named, with exactly what is
+ *   sent. The engine's view carries seat numbers and no names, so no name and
+ *   no address goes with it.
+ *
+ * The session identifier is disclosed in the game's own paragraph and not
+ * beside the two stores in `consent`: those are stores `storefront/src/`
+ * writes, which `storefront/tests/browser-storage-disclosure.test.ts` derives
+ * from a walk of that directory, and the game's client is not in it.
+ *
+ * **Two things these paragraphs do not settle, and no qualified reader has
+ * read them.** They name no legal basis of their own for the game; the
+ * existing sentence "delivering and defending the site is our legitimate
+ * interest" is the nearest one, and whether it carries the game is the
+ * operator's call. And the transfer paragraph still lists four companies:
+ * where TypeSafe processes what it is sent is not recorded in either
+ * repository, and what it is sent holds no personal data. If either the
+ * game's retention or what the Jev request carries changes, **these
+ * paragraphs are part of what has to change with it.**
+ *
  * **Minor 6 — newsletter single opt-in — is deliberately not fixed.** It is
  * lawful (Estonian ECA § 103¹ requires prior consent, and EU law mandates
  * double opt-in nowhere); the residual exposure is evidential under Article
@@ -185,6 +223,7 @@ export const privacy: LegalPage = {
         "If you consent, this site sends Meta an advertising measurement signal so we can see whether our advertising works. Meta also uses what it receives for its own purposes, under its own responsibility; for the collection and sending of this data, we and Meta are joint controllers. Nothing is sent before you consent.",
         "Brevo delivers the newsletter and holds the address you gave us for it, until you unsubscribe.",
         "Order and contact email is sent through our own mail server. It is not handed to a bulk email provider.",
+        "TypeSafe runs Jev, a computer opponent that the online Lunar Base game offers. If the person who creates a game chooses Jev, the game server sends TypeSafe what Jev's seat can see of that game: its cards, the scores, the recent moves and the choice to be made, once for each decision Jev makes. Players appear in it as seat numbers only. No player name and no IP address is sent.",
         "Google, Meta, Stripe and Cloudflare are US companies, and using them means some data is processed in the United States. Each participates in the EU–US Data Privacy Framework, and standard contractual clauses apply where it does not cover a transfer.",
         "We do not sell data. Apart from the advertising measurement you can refuse above, no company named here may use your data for its own advertising, and there is no third party on this site that is not named above.",
       ],
@@ -198,6 +237,7 @@ export const privacy: LegalPage = {
         "When you order, we hold what an order needs: your name, delivery address, email address, what you bought and what you paid. Estonian accounting law requires us to keep the record for seven years from the end of the financial year the order falls in, and we delete it after that.",
         "When you write to us, we keep the message and your address so we can answer, and so we can find the conversation again if you come back about the same order. We keep it for two years after the last message in the conversation, and then delete it.",
         "When you subscribe to the newsletter, we hold your email address and nothing else. Every message has an unsubscribe link, and using it removes you.",
+        "When you play Lunar Base online, the game asks for a player name and for nothing else: there is no account and no sign-in. The name is shown to the other players and is held only in the memory of the game server, while your session lasts. A random session identifier is kept in your browser's session storage until you close the tab, so that reloading the page keeps your seat. The server keeps a log of each game, which holds the random seed the game started from and the choices made, by seat number, and no name and no IP address. It deletes the log 30 days after the game. Your IP address is used only to limit how many connections and new games come from one address; the game server keeps it in memory and writes it to no log.",
         "You may ask what we hold about you, ask for it to be corrected, ask for it to be deleted, ask us to pause using it, ask for a copy, or object to how we use it. Write to {merchantContactAddress} and a person will read it.",
         "If we get it wrong you may complain to your national data protection authority. In Estonia that is the Andmekaitse Inspektsioon.",
         "The controller is {merchantLegalName}, {merchantRegisteredAddress}.",

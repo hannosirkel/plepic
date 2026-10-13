@@ -31,6 +31,15 @@
  * It is not a standing approval of whatever this page may later say. A change
  * to its substance needs its own reading, exactly as the ones recorded above
  * did.
+ *
+ * The two paragraphs about the online game, of 2026-10-13, are such a change:
+ * the TypeSafe paragraph in `processors` and „Kui sa mängid veebis mängu Lunar
+ * Base“ in `contact`. `../privacy.ts` records where their facts come from and
+ * what they leave open. **The qualified reader's acceptance above does not
+ * cover them**: nobody qualified has read this Estonian wording.
+ * `docs/current/translation/et.md` says not to edit this directory, which
+ * keeps the approved sentences as they were approved; these two are added
+ * beside them and no approved sentence is changed.
  */
 
 import type { LegalPage } from "../../schema.js";
@@ -98,6 +107,7 @@ export const privacy: LegalPage = {
         "Kui sa annad nõusoleku, saadab see sait Metale reklaamimõõtmise signaali, et näeksime, kas meie reklaam töötab. Meta kasutab saadut ka oma eesmärkidel, omal vastutusel; nende andmete kogumise ja saatmise osas oleme meie ja Meta kaasvastutavad töötlejad. Enne sinu nõusolekut ei saadeta midagi.",
         "Brevo toimetab kohale uudiskirja ja hoiab aadressi, mille sa selleks meile andsid, kuni sa uudiskirjast loobud.",
         "Tellimuste ja kontaktivormi kirjad saadetakse meie oma meiliserveri kaudu. Neid ei anta üle hulgikirjade teenusepakkujale.",
+        "TypeSafe käitab arvutivastast nimega Jev, keda pakub veebis mängitav Lunar Base. Kui mängu looja valib vastaseks Jev'i, saadab mänguserver TypeSafe'ile selle, mida Jev'i koht sellest mängust näeb: tema kaardid, punktiseisud, viimased käigud ja ees seisva valiku – ühe korra iga otsuse kohta, mille Jev teeb. Mängijad on seal ainult kohanumbritena. Ühtegi mängijanime ega IP-aadressi ei saadeta.",
         "Google, Meta, Stripe ja Cloudflare on USA ettevõtted ning nende kasutamine tähendab, et osa andmeid töödeldakse Ameerika Ühendriikides. Igaüks neist osaleb ELi–USA andmekaitseraamistikus, ja kus see mõnda edastamist ei kata, kohaldatakse standardseid andmekaitseklausleid.",
         "Me ei müü andmeid. Peale reklaamimõõtmise, millest sa saad ülalpool keelduda, ei tohi ükski siin nimetatud ettevõte kasutada sinu andmeid oma reklaamiks, ja sellel saidil ei ole ühtegi kolmandat isikut, keda ei oleks ülal nimetatud.",
       ],
@@ -111,6 +121,7 @@ export const privacy: LegalPage = {
         "Kui sa tellid, hoiame seda, mida tellimus vajab: sinu nime, tarneaadressi, e-posti aadressi, mida sa ostsid ja mida maksid. Eesti raamatupidamisõigus nõuab, et säilitaksime kirje seitse aastat alates selle majandusaasta lõpust, millesse tellimus jääb, ja pärast seda me selle kustutame.",
         "Kui sa meile kirjutad, hoiame kirja ja sinu aadressi, et saaksime vastata ja et leiaksime vestluse uuesti üles, kui sa sama tellimuse asjus tagasi tuled. Hoiame seda kaks aastat pärast vestluse viimast kirja ja siis kustutame.",
         "Kui sa tellid uudiskirja, hoiame sinu e-posti aadressi ja mitte midagi muud. Igas kirjas on loobumislink ja selle kasutamine eemaldab su nimekirjast.",
+        "Kui sa mängid veebis mängu Lunar Base, küsib mäng sinult mängijanime ja mitte midagi muud: kontot ega sisselogimist ei ole. Nime näidatakse teistele mängijatele ja seda hoitakse ainult mänguserveri mälus, kuni sinu seanss kestab. Juhuslik seansitunnus salvestatakse sinu brauseri seansisalvestusse (session storage) ja seda hoitakse vahelehe sulgemiseni, et lehe uuesti laadimisel jääks sinu koht alles. Server peab iga mängu kohta logi, milles on juhuslik algväärtus, millest mäng algas, ja tehtud valikud kohanumbri järgi, kuid ei ole nime ega IP-aadressi. Server kustutab logi 30 päeva pärast mängu. Sinu IP-aadressi kasutatakse ainult selleks, et piirata, kui palju ühendusi ja uusi mänge ühelt aadressilt tuleb; mänguserver hoiab seda mälus ega kirjuta seda ühessegi logisse.",
         "Sul on õigus küsida, mida me sinu kohta hoiame, lasta seda parandada, lasta see kustutada, paluda meil selle kasutamine peatada, saada sellest koopia või esitada kasutamise suhtes vastuväide. Kirjuta aadressil {merchantContactAddress} ja sinu kirja loeb inimene.",
         "Kui me eksime, võid esitada kaebuse oma riigi andmekaitseasutusele. Eestis on selleks Andmekaitse Inspektsioon.",
         "Vastutav töötleja on {merchantLegalName}, {merchantRegisteredAddress}.",

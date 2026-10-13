@@ -53,6 +53,22 @@
  * glossary reads the English "bases" as the game term Base, `waw'`; when this
  * edition is registered, `content/glossary/index.ts` needs the exception the
  * German and Estonian pages already have, for the same reason.
+ *
+ * The two paragraphs about the online game, of 2026-10-13, are a change of
+ * substance: the TypeSafe paragraph in `processors` and `SIr'o'Daq Lunar Base
+ * DaQujDI'` in `contact`. `../privacy.ts` records where their facts come from
+ * and what they leave open. Nobody has read this Klingon wording for grammar
+ * or meaning; the word check passes it and proves no more than spelling and
+ * roots. Their coined terms are in `klingonLegalTerms`: `Quj De'wI'`, "game
+ * computer", for the game server; `qawmeH Daq`, "place for remembering", for
+ * its memory, kept apart from the browser's `polmeH Daq`; `Quj ta`, "game
+ * record", for the log; `Quj poH`, "game period", for a session; `De'wI'
+ * ghol`, "computer opponent"; `'ovwI' mI'`, "player number", for a seat
+ * number; and `Quj taghmeH mI'`, "number for beginning the game", for the
+ * seed. `TypeSafe` and `Jev` are on the proper noun list and take no suffix.
+ *
+ * Two words of the English are not carried over, for want of a sourced root:
+ * the session identifier and the seed are not called "random" here.
  */
 
 import type { LegalPage } from "../../schema.js";
@@ -120,6 +136,7 @@ export const privacy: LegalPage = {
         "bIghIbchugh, vep juvmeH De' ngeH SIr'o' Daqvam; De'vam Hev Meta. vepmaj Qapla' wIjuvmeH ngeHlu'. ngoQmeyDajvaD De' Hevbogh lo' Meta je, 'ej lo'meH mIwvetlhvaD ngoy' Meta. De'vam boSlu'DI' 'ej ngeHlu'DI', De' SeHwI' maH — maH Meta je — 'ej nItebHa' mangoy'. bIghIbpa' pagh ngeHlu'.",
         "De' chu' QInmey ngeH Brevo, 'ej De' chu' QInmeyvaD QIn Daq Danobbogh pol; De' chu' QInmey DaqI'Ha'pa' pol.",
         "vunmeH QInmey, jangmeH QInmey je ngeH QIn De'wI'maj. QInmeyvam Hevbe' QInmey law' ngeHbogh latlh malja'.",
+        "De'wI' ghol vu' TypeSafe; Jev 'oH gholvam pong'e'. SIr'o'Daq Lunar Base QujmeH gholvam wIvlaH Quj taghbogh nuv. Jev wIvchugh nuvvam, TypeSafe malja'vaD De' ngeH Quj De'wI': Quj De' leghlaHbogh Jev neH ngeH — navmey, toghlu'bogh mI'mey, wanI'mey chu', wIv veb je. wuqnISDI' Jev, wa'logh De'vam ngeH. De'vamDaq 'ovwI' mI'mey neH tu'lu'. 'ovwI' pong ngeHbe' 'ej IP mI' ngeHbe'.",
         "United States malja'mey bIH malja'meyvam'e': Google, Meta, Stripe, Cloudflare. vaj malja'meyvam DIlo'mo', United States SepDaq 'op De' lo'lu'. EU–US Data Privacy Framework mabDaq jeS Hoch. De' lablu'bogh Qanbe'chugh mabvetlh, mab 'ay'mey motlh lo'lu'.",
         "De' wIngevbe'. tenwalvamDaq malja'mey ngu'lu'; vepchajvaD De'lIj lo' malja'meyvam net chaw'be'. vep juvmeH mIw neH chaw'lu', 'ej mIwvetlh DalajnISbe' (DungDaq yIlegh). SIr'o' DaqvamDaq latlh malja' tu'lu'be': Hoch malja' ngu' tenwalvam.",
       ],
@@ -133,6 +150,7 @@ export const privacy: LegalPage = {
         "bIvunDI', vunmeH QInvaD De' poQlu'bogh wIpol: ponglIj, HIjmeH DaqlIj, QIn DaqlIj, Doch Daje'bogh, Huch Danobbogh je. qaStaHvIS Soch DIS ta wIpol 'e' poQ Estonia Huch ta chut; bIvunDI' qaSbogh Huch DIS DorDI' tagh Soch DISvam. ghIq ta wIQaw'.",
         "QIn jungeHDI', QIn QIn DaqlIj je DIpol; vaj pIjanglaH, 'ej rapbogh vunmeH QInmo' QIn jungeHqa'chugh, QInmey ngo' DISamlaH. QIn Qav ngeHlu'DI' — QInlIj, QInmaj ghap — tagh cha' DIS poH; qaStaHvIS poHvam QInmey DIpol, ghIq DIQaw'.",
         "De' chu' QInmey DaqI'DI', QIn DaqlIj neH wIpol. qI'Ha'meH rarwI' ngaS Hoch QIn; rarwI'vam Dalo'DI', tetlhvo' pIteq.",
+        "SIr'o'Daq Lunar Base DaQujDI', 'ovwI' pong neH tlhob Quj; bIqI'nISbe'. pongvam legh latlh 'ovwI'pu'. qawmeH DaqDajDaq neH pongvam pol Quj De'wI'; qaStaHvIS Quj poHlIj neH pol. Quj poHlIj ngu'bogh ngoq pol Quj; SIr'o' leghmeH janlIj polmeH Daq ru' (session storage) lo'. tenwal DaSoQmoHpa' neH pollu'; vaj tenwal Daleghqa'DI', 'ovwI' DaqlIj DachIlbe'. Hoch QujvaD Quj ta ghItlh Quj De'wI'. Quj taghmeH mI', wIvmey je ngaS ta, 'ej 'ovwI' mI' neH lo'; pong ngaSbe' 'ej IP mI' ngaSbe'. rInDI' Quj, tagh 30 jaj poH; qaStaHvIS poHvam Quj ta pol Quj De'wI', ghIq Qaw'. vuSmeH neH IP mI'lIj lo' Quj De'wI': wa' IP mI' lo'taHvIS rarbogh janmey, taghlu'bogh Qujmey chu' je vuS. qawmeH DaqDajDaq neH mI'vam pol, 'ej not ghItlh.",
         "DIbmeyvam Daghaj: De'lIj wIpolbogh DaghellaH; De' wIlughmoH 'e' DatlhoblaH; De' wIQaw' 'e' DatlhoblaH; De' lo'meH mIw wIyevmoH 'e' DatlhoblaH; De' velqa' DatlhoblaH; De' wIlo'meH mIw DaqaDlaH. QIn ghongeH: {merchantContactAddress}. QInlIj laD nuv.",
         "maQaghchugh, SeplIjDaq De' Qanbogh qum DIvI'vaD bIbeplaH. Estonia SepDaq Andmekaitse Inspektsioon 'oH DIvI'vam'e'.",
         "De' SeHwI': {merchantLegalName}, {merchantRegisteredAddress}.",
