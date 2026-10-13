@@ -127,15 +127,22 @@
  *   "when you order", "when you write to us", "when you subscribe": the player
  *   name (server memory only, no account), the session identifier the game
  *   keeps in session storage, the game log (seed and choices by seat number,
- *   deleted 30 days after the game) and the IP address (connection and
- *   new-game limits only, never logged).
+ *   deleted by a daily sweep once its last write is 30 days old; the sweep
+ *   skips a game that is still open, so the page promises no exact day) and
+ *   the IP address (the game server's connection and new-game limits only;
+ *   a refusal is logged with a 16-character tag, a hash of the address and
+ *   a salt that lives in the process, never the address). Cloudflare's own
+ *   handling of the address is in Cloudflare's paragraph, which is why this
+ *   one says "the game server".
  * - **In `processors`, before the transfer paragraph**, because that section
  *   says "this is all of them" and ends "there is no third party on this site
  *   that is not named above". When a game's creator chooses the Jev opponent,
  *   the game server sends TypeSafe what Jev's seat can see of the game. That is
  *   a company handling data on this site, so it is named, with exactly what is
  *   sent. The engine's view carries seat numbers and no names, so no name and
- *   no address goes with it.
+ *   no address goes with it. It says "each time Jev has a decision to make"
+ *   and not "once": the adapter allows one retry, so a request can be sent
+ *   twice.
  *
  * The session identifier is disclosed in the game's own paragraph and not
  * beside the two stores in `consent`: those are stores `storefront/src/`
@@ -146,9 +153,20 @@
  * read them.** They name no legal basis of their own for the game; the
  * existing sentence "delivering and defending the site is our legitimate
  * interest" is the nearest one, and whether it carries the game is the
- * operator's call. And the transfer paragraph still lists four companies:
- * where TypeSafe processes what it is sent is not recorded in either
- * repository, and what it is sent holds no personal data. If either the
+ * operator's call. And the transfer to TypeSafe is stated without a
+ * safeguard. Its privacy policy, read on 2026-10-13, says "The Services are
+ * hosted in the United States", and the TypeSafe paragraph repeats that as
+ * TypeSafe's statement. Neither that policy nor its data processing addendum
+ * mentions the EU-US Data Privacy Framework, so TypeSafe is **not** added to
+ * the sentence that asserts participation for Google, Meta, Stripe and
+ * Cloudflare. The addendum incorporates the EU standard contractual clauses
+ * for a customer that has concluded it; whether the operator has is recorded
+ * in neither repository, so the page claims no safeguard for this transfer
+ * and the operator has to supply one. What is sent carries no name and no
+ * address. That alone does not make it "not personal data": a game's moves
+ * belong to an identifiable session on the game server while it lasts, and
+ * whether the request is personal data in TypeSafe's hands is a legal
+ * question this comment does not answer. If either the
  * game's retention or what the Jev request carries changes, **these
  * paragraphs are part of what has to change with it.**
  *
@@ -223,7 +241,7 @@ export const privacy: LegalPage = {
         "If you consent, this site sends Meta an advertising measurement signal so we can see whether our advertising works. Meta also uses what it receives for its own purposes, under its own responsibility; for the collection and sending of this data, we and Meta are joint controllers. Nothing is sent before you consent.",
         "Brevo delivers the newsletter and holds the address you gave us for it, until you unsubscribe.",
         "Order and contact email is sent through our own mail server. It is not handed to a bulk email provider.",
-        "TypeSafe runs Jev, a computer opponent that the online Lunar Base game offers. If the person who creates a game chooses Jev, the game server sends TypeSafe what Jev's seat can see of that game: its cards, the scores, the recent moves and the choice to be made, once for each decision Jev makes. Players appear in it as seat numbers only. No player name and no IP address is sent.",
+        "TypeSafe runs Jev, a computer opponent that the online Lunar Base game offers. If the person who creates a game chooses Jev, the game server sends TypeSafe what Jev's seat can see of that game: its cards, the scores, the recent moves and the choice to be made, each time Jev has a decision to make. Players appear in it as seat numbers only. No player name and no IP address is sent. TypeSafe states that its service is hosted in the United States, so this data is processed there.",
         "Google, Meta, Stripe and Cloudflare are US companies, and using them means some data is processed in the United States. Each participates in the EU–US Data Privacy Framework, and standard contractual clauses apply where it does not cover a transfer.",
         "We do not sell data. Apart from the advertising measurement you can refuse above, no company named here may use your data for its own advertising, and there is no third party on this site that is not named above.",
       ],
@@ -237,7 +255,7 @@ export const privacy: LegalPage = {
         "When you order, we hold what an order needs: your name, delivery address, email address, what you bought and what you paid. Estonian accounting law requires us to keep the record for seven years from the end of the financial year the order falls in, and we delete it after that.",
         "When you write to us, we keep the message and your address so we can answer, and so we can find the conversation again if you come back about the same order. We keep it for two years after the last message in the conversation, and then delete it.",
         "When you subscribe to the newsletter, we hold your email address and nothing else. Every message has an unsubscribe link, and using it removes you.",
-        "When you play Lunar Base online, the game asks for a player name and for nothing else: there is no account and no sign-in. The name is shown to the other players and is held only in the memory of the game server, while your session lasts. A random session identifier is kept in your browser's session storage until you close the tab, so that reloading the page keeps your seat. The server keeps a log of each game, which holds the random seed the game started from and the choices made, by seat number, and no name and no IP address. It deletes the log 30 days after the game. Your IP address is used only to limit how many connections and new games come from one address; the game server keeps it in memory and writes it to no log.",
+        "When you play Lunar Base online, the game asks for a player name and for nothing else: there is no account and no sign-in. The name is shown to the other players and is held only in the memory of the game server, while your session lasts. A random session identifier is kept in your browser's session storage until you close the tab, so that reloading the page keeps your seat. The server keeps a log of each game, which holds the random seed the game started from and the choices made, by seat number, and no name and no IP address. A daily clean-up deletes a log once it is 30 days old. The game server uses your IP address only to limit how many connections and new games come from one address; it keeps the address in memory and never writes it to a log. A request it refuses is logged with a short salted tag derived from the address, not the address itself.",
         "You may ask what we hold about you, ask for it to be corrected, ask for it to be deleted, ask us to pause using it, ask for a copy, or object to how we use it. Write to {merchantContactAddress} and a person will read it.",
         "If we get it wrong you may complain to your national data protection authority. In Estonia that is the Andmekaitse Inspektsioon.",
         "The controller is {merchantLegalName}, {merchantRegisteredAddress}.",
