@@ -27,6 +27,11 @@
       "description": "Stripe's server and browser packages move together: checkout and the webhook depend on them.",
       "matchPackageNames": ["stripe", "@stripe/**"],
       "groupName": "Stripe"
+    },
+    {
+      "description": "Medusa draft-order requires an exact React Router version. Update this pin with Medusa after checking its peer dependency, rather than upgrading it independently.",
+      "matchPackageNames": ["react-router-dom"],
+      "enabled": false
     }
   ]
 }
