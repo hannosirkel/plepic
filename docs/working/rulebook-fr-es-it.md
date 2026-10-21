@@ -31,7 +31,7 @@ stays in four editions: no new routes, prefixes, selector entries or
 - [x] Translate the rulebook: `rulebook/text/{fr,es,it}/`, glossaries, conventions docs
 - [x] Register rulebook languages: type, registry, editions, tests, glossary check
 - [x] Rulebook page lists every available language, in every edition's copy
-- [ ] Build and check the three PDFs; commit PDFs and manifest
+- [x] Build and check the three PDFs; commit PDFs and manifest
 - [x] Preview workflow and its documentation
 - [x] Update `docs/current/rulebook.md`, `locales.md`, `AGENTS.md`, ADR 0003
 - [ ] `bash scripts/validate`, `habit-hooks`, `zizmor`, review

@@ -198,7 +198,8 @@ jobs:
           (cd storefront && exec node tests/playwright/medusa-fixture.ts) &
           (cd storefront && exec npm run start -- --hostname 127.0.0.1 --port 3100) &
 
-          # Node, not curl: the pinned browser image is not promised to carry it.
+          # Node, not curl, for this probe: it has to set `Host` and fail on a
+          # bad status without a shell pipeline. (The pinned image does carry curl.)
           # `http.get`, not `fetch`: a request has to be able to set `Host`.
           probe() {
             node --input-type=module --eval '
