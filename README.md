@@ -775,14 +775,17 @@ nothing negotiates one from a header, an address or a cookie.
 | Document | Describes |
 | --- | --- |
 | [`docs/current/locales.md`](./docs/current/locales.md) | The editions, how one is chosen, the language selector, where copy lives, how to add a string or a language, the routing, the 404 page, the metadata, and what does not follow the edition |
-| [`docs/current/rulebook.md`](./docs/current/rulebook.md) | The four rulebook PDFs and how a translated one is built and checked |
-| [`docs/current/translation/`](./docs/current/translation/) | The conventions of German, Estonian and Klingon copy |
+| [`docs/current/rulebook.md`](./docs/current/rulebook.md) | The seven rulebook PDFs and how a translated one is built and checked |
+| [`docs/current/preview.md`](./docs/current/preview.md) | The pull request preview on GitHub Pages: the label, who can trigger it, what the snapshot is |
+| [`docs/current/translation/`](./docs/current/translation/) | The conventions of German, Estonian, Klingon, French, Spanish and Italian copy |
 | [`docs/issues/`](./docs/issues/) | What is open, and the questions the operator has not answered |
 
-Two decisions are recorded in [`docs/decisions/`](./docs/decisions/): how a
-locale is chosen ([0001](./docs/decisions/0001-locale-chosen-by-url.md)) and
-how a translated rulebook PDF is produced
-([0002](./docs/decisions/0002-translated-rulebook-pdf.md)).
+Three decisions are recorded in [`docs/decisions/`](./docs/decisions/): how a
+locale is chosen ([0001](./docs/decisions/0001-locale-chosen-by-url.md)), how a
+translated rulebook PDF is produced
+([0002](./docs/decisions/0002-translated-rulebook-pdf.md)), and why French,
+Spanish and Italian are rulebook languages and not editions
+([0003](./docs/decisions/0003-rulebook-languages-beyond-editions.md)).
 
 ## Development
 

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { reviewedSheets } from "../layout/overrides.js";
 import { de } from "./de/index.js";
 import { en } from "./en.js";
+import { es } from "./es/index.js";
 import { et } from "./et/index.js";
+import { fr } from "./fr/index.js";
+import { it as italian } from "./it/index.js";
 import { parseMarkup, plainText, type FrameId, type RulebookText } from "./schema.js";
 import { tlh } from "./tlh/index.js";
 
@@ -15,6 +18,9 @@ const translations: Readonly<Record<string, { text: Partial<RulebookText>; sheet
   de: { text: de, sheets: 25 },
   et: { text: et, sheets: 25 },
   tlh: { text: tlh, sheets: 25 },
+  fr: { text: fr, sheets: 25 },
+  es: { text: es, sheets: 25 },
+  it: { text: italian, sheets: 25 },
 };
 
 /**

@@ -83,6 +83,8 @@ export interface InterfaceCopy {
      * `%missing%` is below: braces are for the tokens `schema.ts` declares.
      */
     readonly downloadNote: string;
+    readonly otherLanguagesHeading: string;
+    readonly languageSize: string;
   };
   /** Copy written by the product page's presentation components. */
   readonly product: {
@@ -252,6 +254,8 @@ export const interfaceCopy: InterfaceCopy = {
     openLabel: "Ava reegliraamat (PDF)",
     downloadNote:
       "Faili suurus on %megabytes% MB; seda on hea teada enne telefonis avamist.",
+    otherLanguagesHeading: "Saadaval ka keeltes",
+    languageSize: "%megabytes% MB",
   },
   product: {
     boxImageAlt:

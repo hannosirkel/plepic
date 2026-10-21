@@ -134,12 +134,17 @@ The cards are printed in English and stay so. That is why the second class
 exists: a German reader must be able to match the rulebook's word to the word
 on the card.
 
-German, Estonian and Klingon are registered. The conventions of each language
-— address, typography, how a game term is written in running text — are in
+German, Estonian, Klingon, French, Spanish and Italian are registered. French,
+Spanish and Italian are rulebook languages, not site editions: their glossaries
+hold the rulebook text only. The conventions of each language — address,
+typography, how a game term is written in running text — are in
 [`docs/current/translation/`](../docs/current/translation/):
 [`de.md`](../docs/current/translation/de.md),
-[`et.md`](../docs/current/translation/et.md) and
-[`klingon.md`](../docs/current/translation/klingon.md).
+[`et.md`](../docs/current/translation/et.md),
+[`klingon.md`](../docs/current/translation/klingon.md),
+[`fr.md`](../docs/current/translation/fr.md),
+[`es.md`](../docs/current/translation/es.md) and
+[`it.md`](../docs/current/translation/it.md).
 
 A language registers in `glossary/index.ts` with a sibling `<locale>.ts`. For
 every term it gives the translation, the forms a string may use, the variants

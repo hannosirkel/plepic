@@ -36,16 +36,21 @@ import {
   glossaryExceptions,
   type Glossary,
   type GlossaryException,
+  type GlossaryLocale,
   type GlossaryRule,
   type Term,
   type TermId,
 } from "./glossary/index.js";
 import { klingonGlossary, klingonLegalTerms } from "./glossary/tlh.js";
 import { legalPagesByLocale } from "./legal/index.js";
-import { DEFAULT_LOCALE, type Locale } from "./routes.js";
+import type { RulebookLanguage } from "./rulebook-documents.js";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "./routes.js";
 import { reviewedSheets } from "../rulebook/layout/overrides.js";
 import { de as germanRulebook } from "../rulebook/text/de/index.js";
+import { es as spanishRulebook } from "../rulebook/text/es/index.js";
 import { et as estonianRulebook } from "../rulebook/text/et/index.js";
+import { fr as frenchRulebook } from "../rulebook/text/fr/index.js";
+import { it as italianRulebook } from "../rulebook/text/it/index.js";
 import { en as englishRulebook } from "../rulebook/text/en.js";
 import type { RulebookText } from "../rulebook/text/schema.js";
 import { tlh as klingonRulebook } from "../rulebook/text/tlh/index.js";
@@ -75,21 +80,33 @@ function pairsOf(english: unknown, translated: unknown, key: string, out: Pair[]
   return out;
 }
 
-function sitePairs(locale: Locale): readonly Pair[] {
+/**
+ * Site copy and legal pages exist only for an edition. A rulebook language
+ * that is not one (French, Spanish, Italian) is held to its glossary by its
+ * rulebook text alone.
+ */
+function isEdition(language: string): language is Locale {
+  return (LOCALES as readonly string[]).includes(language);
+}
+
+function sitePairs(locale: RulebookLanguage): readonly Pair[] {
+  if (!isEdition(locale)) return [];
   return pairsOf(siteCopyFor(DEFAULT_LOCALE), siteCopyByLocale[locale], "site");
 }
 
-function legalPairs(locale: Locale): readonly Pair[] {
+function legalPairs(locale: RulebookLanguage): readonly Pair[] {
+  if (!isEdition(locale)) return [];
   const translated = legalPagesByLocale[locale];
   return legalPagesByLocale[DEFAULT_LOCALE].flatMap((page) =>
     pairsOf(page, translated.find((candidate) => candidate.route === page.route), `legal.${page.route}`));
 }
 
 /**
- * The complete rulebook text for each translated edition.
+ * The complete rulebook text for each rulebook language but English.
  */
-const rulebookTexts: Readonly<Record<Exclude<Locale, typeof DEFAULT_LOCALE>, RulebookText>> = {
+const rulebookTexts: Readonly<Record<GlossaryLocale, RulebookText>> = {
   de: germanRulebook, et: estonianRulebook, tlh: klingonRulebook,
+  fr: frenchRulebook, es: spanishRulebook, it: italianRulebook,
 };
 
 /**
@@ -98,8 +115,7 @@ const rulebookTexts: Readonly<Record<Exclude<Locale, typeof DEFAULT_LOCALE>, Rul
  * `rulebook.<frame id>`, and the pairs come in reading order, so a term's
  * first use on a sheet is the first pair of that sheet that has it.
  */
-function rulebookPairs(locale: Locale): readonly Pair[] {
-  if (locale === DEFAULT_LOCALE) return [];
+function rulebookPairs(locale: GlossaryLocale): readonly Pair[] {
   const translated = rulebookTexts[locale];
   return reviewedSheets.flatMap((sheet) => sheet.frames).map(({ id }) => ({
     key: `rulebook.${id}`, english: englishRulebook[id], translated: translated[id],
@@ -221,14 +237,14 @@ function missingOriginals(glossary: Glossary, pairs: readonly Pair[]): string[] 
   return missing;
 }
 
-function covers(exception: GlossaryException, locale: Locale, failure: Failure): boolean {
+function covers(exception: GlossaryException, locale: GlossaryLocale, failure: Failure): boolean {
   return exception.locale === locale && exception.key === failure.key
     && exception.term === failure.term && exception.rule === failure.rule;
 }
 
 /** What is wrong with a locale's strings and with the exceptions written for it. */
 function reportFor(
-  locale: Locale, glossary: Glossary, pairs: readonly Pair[], exceptions: readonly GlossaryException[],
+  locale: GlossaryLocale, glossary: Glossary, pairs: readonly Pair[], exceptions: readonly GlossaryException[],
 ): string[] {
   const failures = checkGlossary(glossary, pairs);
   return [
@@ -516,8 +532,8 @@ describe("the staged Klingon interface and shop copy", () => {
 describe("the registered glossaries", () => {
   const registered = Object.entries(glossaries) as [keyof typeof glossaries, Glossary][];
 
-  it("include every translated edition", () => {
-    expect(registered.map(([locale]) => locale).toSorted()).toEqual(["de", "et", "tlh"]);
+  it("include every rulebook language but English", () => {
+    expect(registered.map(([locale]) => locale).toSorted()).toEqual(["de", "es", "et", "fr", "it", "tlh"]);
   });
 
   it("allow the printed English label beside a translated term", () => {
@@ -558,6 +574,11 @@ describe("the registered glossaries", () => {
   it("are well formed and pass the check over every translated string, less the named exceptions", () => {
     for (const [locale, glossary] of registered) {
       expect(problemsIn(glossary), locale).toEqual([]);
+      if (isEdition(locale)) {
+        expect(sitePairs(locale).length, `${locale} has no translated site string`).toBeGreaterThan(0);
+        expect(legalPairs(locale).length, `${locale} has no translated legal string`).toBeGreaterThan(0);
+      }
+      expect(rulebookPairs(locale).length, `${locale} has no translated rulebook string`).toBeGreaterThan(0);
       const pairs = sources.flatMap((pairsFor) => pairsFor(locale));
       expect(pairs.length, `${locale} has no translated string`).toBeGreaterThan(0);
       expect(reportFor(locale, glossary, pairs, glossaryExceptions), locale).toEqual([]);
