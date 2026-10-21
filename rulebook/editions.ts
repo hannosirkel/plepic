@@ -1,7 +1,10 @@
 import { resolve } from "node:path";
 import { de } from "./text/de/index.js";
 import { en } from "./text/en.js";
+import { es } from "./text/es/index.js";
 import { et } from "./text/et/index.js";
+import { fr } from "./text/fr/index.js";
+import { it } from "./text/it/index.js";
 import type { RulebookText } from "./text/schema.js";
 import { tlh } from "./text/tlh/index.js";
 
@@ -16,6 +19,9 @@ export const editions: Readonly<Record<string, Edition>> = {
   de: { tag: "de", title: "Lunar Base Spielanleitung", text: de },
   et: { tag: "et", title: "Lunar Base reegliraamat", text: et },
   tlh: { tag: "tlh", title: "Lunar Base mIw paq", text: tlh },
+  fr: { tag: "fr", title: "Lunar Base livret de règles", text: fr },
+  es: { tag: "es", title: "Lunar Base libro de reglas", text: es },
+  it: { tag: "it", title: "Lunar Base regolamento", text: it },
 };
 
 /**

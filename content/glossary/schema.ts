@@ -22,7 +22,7 @@
  * counted, so "Lunar Base" is not also a use of "Base".
  */
 
-import type { DEFAULT_LOCALE, Locale } from "../routes.js";
+import type { RulebookLanguage } from "../rulebook-documents.js";
 import type { TermId } from "./terms.js";
 
 export interface GlossaryEntry {
@@ -46,10 +46,11 @@ export interface GlossaryEntry {
 export type Glossary = Readonly<Record<TermId, GlossaryEntry>>;
 
 /**
- * Every translated edition has a glossary. The default locale has none,
- * because English is what the translations are checked against.
+ * Every language the rulebook is printed in has a glossary, whether or not it
+ * is a site edition. English has none, because English is what the
+ * translations are checked against.
  */
-export type GlossaryLocale = Exclude<Locale, typeof DEFAULT_LOCALE>;
+export type GlossaryLocale = Exclude<RulebookLanguage, "en">;
 export type GlossaryRegistry = Readonly<Record<GlossaryLocale, Glossary>>;
 
 /**

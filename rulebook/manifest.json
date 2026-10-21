@@ -7,39 +7,81 @@
     "de": {
       "pdf": {
         "path": "storefront/public/documents/lunar-base-rulebook-de.pdf",
-        "sha256": "360ea2e207f62cfedd459f59daeb3c9aea0da2de956c4742995318a3a64ea0b5"
+        "sha256": "926f26404cdb6b1c9c3ddd48fa676a066660a07ca16dc1c211beb01f393a1008"
       },
       "sources": {
         "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
-        "rulebook/layout/overrides.ts": "6e0338233eee7139be59fcdaace7602314a6dbe9d63f489777437449f2cd8b94",
+        "rulebook/layout/overrides.ts": "2d896ad944e1f4e8fa236e78601a6b4b69c7e9c24d2b1491bd64bd865dacfbc4",
         "rulebook/text/de/index.ts": "23d1d3c0972e869005cfa13f5c68d7d89de109172b8c0180d8ada9a29866703d",
         "rulebook/text/de/part1.ts": "acde3c4e34397a7f286199af0a507f8d42f389c1f71100a364fc6830df5f896b",
         "rulebook/text/de/part2.ts": "4f167673d37d981603b0925c7e6528b4abd6cbc0dc31c469ab6f5416b4920540",
         "storefront/public/documents/lunar-base-rulebook.pdf": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
       }
     },
-    "et": {
+    "es": {
       "pdf": {
-        "path": "storefront/public/documents/lunar-base-rulebook-et.pdf",
-        "sha256": "017a39ff86822abec691ae62d15649c7641420a610bf065a71fa81d4164caf8f"
+        "path": "storefront/public/documents/lunar-base-rulebook-es.pdf",
+        "sha256": "e8b34ef7b873798f8eca105c4f33fa826b9335c90336808d7241d2fea3bda434"
       },
       "sources": {
         "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
-        "rulebook/layout/overrides.ts": "6e0338233eee7139be59fcdaace7602314a6dbe9d63f489777437449f2cd8b94",
+        "rulebook/layout/overrides.ts": "2d896ad944e1f4e8fa236e78601a6b4b69c7e9c24d2b1491bd64bd865dacfbc4",
+        "rulebook/text/es/index.ts": "e37a02458cc3e5b71ca1dcd2d2f10a9597d633ceff4248f944c7bbe6cebd7bcb",
+        "rulebook/text/es/part1.ts": "360b7b0ec01e9589b6d131b5b679a8f28330e68881aaa1586c7d7e0c9466664c",
+        "rulebook/text/es/part2.ts": "55ad3c4fb8e3eb0834f7b7d9fa87e8ef10526bf0f193f5ecf1db29edf2bceeb6",
+        "storefront/public/documents/lunar-base-rulebook.pdf": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
+      }
+    },
+    "et": {
+      "pdf": {
+        "path": "storefront/public/documents/lunar-base-rulebook-et.pdf",
+        "sha256": "fb1c07473a67461fef54c0971a6b3feb11ef649b5c15f2216f044b435cb349f3"
+      },
+      "sources": {
+        "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
+        "rulebook/layout/overrides.ts": "2d896ad944e1f4e8fa236e78601a6b4b69c7e9c24d2b1491bd64bd865dacfbc4",
         "rulebook/text/et/index.ts": "fa0cada689f2f43eed4626d3b5aaf5ecb9c91d8988d30413ea5bf30aceca4b6b",
         "rulebook/text/et/part1.ts": "20bf5903127ea40910ff65da2c84ea82eb2478f8a08048e2875402f8acc98a11",
         "rulebook/text/et/part2.ts": "740ade7cc62d348a467666a06d81bf12a4bb9d9dca10978e0ab95cd522c5de21",
         "storefront/public/documents/lunar-base-rulebook.pdf": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
       }
     },
-    "tlh": {
+    "fr": {
       "pdf": {
-        "path": "storefront/public/documents/lunar-base-rulebook-tlh.pdf",
-        "sha256": "f8a59e1d789b0995857cd44ec201bd97c7d1d533a9725ec5558cce0e696c3154"
+        "path": "storefront/public/documents/lunar-base-rulebook-fr.pdf",
+        "sha256": "84c0a910b8689b8de44c64980d34079e3db240ad1935537f26b0ffcec8a46f9a"
       },
       "sources": {
         "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
-        "rulebook/layout/overrides.ts": "6e0338233eee7139be59fcdaace7602314a6dbe9d63f489777437449f2cd8b94",
+        "rulebook/layout/overrides.ts": "2d896ad944e1f4e8fa236e78601a6b4b69c7e9c24d2b1491bd64bd865dacfbc4",
+        "rulebook/text/fr/index.ts": "99513bde61aacf33694682d48e859daf949d735d1856c93c2cac1e670c2d09d3",
+        "rulebook/text/fr/part1.ts": "6bafe5cf24949ee7ffbdc13a0badbe3d08cbb75a98fa0939e7c0103b305bb643",
+        "rulebook/text/fr/part2.ts": "79e8bf04f34abde062434fc8d64b6fb2407a43564bc2db47f4fee1fce8384bd4",
+        "storefront/public/documents/lunar-base-rulebook.pdf": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
+      }
+    },
+    "it": {
+      "pdf": {
+        "path": "storefront/public/documents/lunar-base-rulebook-it.pdf",
+        "sha256": "ac92791025d4293e40b58a3c03c795e22c82e7ea247cb2d8f237a0b4e3fdcffa"
+      },
+      "sources": {
+        "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
+        "rulebook/layout/overrides.ts": "2d896ad944e1f4e8fa236e78601a6b4b69c7e9c24d2b1491bd64bd865dacfbc4",
+        "rulebook/text/it/index.ts": "1ee42eff3f5e7530620699f4bf4bec4c3d07dfb467560d822012b1d8b79159a1",
+        "rulebook/text/it/part1.ts": "e641bd75aff1ca1984cce3c28df7ffb979c0b1df450dfbfd8036fd8879136ab7",
+        "rulebook/text/it/part2.ts": "698ed24588f43014340eabc225e1a0dac6dcdbd1178b665e0a6f93130e92f73d",
+        "storefront/public/documents/lunar-base-rulebook.pdf": "40ef85439b4573495227be7ef905ecc0a30737e7477d294609079f01befce2ee"
+      }
+    },
+    "tlh": {
+      "pdf": {
+        "path": "storefront/public/documents/lunar-base-rulebook-tlh.pdf",
+        "sha256": "075b4fc5abe037c99844f18e3079128013fad2d7e28ce225e68b7b28ebf8fc53"
+      },
+      "sources": {
+        "rulebook/layout/frames.ts": "ca07af96d33a45399c7370d828c712ed2f76f0494769488d580a55082aaf268e",
+        "rulebook/layout/overrides.ts": "2d896ad944e1f4e8fa236e78601a6b4b69c7e9c24d2b1491bd64bd865dacfbc4",
         "rulebook/text/tlh/index.ts": "a803e84411d17818ed4e77d8727b8e9673a979c96fa0f3a35dfac3f26a22fdb8",
         "rulebook/text/tlh/part1.ts": "18e8becbd0eaa271ce61b208a4ffee67604cf21ba991bd4dc39f34ed8f72fb61",
         "rulebook/text/tlh/part2.ts": "35c931c814fa205283a3508d412d9db0e6528dc0d63fd2f1424f32e8e135c756",
