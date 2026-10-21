@@ -2,7 +2,10 @@
 
 The site is published in four editions: English, German, Estonian and Klingon.
 Each publishes every route that is not retired, and each has its own rulebook
-PDF. `en` is the default edition. The URL path prefix selects the edition.
+PDF. The rulebook also exists in French, Spanish and Italian, which are not
+editions (see [Rulebook languages that are not
+editions](#rulebook-languages-that-are-not-editions)). `en` is the default
+edition. The URL path prefix selects the edition.
 Nothing negotiates one.
 
 A locale is an **edition** of the site, not a language. An edition has a
@@ -32,6 +35,34 @@ shop names them in English.
 An edition is complete or it does not exist. An edition without full site
 copy does not compile, and one without a committed rulebook PDF fails
 `content/rulebook-documents.test.ts`.
+
+## Rulebook languages that are not editions
+
+`RulebookLanguage` in `content/rulebook-documents.ts` is every `Locale` plus
+`fr`, `es` and `it`. `RULEBOOK_LANGUAGES` lists them in order: the editions in
+`LOCALES` order, then the others. It keys `rulebookDocuments`, and nothing else.
+It is declared beside that registry and not in `content/routes.ts`, because
+`routes.ts` is the one source of what the site is published in and a rulebook
+language is not that.
+
+The rulebook page keeps its primary button for the edition's own PDF and lists
+every other rulebook language below it: the language's name in that language
+(`nativeName`), a link carrying `lang` and `hreflang`, and the size in the
+edition's number format. The heading and the size phrase are interface copy
+(`rulebook.otherLanguagesHeading` and `rulebook.languageSize`), translated in
+every edition. The names are content and are not translated; the four edition
+names repeat `LANGUAGE_SWITCHER_LABELS`, which content may not import, and
+`storefront/tests/rulebook-page.test.tsx` holds the two equal.
+
+Adding a rulebook language is therefore: a member of `RULEBOOK_LANGUAGES`, a
+`rulebookDocuments` entry, the committed PDF, and its name added to the
+marker-fixture exemption in `storefront/tests/support-edition.test.tsx` (the
+names are exempt from the edition-leak check only as far as that list). It does
+**not** add a route, a URL prefix, a sitemap entry, an `hreflang` alternate, a
+selector entry, site copy, legal pages or price format; `Locale`, `LOCALES`
+and `LOCALE_DEFINITIONS` do not change. A rulebook language's text, glossary and
+PDF are staged and checked as an edition's are, in
+[`rulebook.md`](./rulebook.md).
 
 ## How an edition is chosen
 
@@ -126,7 +157,7 @@ Every table keyed by locale is a total `Record<Locale, T>`. A new member of
 | `pagesByLocale` | `content/index.ts` | The pages each edition publishes: the edition's own `pages.ts` | Canonical, `hreflang`, sitemap, the router, link targets |
 | `legalPagesByLocale` | `content/legal/index.ts` | The five legal pages of each edition | `LegalRoute` in `storefront/src/app/localized-routes.tsx`, the sentences the checkout quotes |
 | `siteCopyByLocale` | `content/editions.ts` | The site copy of each edition. `SiteCopy` names the seven modules an edition must provide | Every page component, through `siteCopyFor`; the Server Functions that answer the public forms |
-| `rulebookDocuments` | `content/rulebook-documents.ts` | File name, size and sheet count of each edition's rulebook PDF | `RulebookPageContent` |
+| `rulebookDocuments` | `content/rulebook-documents.ts` | Keyed by `RulebookLanguage`, not `Locale`: language tag, name in that language, file name, size and sheet count of each rulebook PDF | `RulebookPageContent` |
 | `CHROME_STRINGS` | `storefront/src/lib/chrome-strings.ts` | Header and footer labels, the draft note, the incompleteness notice | `SiteHeader`, `SiteFooter`, `LegalPageContent` |
 | `LANGUAGE_SWITCHER_LABELS` | `storefront/src/lib/chrome-strings.ts` | The name of each edition's language, in that language | `LanguageSelector` |
 | `TAX_VOCABULARY` | `storefront/src/lib/catalogue.ts` | The VAT qualification phrases and the shipping note | `resolveCatalogue` |
@@ -183,9 +214,9 @@ last.
 1. Write the conventions as `docs/current/translation/<language>.md`.
 2. Add `content/glossary/<locale>.ts`, ending in `satisfies Glossary` as the
    three there do. Do not register it yet. `GlossaryRegistry` in
-   `content/glossary/schema.ts` is keyed by every member of `LOCALES` except
-   the default, so an entry in `glossaries` for a locale that is not yet a
-   member fails the type check.
+   `content/glossary/schema.ts` is keyed by every member of `RULEBOOK_LANGUAGES`
+   except English, so an entry in `glossaries` for a language that is in
+   neither `LOCALES` nor `RULEBOOK_LANGUAGES` fails the type check.
 3. Stage the five legal pages in `content/legal/<locale>/` and the seven site
    modules in `content/<locale>/`.
 4. Stage the rulebook text in `rulebook/text/<locale>/`. Add the edition to
@@ -201,7 +232,7 @@ last.
 6. Update the lists of locales written as literals. The type check does not
    name them. Three fail until they have the new locale: the pinned `LOCALES`
    in `content/content.test.ts`, the expectation of the test "include every
-   translated edition" in `content/glossary.test.ts`, and the `languages`
+   rulebook language but English" in `content/glossary.test.ts`, and the `languages`
    list in `storefront/tests/sitemap-contract.test.ts`. Loops over
    `["de", "et", "tlh"]`, among them those in
    `storefront/tests/locale-routing.test.ts`,
@@ -211,8 +242,11 @@ last.
 
 The glossary check reads a language from step 5 on, and not before.
 `content/glossary.test.ts` walks the entries of `glossaries`. For each it reads
-the site copy from `siteCopyByLocale`, the legal pages from
-`legalPagesByLocale` and the rulebook text from its own `rulebookTexts` table.
+the rulebook text from its own `rulebookTexts` table, and, for a language that
+is an edition, the site copy from `siteCopyByLocale` and the legal pages from
+`legalPagesByLocale`. French, Spanish and Italian are registered there, as
+rulebook languages and not editions, and are checked on their rulebook text
+alone.
 It does not read a directory. A staged language is held to its glossary only
 by a test that imports the staged modules by path, as the two blocks named
 "the staged Klingon ..." in that file do.
@@ -409,7 +443,7 @@ All of these run in `bash scripts/validate`, except the last row.
 | `content/content.test.ts` | Exactly one edition has the unprefixed paths. Prefixes and language tags are distinct. Every edition publishes every unretired route and carries all five legal pages. No content file holds a hostname, an absolute URL or a price |
 | `content/mirror.test.ts` | Every edition directory on disk, registered or not, equals the English modules in structure |
 | `content/glossary.test.ts` | No translated string, of the site or the rulebook, uses a forbidden variant or lacks the agreed term |
-| `content/rulebook-documents.test.ts` | Every edition has a committed rulebook PDF of the stated size and 25 sheets |
+| `content/rulebook-documents.test.ts` | Every rulebook language has a committed rulebook PDF of the stated size and 25 sheets |
 | `scripts/klingon-words.test.ts` | Every Klingon word is validly spelled and built from a root in the lexicon |
 | `storefront/tests/locale-selection.test.ts` | Nothing reads a language, address or location header. Only four named files turn a request value into a `Locale` |
 | `storefront/tests/locale-routing.test.ts` | `localizedPath` and `parseLocalizedPath` are inverses. `/en/...` resolves to nothing. Every route an edition publishes has a locale-aware renderer. `<html>` is rendered in one file, and no language tag is hard-coded |

@@ -24,6 +24,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { pagesByLocale } from "../../content/index.js";
 import { DEFAULT_LOCALE, LOCALES, LOCALE_DEFINITIONS, type Locale } from "../../content/routes.js";
+import { rulebookDocuments } from "../../content/rulebook-documents.js";
 import type { Page } from "../../content/schema.js";
 import { RulebookRoute, SupportRoute } from "../src/app/localized-routes.js";
 import { ContactForm, contactFields } from "../src/components/forms/ContactForm.js";
@@ -104,6 +105,8 @@ function wordsFromElsewhere(locale: Locale): readonly string[] {
     ...stringsIn(CHROME_STRINGS[locale]),
     // The language selector names every edition in its own language, on every edition.
     ...Object.values(LANGUAGE_SWITCHER_LABELS),
+    // The rulebook page lists every rulebook language by its own name, the three that are no edition included.
+    ...Object.values(rulebookDocuments).map((document) => document.nativeName),
     // The game's name, as printed on the box: the header's link to its page.
     "Lunar Base",
     // The publisher's name, as the footer wordmark's `alt`, and the platforms' own names.
