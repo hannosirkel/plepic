@@ -36,7 +36,6 @@ export const rulebookDocuments: Readonly<Record<RulebookLanguage, RulebookDocume
   de: { languageTag: "de", nativeName: "Deutsch", fileName: "lunar-base-rulebook-de.pdf", megabytes: 9.4, sheetCount: 25 },
   et: { languageTag: "et", nativeName: "Eesti", fileName: "lunar-base-rulebook-et.pdf", megabytes: 9.4, sheetCount: 25 },
   tlh: { languageTag: "tlh", nativeName: "tlhIngan Hol", fileName: "lunar-base-rulebook-tlh.pdf", megabytes: 9.3, sheetCount: 25 },
-  // Sizes are placeholders until the PDF build step records the real ones.
   fr: { languageTag: "fr", nativeName: "Français", fileName: "lunar-base-rulebook-fr.pdf", megabytes: 9.4, sheetCount: 25 },
   es: { languageTag: "es", nativeName: "Español", fileName: "lunar-base-rulebook-es.pdf", megabytes: 9.4, sheetCount: 25 },
   it: { languageTag: "it", nativeName: "Italiano", fileName: "lunar-base-rulebook-it.pdf", megabytes: 9.4, sheetCount: 25 },
