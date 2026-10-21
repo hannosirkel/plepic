@@ -200,7 +200,7 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL
           scanners: vuln
-          version: v0.75.0
+          version: v0.76.1
 
       - name: Scan the published storefront digest
         # aquasecurity/trivy-action v0.36.0
@@ -214,7 +214,7 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL
           scanners: vuln
-          version: v0.75.0
+          version: v0.76.1
 
       - name: Retain the vulnerability reports
         if: ${{ always() && hashFiles('trivy-backend.json', 'trivy-storefront.json') != '' }}
