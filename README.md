@@ -2065,7 +2065,7 @@ the list and this sentence as the reason it is that long.
 CI runs it in this exact immutable image:
 
 ```text
-mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+mcr.microsoft.com/playwright:v1.64.1-noble@sha256:bdfda2a8fdf48707c5e50a49bd3e06d8d0c759153dc8ee057d8a81c3450bb3e9
 ```
 
 Never create or refresh snapshot files from a bare workstation: browser fonts
@@ -2076,7 +2076,7 @@ repository root:
 ```bash
 docker run --rm --init --ipc=host --network host --user "$(id -u):$(id -g)" \
   -v "$PWD:/w" -w /w \
-  mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462 \
+  mcr.microsoft.com/playwright:v1.64.1-noble@sha256:bdfda2a8fdf48707c5e50a49bd3e06d8d0c759153dc8ee057d8a81c3450bb3e9 \
   sh -lc 'npm ci && npm -w storefront exec -- playwright test --update-snapshots'
 ```
 

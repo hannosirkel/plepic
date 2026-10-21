@@ -100,7 +100,7 @@ services:
       retries: 20
 
   smtp:
-    # axllent/mailpit:v1.31.5
+    # axllent/mailpit:v1.31.6
     image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
     # Bound to 587 rather than Mailpit's default 1025 because the backend
     # refuses any other submission port — see `SMTP_PORT must be exactly 587`
