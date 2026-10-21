@@ -47,7 +47,7 @@ jobs:
     services:
       postgresql:
         # postgres:17.11-bookworm
-        image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+        image: postgres:17.11-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27
         env:
           POSTGRES_USER: plepic
           POSTGRES_DB: plepic
@@ -61,7 +61,7 @@ jobs:
           --health-retries 20
       redis:
         # redis:7.4.11-bookworm
-        image: redis:7.4.11-bookworm@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+        image: redis:7.4.11-bookworm@sha256:44960b3100c48159a66d28c18b0588c193492e25f7551d60e51dd464fc3eca5b
         ports:
           - 6379:6379
         options: >-
@@ -70,8 +70,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
       smtp:
-        # axllent/mailpit:v1.31.5
-        image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
+        # axllent/mailpit:v1.31.6
+        image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
         env:
           MP_SMTP_BIND_ADDR: 0.0.0.0:587
           MP_UI_BIND_ADDR: 0.0.0.0:8025
@@ -233,7 +233,7 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL
           scanners: vuln
-          version: v0.75.0
+          version: v0.76.1
 
       - name: Scan the published storefront digest
         # aquasecurity/trivy-action v0.36.0
@@ -247,7 +247,7 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL
           scanners: vuln
-          version: v0.75.0
+          version: v0.76.1
 
       - name: Retain the vulnerability reports
         if: ${{ always() && hashFiles('trivy-backend.json', 'trivy-storefront.json') != '' }}
