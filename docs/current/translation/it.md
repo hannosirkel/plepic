@@ -10,6 +10,8 @@ Use the typographic apostrophe (’) and the accented capital: „È iniziata“
 
 A card title takes the masculine article in running text („il Depot“, „il Solicitor“, „la Dome“ where the name reads as feminine), or the card type before it where a title contains a glossary word („L’Agente Double Agent“). Plural card titles are not inflected: „2 Rover“.
 
+The six slot labels over the player-count cards on sheet 10 read “Giocatori”, in title case, where English and French print capitals. “GIOCATORI” is wider than the dashed outline of a card at the smallest size the build allows, and the outline is artwork. The credits on sheet 24 use “SQUADRA”, not “team”, and “ALBO D’ORO” for “Wall of Fame”.
+
 ## Game terms in running text
 
 Follow `content/glossary/it.ts`. The cards are printed in English, so a translated term names the printed word in round brackets at its first use on each rulebook sheet: „Mercato (Supply)“, „Azioni principali (Main Actions)“. Inside a bracket use square brackets: „(la tua Stazione [Station] + i tuoi Moduli [Modules])“. Omit the bracket where the Italian term is spelled as the card prints it, as with „Base“ and „Shuttle“. Later uses on the same sheet use the Italian term alone. Capitalise a game component and an action name as the English does („Modulo“, „Sfera“, „Crediti“, „Costruire“), and write the common nouns of table talk in lower case („mazzo“, „mano“, „pila degli scarti“).

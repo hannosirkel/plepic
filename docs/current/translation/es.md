@@ -8,7 +8,9 @@ Use **tú** in the rulebook, with singular imperatives: „Baraja las cartas“,
 
 ## Typography and numbers
 
-Open questions and exclamations with ¿ and ¡. Use angle quotation marks («…») for card text and quoted terms: acciones «Al jugar esta carta». Keep English card titles and Station names exactly as printed (Double Agent, Experimental Borehole, Terran Outpost), without an article of their own and without inflection. Write the decimal comma. Keep rulebook quantities as digits wherever the English rulebook has digits; a page range is written with an en dash („páginas 33–38“). „p. ej.“ stands for „e.g.“.
+Open questions and exclamations with ¿ and ¡. Use angle quotation marks («…») for card text and quoted terms: acciones «Al jugar esta carta». Keep English card titles and Station names exactly as printed (Double Agent, Experimental Borehole, Terran Outpost), without an article of their own and without inflection. Write the decimal comma. Keep rulebook quantities as digits wherever the English rulebook has digits; a page range is written with an en dash, except where it would break across two lines: the rulebook writes „páginas 33 a 38“ with no-break spaces (U+00A0). „p. ej.“ stands for „e.g.“.
+
+The six slot labels over the player-count cards on sheet 10 read “Jugadores”, in title case, where English, French and German print capitals. “JUGADORES” is wider than the dashed outline of a card at the smallest size the build allows, and the outline is artwork.
 
 ## Game terms in running text
 

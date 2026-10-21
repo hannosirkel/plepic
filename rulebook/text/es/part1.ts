@@ -34,7 +34,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s02.f06b": "11",
   "s02.f06c": "Realizar acciones",
   "s02.f06d": "13",
-  "s02.f06e": "Llegada de lanzaderas (Shuttles)",
+  "s02.f06e": "Llegada de Lanzaderas (Shuttles)",
   "s02.f06f": "15",
   "s02.f07a": "Esferas (Orbs)",
   "s02.f07b": "17",
@@ -127,7 +127,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 5
   "s05.f03": "Preparación de la partida",
-  "s05.f04": "Para tus primeras partidas, te recomendamos no usar las cartas de Influencia (Influence). Cuando tengas más experiencia, podrás incluirlas; consulta las páginas 33–38 para más información. Sigue estos pasos para empezar la partida:",
+  "s05.f04": "Para tus primeras partidas, te recomendamos no usar las cartas de Influencia (Influence). Cuando tengas más experiencia, podrás incluirlas; consulta las páginas 33 a 38 para más información. Sigue estos pasos para empezar la partida:",
   "s05.f07": "1",
   "s05.f05": "Baraja las cartas de Estación (Station) y reparte al azar una a cada jugador, con el lado Terran Outpost visible. Los jugadores pueden mirar el otro lado de su propia carta de Estación. Retira del juego las cartas de Estación sobrantes sin mirar su otro lado.",
   "s05.f08": "2",
@@ -184,7 +184,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
   "s08.f02": "11",
   "s08.f11": "Para jugar una carta de Agente de tu mano, haz lo siguiente:",
   "s08.f19": "1",
-  "s08.f12": "Paga su coste (consulta la página 19).",
+  "s08.f12": "Paga su coste (ver pág. 19).",
   "s08.f20": "2",
   "s08.f13": "Resuelve el efecto de la(s) acción(es) que muestra.",
   "s08.f21": "3",
@@ -197,7 +197,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 9
   "s09.f03": "REALIZAR ACCIONES",
-  "s09.f04": "Las Acciones principales (Main Actions) aparecen en los recuadros de las cartas. En cada turno debes elegir una de las de tu Base (p. ej., {s09.f11a} {s09.f11b} o {s09.f11c}). Realiza la(s) acción(es) que muestra el recuadro.",
+  "s09.f04": "Las Acciones principales (Main Actions) aparecen en los recuadros de las cartas. En cada turno debes elegir una de las de tu Base (p. ej., {s09.f11a} {s09.f11b} o {s09.f11c}). Realiza la(s) acción(es) del recuadro.",
   "s09.f11a": "A",
   "s09.f11b": "B",
   "s09.f11c": "C",

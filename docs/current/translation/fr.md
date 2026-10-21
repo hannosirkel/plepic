@@ -44,7 +44,7 @@ Two French collisions are known and accepted. “Pioche” is both the noun for 
 The English sentences are from `rulebook/text/en.ts`; a bracket marks first use on the sheet.
 
 1. `s06.f03` — “Each player draws 3 cards from the top of the deck into their hand. These are kept secret from the other players.”
-   “Chaque joueur pioche (Draw) 3 cartes sur le dessus de la pioche pour les prendre en main. Elles restent secrètes pour les autres joueurs.”
+   “Chaque joueur pioche (Draw) 3 cartes de la pioche et les prend en main. Elles restent secrètes pour les autres joueurs.”
 2. `s06.f04` — “Deal 3 cards plus 1 additional card per player from the deck. Place these face-up between the players to form the Supply.”
    “Distribuez 3 cartes de la pioche, plus 1 carte supplémentaire par joueur. Posez-les face visible entre les joueurs pour former l’étalage (Supply).”
 3. `s06.f05` — “Give each player a Credit Counter, set to 3 Credits. Use the Credit Counter to track your total Credits.”
