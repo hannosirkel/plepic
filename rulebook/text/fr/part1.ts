@@ -199,7 +199,7 @@ export const part1: Record<Extract<FrameId, `${Sheet}.${string}`>, string> = {
 
   // Sheet 9
   "s09.f03": "EFFECTUER DES ACTIONS",
-  "s09.f04": "Les actions principales (Main Actions) figurent dans les encadrés des cartes. À chaque tour, choisissez-en une parmi celles de votre Base (p. ex. {s09.f11a} {s09.f11b} ou {s09.f11c}). Effectuez les actions de l’encadré.",
+  "s09.f04": "Les actions principales (Main Actions) figurent dans les encadrés des cartes. À chaque tour, choisissez-en une parmi celles de votre Base (p. ex. {s09.f11a} {s09.f11b} ou {s09.f11c} ). Effectuez les actions de l’encadré.",
   "s09.f11a": "A",
   "s09.f11b": "B",
   "s09.f11c": "C",
