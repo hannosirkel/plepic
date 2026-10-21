@@ -89,7 +89,7 @@ the storefront workspace chooses its own TypeScript version when it lands (see
 
 | Path | Holds |
 | --- | --- |
-| `storefront/` | workspace: the Next.js App Router site — the default edition's routes under `src/app/(site)/`, the catch-all under `src/app/[locale]/` that serves the `/de`, `/et` and `/tlh` editions, the same-origin `/store-api` proxy, and the four rulebook PDFs under `public/documents/` |
+| `storefront/` | workspace: the Next.js App Router site — the default edition's routes under `src/app/(site)/`, the catch-all under `src/app/[locale]/` that serves the `/de`, `/et` and `/tlh` editions, the same-origin `/store-api` proxy, and the seven rulebook PDFs under `public/documents/` |
 | `backend/` | workspace: the Medusa v2 backend — Store API routes, commerce configuration and seeding, catalogue import, the Stripe payment session, the SMTP notification provider, and the Redis preflight. It knows no edition: its e-mails are English |
 | `content/` | not a workspace: typed site copy. The English modules, their mirrors in `de/`, `et/` and `tlh/`, the legal pages per edition, the locale registries, and the glossary |
 | `rulebook/` | not a workspace: the build and the layout check of the translated rulebook PDFs, the frame map read from the English PDF, the text of each edition, and `manifest.json` |
@@ -104,9 +104,10 @@ Read the document before you change what it describes.
 | Document | Describes |
 | --- | --- |
 | [`docs/current/locales.md`](./docs/current/locales.md) | The editions, how one is chosen, the selector, where copy lives, how to add a string or a language |
-| [`docs/current/rulebook.md`](./docs/current/rulebook.md) | The rulebook PDFs: sources, prerequisites, build and check commands, the manifest |
-| [`docs/current/translation/`](./docs/current/translation/) | The conventions of German, Estonian and Klingon copy |
-| [`docs/decisions/`](./docs/decisions/) | Why the locale is chosen by the URL, and how a translated rulebook PDF is produced |
+| [`docs/current/rulebook.md`](./docs/current/rulebook.md) | The seven rulebook PDFs: sources, prerequisites, build and check commands, the manifest |
+| [`docs/current/preview.md`](./docs/current/preview.md) | The pull request preview on GitHub Pages: the label, who can trigger it, what the snapshot is |
+| [`docs/current/translation/`](./docs/current/translation/) | The conventions of German, Estonian, Klingon, French, Spanish and Italian copy |
+| [`docs/decisions/`](./docs/decisions/) | Why the locale is chosen by the URL, how a translated rulebook PDF is produced, and why French, Spanish and Italian are rulebook languages and not editions |
 | [`docs/issues/`](./docs/issues/) | What is open: known gaps, and questions the operator has not answered |
 
 A reader-facing string is never written inside a component. It goes in

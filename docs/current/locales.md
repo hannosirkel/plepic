@@ -67,7 +67,9 @@ PDF are staged and checked as an edition's are, in
 ## How an edition is chosen
 
 By the URL path prefix, and by nothing else. The decision is in
-[0001](../decisions/0001-locale-chosen-by-url.md).
+[0001](../decisions/0001-locale-chosen-by-url.md). Why French, Spanish and Italian
+are rulebook languages and not editions is in
+[0003](../decisions/0003-rulebook-languages-beyond-editions.md).
 
 | Rule | Detail | Where |
 | --- | --- | --- |

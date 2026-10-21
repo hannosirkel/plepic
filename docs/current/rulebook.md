@@ -5,7 +5,9 @@ editions of the site, and one for each of three rulebook-only languages
 (French, Spanish and Italian). The English one is the file as printed. The
 other six are built from it in this repository: translated text set over the
 English artwork. The decision is in
-[0002](../decisions/0002-translated-rulebook-pdf.md).
+[0002](../decisions/0002-translated-rulebook-pdf.md); why French, Spanish and
+Italian are rulebook languages and not editions is in
+[0003](../decisions/0003-rulebook-languages-beyond-editions.md).
 
 `fr`, `es` and `it` are rulebook languages, not site editions. The site has no
 route, prefix, selector entry or `hreflang` for them; `Locale` is unchanged.
@@ -118,6 +120,14 @@ type step by step until the text fits, and stops at these floors.
 
 `rulebook/thresholds.ts` holds every limit, each with the value measured on
 the English proof.
+
+**Known trade-off: sibling frames at different sizes.** The ladder runs per
+frame, so two frames that stand side by side and read as a pair, such as the
+entries of one list or the labels of one row, can end at different sizes: one
+fits at 100% and the other needs 90%. This is accepted. Making siblings match
+would shrink frames that fit, and a reviewer sees the difference only beside
+the English sheet. Where a pair's difference is plain on the page, the remedy
+is a wider box for the shrunk frame or shorter text, not a shared size.
 
 A frame that does not fit at the last step is printed there and marked
 `"fits": false`. The build names it, leaves the manifest alone and exits
