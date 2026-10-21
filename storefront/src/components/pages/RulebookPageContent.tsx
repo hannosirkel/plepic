@@ -26,10 +26,20 @@
  * user-agent `rgb(0, 0, 238)` on the Lunar layer's `rgb(27, 34, 86)`, which
  * measures 1.59:1 against a 4.5:1 requirement. Every link that remains on
  * this page is token-coloured.
+ *
+ * Below the primary button, a section lists every *other* rulebook language
+ * (`RULEBOOK_LANGUAGES` in `content/rulebook-documents.ts`): the language's
+ * name in that language, a link to its PDF carrying `lang` and `hreflang`, and
+ * the file size in this edition's number format. The edition's own language is
+ * the primary button and is not repeated. French, Spanish and Italian appear
+ * in every edition's list although none is an edition: the list is the only
+ * place they exist on the site. Each list link has a class, so it is
+ * token-coloured like the rest; the heading and the size are the edition's
+ * copy, the names are not.
  */
 import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, LOCALE_DEFINITIONS, type Locale } from "../../../../content/routes.js";
-import { rulebookDocuments } from "../../../../content/rulebook-documents.js";
+import { RULEBOOK_LANGUAGES, rulebookDocuments } from "../../../../content/rulebook-documents.js";
 import { SiteFooter } from "../SiteFooter.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { SiteHeader } from "../SiteHeader.js";
@@ -57,10 +67,12 @@ export function RulebookPageContent({
   // The figure stays a text node of its own, as it was when the sentence was written here.
   const [beforeSize, afterSize] = copy.downloadNote.split("%megabytes%");
   // One decimal, written as the edition writes it: a comma in German and Estonian.
-  const megabytes = new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
+  const sizeFormat = new Intl.NumberFormat(LOCALE_DEFINITIONS[locale].numberFormatTag, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
-  }).format(document.megabytes);
+  });
+  const megabytes = sizeFormat.format(document.megabytes);
+  const otherLanguages = RULEBOOK_LANGUAGES.filter((language) => language !== locale);
 
   return (
     <div data-layer="lunar" className={styles.page}>
@@ -80,6 +92,31 @@ export function RulebookPageContent({
             {megabytes}
             {afterSize}
           </p>
+          <section className={styles.languages} data-other-languages aria-labelledby="rulebook-other-languages">
+            <h2 id="rulebook-other-languages" className={styles.languagesHeading}>
+              {copy.otherLanguagesHeading}
+            </h2>
+            <ul className={styles.languageList}>
+              {otherLanguages.map((language) => {
+                const other = rulebookDocuments[language];
+                return (
+                  <li key={language} className={styles.languageItem}>
+                    <a
+                      className={styles.languageLink}
+                      href={`${DOCUMENTS_PATH}/${other.fileName}`}
+                      lang={other.languageTag}
+                      hrefLang={other.languageTag}
+                    >
+                      {other.nativeName}
+                    </a>
+                    <span className={styles.languageSize}>
+                      {copy.languageSize.replace("%megabytes%", sizeFormat.format(other.megabytes))}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         </div>
       </main>
 

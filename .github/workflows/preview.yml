@@ -1,0 +1,324 @@
+---
+name: Preview
+
+# Publishes a static snapshot of one pull request to GitHub Pages while the
+# pull request carries the `preview` label. See `docs/current/preview.md`.
+#
+# This is a plain `pull_request` workflow, deliberately not
+# `pull_request_target`: the code it builds is the pull request's, so it runs
+# with the pull request's own read-only token and no secrets. The one thing
+# that must be trusted -- who applied the label -- is established by the `gate`
+# job from the GitHub API, which checks out nothing. Three jobs, three trust
+# levels:
+#
+#   gate    reads metadata, runs no pull request code, holds no write grant.
+#   build   runs the pull request's code, holds no write grant and no secret.
+#   deploy  holds the Pages grant, runs no pull request code: it only
+#           publishes the artifact `build` produced.
+#
+# Nothing is committed to any branch. There is one Pages site per repository,
+# so the most recently labelled pull request replaces the previous preview.
+
+'on':
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  gate:
+    # Cheap checks on the event payload first; the API re-checks all of them,
+    # because a payload is a statement of what was true when the event fired.
+    # Fork pull requests never deploy: their head is not this repository's.
+    if: >-
+      github.event.pull_request.state == 'open' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview') &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The issue events say who applied the label; the pull request says
+      # whether it is still open and still carries it.
+      issues: read
+      pull-requests: read
+    outputs:
+      proceed: ${{ steps.verify.outputs.proceed }}
+      head_sha: ${{ steps.verify.outputs.head_sha }}
+      pr_number: ${{ steps.verify.outputs.pr_number }}
+    steps:
+      - name: Verify the label was applied by someone with write access
+        id: verify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_SENDER: ${{ github.event.sender.login }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api='https://api.github.com'
+          headers=(
+            --header "Authorization: Bearer $GITHUB_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          # Every value from the event is checked before it is used.
+          printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$PR_NUMBER" | grep -Eq '^[1-9][0-9]*$'
+          printf '%s' "$REPOSITORY" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+          [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]
+
+          skip() {
+            echo "not publishing a preview: $1"
+            echo 'proceed=false' >>"$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          # The live state of the pull request, not the event's snapshot of it.
+          pull_request="$(curl --fail --silent --show-error "${headers[@]}" \
+            "${api}/repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          jq -e --arg repository "$REPOSITORY" '
+            .state == "open" and .head.repo.full_name == $repository
+          ' >/dev/null <<<"$pull_request" || skip 'the pull request is closed or from a fork'
+          jq -e 'any(.labels[]; .name == "preview")' >/dev/null <<<"$pull_request" \
+            || skip 'the pull request no longer carries the preview label'
+          # A newer push has superseded this event; its own run publishes it.
+          jq -e --arg head_sha "$HEAD_SHA" '.head.sha == $head_sha' >/dev/null \
+            <<<"$pull_request" || skip 'the head moved on since this event'
+
+          # Who applied the label. On `labeled`, the event itself names the
+          # label and the user who applied it: `sender` is that user, not the
+          # pusher, and not a person the payload merely mentions. On
+          # `synchronize` and `reopened` the label was applied earlier, so the
+          # actor is whoever applied the `preview` label that is on the pull
+          # request now: the most recent `labeled` event for it. The pusher is
+          # irrelevant -- anyone with write access to the branch can push, and
+          # that is not the same as being allowed to publish.
+          actor=''
+          if [ "$EVENT_ACTION" = labeled ]; then
+            [ "$EVENT_LABEL" = preview ] || skip 'the label that was applied is not preview'
+            actor="$EVENT_SENDER"
+          else
+            for page in $(seq 1 30); do
+              events="$(curl --fail --silent --show-error "${headers[@]}" \
+                "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100&page=${page}")"
+              [ "$(jq 'length' <<<"$events")" -gt 0 ] || break
+              found="$(jq -r '
+                [.[] | select(.event == "labeled" and .label.name == "preview")]
+                | last | .actor.login // empty
+              ' <<<"$events")"
+              if [ -n "$found" ]; then actor="$found"; fi
+            done
+          fi
+          [ -n "$actor" ] || skip 'no labeled event for preview was found'
+          printf '%s' "$actor" \
+            | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,38})(\[bot\])?$' \
+            || skip 'the label was applied by an actor with an unexpected name'
+
+          # `role_name` distinguishes `maintain` and `triage`, which the legacy
+          # `permission` field folds into `write` and `read`. A triage user can
+          # apply labels and must not be able to publish.
+          role="$(curl --fail --silent --show-error "${headers[@]}" \
+            "${api}/repos/${REPOSITORY}/collaborators/${actor}/permission" \
+            | jq -r '.role_name // empty')"
+          case "$role" in
+            admin | maintain | write) ;;
+            *) skip "${actor} applied the label but holds ${role:-no} access" ;;
+          esac
+
+          echo "label applied by ${actor} (${role})"
+          echo 'proceed=true' >>"$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >>"$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      # The image `validate.yml`'s browser job runs in: Playwright 1.64.0, Noble
+      # amd64, by immutable digest. The preview is crawled by the same browser
+      # the suite uses.
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    # Job-level, not workflow-level: a workflow-level group would let the run
+    # for any unlabelled pull request's push cancel a deployment in progress,
+    # because concurrency is evaluated before a job's `if`. GitHub does not
+    # document whether a job skipped by its `if` still joins its group, so the
+    # group name does not depend on the answer: a run that will not publish is
+    # given a group of its own, which it shares with nobody and so cancels
+    # nobody. Only a run that publishes joins `plepic-preview`.
+    concurrency:
+      group: ${{ needs.gate.outputs.proceed == 'true' && 'plepic-preview' || format('plepic-preview-idle-{0}', github.run_id) }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    env:
+      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Check out the pull request head
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.gate.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build the storefront
+        run: npm -w storefront run build
+
+      - name: Crawl the running storefront into a static snapshot
+        # The same fixture and synthetic values `storefront/playwright.config.ts`
+        # starts, so the preview shows what the browser suite sees. Every value
+        # is a placeholder: the host is a reserved example name, the keys are
+        # fixtures, and `SITE_TEST_HOSTNAMES` names that host so the server
+        # marks every page `noindex`. No live hostname and no real key is
+        # anywhere in this job.
+        env:
+          MEDUSA_BACKEND_URL: http://127.0.0.1:3199
+          MEDUSA_PUBLISHABLE_API_KEY: pk_preview_fixture
+          TURNSTILE_SITE_KEY: synthetic-preview-turnstile-site-key
+          SITE_BASE_URL: https://preview.example.org
+          SITE_CANONICAL_HOST: preview.example.org
+          SITE_TEST_HOSTNAMES: preview.example.org
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+
+          (cd storefront && exec node tests/playwright/medusa-fixture.ts) &
+          (cd storefront && exec npm run start -- --hostname 127.0.0.1 --port 3100) &
+
+          # Node, not curl, for this probe: it has to set `Host` and fail on a
+          # bad status without a shell pipeline. (The pinned image does carry curl.)
+          # `http.get`, not `fetch`: a request has to be able to set `Host`.
+          probe() {
+            node --input-type=module --eval '
+              import { get } from "node:http";
+              const [url, host] = process.argv.slice(1);
+              get(url, { headers: host ? { Host: host } : {} }, (response) => {
+                response.resume();
+                process.exit(response.statusCode >= 200 && response.statusCode < 300 ? 0 : 1);
+              }).on("error", () => process.exit(1)).setTimeout(5000, function () { this.destroy(); });
+            ' "$@"
+          }
+
+          ready=false
+          for _ in $(seq 1 60); do
+            if probe http://127.0.0.1:3100/ preview.example.org \
+              && probe http://127.0.0.1:3199/health; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          [ "$ready" = true ]
+
+          node scripts/preview-snapshot.mjs \
+            --origin http://127.0.0.1:3100 \
+            --host preview.example.org \
+            --out preview-site \
+            --public-dir storefront/public \
+            --pull-request "$PR_NUMBER" \
+            --sha "$HEAD_SHA" \
+            --base-path "/${REPOSITORY#*/}/"
+
+      - name: Package the snapshot for GitHub Pages
+        # actions/upload-pages-artifact v5.0.0
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
+        with:
+          path: preview-site
+          retention-days: 7
+
+  deploy:
+    needs: [gate, build]
+    runs-on: ubuntu-24.04
+    # Same rule as `build`: a run that does not publish never joins the group.
+    concurrency:
+      group: ${{ needs.gate.outputs.proceed == 'true' && 'plepic-preview' || format('plepic-preview-idle-{0}', github.run_id) }}
+      cancel-in-progress: true
+    # Holds the Pages grant and runs no pull request code: it publishes the
+    # artifact above and nothing else.
+    permissions:
+      # Publish the artifact, and prove to Pages who is publishing it.
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        # actions/deploy-pages v5.0.1
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
+
+  comment:
+    needs: [gate, deploy]
+    runs-on: ubuntu-24.04
+    # Runs no pull request code, and holds the only write grant on the pull
+    # request. It keeps a single comment current rather than adding one per push.
+    permissions:
+      # Create or edit the one preview comment.
+      pull-requests: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+      PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+      PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Post or update the preview comment
+        run: |
+          set -euo pipefail
+          api='https://api.github.com'
+          headers=(
+            --header "Authorization: Bearer $GITHUB_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$PR_NUMBER" | grep -Eq '^[1-9][0-9]*$'
+          printf '%s' "$PAGE_URL" \
+            | grep -Eq '^https://[A-Za-z0-9.-]+/[A-Za-z0-9._/-]*$'
+
+          marker='<!-- plepic-preview -->'
+          body="$(printf '%s\nPreview of this pull request at %s: %s\n\nA static snapshot, not the shop: forms and basket do not work. Only one preview exists at a time, so labelling another pull request replaces this one.' \
+            "$marker" "${HEAD_SHA:0:7}" "$PAGE_URL")"
+
+          # Every page of comments, not the first hundred: on a long thread the
+          # marker comment can be on a later page, and a second one would be posted.
+          existing=''
+          for page in $(seq 1 100); do
+            comments="$(curl --fail --silent --show-error "${headers[@]}" \
+              "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100&page=${page}")"
+            [ "$(jq 'length' <<<"$comments")" -gt 0 ] || break
+            existing="$(jq -r --arg marker "$marker" '
+              [.[] | select(.user.login == "github-actions[bot]"
+                            and (.body | startswith($marker)))]
+              | first | .id // empty' <<<"$comments")"
+            [ -z "$existing" ] || break
+          done
+
+          payload="$(jq -n --arg body "$body" '{body: $body}')"
+          if [ -n "$existing" ]; then
+            printf '%s' "$existing" | grep -Eq '^[0-9]+$'
+            curl --fail --silent --show-error --request PATCH "${headers[@]}" \
+              --data "$payload" \
+              "${api}/repos/${REPOSITORY}/issues/comments/${existing}" >/dev/null
+          else
+            curl --fail --silent --show-error --request POST "${headers[@]}" \
+              --data "$payload" \
+              "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" >/dev/null
+          fi

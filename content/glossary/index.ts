@@ -8,17 +8,24 @@
 
 import type { GlossaryException, GlossaryRegistry } from "./schema.js";
 import { germanGlossary } from "./de.js";
+import { spanishGlossary } from "./es.js";
 import { estonianGlossary } from "./et.js";
+import { frenchGlossary } from "./fr.js";
+import { italianGlossary } from "./it.js";
 import { klingonGlossary } from "./tlh.js";
 
 export * from "./terms.js";
 export * from "./schema.js";
 
 /**
- * Every translated edition registers a sibling `<locale>.ts` glossary here.
- * `glossary.test.ts` checks its site and rulebook strings together.
+ * Every rulebook language registers a sibling `<language>.ts` glossary here.
+ * `glossary.test.ts` checks the rulebook text of each, and the site and legal
+ * strings of each that is also an edition.
  */
-export const glossaries: GlossaryRegistry = { de: germanGlossary, et: estonianGlossary, tlh: klingonGlossary };
+export const glossaries: GlossaryRegistry = {
+  de: germanGlossary, et: estonianGlossary, tlh: klingonGlossary,
+  fr: frenchGlossary, es: spanishGlossary, it: italianGlossary,
+};
 
 /**
  * The strings the check would fail and that stand as written. An entry that
@@ -107,5 +114,29 @@ export const glossaryExceptions: readonly GlossaryException[] = [
     term: "base",
     rule: "missing-term",
     reason: "The published page registry also carries the privacy page. Its legal bases are õiguslikud alused, not a player's Base.",
+  },
+  {
+    locale: "fr",
+    key: "rulebook.s04.f27b",
+    term: "mainAction",
+    rule: "missing-term",
+    reason:
+      "A callout on sheet 4 stands on a white pill of the artwork, about 27 pt wide at the callout's 5 pt, and the term in full (« Actions principales ») measures about twice that. The callout keeps the noun, \"Actions\". Its numeral 6 names the entry of the list beside the cards, which has the term in full.",
+  },
+  {
+    locale: "es",
+    key: "rulebook.s04.f27b",
+    term: "mainAction",
+    rule: "missing-term",
+    reason:
+      "A callout on sheet 4 stands on a white pill of the artwork, about 27 pt wide at the callout's 5 pt, and the term in full («Acciones principales») measures about twice that. The callout keeps the noun, \"Acciones\". Its numeral 6 names the entry of the list beside the cards, which has the term in full.",
+  },
+  {
+    locale: "it",
+    key: "rulebook.s04.f27b",
+    term: "mainAction",
+    rule: "missing-term",
+    reason:
+      "A callout on sheet 4 stands on a white pill of the artwork, about 27 pt wide at the callout's 5 pt, and the term in full («Azioni principali») measures about twice that. The callout keeps the noun, \"Azioni\". Its numeral 6 names the entry of the list beside the cards, which has the term in full.",
   },
 ];

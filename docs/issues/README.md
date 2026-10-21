@@ -2,7 +2,9 @@
 
 These files list what was still open when the site-translation plan was
 retired on 2026-10-12. The plan added the German, Estonian and Klingon
-editions and their rulebook PDFs. Nothing here is committed work.
+editions and their rulebook PDFs. One file is from the plan that added the
+French, Spanish and Italian rulebooks, retired on 2026-10-21. Nothing here is
+committed work.
 
 Twelve files are questions the plan put to the operator. The plan chose a
 reading for each and built on it, so the site works as each file describes.
@@ -22,6 +24,7 @@ it: the code, not these files, is the authority.
 | [`klingon-language-tag-in-search-metadata.md`](./klingon-language-tag-in-search-metadata.md) | `hreflang="tlh"` and `og:locale="tlh"` are emitted knowingly; search engines may ignore them |
 | [`german-conventions-and-the-content-scan.md`](./german-conventions-and-the-content-scan.md) | The German conventions give a price and a date form that the content scan rejects |
 | [`source-comments-name-the-retired-plan.md`](./source-comments-name-the-retired-plan.md) | Seven TypeScript files name a path under the deleted plan directory |
+| [`rulebook-fr-es-it-native-review.md`](./rulebook-fr-es-it-native-review.md) | The French, Spanish and Italian rulebooks are model translations no native speaker has read |
 
 ## Questions the operator has not answered
 

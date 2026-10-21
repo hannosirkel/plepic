@@ -83,6 +83,10 @@ export interface InterfaceCopy {
      * `%missing%` is below: braces are for the tokens `schema.ts` declares.
      */
     readonly downloadNote: string;
+    /** Heading of the list of the rulebook's other languages. */
+    readonly otherLanguagesHeading: string;
+    /** One entry's size, after its language's name. `%megabytes%` as in `downloadNote`. */
+    readonly languageSize: string;
   };
   /** Copy written by the product page's presentation components. */
   readonly product: {
@@ -251,6 +255,8 @@ export const interfaceCopy: InterfaceCopy = {
     lede: "The complete rulebook, exactly as printed in the box — 25 pages, tagged and selectable rather than a scan, so you can search it, copy from it, and read it with a screen reader.",
     openLabel: "Open the rulebook (PDF)",
     downloadNote: "It is a %megabytes% MB download, so it is worth knowing before you tap it on a phone.",
+    otherLanguagesHeading: "Also available in",
+    languageSize: "%megabytes% MB",
   },
   product: {
     boxImageAlt: "The Lunar Base box open on a plain background, its lid raised behind the empty tray, with a squared stack of cards topped by the Shackleton main-action card, a small card tuck box, the rulebook standing open, and several round scoring discs arranged in front.",

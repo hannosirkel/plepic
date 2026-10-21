@@ -85,6 +85,8 @@ export const interfaceCopy: InterfaceCopy = {
     lede: "Die vollständige Spielanleitung auf Deutsch, gesetzt wie die gedruckte englische Anleitung aus der Schachtel – 25 Seiten, mit Tags versehen und mit markierbarem Text statt als Scan, sodass du sie durchsuchen, daraus kopieren und sie mit einem Screenreader lesen kannst.",
     openLabel: "Spielanleitung öffnen (PDF)",
     downloadNote: "Der Download ist %megabytes% MB groß – gut zu wissen, bevor du ihn auf dem Handy antippst.",
+    otherLanguagesHeading: "Weitere Sprachen",
+    languageSize: "%megabytes% MB",
   },
   product: {
     boxImageAlt: "Die geöffnete Schachtel von Lunar Base vor schlichtem Hintergrund, der Deckel hinter dem leeren Einsatz aufgestellt; davor ein sauber ausgerichteter Stapel Karten, auf dem die Shackleton-Hauptaktionskarte (Main Action) liegt, eine kleine Kartenschachtel, die aufgeschlagen stehende Spielanleitung und mehrere runde Zählscheiben.",
