@@ -51,6 +51,9 @@ jobs:
         id: verify
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_SENDER: ${{ github.event.sender.login }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -88,21 +91,30 @@ jobs:
           jq -e --arg head_sha "$HEAD_SHA" '.head.sha == $head_sha' >/dev/null \
             <<<"$pull_request" || skip 'the head moved on since this event'
 
-          # Who applied the label that is on the pull request now: the most
-          # recent `labeled` event for `preview`. The pusher is irrelevant --
-          # anyone with write access to the branch can push, and that is not
-          # the same as being allowed to publish.
+          # Who applied the label. On `labeled`, the event itself names the
+          # label and the user who applied it: `sender` is that user, not the
+          # pusher, and not a person the payload merely mentions. On
+          # `synchronize` and `reopened` the label was applied earlier, so the
+          # actor is whoever applied the `preview` label that is on the pull
+          # request now: the most recent `labeled` event for it. The pusher is
+          # irrelevant -- anyone with write access to the branch can push, and
+          # that is not the same as being allowed to publish.
           actor=''
-          for page in $(seq 1 30); do
-            events="$(curl --fail --silent --show-error "${headers[@]}" \
-              "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100&page=${page}")"
-            [ "$(jq 'length' <<<"$events")" -gt 0 ] || break
-            found="$(jq -r '
-              [.[] | select(.event == "labeled" and .label.name == "preview")]
-              | last | .actor.login // empty
-            ' <<<"$events")"
-            if [ -n "$found" ]; then actor="$found"; fi
-          done
+          if [ "$EVENT_ACTION" = labeled ]; then
+            [ "$EVENT_LABEL" = preview ] || skip 'the label that was applied is not preview'
+            actor="$EVENT_SENDER"
+          else
+            for page in $(seq 1 30); do
+              events="$(curl --fail --silent --show-error "${headers[@]}" \
+                "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100&page=${page}")"
+              [ "$(jq 'length' <<<"$events")" -gt 0 ] || break
+              found="$(jq -r '
+                [.[] | select(.event == "labeled" and .label.name == "preview")]
+                | last | .actor.login // empty
+              ' <<<"$events")"
+              if [ -n "$found" ]; then actor="$found"; fi
+            done
+          fi
           [ -n "$actor" ] || skip 'no labeled event for preview was found'
           printf '%s' "$actor" \
             | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,38})(\[bot\])?$' \
@@ -128,11 +140,20 @@ jobs:
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-24.04
+    container:
+      # The image `validate.yml`'s browser job runs in: Playwright 1.64.0, Noble
+      # amd64, by immutable digest. The preview is crawled by the same browser
+      # the suite uses.
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     # Job-level, not workflow-level: a workflow-level group would let the run
     # for any unlabelled pull request's push cancel a deployment in progress,
-    # because concurrency is evaluated before a job's `if`.
+    # because concurrency is evaluated before a job's `if`. GitHub does not
+    # document whether a job skipped by its `if` still joins its group, so the
+    # group name does not depend on the answer: a run that will not publish is
+    # given a group of its own, which it shares with nobody and so cancels
+    # nobody. Only a run that publishes joins `plepic-preview`.
     concurrency:
-      group: plepic-preview
+      group: ${{ needs.gate.outputs.proceed == 'true' && 'plepic-preview' || format('plepic-preview-idle-{0}', github.run_id) }}
       cancel-in-progress: true
     permissions:
       contents: read
@@ -168,6 +189,7 @@ jobs:
           SITE_BASE_URL: https://preview.example.org
           SITE_CANONICAL_HOST: preview.example.org
           SITE_TEST_HOSTNAMES: preview.example.org
+        shell: bash
         run: |
           set -euo pipefail
           node --version
@@ -176,11 +198,23 @@ jobs:
           (cd storefront && exec node tests/playwright/medusa-fixture.ts) &
           (cd storefront && exec npm run start -- --hostname 127.0.0.1 --port 3100) &
 
+          # Node, not curl: the pinned browser image is not promised to carry it.
+          # `http.get`, not `fetch`: a request has to be able to set `Host`.
+          probe() {
+            node --input-type=module --eval '
+              import { get } from "node:http";
+              const [url, host] = process.argv.slice(1);
+              get(url, { headers: host ? { Host: host } : {} }, (response) => {
+                response.resume();
+                process.exit(response.statusCode >= 200 && response.statusCode < 300 ? 0 : 1);
+              }).on("error", () => process.exit(1)).setTimeout(5000, function () { this.destroy(); });
+            ' "$@"
+          }
+
           ready=false
           for _ in $(seq 1 60); do
-            if curl --fail --silent --output /dev/null \
-              --header 'Host: preview.example.org' http://127.0.0.1:3100/ \
-              && curl --fail --silent --output /dev/null http://127.0.0.1:3199/health; then
+            if probe http://127.0.0.1:3100/ preview.example.org \
+              && probe http://127.0.0.1:3199/health; then
               ready=true
               break
             fi
@@ -207,8 +241,9 @@ jobs:
   deploy:
     needs: [gate, build]
     runs-on: ubuntu-24.04
+    # Same rule as `build`: a run that does not publish never joins the group.
     concurrency:
-      group: plepic-preview
+      group: ${{ needs.gate.outputs.proceed == 'true' && 'plepic-preview' || format('plepic-preview-idle-{0}', github.run_id) }}
       cancel-in-progress: true
     # Holds the Pages grant and runs no pull request code: it publishes the
     # artifact above and nothing else.
@@ -261,12 +296,19 @@ jobs:
           body="$(printf '%s\nPreview of this pull request at %s: %s\n\nA static snapshot, not the shop: forms and basket do not work. Only one preview exists at a time, so labelling another pull request replaces this one.' \
             "$marker" "${HEAD_SHA:0:7}" "$PAGE_URL")"
 
-          existing="$(curl --fail --silent --show-error "${headers[@]}" \
-            "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
-            | jq -r --arg marker "$marker" '
+          # Every page of comments, not the first hundred: on a long thread the
+          # marker comment can be on a later page, and a second one would be posted.
+          existing=''
+          for page in $(seq 1 100); do
+            comments="$(curl --fail --silent --show-error "${headers[@]}" \
+              "${api}/repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100&page=${page}")"
+            [ "$(jq 'length' <<<"$comments")" -gt 0 ] || break
+            existing="$(jq -r --arg marker "$marker" '
               [.[] | select(.user.login == "github-actions[bot]"
                             and (.body | startswith($marker)))]
-              | first | .id // empty')"
+              | first | .id // empty' <<<"$comments")"
+            [ -z "$existing" ] || break
+          done
 
           payload="$(jq -n --arg body "$body" '{body: $body}')"
           if [ -n "$existing" ]; then

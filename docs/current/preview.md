@@ -32,14 +32,26 @@ A preview is published only if all of these hold when the workflow runs:
   `write` access. A user with only `triage` access can apply labels and cannot
   publish.
 
-The check is on who applied the label, read from the pull request's issue
-events, not on who pushed. A push by someone else refreshes a preview only
-because a person with write access applied the label that is still on the pull
-request.
+The check is on who applied the label, not on who pushed. When the label is
+applied, the event names that user (`sender`). On a later push or a reopening,
+the workflow reads the most recent `preview` label event from the pull
+request's issue events. A push by someone else refreshes a preview only because
+a person with write access applied the label that is still on the pull request.
 
-The workflow uses `pull_request`, not `pull_request_target`. The code it builds
-is the pull request's, so it runs with a read-only token and no secrets. Only
-the final job holds the Pages grant, and it runs no pull request code.
+**What this does and does not guard.** The workflow uses `pull_request`, not
+`pull_request_target`, so a run uses the **pull request's own copy** of
+`preview.yml`. The gate above is therefore not a boundary against anyone who
+can push a branch to this repository: they can change the gate in their own
+branch. The real boundary is **write access to the repository**. Once the
+`github-pages` environment admits `refs/pull/*/merge`, any same-repository pull
+request's workflow can deploy to Pages, whatever its label says. Forks can
+never deploy: a fork's run holds a read-only token and cannot mint the Pages
+grant. The label guards against **accidental** publishing by people who already
+have write access; it does not stand against a malicious one.
+
+The jobs keep their trust levels apart as far as that allows. The code the
+pull request builds runs with a read-only token and no secrets, and only the
+final job holds the Pages grant and runs no pull request code.
 
 ## What the snapshot is
 
@@ -100,6 +112,3 @@ Both are the operator's to make once. The workflow cannot make them.
    add the pattern `refs/pull/*/merge`. Check the deployment after the first
    labelled pull request: a refusal appears as a failed `deploy` job naming the
    environment's protection rule.
-
-Because the environment gate is the only thing that decides which refs may
-publish, prefer the second form of setting 2 if it works for your account.
