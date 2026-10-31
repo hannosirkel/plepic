@@ -35,7 +35,7 @@ name: plepic
 services:
   postgresql:
     # postgres:17.11-bookworm
-    image: postgres:17.11-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27
+    image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
     environment:
       POSTGRES_USER: plepic
       POSTGRES_DB: plepic
@@ -55,7 +55,7 @@ services:
 
   redis:
     # redis:7.4.11-bookworm
-    image: redis:7.4.11-bookworm@sha256:44960b3100c48159a66d28c18b0588c193492e25f7551d60e51dd464fc3eca5b
+    image: redis:7.4.12-bookworm@sha256:b6b6e3dc0c0952737748e55d5d885272840c7e42ba41ab1d5489f693419882f5
     # Authenticated, and AOF-persistent, because that is how the cluster runs
     # it. Redis carries the newsletter rate-limit counter, the session store,
     # and — since the backend and `plepic-worker` have to be one system rather
@@ -101,7 +101,7 @@ services:
 
   smtp:
     # axllent/mailpit:v1.31.6
-    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    image: axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
     # Bound to 587 rather than Mailpit's default 1025 because the backend
     # refuses any other submission port — see `SMTP_PORT must be exactly 587`
     # in `backend/src/config/runtime.ts`. Read what it caught at
