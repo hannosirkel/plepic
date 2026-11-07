@@ -28,7 +28,7 @@
 # argument. The storefront reads all of it from `process.env` per request.
 
 # node:24.22.1-trixie-slim
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS build
+FROM node:24.22.2-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d AS build
 
 WORKDIR /src
 
@@ -52,7 +52,7 @@ COPY storefront/ storefront/
 RUN NODE_ENV=production npm run build --workspace storefront
 
 # node:24.22.1-trixie-slim
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS runtime
+FROM node:24.22.2-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d AS runtime
 
 # `org.opencontainers.image.source` is not set here, and it is not omitted
 # either: `release.yml` and `deploy-test.yml` each pass it to both builds as a
