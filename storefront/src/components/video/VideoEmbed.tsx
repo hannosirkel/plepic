@@ -40,6 +40,7 @@
 
 import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { VideoFacade } from "./VideoFacade.js";
 import styles from "./video-embed.module.css";
 
 export interface VideoEmbedProps {
@@ -80,18 +81,12 @@ export function VideoEmbed({
           <span className={styles.pendingLabel}>{title}</span>{siteCopyFor(locale).interface.product.videoPendingSuffix}
         </p>
       ) : (
-        <div
-          className={`${styles.frame} ${aspectRatio === "16:9" ? styles.frameWidescreen : styles.frameMeasured}`}
-        >
-          <iframe
-            className={styles.iframe}
-            src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(youTubeId)}`}
-            title={title}
-            loading="lazy"
-            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
-        </div>
+        <VideoFacade
+          youTubeId={youTubeId}
+          title={title}
+          watchLabel={siteCopyFor(locale).interface.product.watchHeading}
+          frameClassName={`${styles.frame} ${aspectRatio === "16:9" ? styles.frameWidescreen : styles.frameMeasured}`}
+        />
       )}
     </div>
   );

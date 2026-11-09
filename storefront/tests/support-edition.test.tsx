@@ -15,6 +15,7 @@
  * its edition, or a function that read another field, shows the default
  * edition's sentence here, marked and wrong.
  */
+import { contactFormCopy, contactFormCopyFrom, newsletterFormCopy } from "../src/lib/edition-copy.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -221,14 +222,14 @@ interface PublicForm {
 const PUBLIC_FORMS: readonly PublicForm[] = [
   {
     name: "newsletter",
-    render: (locale) => <NewsletterForm locale={locale} turnstileSiteKey="test-site-key" nonce="abc" />,
+    render: (locale) => <NewsletterForm locale={locale} turnstileSiteKey="test-site-key" nonce="abc" copy={newsletterFormCopy(locale)} />,
     action: submitNewsletter,
     sent: english.publisher.newsletter.successMessage,
     notSent: english.publisher.newsletter.errorMessage,
   },
   {
     name: "contact",
-    render: (locale) => <ContactForm locale={locale} turnstileSiteKey="test-site-key" nonce="abc" />,
+    render: (locale) => <ContactForm locale={locale} turnstileSiteKey="test-site-key" nonce="abc" copy={contactFormCopy(locale)} />,
     action: submitContact,
     sent: english.support.contactForm.successMessage,
     notSent: english.support.contactForm.errorMessage.replace("{merchantContactAddress}", "hello@example.com"),
@@ -327,7 +328,7 @@ describe("a post that names no edition this site has is answered in the default 
  */
 describe("the contact form's validation errors", () => {
   it("are, in the default edition, the sentences the form built from its labels", () => {
-    for (const field of contactFields(english)) {
+    for (const field of contactFields(contactFormCopyFrom(english))) {
       const label = field.label.toLowerCase();
 
       expect(field.missing).toBe(`Enter ${label}.`);
@@ -337,7 +338,7 @@ describe("the contact form's validation errors", () => {
 
   it("are the edition's own in every edition, like the labels beside them", () => {
     for (const locale of LOCALES) {
-      const words = contactFields(fixture[locale]!).flatMap((field) => [field.label, field.missing, field.invalid ?? ""]);
+      const words = contactFields(contactFormCopyFrom(fixture[locale]!)).flatMap((field) => [field.label, field.missing, field.invalid ?? ""]);
 
       expect(words).toHaveLength(12);
       expect(editionsMarkedIn(words.join("")), locale).toEqual([locale]);

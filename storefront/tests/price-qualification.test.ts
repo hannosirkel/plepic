@@ -119,7 +119,7 @@ describe("the checkout's price qualification", () => {
    * cookie's answer anywhere.
    */
   it("names the delivery address's destination once Medusa has priced for it", () => {
-    const qualification = checkoutPriceQualification(servedCheckout());
+    const qualification = checkoutPriceQualification(checkout.order, servedCheckout());
 
     expect(qualification.addressBound).toBe(true);
     expect(qualification.destination).toEqual(ESTONIA);
@@ -145,7 +145,7 @@ describe("the checkout's price qualification", () => {
    * caught it.
    */
   it("keeps naming the site's destination while the figures are still the basket's", () => {
-    const qualification = checkoutPriceQualification(servedCheckout({ storeTotals: null }));
+    const qualification = checkoutPriceQualification(checkout.order, servedCheckout({ storeTotals: null }));
 
     expect(qualification.addressBound).toBe(false);
     expect(qualification.destination).toEqual(UNITED_STATES);
@@ -165,7 +165,7 @@ describe("the checkout's price qualification", () => {
    * running ahead.
    */
   it("does not follow an address whose totals belong to a previous revision", () => {
-    const qualification = checkoutPriceQualification(
+    const qualification = checkoutPriceQualification(checkout.order, 
       servedCheckout({ addressRevision: "address-changed-since" }),
     );
 
@@ -179,7 +179,7 @@ describe("the checkout's price qualification", () => {
    * moment there is one, with no Medusa round trip to wait for.
    */
   it("follows the address as soon as the mock layer has priced for it", () => {
-    const qualification = checkoutPriceQualification(mockCheckout());
+    const qualification = checkoutPriceQualification(checkout.order, mockCheckout());
 
     expect(qualification.addressBound).toBe(true);
     expect(qualification.destination).toEqual(ESTONIA);
@@ -187,7 +187,7 @@ describe("the checkout's price qualification", () => {
   });
 
   it("names the site's destination while the mock layer's address is incomplete", () => {
-    const qualification = checkoutPriceQualification(
+    const qualification = checkoutPriceQualification(checkout.order, 
       mockCheckout({ addressComplete: false, deliveryZone: null, countryName: "" }),
     );
 
@@ -208,7 +208,7 @@ describe("the checkout's price qualification", () => {
    * nothing else can reach.
    */
   it("names no destination at all for an address the site cannot place", () => {
-    const qualification = checkoutPriceQualification(mockCheckout({ countryName: "Atlantis" }));
+    const qualification = checkoutPriceQualification(checkout.order, mockCheckout({ countryName: "Atlantis" }));
 
     expect(qualification.destination).toBeNull();
     expect(qualification.text).toBe(checkout.order.qualifierPending);
@@ -222,7 +222,7 @@ describe("the checkout's price qualification", () => {
    * which the page then states beside the figure.
    */
   it("falls back to the declared default for a cookie it does not recognise", () => {
-    const qualification = checkoutPriceQualification(
+    const qualification = checkoutPriceQualification(checkout.order, 
       servedCheckout({ storeTotals: null, destinationCode: "ZZ" }),
     );
 
@@ -247,7 +247,7 @@ describe("the checkout's price qualification", () => {
       servedCheckout({ storeTotals: null }),
       mockCheckout({ countryName: "Atlantis" }),
     ]) {
-      const qualification = checkoutPriceQualification(input);
+      const qualification = checkoutPriceQualification(checkout.order, input);
       expect(qualification.vatRate).toBe(resolveCatalogue().vatRate);
       expect(qualification.vatLabel).toContain(qualification.vatRate);
       expect(Object.keys(qualification).toSorted()).toEqual(
@@ -265,7 +265,7 @@ describe("the confirmation page's price qualification", () => {
    * differ from the default, or the assertion proves nothing.
    */
   it("names the country the order was priced for, never the site's destination", () => {
-    const qualification = confirmationPriceQualification("ee");
+    const qualification = confirmationPriceQualification(checkout.order, "ee");
 
     expect(qualification.addressBound).toBe(true);
     expect(qualification.destination).toEqual(ESTONIA);
@@ -275,7 +275,7 @@ describe("the confirmation page's price qualification", () => {
   });
 
   it("reads the country code in either case, because ISO codes arrive both ways", () => {
-    expect(confirmationPriceQualification("EE").destination).toEqual(ESTONIA);
+    expect(confirmationPriceQualification(checkout.order, "EE").destination).toEqual(ESTONIA);
   });
 
   /**
@@ -286,7 +286,7 @@ describe("the confirmation page's price qualification", () => {
    */
   it("names no destination for a country the site does not list, rather than defaulting", () => {
     for (const code of ["zz", "", "  "]) {
-      const qualification = confirmationPriceQualification(code);
+      const qualification = confirmationPriceQualification(checkout.order, code);
       expect(qualification.destination, code).toBeNull();
       expect(qualification.text, code).toBe(checkout.order.qualifierPending);
       expect(qualification.text, code).not.toContain(UNITED_STATES.name);

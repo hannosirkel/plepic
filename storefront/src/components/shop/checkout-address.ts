@@ -72,27 +72,71 @@
  * form.
  */
 
-import { siteCopyFor } from "../../../../content/editions.js";
-import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import type { InterfaceCopy } from "../../../../content/interface.js";
 import type { AddressFieldCopy } from "../../../../content/shop.js";
 import { destinationForCountryName } from "../../lib/destination.js";
 import { phoneRequiredForCountry } from "../../lib/store-checkout.js";
 
+/** What of an address field every edition shares: its name and the kind of value it takes. */
+export type AddressFieldShape = Pick<AddressFieldCopy, "name" | "type">;
+
 /**
- * The address fields as `locale`'s copy holds them: the same names, controls
- * and `autoComplete` tokens in every edition, with that edition's labels and
- * hints.
+ * What the address form says in one edition: its fields (the same names,
+ * controls and `autoComplete` tokens in every edition, with that edition's
+ * labels and hints) and the sentences {@link validate} answers with.
+ * `checkoutAddressCopy(locale)` in `src/lib/edition-copy.ts` builds it on the
+ * server; the checkout, a client component, is handed it.
  */
-export function fieldsFor(locale: Locale): readonly AddressFieldCopy[] {
-  return siteCopyFor(locale).shop.checkout.address.fields;
+export interface CheckoutAddressCopy {
+  readonly fields: readonly AddressFieldCopy[];
+  readonly missing: InterfaceCopy["checkout"]["missing"];
+  readonly invalidEmail: string;
+  readonly invalidPhone: string;
 }
 
 /**
- * The default edition's fields. For whatever asks which fields there are, and
- * not what they are called: the names are identifiers, held equal across
- * editions by `content/mirror.test.ts`.
+ * The address fields' names and value kinds, in form order. For whatever asks
+ * which fields there are, and not what they are called. Every edition's
+ * fields carry exactly these: `content/mirror.test.ts` holds the editions
+ * equal, and `tests/checkout-address.test.ts` holds this list to them.
+ *
+ * Written out here rather than read from an edition's copy, because this
+ * module runs in the browser and reading one edition's copy would put that
+ * edition's sentences into every edition's checkout.
  */
-export const FIELDS: readonly AddressFieldCopy[] = fieldsFor(DEFAULT_LOCALE);
+export const FIELDS: readonly AddressFieldShape[] = [
+  { name: "fullName", type: "text" },
+  { name: "streetAddress", type: "text" },
+  { name: "postalCode", type: "text" },
+  { name: "city", type: "text" },
+  { name: "country", type: "text" },
+  { name: "email", type: "email" },
+];
+
+/** What {@link validate} needs of an edition's copy: the fields' shapes and its sentences. */
+export type AddressValidationCopy = Omit<CheckoutAddressCopy, "fields"> & {
+  readonly fields: readonly AddressFieldShape[];
+};
+
+/**
+ * Validation copy that answers with each field's name in place of a sentence.
+ * For callers that ask *which* fields are in error and say nothing about them:
+ * {@link isPostalAddressComplete} and {@link isPhoneComplete}.
+ */
+const FIELD_NAMES_ONLY: AddressValidationCopy = {
+  fields: FIELDS,
+  missing: {
+    fullName: "fullName",
+    streetAddress: "streetAddress",
+    postalCode: "postalCode",
+    city: "city",
+    country: "country",
+    email: "email",
+    phone: "phone",
+  },
+  invalidEmail: "email",
+  invalidPhone: "phone",
+};
 
 export type AddressValues = Readonly<Record<string, string>>;
 
@@ -158,22 +202,23 @@ export function phoneRequiredForCountryName(countryName: string): boolean {
  * two narrower questions this file's doc comment explains are answered from
  * this same set rather than a second validation pass.
  *
- * The **keys** do not depend on `locale`, which is why those two take none.
- * The sentences do: each is `locale`'s own. A missing field's is a whole
+ * The **keys** do not depend on the edition, which is why those two take no
+ * copy. The sentences do: each is the edition's own, from `copy`. Without
+ * one, each error is its field's name, which is enough to ask which fields
+ * are in error and is never shown. A missing field's is a whole
  * sentence from `content/interface.ts`, not a prefix and a lower-cased label,
  * because that is not a sentence in every language and a changed case is a
  * changed spelling in Klingon.
  */
 export function validate(
   values: AddressValues,
-  locale: Locale = DEFAULT_LOCALE,
+  copy: AddressValidationCopy = FIELD_NAMES_ONLY,
 ): Readonly<Record<string, string>> {
-  const { checkout } = siteCopyFor(locale).shop;
-  const sentences = siteCopyFor(locale).interface.checkout.missing;
+  const sentences = copy.missing;
   const missing: Readonly<Record<string, string>> = sentences;
   const errors: Record<string, string> = {};
 
-  for (const field of fieldsFor(locale)) {
+  for (const field of copy.fields) {
     const value = (values[field.name] ?? "").trim();
     if (value.length === 0) {
       const sentence = missing[field.name];
@@ -187,7 +232,7 @@ export function validate(
       continue;
     }
     if (field.type === "email" && !isPlausibleEmail(value)) {
-      errors[field.name] = checkout.errors.invalidEmail;
+      errors[field.name] = copy.invalidEmail;
     }
   }
 
@@ -208,7 +253,7 @@ export function validate(
    */
   const phone = (values.phone ?? "").trim();
   if (phone.length > 0 && !phone.startsWith("+")) {
-    errors.phone = checkout.errors.invalidPhone;
+    errors.phone = copy.invalidPhone;
   } else if (phone.length === 0 && phoneRequiredForCountryName(values.country ?? "")) {
     errors.phone = sentences.phone;
   }

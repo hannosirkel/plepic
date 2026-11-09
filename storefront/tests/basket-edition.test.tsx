@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { destinationSelectorCopy, shopCopy } from "../src/lib/edition-copy.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { LOCALES, LOCALE_DEFINITIONS } from "../../content/routes.js";
@@ -27,7 +28,7 @@ const destination = destinationForCode("EE");
 function basket(scenario: "filled" | null, locale: (typeof LOCALES)[number]): string {
   return renderToStaticMarkup(
     <CartProvider scenario={scenario} latencyMs={0} destinationCode="EE">
-      <BasketPageContent locale={locale} />
+      <BasketPageContent shopCopy={shopCopy(locale)} locale={locale} />
     </CartProvider>,
   );
 }
@@ -63,7 +64,7 @@ describe("basket edition", () => {
   });
 
   it("keeps the country code while showing the Estonian destination name", () => {
-    const html = renderToStaticMarkup(<DestinationSelector destinationCode="EE" locale="et" />);
+    const html = renderToStaticMarkup(<DestinationSelector destinationCode="EE" locale="et" copy={destinationSelectorCopy("et")} />);
     expect(html).toContain(`value="EE"`);
     expect(html).toContain(`>${destinationNameIn(destination, "et")}</option>`);
   });

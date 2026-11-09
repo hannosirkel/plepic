@@ -146,9 +146,23 @@ export function LunarBaseMockup({
   const strings = copy.interface.product;
   const heroBuyAction = requirePrimaryPurchaseAction(purchase.callsToAction);
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
-
   return (
     <div data-layer="lunar" className={styles.page}>
+      {/* The hero's moonscape is the page's largest paint, and as a CSS
+          background the browser only finds it once the stylesheet is parsed.
+          React hoists this element into the document head, so the image
+          downloads alongside the stylesheet instead. (`preload()` from
+          `react-dom` is not used: from a Server Component its hint only
+          travels in the RSC payload, which the browser reads too late.) The
+          candidates must stay those of `.hero`'s `image-set` in
+          `lunar-base.module.css`, or the browser fetches the image twice. */}
+      <link
+        rel="preload"
+        as="image"
+        href="/images/hero/lunar-hero-960.webp"
+        imageSrcSet="/images/hero/lunar-hero-960.webp 1x, /images/hero/lunar-hero-1920.webp 2x"
+        fetchPriority="high"
+      />
       <SiteHeader wordmark="dark" locale={locale} route="lunarBase" />
 
       <main className={styles.main}>
@@ -231,7 +245,7 @@ export function LunarBaseMockup({
             width={1500}
             height={1000}
             loading="eager"
-            decoding="async"
+            fetchPriority="high"
             alt={strings.boxImageAlt}
           />
         </section>

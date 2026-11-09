@@ -9,7 +9,6 @@
  * default edition's own forms post. Their markup is what it was before a form
  * could be rendered in a second edition.
  */
-import { siteCopyFor, type SiteCopy } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { isLocale } from "../../../../content/schema.js";
 
@@ -22,12 +21,14 @@ export function FormLocaleField({ locale }: { readonly locale: Locale }) {
 }
 
 /**
- * The copy to answer a post in.
+ * The edition to answer a post in.
  *
- * Invalid client input uses the default edition; every declared edition has copy.
+ * Invalid client input uses the default edition; every declared edition has
+ * copy. This returns the locale and not the copy because the forms that render
+ * `FormLocaleField` run in the browser, and a lookup here would ship every
+ * edition's copy with them.
  */
-export function siteCopyForPost(formData: FormData): SiteCopy {
+export function postedLocale(formData: FormData): Locale {
   const posted = formData.get(FORM_LOCALE_FIELD);
-  const locale = isLocale(posted) ? posted : DEFAULT_LOCALE;
-  return siteCopyFor(locale);
+  return isLocale(posted) ? posted : DEFAULT_LOCALE;
 }

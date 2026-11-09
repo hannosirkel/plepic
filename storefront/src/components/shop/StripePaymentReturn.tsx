@@ -10,11 +10,10 @@ import { completeStripeOrder, returnOrderDisclosure, type CompletedStoreOrder, t
 import { VAT_ADDEND_PREFIX } from "../../lib/store-checkout.js";
 import { formatAmount } from "../../lib/cart.js";
 import { confirmationPriceQualification } from "../../lib/price-qualification.js";
-import { siteCopyFor } from "../../../../content/editions.js";
+import type { ShopCopy } from "../../lib/edition-copy.js";
 import { DEFAULT_LOCALE, ROUTE_PATHS, type Locale } from "../../../../content/routes.js";
 import { localizedPath } from "../../lib/urls.js";
 import { PAYMENT_RETURN_ORDER_POST_PATH } from "./checkout-order-post.js";
-import { checkoutTermsFor } from "./checkout-terms.js";
 import styles from "../../styles/pages/shop.module.css";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { PostPurchaseNewsletterForm } from "./PostPurchaseNewsletterForm.js";
@@ -33,11 +32,14 @@ export function StripePaymentReturn({
   turnstileSiteKey,
   nonce,
   locale = DEFAULT_LOCALE,
+  shopCopy,
   initialDisclosure = null,
   initialOrder = null,
 }: {
   readonly turnstileSiteKey: string | null;
   readonly locale?: Locale;
+  /** The edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly shopCopy: ShopCopy;
   readonly nonce: string | undefined;
   /**
    * The order disclosure this page starts with. **A test seam, and the route
@@ -56,11 +58,10 @@ export function StripePaymentReturn({
   readonly initialDisclosure?: ReturnOrderDisclosure | null;
   readonly initialOrder?: CompletedStoreOrder | null;
 }) {
-  const { shop, interface: interfaceContent } = siteCopyFor(locale);
-  const { checkout } = shop;
-  const checkoutCopy = interfaceContent.checkout;
-  const returnCopy = interfaceContent.paymentReturn;
-  const terms = checkoutTermsFor(locale);
+  const { checkout } = shopCopy.content;
+  const checkoutCopy = shopCopy.checkout;
+  const returnCopy = shopCopy.paymentReturn;
+  const { terms } = shopCopy;
   const checkoutPath = localizedPath(locale, ROUTE_PATHS.checkout);
   const [order, setOrder] = useState<CompletedStoreOrder | null>(initialOrder);
   const [failed, setFailed] = useState(false);
@@ -138,6 +139,7 @@ export function StripePaymentReturn({
         </p>
         <PostPurchaseNewsletterForm
           locale={locale}
+          shopCopy={shopCopy}
           defaultEmail=""
           turnstileSiteKey={turnstileSiteKey}
           nonce={nonce}
@@ -166,7 +168,7 @@ export function StripePaymentReturn({
    * default: defaulting it would put "No VAT added" over an order that was
    * taxed, which is the defect this replaced wearing a different hat.
    */
-  const qualification = confirmationPriceQualification(disclosure.countryCode, locale);
+  const qualification = confirmationPriceQualification(checkout.order, disclosure.countryCode, locale);
 
   return (
     <section className={styles.card} aria-labelledby="payment-return-heading">
@@ -178,7 +180,7 @@ export function StripePaymentReturn({
             siteKey={turnstileSiteKey}
             nonce={nonce}
             formName="checkout-return"
-            locale={locale}
+            label={shopCopy.verificationLabel}
             resetKey={challengeRevision}
           />
         </div>

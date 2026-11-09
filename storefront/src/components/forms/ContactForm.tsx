@@ -34,10 +34,10 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { siteCopyFor, type SiteCopy } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import type { ContactFormCopy } from "../../lib/edition-copy.js";
 import { FormLocaleField } from "./form-locale.js";
 import { submitContact } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
@@ -51,6 +51,8 @@ export interface ContactFormProps {
    * the Server Function answers in: the form posts it, see `./form-locale.tsx`.
    */
   readonly locale?: Locale;
+  /** That edition's words, from `contactFormCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly copy: ContactFormCopy;
 }
 
 interface FieldSpec {
@@ -66,9 +68,8 @@ interface FieldSpec {
 }
 
 /** The four fields, with the labels and validation errors of one edition's copy. */
-export function contactFields(copy: SiteCopy): readonly FieldSpec[] {
-  const labels = copy.support.contactForm;
-  const errors = copy.interface.contactForm;
+export function contactFields(copy: ContactFormCopy): readonly FieldSpec[] {
+  const { labels, errors } = copy;
 
   return [
     { name: "name", label: labels.nameLabel, type: "text", autoComplete: "name", missing: errors.nameMissing },
@@ -92,8 +93,7 @@ export function contactFields(copy: SiteCopy): readonly FieldSpec[] {
   ];
 }
 
-export function ContactForm({ turnstileSiteKey, nonce, locale = DEFAULT_LOCALE }: ContactFormProps) {
-  const copy = siteCopyFor(locale);
+export function ContactForm({ turnstileSiteKey, nonce, locale = DEFAULT_LOCALE, copy }: ContactFormProps) {
   const fields = contactFields(copy);
   const baseId = useId();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
@@ -156,7 +156,7 @@ export function ContactForm({ turnstileSiteKey, nonce, locale = DEFAULT_LOCALE }
   return (
     <form
       className={styles.form}
-      aria-label={copy.support.contact.heading}
+      aria-label={copy.heading}
       action={submit}
       onSubmit={handleSubmit}
       noValidate
@@ -219,11 +219,11 @@ export function ContactForm({ turnstileSiteKey, nonce, locale = DEFAULT_LOCALE }
       <HoneypotField formName="contact" />
 
       <div className={styles.turnstile}>
-        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="contact" locale={locale} />
+        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="contact" label={copy.verificationLabel} />
       </div>
 
       <button type="submit" className={styles.submit}>
-        {copy.support.contactForm.submitLabel}
+        {copy.labels.submitLabel}
       </button>
     </form>
   );

@@ -29,6 +29,8 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { siteCopyByLocale } from "../../content/editions.js";
+import { LOCALES } from "../../content/routes.js";
 import {
   EMPTY_ADDRESS,
   FIELDS,
@@ -60,6 +62,13 @@ function postalAddress(country: string, phone?: string): AddressValues {
 }
 
 describe("FIELDS and EMPTY_ADDRESS", () => {
+  it("names every edition's address fields, in that edition's order, with the same kinds of value", () => {
+    for (const locale of LOCALES) {
+      const fields = siteCopyByLocale[locale].shop.checkout.address.fields;
+      expect(fields.map(({ name, type }) => ({ name, type })), locale).toEqual(FIELDS);
+    }
+  });
+
   it("starts every field empty, with no invented value", () => {
     for (const field of FIELDS) {
       expect(EMPTY_ADDRESS[field.name]).toBe("");

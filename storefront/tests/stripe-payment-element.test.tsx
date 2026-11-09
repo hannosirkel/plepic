@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { shopCopy } from "../src/lib/edition-copy.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRef, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
   useStripe: () => null,
 }));
 
-vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => ({}) }));
+vi.mock("@stripe/stripe-js/pure", () => ({ loadStripe: () => ({}) }));
 
 import {
   StripePaymentElement,
@@ -35,7 +36,7 @@ afterEach(() => {
 describe("Stripe Payment Element fail-closed states", () => {
   it("does not mount a payment instrument without the request-time Stripe key", () => {
     const html = renderToStaticMarkup(
-      <StripePaymentElement
+      <StripePaymentElement shopCopy={shopCopy("en")}
         ref={createRef<StripePaymentElementHandle>()}
         publishableKey={null}
         clientSecret="pi_example_secret_example"
@@ -49,7 +50,7 @@ describe("Stripe Payment Element fail-closed states", () => {
 
   it("waits for an amount-bound Medusa payment session before mounting Stripe", () => {
     const html = renderToStaticMarkup(
-      <StripePaymentElement
+      <StripePaymentElement shopCopy={shopCopy("en")}
         ref={createRef<StripePaymentElementHandle>()}
         publishableKey="pk_test_example"
         clientSecret={null}
@@ -93,7 +94,7 @@ describe("Stripe Payment Element method presentation", () => {
     });
 
     renderToStaticMarkup(
-      <StripePaymentElement
+      <StripePaymentElement shopCopy={shopCopy("en")}
         ref={createRef<StripePaymentElementHandle>()}
         publishableKey="pk_test_example"
         clientSecret="pi_example_secret_example"
@@ -117,7 +118,7 @@ describe("Stripe Payment Element method presentation", () => {
 describe("redirect-based Stripe payment return", () => {
   it("withholds the return action until it can load authoritative order disclosures", () => {
     const html = renderToStaticMarkup(
-      <StripePaymentReturn turnstileSiteKey="synthetic-site-key" nonce="synthetic-nonce" />,
+      <StripePaymentReturn shopCopy={shopCopy("en")} turnstileSiteKey="synthetic-site-key" nonce="synthetic-nonce" />,
     );
     expect(html).toContain("Loading your order details");
     expect(html).not.toContain('data-testid="turnstile-checkout-return"');
@@ -159,7 +160,7 @@ describe("redirect-based Stripe payment return", () => {
    */
   it("qualifies the rendered summary from the order's delivery country", () => {
     const html = renderToStaticMarkup(
-      <StripePaymentReturn
+      <StripePaymentReturn shopCopy={shopCopy("en")}
         turnstileSiteKey="synthetic-site-key"
         nonce="synthetic-nonce"
         initialDisclosure={{
@@ -204,7 +205,7 @@ describe("redirect-based Stripe payment return", () => {
    */
   it("names no destination over a taxed order whose country the site does not list", () => {
     const html = renderToStaticMarkup(
-      <StripePaymentReturn
+      <StripePaymentReturn shopCopy={shopCopy("en")}
         turnstileSiteKey={null}
         nonce={undefined}
         initialDisclosure={{
@@ -248,10 +249,10 @@ describe("redirect-based Stripe payment return", () => {
       analyticsItems: null,
     };
     const taxed = renderToStaticMarkup(
-      <StripePaymentReturn turnstileSiteKey={null} nonce={undefined} initialDisclosure={disclosure} />,
+      <StripePaymentReturn shopCopy={shopCopy("en")} turnstileSiteKey={null} nonce={undefined} initialDisclosure={disclosure} />,
     );
     const untaxed = renderToStaticMarkup(
-      <StripePaymentReturn
+      <StripePaymentReturn shopCopy={shopCopy("en")}
         turnstileSiteKey={null}
         nonce={undefined}
         initialDisclosure={{
@@ -277,7 +278,7 @@ describe("redirect-based Stripe payment return", () => {
 describe("post-purchase newsletter opt-in", () => {
   it("is separate from purchase, starts unticked, and requires an affirmative check", () => {
     const html = renderToStaticMarkup(
-      <PostPurchaseNewsletterForm
+      <PostPurchaseNewsletterForm shopCopy={shopCopy("en")}
         defaultEmail="buyer@example.test"
         turnstileSiteKey="synthetic-site-key"
         nonce="nonce"

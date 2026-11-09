@@ -32,6 +32,7 @@
  */
 import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { newsletterFormCopy } from "../../lib/edition-copy.js";
 import { resolveCatalogue, resolveCataloguePlaceholders, type ResolvedCatalogue } from "../../lib/catalogue.js";
 import { NewsletterForm } from "../forms/NewsletterForm.js";
 import { CallToActionLink } from "./CallToActionLink.js";
@@ -139,7 +140,7 @@ export function HomepageMockup({
             width={1600}
             height={864}
             loading="eager"
-            decoding="async"
+            fetchPriority="high"
             alt={strings.heroImageAlt}
           />
         </section>
@@ -223,7 +224,7 @@ export function HomepageMockup({
               {paragraph}
             </p>
           ))}
-          <NewsletterForm turnstileSiteKey={turnstileSiteKey} nonce={nonce} locale={locale} />
+          <NewsletterForm turnstileSiteKey={turnstileSiteKey} nonce={nonce} locale={locale} copy={newsletterFormCopy(locale)} />
         </section>
       </main>
 

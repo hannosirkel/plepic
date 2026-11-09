@@ -9,6 +9,8 @@ import {
   parseMockScenario,
 } from "../../../lib/mock-cart-actions.js";
 import { getRequestDestination } from "../../../lib/destination-request.js";
+import { shopCopy } from "../../../lib/edition-copy.js";
+import { DEFAULT_LOCALE } from "../../../../../content/routes.js";
 import { makeMetadata } from "../../../lib/page-shell.js";
 import { getRequestHost } from "../../../lib/request-host.js";
 
@@ -43,7 +45,7 @@ export default async function CartPage({
   return (
     <ShopPageShell route="cart" externalTargets={getRuntimeConfig().externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
-        <BasketPageContent />
+        <BasketPageContent shopCopy={shopCopy(DEFAULT_LOCALE)} />
       </CartProvider>
     </ShopPageShell>
   );

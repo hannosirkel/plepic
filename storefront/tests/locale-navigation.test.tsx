@@ -37,6 +37,7 @@
  * its expectation from the code under test is the same tautology at lower
  * stakes (pass 2's Minors 1 and 3).
  */
+import { shopCopy } from "../src/lib/edition-copy.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -118,8 +119,8 @@ function renderedPage(locale: Locale, route: RouteId): string {
     case "lunarBase": return renderToStaticMarkup(<LunarBaseMockup locale={locale} />);
     case "support": return renderToStaticMarkup(<SupportPageContent locale={locale} turnstileSiteKey={null} nonce={undefined} merchantContactAddress={null} />);
     case "rulebook": return renderToStaticMarkup(<RulebookPageContent locale={locale} />);
-    case "cart": return renderToStaticMarkup(<CartProvider scenario={null} latencyMs={0}><BasketPageContent locale={locale} /></CartProvider>);
-    case "checkout": return renderToStaticMarkup(<CartProvider scenario="filled" latencyMs={0}><CheckoutPageContent locale={locale} scenario="filled" latencyMs={0} turnstileSiteKey={null} nonce={undefined} /></CartProvider>);
+    case "cart": return renderToStaticMarkup(<CartProvider scenario={null} latencyMs={0}><BasketPageContent shopCopy={shopCopy(locale)} locale={locale} /></CartProvider>);
+    case "checkout": return renderToStaticMarkup(<CartProvider scenario="filled" latencyMs={0}><CheckoutPageContent shopCopy={shopCopy(locale)} locale={locale} scenario="filled" latencyMs={0} turnstileSiteKey={null} nonce={undefined} /></CartProvider>);
     default: throw new Error(`No render fixture for ${locale}:${route}`);
   }
 }

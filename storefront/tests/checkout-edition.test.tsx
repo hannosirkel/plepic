@@ -23,6 +23,7 @@
  * each option's charge is written by, the second at the component the page
  * renders in that state.
  */
+import { checkoutAddressCopy, consentCopy, shopCopy } from "../src/lib/edition-copy.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,7 +46,6 @@ import type { Page } from "../../content/schema.js";
 import { CheckoutRoute, resolveLocalizedRoute } from "../src/app/localized-routes.js";
 import {
   EMPTY_ADDRESS,
-  fieldsFor,
   validate,
   type AddressValues,
 } from "../src/components/shop/checkout-address.js";
@@ -186,7 +186,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
         }
       : null,
 }));
-vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => ({}) }));
+vi.mock("@stripe/stripe-js/pure", () => ({ loadStripe: () => ({}) }));
 /* A static render runs no effect, so a handle is given to its ref as the render passes. */
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -246,7 +246,7 @@ interface CheckoutState {
 function checkout(locale: Locale | undefined, state: CheckoutState): string {
   return renderToStaticMarkup(
     <CartProvider scenario={state.scenario} latencyMs={0} destinationCode="EE">
-      <CheckoutPageContent
+      <CheckoutPageContent shopCopy={shopCopy(locale ?? DEFAULT_LOCALE)}
         {...(locale === undefined ? {} : { locale })}
         turnstileSiteKey="test-site-key"
         nonce="abc"
@@ -570,10 +570,10 @@ describe("delivery method names", () => {
   for (const locale of LOCALES) {
     it(`shows ${locale}'s name for a declared method and any other name as Medusa returns it`, () => {
       for (const method of declared) {
-        expect(deliveryMethodNameIn(method.name, locale), method.id).toBe(markedFor(locale, method.name));
+        expect(deliveryMethodNameIn(method.name, shopCopy(locale)), method.id).toBe(markedFor(locale, method.name));
       }
       for (const name of ["Express courier", "standard delivery", "Standard delivery ", "omniva-parcel-machine", ""]) {
-        expect(deliveryMethodNameIn(name, locale), name).toBe(name);
+        expect(deliveryMethodNameIn(name, shopCopy(locale)), name).toBe(name);
       }
     });
 
@@ -596,7 +596,7 @@ describe("delivery method names", () => {
 
     expect(isParcelMachineOption(option(shipping.parcelMachine.name))).toBe(true);
     for (const locale of LOCALES) {
-      const shown = deliveryMethodNameIn(shipping.parcelMachine.name, locale);
+      const shown = deliveryMethodNameIn(shipping.parcelMachine.name, shopCopy(locale));
       expect(isParcelMachineOption(option(shown)), locale).toBe(shown === shipping.parcelMachine.name);
     }
   });
@@ -632,22 +632,22 @@ describe("what a delivery method costs, as its option says it", () => {
       const written = (amount: number): string => formatAmount(amount, "EUR", locale);
 
       // Nothing to pay, inside the EU and outside it.
-      expect(deliveryChargeIn(free, true, locale)).toBe(markedFor(locale, copy.deliveryFree));
-      expect(deliveryChargeIn(free, false, locale)).toBe(markedFor(locale, copy.deliveryFree));
+      expect(deliveryChargeIn(free, true, shopCopy(locale), locale)).toBe(markedFor(locale, copy.deliveryFree));
+      expect(deliveryChargeIn(free, false, shopCopy(locale), locale)).toBe(markedFor(locale, copy.deliveryFree));
       // A net rate VAT will be added to: the edition's sentence around the edition's figure.
-      expect(deliveryChargeIn(paid, true, locale)).toBe(
+      expect(deliveryChargeIn(paid, true, shopCopy(locale), locale)).toBe(
         markedFor(locale, copy.deliveryNetCharge).replace("%amount%", written(rate)),
       );
       // A final figure, which is a number and no word.
-      expect(deliveryChargeIn(paid, false, locale)).toBe(written(rate));
-      expect(deliveryChargeIn(grossed, true, locale)).toBe(written(rate + 168));
+      expect(deliveryChargeIn(paid, false, shopCopy(locale), locale)).toBe(written(rate));
+      expect(deliveryChargeIn(grossed, true, shopCopy(locale), locale)).toBe(written(rate + 168));
     });
 
     it(`leaves no unmarked word in a ${locale} option, whatever the method costs`, () => {
       const options = [free, paid, grossed].flatMap((method) =>
         [true, false].map(
           (vatApplies) =>
-            `<option value="${method.id}">${deliveryMethodNameIn(method.name, locale)} — ${deliveryChargeIn(method, vatApplies, locale)}</option>`,
+            `<option value="${method.id}">${deliveryMethodNameIn(method.name, shopCopy(locale))} — ${deliveryChargeIn(method, vatApplies, shopCopy(locale), locale)}</option>`,
         ),
       );
       const html = `<select>${options.join("")}</select>`;
@@ -697,7 +697,7 @@ describe("what a delivery method costs, as its option says it", () => {
 describe("the checkout once the order is placed", () => {
   const confirmation = (locale: Locale): string =>
     renderToStaticMarkup(
-      <CheckoutConfirmation
+      <CheckoutConfirmation shopCopy={shopCopy(locale)}
         locale={locale}
         displayId={1042}
         email="example@example.com"
@@ -785,7 +785,7 @@ describe("the address a payment provider returns a visitor to", () => {
       const handle = createRef<StripePaymentElementHandle>();
 
       renderToStaticMarkup(
-        <StripePaymentElement
+        <StripePaymentElement shopCopy={shopCopy(locale ?? DEFAULT_LOCALE)}
           ref={handle}
           {...(locale === undefined ? {} : { locale })}
           publishableKey="pk_test_example"
@@ -811,10 +811,10 @@ describe("the payment form's own sentences", () => {
     it(`are ${locale}'s where no payment form can be shown`, () => {
       const copy = english.interface.checkout;
       const withoutKey = renderToStaticMarkup(
-        <StripePaymentElement ref={createRef()} locale={locale} publishableKey={null} clientSecret="pi_x" />,
+        <StripePaymentElement shopCopy={shopCopy(locale)} ref={createRef()} locale={locale} publishableKey={null} clientSecret="pi_x" />,
       );
       const withoutSession = renderToStaticMarkup(
-        <StripePaymentElement ref={createRef()} locale={locale} publishableKey="pk_x" clientSecret={null} />,
+        <StripePaymentElement shopCopy={shopCopy(locale)} ref={createRef()} locale={locale} publishableKey="pk_x" clientSecret={null} />,
       );
 
       expect(withoutKey).toBe(`<p role="alert">${rendered(locale, copy.paymentUnavailable)}</p>`);
@@ -828,7 +828,7 @@ describe("the payment form's own sentences", () => {
         vi.stubGlobal("window", { location: { origin: "https://shop.example.test", assign: () => undefined } });
         const handle = createRef<StripePaymentElementHandle>();
         renderToStaticMarkup(
-          <StripePaymentElement ref={handle} locale={locale} publishableKey="pk_x" clientSecret="pi_x" />,
+          <StripePaymentElement shopCopy={shopCopy(locale)} ref={handle} locale={locale} publishableKey="pk_x" clientSecret="pi_x" />,
         );
         return handle.current!.confirm();
       };
@@ -865,7 +865,7 @@ describe("the payment form's own sentences", () => {
         });
         const handle = createRef<StripePaymentElementHandle>();
         renderToStaticMarkup(
-          <StripePaymentElement ref={handle} locale={locale} publishableKey="pk_x" clientSecret="pi_x" />,
+          <StripePaymentElement shopCopy={shopCopy(locale)} ref={handle} locale={locale} publishableKey="pk_x" clientSecret="pi_x" />,
         );
         stripe.status = status;
         return { confirmation: await handle.current!.confirm(), assigned };
@@ -916,8 +916,8 @@ describe("the parcel machine picker", () => {
   ];
   const picker = (locale: Locale, state: "idle" | "loading" | "error"): string =>
     renderToStaticMarkup(
-      <ParcelMachinePicker
-        locale={locale}
+      <ParcelMachinePicker shopCopy={shopCopy(locale)}
+       
         machines={state === "idle" ? machines : []}
         value=""
         state={state}
@@ -981,20 +981,20 @@ describe("the checkout form's validation errors", () => {
       const copy = english.interface.checkout.missing;
       const { errors } = englishCheckout;
 
-      expect(validate(EMPTY_ADDRESS, locale)).toEqual(
+      expect(validate(EMPTY_ADDRESS, checkoutAddressCopy(locale))).toEqual(
         Object.fromEntries(
-          fieldsFor(locale).map((field) => [field.name, markedFor(locale, copy[field.name as keyof typeof copy])]),
+          checkoutAddressCopy(locale).fields.map((field) => [field.name, markedFor(locale, copy[field.name as keyof typeof copy])]),
         ),
       );
-      expect(validate({ ...addressIn("Germany"), phone: "" }, locale)).toEqual({
+      expect(validate({ ...addressIn("Germany"), phone: "" }, checkoutAddressCopy(locale))).toEqual({
         phone: markedFor(locale, copy.phone),
       });
-      expect(validate(malformed, locale)).toEqual({
+      expect(validate(malformed, checkoutAddressCopy(locale))).toEqual({
         email: markedFor(locale, errors.invalidEmail),
         phone: markedFor(locale, errors.invalidPhone),
       });
 
-      const labels = fieldsFor(locale).flatMap((field) => [field.label, field.hint ?? ""]).join("");
+      const labels = checkoutAddressCopy(locale).fields.flatMap((field) => [field.label, field.hint ?? ""]).join("");
       expect(editionsMarkedIn(labels)).toEqual([locale]);
       expect(unmarkedText(labels, [])).toEqual([]);
     });
@@ -1002,7 +1002,7 @@ describe("the checkout form's validation errors", () => {
 
   it("finds the same fields at fault whatever edition asks", () => {
     for (const values of [EMPTY_ADDRESS, malformed, addressIn("Germany"), { ...addressIn("Estonia"), phone: "" }]) {
-      const faults = LOCALES.map((locale) => Object.keys(validate(values, locale)));
+      const faults = LOCALES.map((locale) => Object.keys(validate(values, checkoutAddressCopy(locale))));
       for (const fault of faults) expect(fault).toEqual(Object.keys(validate(values)));
     }
   });
@@ -1039,7 +1039,7 @@ describe("the checkout route", () => {
         renderToStaticMarkup(
           <ShopPageShell locale={locale} route="checkout" externalTargets={{}}>
             <CartProvider scenario="filled" destinationCode="EE">
-              <CheckoutPageContent
+              <CheckoutPageContent shopCopy={shopCopy(locale)}
                 locale={locale}
                 turnstileSiteKey="test-site-key"
                 nonce="abc"
@@ -1128,7 +1128,7 @@ describe("the checkout's components hold no sentence of their own", () => {
       expect(imported.filter((path) => path.includes("/content/")).toSorted(), name).toEqual(
         name === "checkout-terms.ts"
           ? ["../../../../content/legal/index.js", "../../../../content/routes.js", "../../../../content/schema.js"]
-          : ["../../../../content/editions.js", "../../../../content/routes.js"],
+          : [],
       );
     }
   });
@@ -1154,12 +1154,12 @@ describe("payment return, consent, and 404 under the marker fixture", () => {
   for (const locale of NON_DEFAULT_LOCALES) {
     it(`uses ${locale} copy for the payment return's loading, confirmation, and disclosure states`, () => {
       const common = { locale, turnstileSiteKey: "synthetic-site-key", nonce: "nonce" };
-      const loading = renderToStaticMarkup(<StripePaymentReturn {...common} />);
+      const loading = renderToStaticMarkup(<StripePaymentReturn shopCopy={shopCopy(locale)} {...common} />);
       const confirmed = renderToStaticMarkup(
-        <StripePaymentReturn {...common} initialOrder={{ orderId: "order-test", displayId: 42 }} />,
+        <StripePaymentReturn shopCopy={shopCopy(locale)} {...common} initialOrder={{ orderId: "order-test", displayId: 42 }} />,
       );
       const disclosure = renderToStaticMarkup(
-        <StripePaymentReturn {...common} initialDisclosure={{
+        <StripePaymentReturn shopCopy={shopCopy(locale)} {...common} initialDisclosure={{
           currency: "EUR", goods: "Lunar Base × 1", goodsAmount: 2500,
           shippingAmount: 700, orderAmount: 3968, taxAmount: 768,
           countryCode: "EE", address: "Test address", analyticsItems: null,
@@ -1184,7 +1184,7 @@ describe("payment return, consent, and 404 under the marker fixture", () => {
 
     it(`uses ${locale} copy for consent and the 404 body`, async () => {
       const banner = renderToStaticMarkup(
-        <ConsentBanner locale={locale} onAccept={() => {}} onDecline={() => {}} />,
+        <ConsentBanner locale={locale} copy={consentCopy(locale)} onAccept={() => {}} onDecline={() => {}} />,
       );
       const missing = renderToStaticMarkup(await NotFoundContent({ locale }));
       expect(editionsMarkedIn(banner)).toEqual([locale]);

@@ -46,7 +46,6 @@
  * rather than naming a destination that is not the one being charged.
  */
 
-import { siteCopyFor } from "../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../content/routes.js";
 
 import { resolveCatalogue, resolveCataloguePlaceholders } from "./catalogue.js";
@@ -101,7 +100,24 @@ export interface PriceQualification {
   readonly text: string;
 }
 
-function qualify(destination: Destination | null, addressBound: boolean, locale: Locale): PriceQualification {
+/**
+ * The sentences a qualification is made of, as one edition's
+ * `shop.checkout.order` holds them. The caller passes them in: both callers
+ * are client components, which are handed their edition's copy rather than
+ * looking it up.
+ */
+export interface QualificationCopy {
+  readonly vatLabel: string;
+  readonly qualifierPending: string;
+  readonly destinationProvisional: string;
+}
+
+function qualify(
+  order: QualificationCopy,
+  destination: Destination | null,
+  addressBound: boolean,
+  locale: Locale,
+): PriceQualification {
   /*
    * Resolved for the destination when there is one and for the declared default
    * when there is not. That is safe for the **rate** specifically — the rate
@@ -110,21 +126,20 @@ function qualify(destination: Destination | null, addressBound: boolean, locale:
    * this function. See `PriceQualification.vatRate`.
    */
   const catalogue = resolveCatalogue(undefined, destination ?? defaultDestination, locale);
-  const { checkout } = siteCopyFor(locale).shop;
   const shared = {
     destination,
     addressBound,
     vatRate: catalogue.vatRate,
-    vatLabel: resolveCataloguePlaceholders(checkout.order.vatLabel, catalogue),
+    vatLabel: resolveCataloguePlaceholders(order.vatLabel, catalogue),
   };
   if (destination === null) {
-    return { ...shared, text: checkout.order.qualifierPending };
+    return { ...shared, text: order.qualifierPending };
   }
   return {
     ...shared,
     text: addressBound
       ? catalogue.priceQualifiers
-      : `${catalogue.priceQualifiers} ${checkout.order.destinationProvisional}`,
+      : `${catalogue.priceQualifiers} ${order.destinationProvisional}`,
   };
 }
 
@@ -183,6 +198,7 @@ export type CheckoutQualificationInput =
  * inverted — the right destination named over the wrong figures.
  */
 export function checkoutPriceQualification(
+  order: QualificationCopy,
   input: CheckoutQualificationInput,
   locale: Locale = DEFAULT_LOCALE,
 ): PriceQualification {
@@ -192,6 +208,7 @@ export function checkoutPriceQualification(
       : currentAddressTotals(input.storeTotals, input.addressRevision) !== null;
 
   return qualify(
+    order,
     addressBound
       ? destinationForCountryName(input.countryName.trim())
       : destinationForCode(input.destinationCode),
@@ -209,6 +226,10 @@ export function checkoutPriceQualification(
  * destination rather than the declared default, because defaulting it would put
  * "No VAT added" over an order that was taxed. See `knownDestinationForCode`.
  */
-export function confirmationPriceQualification(countryCode: string, locale: Locale = DEFAULT_LOCALE): PriceQualification {
-  return qualify(knownDestinationForCode(countryCode), true, locale);
+export function confirmationPriceQualification(
+  order: QualificationCopy,
+  countryCode: string,
+  locale: Locale = DEFAULT_LOCALE,
+): PriceQualification {
+  return qualify(order, knownDestinationForCode(countryCode), true, locale);
 }

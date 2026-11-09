@@ -2,8 +2,8 @@
 
 import { useActionState, useId } from "react";
 
-import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import type { ShopCopy } from "../../lib/edition-copy.js";
 import { FormLocaleField } from "../forms/form-locale.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
@@ -17,6 +17,8 @@ interface PostPurchaseNewsletterFormProps {
    */
   readonly locale?: Locale;
   readonly defaultEmail: string;
+  /** The edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`), handed down by its parent. */
+  readonly shopCopy: ShopCopy;
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
 }
@@ -25,10 +27,11 @@ interface PostPurchaseNewsletterFormProps {
 export function PostPurchaseNewsletterForm({
   locale = DEFAULT_LOCALE,
   defaultEmail,
+  shopCopy,
   turnstileSiteKey,
   nonce,
 }: PostPurchaseNewsletterFormProps) {
-  const { newsletter } = siteCopyFor(locale).publisher;
+  const { newsletter } = shopCopy;
   const emailId = useId();
   const consentId = useId();
   const [outcome, action] = useActionState<PublicFormOutcome | null, FormData>(
@@ -63,7 +66,7 @@ export function PostPurchaseNewsletterForm({
           siteKey={turnstileSiteKey}
           nonce={nonce}
           formName="post-purchase-newsletter"
-          locale={locale}
+          label={shopCopy.verificationLabel}
         />
       </div>
       <button type="submit" className={styles.submit}>{newsletter.submitLabel}</button>

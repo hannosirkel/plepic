@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Shared header markup for the two mockups. Uses only layer-1 `--nav-*`
  * tokens, so it repaints correctly whether the page around it is on the
@@ -31,13 +29,19 @@
  * language selector, so it is a `<div>` and not a `<nav>` around both. On a
  * narrow viewport the whole panel is the sheet, and the selector is inside
  * it under the links.
+ *
+ * **Only the sheet's open state runs in the browser.** This component is a
+ * Server Component and `SiteHeaderMenu` is the client part. The links, the
+ * labels and the language selector are rendered here and handed to it as
+ * children, so neither the page registry `localizedLinkFor` consults nor any
+ * edition's copy is shipped to the browser for a header.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DEFAULT_LOCALE, type Locale, type RouteId } from "../../../content/routes.js";
 import { CHROME_STRINGS } from "../lib/chrome-strings.js";
 import { LanguageSelector } from "./LanguageSelector.js";
 import { localizedLinkFor } from "../lib/seo.js";
+import { SiteHeaderMenu } from "./SiteHeaderMenu.js";
 import styles from "../styles/site-header.module.css";
 
 export interface SiteHeaderProps {
@@ -76,26 +80,6 @@ export function SiteHeader({
   const wordmarkSrc = wordmark === "dark" ? "/brand/plepic-wordmark-dark.svg" : "/brand/plepic-wordmark-primary.svg";
   const panelId = `${instanceId}-panel`;
   const strings = CHROME_STRINGS[locale];
-  const [isOpen, setIsOpen] = useState(false);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const openMenu = useCallback(() => {
-    setIsOpen(true);
-    requestAnimationFrame(() => closeButtonRef.current?.focus());
-  }, []);
-  const closeMenu = useCallback((restoreFocus = true) => {
-    setIsOpen(false);
-    if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeMenu();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [closeMenu, isOpen]);
 
   return (
     <header className={styles.header}>
@@ -107,18 +91,16 @@ export function SiteHeader({
         <img className={styles.wordmark} src={wordmarkSrc} alt="" width={162} height={54} />
       </a>
 
-      <button
-        className={`${styles.scrim} ${isOpen ? styles.scrimOpen : ""}`}
-        type="button"
-        tabIndex={-1}
-        aria-hidden="true"
-        onClick={() => closeMenu()}
-      />
-
-      <div id={panelId} className={`${styles.nav} ${isOpen ? styles.navOpen : ""}`}>
-        <button ref={closeButtonRef} className={styles.closeButton} type="button" onClick={() => closeMenu()}>
-          {strings.closeMenuLabel}
-        </button>
+      <SiteHeaderMenu
+        panelId={panelId}
+        closeLabel={strings.closeMenuLabel}
+        menuLabel={strings.menuLabel}
+        actions={
+          <a className={styles.buy} {...localizedLinkFor(locale, "cart")}>
+            {strings.basketLabel}
+          </a>
+        }
+      >
         <nav className={styles.primary} aria-label={strings.primaryNavLabel}>
           <a className={styles.link} {...localizedLinkFor(locale, "lunarBase")}>
             Lunar Base
@@ -131,23 +113,7 @@ export function SiteHeader({
           </a>
         </nav>
         <LanguageSelector className={styles.language} locale={locale} route={route} />
-      </div>
-
-      <div className={styles.actions}>
-        <button
-          ref={menuButtonRef}
-          className={styles.menuButton}
-          type="button"
-          aria-expanded={isOpen}
-          aria-controls={panelId}
-          onClick={openMenu}
-        >
-          {strings.menuLabel}
-        </button>
-        <a className={styles.buy} {...localizedLinkFor(locale, "cart")}>
-          {strings.basketLabel}
-        </a>
-      </div>
+      </SiteHeaderMenu>
     </header>
   );
 }

@@ -383,7 +383,11 @@ describe("LunarBaseMockup", () => {
    * repository and the plan forbids fabricating one, shown here large.
    */
   it("gives the four informative photographs real, non-empty alt text", () => {
-    const photographs = (html.match(/<img\b[^>]*>/g) ?? []).filter((tag) => /\bsrc="\/images\//.test(tag));
+    // The video posters are left out: each is the picture inside a link that
+    // names its video, so its own alt text is empty on purpose.
+    const photographs = (html.match(/<img\b[^>]*>/g) ?? []).filter(
+      (tag) => /\bsrc="\/images\//.test(tag) && !/\bsrc="\/images\/video\//.test(tag),
+    );
     expect(
       photographs.length,
       "expected the box render, the two component photographs, and the table-photography render",

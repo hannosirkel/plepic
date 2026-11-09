@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { addToCartCopy } from "../src/lib/edition-copy.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -218,6 +219,7 @@ describe("Store catalogue boundary", () => {
   it("renders an exhausted variant in the existing CTA slot without an active add action", () => {
     const html = renderToStaticMarkup(
       createElement(AddToCartButton, {
+        strings: addToCartCopy("en"),
         label: "Add to basket",
         variantId: null,
         analyticsVariantId: "variant_lunar_base",
