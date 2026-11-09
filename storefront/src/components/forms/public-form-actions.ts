@@ -87,7 +87,8 @@ import {
   resolveConfigurationPlaceholders,
 } from "../../lib/configuration-placeholders.js";
 import { submitContactMessage } from "./contact-submit.js";
-import { siteCopyForPost } from "./form-locale.js";
+import { siteCopyFor } from "../../../../content/editions.js";
+import { postedLocale } from "./form-locale.js";
 import { submitNewsletterAddress } from "./newsletter-submit.js";
 
 /**
@@ -191,7 +192,7 @@ export async function submitNewsletter(
   previous: unknown,
   formData: FormData,
 ): Promise<PublicFormOutcome> {
-  const { newsletter } = siteCopyForPost(formData).publisher;
+  const { newsletter } = siteCopyFor(postedLocale(formData)).publisher;
   const result = await submitNewsletterAddress(formData, getRuntimeConfig().medusa);
   return {
     message: result.ok ? newsletter.successMessage : newsletter.errorMessage,
@@ -204,7 +205,7 @@ export async function submitContact(
   previous: unknown,
   formData: FormData,
 ): Promise<PublicFormOutcome> {
-  const { contactForm } = siteCopyForPost(formData).support;
+  const { contactForm } = siteCopyFor(postedLocale(formData)).support;
   const runtime = getRuntimeConfig();
   const result = await submitContactMessage(formData, runtime.medusa);
   const error = resolveConfigurationPlaceholders(

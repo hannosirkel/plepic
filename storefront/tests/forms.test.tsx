@@ -22,6 +22,7 @@
  * field value anywhere near a URL — is asserted against a real build and a
  * running server in `tests/build-and-serve.test.ts`.
  */
+import { contactFormCopy, newsletterFormCopy } from "../src/lib/edition-copy.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -51,7 +52,7 @@ function newsletterForm(): FormData {
 }
 
 describe("NewsletterForm", () => {
-  const html = renderToStaticMarkup(<NewsletterForm turnstileSiteKey="test-site-key" nonce="abc" />);
+  const html = renderToStaticMarkup(<NewsletterForm turnstileSiteKey="test-site-key" nonce="abc" copy={newsletterFormCopy("en")} />);
 
   it("ties its email label to its input", () => {
     const forId = /<label[^>]*htmlFor="([^"]*)"/i.exec(html)?.[1] ?? /<label[^>]*for="([^"]*)"/.exec(html)?.[1];
@@ -85,7 +86,7 @@ describe("NewsletterForm", () => {
 });
 
 describe("ContactForm", () => {
-  const html = renderToStaticMarkup(<ContactForm turnstileSiteKey="test-site-key" nonce="abc" />);
+  const html = renderToStaticMarkup(<ContactForm turnstileSiteKey="test-site-key" nonce="abc" copy={contactFormCopy("en")} />);
 
   it("renders all four fields, each labelled", () => {
     for (const name of ["name", "email", "subject", "message"]) {
@@ -118,8 +119,8 @@ describe("ContactForm", () => {
 
 describe("neither form is a GET form", () => {
   const forms = [
-    ["NewsletterForm", renderToStaticMarkup(<NewsletterForm turnstileSiteKey="k" nonce="abc" />)],
-    ["ContactForm", renderToStaticMarkup(<ContactForm turnstileSiteKey="k" nonce="abc" />)],
+    ["NewsletterForm", renderToStaticMarkup(<NewsletterForm turnstileSiteKey="k" nonce="abc" copy={newsletterFormCopy("en")} />)],
+    ["ContactForm", renderToStaticMarkup(<ContactForm turnstileSiteKey="k" nonce="abc" copy={contactFormCopy("en")} />)],
   ] as const;
 
   for (const [name, html] of forms) {
@@ -279,8 +280,8 @@ describe("the Turnstile widget renders at a size that fits the card it sits in",
     // Cloudflare: normal 300x65, flexible 100% with a 300px MINIMUM, compact
     // 150x140. The narrowest of these containers measures 174px.
     for (const html of [
-      renderToStaticMarkup(<NewsletterForm turnstileSiteKey="k" nonce="abc" />),
-      renderToStaticMarkup(<ContactForm turnstileSiteKey="k" nonce="abc" />),
+      renderToStaticMarkup(<NewsletterForm turnstileSiteKey="k" nonce="abc" copy={newsletterFormCopy("en")} />),
+      renderToStaticMarkup(<ContactForm turnstileSiteKey="k" nonce="abc" copy={contactFormCopy("en")} />),
     ]) {
       expect(html).toContain('data-size="compact"');
       expect(html).not.toContain('data-size="flexible"');
@@ -290,12 +291,12 @@ describe("the Turnstile widget renders at a size that fits the card it sits in",
 
 describe("both forms render nothing for the Turnstile widget when no site key is configured", () => {
   it("NewsletterForm", () => {
-    const html = renderToStaticMarkup(<NewsletterForm turnstileSiteKey={null} nonce={undefined} />);
+    const html = renderToStaticMarkup(<NewsletterForm turnstileSiteKey={null} nonce={undefined} copy={newsletterFormCopy("en")} />);
     expect(html).not.toContain("cf-turnstile");
   });
 
   it("ContactForm", () => {
-    const html = renderToStaticMarkup(<ContactForm turnstileSiteKey={null} nonce={undefined} />);
+    const html = renderToStaticMarkup(<ContactForm turnstileSiteKey={null} nonce={undefined} copy={contactFormCopy("en")} />);
     expect(html).not.toContain("cf-turnstile");
   });
 });

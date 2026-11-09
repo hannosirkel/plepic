@@ -13,6 +13,8 @@ import {
   parseMockScenario,
 } from "../../../lib/mock-cart-actions.js";
 import { getRequestDestination } from "../../../lib/destination-request.js";
+import { shopCopy } from "../../../lib/edition-copy.js";
+import { DEFAULT_LOCALE } from "../../../../../content/routes.js";
 import { getRequestNonce } from "../../../lib/nonce.js";
 import { makeMetadata } from "../../../lib/page-shell.js";
 import { getRequestHost } from "../../../lib/request-host.js";
@@ -57,6 +59,7 @@ export default async function CheckoutPage({
     <ShopPageShell route="checkout" externalTargets={runtimeConfig.externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
         <CheckoutPageContent
+          shopCopy={shopCopy(DEFAULT_LOCALE)}
           turnstileSiteKey={runtimeConfig.turnstile.siteKey}
           nonce={nonce}
           stripePublishableKey={runtimeConfig.stripe.publishableKey}

@@ -34,6 +34,7 @@
  * without the reservation is the defect. The test tracks that distinction
  * instead of freezing today's choice.
  */
+import { consentCopy } from "../src/lib/edition-copy.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,7 +74,7 @@ function allRuleBodies(css: string, selector: string): string {
 }
 
 describe("the banner renders", () => {
-  const html = renderToStaticMarkup(<ConsentBanner onAccept={() => {}} onDecline={() => {}} />);
+  const html = renderToStaticMarkup(<ConsentBanner copy={consentCopy("en")} onAccept={() => {}} onDecline={() => {}} />);
 
   it("is a labelled dialog a screen reader can announce", () => {
     expect(html).toContain('role="dialog"');
@@ -97,7 +98,7 @@ describe("the banner renders", () => {
 
   it("renders nothing at all on the server pass, so no banner can paint before the stored decision is read", () => {
     const served = renderToStaticMarkup(
-      <ConsentManager isTestHost={false} measurementId={null} nonce="test-nonce" />,
+      <ConsentManager copy={consentCopy("en")} isTestHost={false} measurementId={null} nonce="test-nonce" />,
     );
     expect(served).toBe("");
   });

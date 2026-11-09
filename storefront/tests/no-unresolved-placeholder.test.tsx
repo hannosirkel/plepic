@@ -27,6 +27,7 @@
  * "the extractor has teeth" proves that against both states rather than
  * asserting it in a comment.
  */
+import { shopCopy } from "../src/lib/edition-copy.js";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -103,7 +104,7 @@ const ROUTES: readonly { readonly path: string; readonly html: string }[] = [
     path: "/cart",
     html: renderToStaticMarkup(
       <CartProvider scenario="filled" latencyMs={0}>
-        <BasketPageContent />
+        <BasketPageContent shopCopy={shopCopy("en")} />
       </CartProvider>,
     ),
   },
@@ -111,7 +112,7 @@ const ROUTES: readonly { readonly path: string; readonly html: string }[] = [
     path: "/checkout",
     html: renderToStaticMarkup(
       <CartProvider scenario="filled" latencyMs={0}>
-        <CheckoutPageContent
+        <CheckoutPageContent shopCopy={shopCopy("en")}
           turnstileSiteKey={null}
           nonce={undefined}
           scenario="filled"
@@ -161,12 +162,12 @@ describe("no unresolved placeholder reaches rendered text on any real route", ()
     for (const html of [
       renderToStaticMarkup(
         <CartProvider scenario={null} latencyMs={0}>
-          <BasketPageContent />
+          <BasketPageContent shopCopy={shopCopy("en")} />
         </CartProvider>,
       ),
       renderToStaticMarkup(
         <CartProvider scenario={null} latencyMs={0}>
-          <CheckoutPageContent
+          <CheckoutPageContent shopCopy={shopCopy("en")}
             turnstileSiteKey={null}
             nonce={undefined}
             scenario={null}

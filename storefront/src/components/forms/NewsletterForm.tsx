@@ -43,10 +43,10 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
+import type { NewsletterFormCopy } from "../../lib/edition-copy.js";
 import { FormLocaleField } from "./form-locale.js";
 import { submitNewsletter } from "./public-form-actions.js";
 import type { PublicFormOutcome } from "./public-form-actions.js";
@@ -61,16 +61,17 @@ export interface NewsletterFormProps {
    * posts it, see `./form-locale.tsx`.
    */
   readonly locale?: Locale;
+  /** That edition's words, from `newsletterFormCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly copy: NewsletterFormCopy;
 }
 
 export function NewsletterForm({
   turnstileSiteKey,
   nonce,
   locale = DEFAULT_LOCALE,
+  copy,
 }: NewsletterFormProps) {
-  const copy = siteCopyFor(locale);
-  const { newsletter } = copy.publisher;
-  const errors = copy.interface.newsletterForm;
+  const { newsletter, errors } = copy;
   const fieldId = useId();
   const errorId = useId();
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +202,7 @@ export function NewsletterForm({
       <HoneypotField formName="newsletter" />
 
       <div className={styles.turnstile}>
-        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="newsletter" locale={locale} />
+        <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="newsletter" label={copy.verificationLabel} />
       </div>
 
       <p className={styles.consentNote}>{newsletter.consentNote}</p>

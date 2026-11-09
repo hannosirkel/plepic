@@ -4,9 +4,9 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { loadStripe } from "@stripe/stripe-js/pure";
 import { forwardRef, useImperativeHandle, useMemo } from "react";
 
-import { siteCopyFor } from "../../../../content/editions.js";
 import { CHECKOUT_RETURN_PATH, DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { stripeConfirmationForStatus, type StripeConfirmation } from "../../lib/store-payment.js";
+import type { ShopCopy } from "../../lib/edition-copy.js";
 import { localizedPath } from "../../lib/urls.js";
 
 export interface StripePaymentElementHandle {
@@ -15,12 +15,11 @@ export interface StripePaymentElementHandle {
 
 interface InnerPaymentElementProps {
   readonly returnUrl: string;
-  readonly locale: Locale;
+  readonly copy: ShopCopy["checkout"];
 }
 
 const InnerPaymentElement = forwardRef<StripePaymentElementHandle, InnerPaymentElementProps>(
-  function InnerPaymentElement({ returnUrl, locale }, ref) {
-    const copy = siteCopyFor(locale).interface.checkout;
+  function InnerPaymentElement({ returnUrl, copy }, ref) {
     const stripe = useStripe();
     const elements = useElements();
 
@@ -101,6 +100,8 @@ export interface StripePaymentElementProps {
   readonly clientSecret: string | null;
   /** The edition the checkout is served in. The default edition's when absent. */
   readonly locale?: Locale;
+  /** The edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`), handed down by the checkout. */
+  readonly shopCopy: ShopCopy;
 }
 
 /**
@@ -119,8 +120,8 @@ export function checkoutReturnUrl(origin: string, locale: Locale): string {
 export const StripePaymentElement = forwardRef<
   StripePaymentElementHandle,
   StripePaymentElementProps
->(function StripePaymentElement({ publishableKey, clientSecret, locale = DEFAULT_LOCALE }, ref) {
-  const copy = siteCopyFor(locale).interface.checkout;
+>(function StripePaymentElement({ publishableKey, clientSecret, locale = DEFAULT_LOCALE, shopCopy }, ref) {
+  const copy = shopCopy.checkout;
   const stripe = useMemo(
     () => (publishableKey === null || clientSecret === null ? null : loadStripe(publishableKey)),
     [clientSecret, publishableKey],
@@ -136,7 +137,7 @@ export const StripePaymentElement = forwardRef<
   const returnUrl = checkoutReturnUrl(window.location.origin, locale);
   return (
     <Elements key={clientSecret} stripe={stripe} options={{ clientSecret }}>
-      <InnerPaymentElement ref={ref} returnUrl={returnUrl} locale={locale} />
+      <InnerPaymentElement ref={ref} returnUrl={returnUrl} copy={copy} />
     </Elements>
   );
 });

@@ -56,6 +56,7 @@ import { CheckoutPageContent } from "../components/shop/CheckoutPageContent.js";
 import { StripePaymentReturn } from "../components/shop/StripePaymentReturn.js";
 import { ShopPageShell } from "../components/shop/ShopPageShell.js";
 import { CartProvider } from "../lib/cart-store.js";
+import { addToCartCopy, destinationSelectorCopy, shopCopy } from "../lib/edition-copy.js";
 import { isMockLayerEnabled, MOCK_SCENARIO_PARAM, parseMockScenario } from "../lib/mock-cart-actions.js";
 import { getRequestHost } from "../lib/request-host.js";
 import { LegalPageContent } from "../components/pages/LegalPageContent.js";
@@ -103,7 +104,7 @@ export async function BasketRoute({ routeId, locale, searchParams }: LocalizedRo
   return (
     <ShopPageShell locale={locale} route="cart" externalTargets={getRuntimeConfig().externalTargets}>
       <CartProvider scenario={scenario} destinationCode={destination.code}>
-        <BasketPageContent locale={locale} />
+        <BasketPageContent locale={locale} shopCopy={shopCopy(locale)} />
       </CartProvider>
     </ShopPageShell>
   );
@@ -139,6 +140,7 @@ export async function CheckoutRoute({ routeId, locale, searchParams }: Localized
       <CartProvider scenario={scenario} destinationCode={destination.code}>
         <CheckoutPageContent
           locale={locale}
+          shopCopy={shopCopy(locale)}
           turnstileSiteKey={runtimeConfig.turnstile.siteKey}
           nonce={nonce}
           stripePublishableKey={runtimeConfig.stripe.publishableKey}
@@ -157,7 +159,7 @@ export async function CheckoutReturnRoute({ routeId, locale }: LocalizedRoutePro
   const runtimeConfig = getRuntimeConfig();
   return (
     <ShopPageShell locale={locale} route="checkout" externalTargets={runtimeConfig.externalTargets}>
-      <StripePaymentReturn locale={locale} turnstileSiteKey={runtimeConfig.turnstile.siteKey} nonce={nonce} />
+      <StripePaymentReturn locale={locale} shopCopy={shopCopy(locale)} turnstileSiteKey={runtimeConfig.turnstile.siteKey} nonce={nonce} />
     </ShopPageShell>
   );
 }
@@ -279,8 +281,8 @@ export async function LunarBaseRoute({ routeId, locale }: LocalizedRouteProps) {
         externalTargets={runtime.externalTargets}
         catalogue={catalogue}
         merchant={placeholderValuesFrom(runtime.merchant)}
-        destinationSelector={<DestinationSelector destinationCode={destination.code} locale={locale} />}
-        primaryPurchaseAction={<AddToCartButton locale={locale} label={addLabel} variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
+        destinationSelector={<DestinationSelector destinationCode={destination.code} locale={locale} copy={destinationSelectorCopy(locale)} />}
+        primaryPurchaseAction={<AddToCartButton strings={addToCartCopy(locale)} label={addLabel} variantId={store.variantId} analyticsVariantId={store.analyticsVariantId} productName={analyticsProduct.name} unitAmount={analyticsProduct.price.amount} currency={analyticsProduct.price.currency} />}
       />
       <JsonLdScript data={jsonLd} nonce={nonce} />
     </>

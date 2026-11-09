@@ -22,14 +22,13 @@
  * edition.
  */
 
-import { siteCopyFor } from "../../../../content/editions.js";
-import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import type { ShopCopy } from "../../lib/edition-copy.js";
 import type { StorefrontParcelMachine } from "../../lib/omniva-locations.js";
 import styles from "../../styles/pages/shop.module.css";
 
 export interface ParcelMachinePickerProps {
-  /** The edition whose words the picker speaks. The default edition's when absent. */
-  readonly locale?: Locale;
+  /** The edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`), handed down by the checkout. */
+  readonly shopCopy: ShopCopy;
   /**
    * The machines to offer, in the order the backend returned them —
    * `GET /store/omniva/parcel-machines` groups and sorts this list, so this
@@ -77,14 +76,14 @@ function groupContiguous(
 }
 
 export function ParcelMachinePicker({
-  locale = DEFAULT_LOCALE,
+  shopCopy,
   machines,
   value,
   state,
   disabled,
   onChange,
 }: ParcelMachinePickerProps) {
-  const copy = siteCopyFor(locale).shop.checkout.delivery;
+  const copy = shopCopy.content.checkout.delivery;
   const groups = groupContiguous(machines);
   return (
     <>

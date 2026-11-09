@@ -49,6 +49,7 @@ import { isTestHost, loadSiteHostConfig } from "../config/hosts.js";
 import { getRuntimeConfig } from "../config/runtime-config.js";
 import { LOCALE_DEFINITIONS, type Locale } from "../../../content/routes.js";
 import { toClientRuntimeConfig } from "../lib/client-runtime-config.js";
+import { consentCopy } from "../lib/edition-copy.js";
 import { getRequestNonce } from "../lib/nonce.js";
 import { getRequestHost } from "../lib/request-host.js";
 
@@ -80,6 +81,7 @@ export async function SiteDocument({ locale, children }: SiteDocumentProps) {
         {children}
         <ConsentManager
           locale={locale}
+          copy={consentCopy(locale)}
           isTestHost={testHost}
           measurementId={runtimeConfig.analytics.measurementId}
           nonce={nonce}

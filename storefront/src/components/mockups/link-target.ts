@@ -55,6 +55,7 @@ import { ROUTE_PATHS, type Locale } from "../../../../content/routes.js";
 import type { LinkTarget } from "../../../../content/schema.js";
 import type { ExternalTargetUrls } from "../../config/runtime-config.js";
 import { localizedLinkFor } from "../../lib/seo.js";
+import type { ResolvedLink } from "./route-links.js";
 
 export function resolveLinkHref(
   target: LinkTarget,
@@ -72,12 +73,7 @@ export function resolveLinkHref(
   }
 }
 
-export interface ResolvedLink {
-  /** `undefined` exactly where {@link resolveLinkHref} answers `undefined`. */
-  readonly href: string | undefined;
-  /** Set when a route target had to cross into the default edition -- see `localizedLinkFor`. */
-  readonly hrefLang?: string;
-}
+export type { ResolvedLink } from "./route-links.js";
 
 /**
  * {@link resolveLinkHref} for a page served in `locale`.

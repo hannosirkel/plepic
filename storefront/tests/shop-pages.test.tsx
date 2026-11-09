@@ -16,6 +16,7 @@
  * what let five legal pages ship rendering nothing at all.
  */
 
+import { shopCopy } from "../src/lib/edition-copy.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,7 +96,7 @@ function visibleText(html: string): string {
 function renderBasket(scenario: MockScenario | null, destinationCode?: string): string {
   return renderToStaticMarkup(
     <CartProvider scenario={scenario} latencyMs={0} destinationCode={destinationCode}>
-      <BasketPageContent />
+      <BasketPageContent shopCopy={shopCopy("en")} />
     </CartProvider>,
   );
 }
@@ -103,7 +104,7 @@ function renderBasket(scenario: MockScenario | null, destinationCode?: string): 
 function renderCheckout(scenario: MockScenario | null): string {
   return renderToStaticMarkup(
     <CartProvider scenario={scenario} latencyMs={0}>
-      <CheckoutPageContent
+      <CheckoutPageContent shopCopy={shopCopy("en")}
         turnstileSiteKey={null}
         nonce={undefined}
         scenario={scenario}
@@ -144,7 +145,7 @@ function addressIn(country: string): Readonly<Record<string, string>> {
 function renderCheckoutWithAddress(country: string): string {
   return renderToStaticMarkup(
     <CartProvider scenario="filled" latencyMs={0}>
-      <CheckoutPageContent
+      <CheckoutPageContent shopCopy={shopCopy("en")}
         turnstileSiteKey={null}
         nonce={undefined}
         scenario="filled"
@@ -479,7 +480,7 @@ describe("the phone field, where OMX requires one", () => {
   function renderWith(country: string, phone: string | undefined): string {
     return renderToStaticMarkup(
       <CartProvider scenario="filled" latencyMs={0}>
-        <CheckoutPageContent
+        <CheckoutPageContent shopCopy={shopCopy("en")}
           turnstileSiteKey={null}
           nonce={undefined}
           scenario="filled"
@@ -695,7 +696,7 @@ describe("ARTICLE 8(2): an unsuppliable basket is not given a price or a total",
   function renderUnavailableCheckoutWithAddress(country: string): string {
     return renderToStaticMarkup(
       <CartProvider scenario="unavailable" latencyMs={0}>
-        <CheckoutPageContent
+        <CheckoutPageContent shopCopy={shopCopy("en")}
           turnstileSiteKey={null}
           nonce={undefined}
           scenario="unavailable"
@@ -1816,7 +1817,7 @@ describe("a submission the browser makes itself puts nothing in a URL", () => {
   it("says no order was placed, in the markup, when the redirect brings a visitor back", () => {
     const html = renderToStaticMarkup(
       <CartProvider scenario={null} latencyMs={0}>
-        <CheckoutPageContent
+        <CheckoutPageContent shopCopy={shopCopy("en")}
           turnstileSiteKey={null}
           nonce={undefined}
           scenario={null}

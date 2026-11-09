@@ -51,7 +51,6 @@
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
-import { siteCopyFor } from "../../../../content/editions.js";
 
 import {
   deliveryCountries,
@@ -59,6 +58,7 @@ import {
   DESTINATION_COOKIE_MAX_AGE_SECONDS,
   DESTINATION_COOKIE_NAME,
 } from "../../lib/destination.js";
+import type { DestinationSelectorCopy } from "../../lib/edition-copy.js";
 import styles from "../../styles/destination-selector.module.css";
 
 /**
@@ -85,6 +85,8 @@ export interface DestinationSelectorProps {
   readonly label?: string;
   /** One sentence under the control saying what it does and does not decide. */
   readonly hint?: string;
+  /** The edition's words, from `destinationSelectorCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly copy: DestinationSelectorCopy;
 }
 
 export function DestinationSelector({
@@ -92,8 +94,8 @@ export function DestinationSelector({
   locale = DEFAULT_LOCALE,
   label,
   hint,
+  copy,
 }: DestinationSelectorProps) {
-  const copy = siteCopyFor(locale).interface.destinationSelector;
   const router = useRouter();
   const baseId = useId();
   const [selected, setSelected] = useState(destinationCode);

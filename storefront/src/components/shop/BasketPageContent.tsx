@@ -113,7 +113,6 @@
 
 import { useId, useState } from "react";
 
-import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import { resolveCatalogue, resolveCataloguePlaceholders } from "../../lib/catalogue.js";
 import { destinationForCode } from "../../lib/destination.js";
@@ -131,8 +130,9 @@ import {
 } from "../../lib/cart.js";
 import { useCart } from "../../lib/cart-store.js";
 import type { LinePending } from "../../lib/mock-cart-actions.js";
-import { CallToActionLink } from "../mockups/CallToActionLink.js";
-import { resolveLocalizedLink } from "../mockups/link-target.js";
+import type { ShopCopy } from "../../lib/edition-copy.js";
+import { CallToActionAnchor } from "../mockups/CallToActionAnchor.js";
+import { resolveLinkIn } from "../mockups/route-links.js";
 import styles from "../../styles/pages/shop.module.css";
 
 /**
@@ -140,18 +140,18 @@ import styles from "../../styles/pages/shop.module.css";
  * see `basket.quantityError` in `content/shop.ts` for why the two numbers are
  * not written into the copy.
  */
-function quantityErrorMessage(basket: ReturnType<typeof siteCopyFor>["shop"]["basket"]): string {
+function quantityErrorMessage(basket: ShopCopy["content"]["basket"]): string {
   return `${basket.quantityError.prefix}${String(MIN_QUANTITY_PER_LINE)}` +
     `${basket.quantityError.rangeSeparator}${String(MAX_QUANTITY_PER_LINE)}` +
     `${basket.quantityError.suffix}`;
 }
 
-function limitErrorMessage(basket: ReturnType<typeof siteCopyFor>["shop"]["basket"]): string {
+function limitErrorMessage(basket: ShopCopy["content"]["basket"]): string {
   return `${basket.limitError.prefix}${String(MAX_QUANTITY_PER_LINE)}${basket.limitError.suffix}`;
 }
 
-function BasketLine({ line, locale }: { readonly line: CartLine; readonly locale: Locale }) {
-  const { basket } = siteCopyFor(locale).shop;
+function BasketLine({ line, locale, shopCopy }: { readonly line: CartLine; readonly locale: Locale; readonly shopCopy: ShopCopy }) {
+  const { basket } = shopCopy.content;
   const { pending, updateQuantity, remove, destinationCode } = useCart();
   const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode), locale);
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
@@ -277,7 +277,7 @@ function BasketLine({ line, locale }: { readonly line: CartLine; readonly locale
 
       {busy ? (
         <p className={styles.pending} role="status">
-          {pendingLabel(state, locale)}
+          {pendingLabel(state, basket)}
         </p>
       ) : null}
     </li>
@@ -285,8 +285,7 @@ function BasketLine({ line, locale }: { readonly line: CartLine; readonly locale
 }
 
 /** What the `role="status"` line says while an action is in flight. */
-function pendingLabel(state: LinePending | undefined, locale: Locale): string {
-  const { basket } = siteCopyFor(locale).shop;
+function pendingLabel(state: LinePending | undefined, basket: ShopCopy["content"]["basket"]): string {
   switch (state) {
     case "removing":
       return basket.removingLabel;
@@ -297,8 +296,15 @@ function pendingLabel(state: LinePending | undefined, locale: Locale): string {
   }
 }
 
-export function BasketPageContent({ locale = DEFAULT_LOCALE }: { readonly locale?: Locale }) {
-  const { basket, checkout: checkoutCopy, unavailableFigure } = siteCopyFor(locale).shop;
+export function BasketPageContent({
+  locale = DEFAULT_LOCALE,
+  shopCopy,
+}: {
+  readonly locale?: Locale;
+  /** The edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly shopCopy: ShopCopy;
+}) {
+  const { basket, checkout: checkoutCopy, unavailableFigure } = shopCopy.content;
   const { lines, failure, add, busy, destinationCode } = useCart();
   const catalogue = resolveCatalogue(undefined, destinationForCode(destinationCode), locale);
   const resolve = (text: string) => resolveCataloguePlaceholders(text, catalogue);
@@ -359,7 +365,7 @@ export function BasketPageContent({ locale = DEFAULT_LOCALE }: { readonly locale
             >
               {resolve(basket.empty.addLabel)}
             </button>
-            <CallToActionLink action={basket.empty.browse} locale={locale} />
+            <CallToActionAnchor action={basket.empty.browse} {...resolveLinkIn(shopCopy.routeLinks, basket.empty.browse.target)} />
           </div>
           {busy ? (
             <p className={styles.pending} role="status">
@@ -377,7 +383,7 @@ export function BasketPageContent({ locale = DEFAULT_LOCALE }: { readonly locale
             </h2>
             <ul className={styles.lines}>
               {lines.map((line) => (
-                <BasketLine key={line.id} line={line} locale={locale} />
+                <BasketLine key={line.id} line={line} locale={locale} shopCopy={shopCopy} />
               ))}
             </ul>
           </section>
@@ -431,7 +437,7 @@ export function BasketPageContent({ locale = DEFAULT_LOCALE }: { readonly locale
               {blocked ? (
                 <p className={styles.error}>{checkoutCopy.errors.unavailableLine}</p>
               ) : (
-                <CallToActionLink action={basket.checkout} locale={locale} />
+                <CallToActionAnchor action={basket.checkout} {...resolveLinkIn(shopCopy.routeLinks, basket.checkout.target)} />
               )}
             </div>
           </section>
@@ -450,7 +456,7 @@ export function BasketPageContent({ locale = DEFAULT_LOCALE }: { readonly locale
         <ul className={styles.linkList}>
           {basket.beforeYouBuy.links.map((link) => (
             <li key={link.label}>
-              <a {...resolveLocalizedLink(locale, link.target)}>{link.label}</a>
+              <a {...resolveLinkIn(shopCopy.routeLinks, link.target)}>{link.label}</a>
             </li>
           ))}
         </ul>

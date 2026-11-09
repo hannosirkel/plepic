@@ -149,7 +149,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 
-import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
 import {
   destinationForCode,
@@ -185,7 +184,6 @@ import {
 } from "../../lib/store-checkout.js";
 import {
   EMPTY_ADDRESS,
-  fieldsFor,
   guestAddress,
   isPhoneComplete,
   isPostalAddressComplete,
@@ -209,8 +207,9 @@ import {
   onAnalyticsEnabled,
 } from "../../lib/analytics.js";
 import { placeMockOrder, type MockScenario, type OrderOutcome } from "../../lib/mock-cart-actions.js";
-import { CallToActionLink } from "../mockups/CallToActionLink.js";
-import { resolveLocalizedLink } from "../mockups/link-target.js";
+import type { ShopCopy } from "../../lib/edition-copy.js";
+import { CallToActionAnchor } from "../mockups/CallToActionAnchor.js";
+import { resolveLinkIn } from "../mockups/route-links.js";
 import { HoneypotField } from "../turnstile/HoneypotField.js";
 import { TurnstileWidget } from "../turnstile/TurnstileWidget.js";
 import { ParcelMachinePicker } from "./ParcelMachinePicker.js";
@@ -221,7 +220,6 @@ import {
   type StripePaymentElementHandle,
 } from "./StripePaymentElement.js";
 import { CHECKOUT_ORDER_POST_PATH } from "./checkout-order-post.js";
-import { checkoutTermsFor } from "./checkout-terms.js";
 import styles from "../../styles/pages/shop.module.css";
 
 function browserRuntimeConfig(): ClientRuntimeConfig {
@@ -245,8 +243,8 @@ function browserRuntimeConfig(): ClientRuntimeConfig {
  * recognised by the name Medusa returns (`isParcelMachineOption`), and that
  * name is never sent anywhere: an option is chosen by its id.
  */
-export function deliveryMethodNameIn(name: string, locale: Locale): string {
-  const names: Readonly<Record<string, string>> = siteCopyFor(locale).interface.deliveryMethodNames;
+export function deliveryMethodNameIn(name: string, shopCopy: ShopCopy): string {
+  const names: Readonly<Record<string, string>> = shopCopy.deliveryMethodNames;
   const declared = [declaredShippingMethod, declaredParcelMachineMethod].find(
     (method) => method.name === name,
   );
@@ -261,8 +259,13 @@ export function deliveryMethodNameIn(name: string, locale: Locale): string {
  * words and number format to say it in, so the option agrees with the order
  * summary beneath it, which writes its figures in the same format.
  */
-export function deliveryChargeIn(option: GuestShippingOption, vatApplies: boolean, locale: Locale): string {
-  const { deliveryFree, deliveryNetCharge } = siteCopyFor(locale).interface.checkout;
+export function deliveryChargeIn(
+  option: GuestShippingOption,
+  vatApplies: boolean,
+  shopCopy: ShopCopy,
+  locale: Locale,
+): string {
+  const { deliveryFree, deliveryNetCharge } = shopCopy.checkout;
   return shippingOptionFigure(option, vatApplies, { locale, free: deliveryFree, beforeVat: deliveryNetCharge }).label;
 }
 
@@ -281,6 +284,8 @@ function countryNameIn(name: string, locale: Locale): string {
 export interface CheckoutPageContentProps {
   /** The edition this checkout is served in. The default edition's when absent. */
   readonly locale?: Locale;
+  /** That edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly shopCopy: ShopCopy;
   readonly turnstileSiteKey: string | null;
   readonly nonce: string | undefined;
   readonly stripePublishableKey?: string | null;
@@ -310,6 +315,8 @@ export interface CheckoutPageContentProps {
 
 export interface CheckoutConfirmationProps {
   readonly locale: Locale;
+  /** The edition's words, from `shopCopy(locale)` (`src/lib/edition-copy.ts`). */
+  readonly shopCopy: ShopCopy;
   /** The number the shop gave the order. */
   readonly displayId: number;
   /** The address the order was placed with, offered to the newsletter form. */
@@ -325,8 +332,8 @@ export interface CheckoutConfirmationProps {
  * `storefront/` has no DOM in its test environment to place one in: a test
  * renders this, in each edition.
  */
-export function CheckoutConfirmation({ locale, displayId, email, turnstileSiteKey, nonce }: CheckoutConfirmationProps) {
-  const copy = siteCopyFor(locale).interface.checkout;
+export function CheckoutConfirmation({ locale, shopCopy, displayId, email, turnstileSiteKey, nonce }: CheckoutConfirmationProps) {
+  const copy = shopCopy.checkout;
   return (
     <section className={styles.card} aria-labelledby="checkout-confirmation-heading">
       <h1 id="checkout-confirmation-heading" className={styles.heading}>
@@ -337,6 +344,7 @@ export function CheckoutConfirmation({ locale, displayId, email, turnstileSiteKe
       </p>
       <PostPurchaseNewsletterForm
         locale={locale}
+        shopCopy={shopCopy}
         defaultEmail={email}
         turnstileSiteKey={turnstileSiteKey}
         nonce={nonce}
@@ -356,6 +364,7 @@ function initialOutcome(
 
 export function CheckoutPageContent({
   locale = DEFAULT_LOCALE,
+  shopCopy,
   turnstileSiteKey,
   nonce,
   stripePublishableKey = null,
@@ -364,10 +373,10 @@ export function CheckoutPageContent({
   latencyMs,
   initialAddress = EMPTY_ADDRESS,
 }: CheckoutPageContentProps) {
-  const { checkout, unavailableFigure } = siteCopyFor(locale).shop;
-  const copy = siteCopyFor(locale).interface.checkout;
-  const terms = checkoutTermsFor(locale);
-  const fields = fieldsFor(locale);
+  const { checkout, unavailableFigure } = shopCopy.content;
+  const copy = shopCopy.checkout;
+  const { terms } = shopCopy;
+  const { fields } = shopCopy.address;
   const { lines, destinationCode } = useCart();
   const baseId = useId();
   const errorSummaryRef = useRef<HTMLDivElement>(null);
@@ -480,6 +489,7 @@ export function CheckoutPageContent({
    * `tests/price-qualification.test.ts`.
    */
   const qualification = checkoutPriceQualification(
+    checkout.order,
     scenario === null
       ? {
           kind: "store",
@@ -781,7 +791,7 @@ export function CheckoutPageContent({
     // flight returned above.
     setPlacing(false);
 
-    const nextErrors = validate(values, locale);
+    const nextErrors = validate(values, shopCopy.address);
     setErrors(nextErrors);
     setOutcome(null);
 
@@ -920,6 +930,7 @@ export function CheckoutPageContent({
     return (
       <CheckoutConfirmation
         locale={locale}
+        shopCopy={shopCopy}
         displayId={completedOrder.displayId}
         email={values.email ?? ""}
         turnstileSiteKey={turnstileSiteKey}
@@ -955,7 +966,7 @@ export function CheckoutPageContent({
           </h2>
           <p className={styles.body}>{checkout.empty.body}</p>
           <div className={styles.actions}>
-            <CallToActionLink action={checkout.empty.link} locale={locale} />
+            <CallToActionAnchor action={checkout.empty.link} {...resolveLinkIn(shopCopy.routeLinks, checkout.empty.link.target)} />
           </div>
         </section>
       </>
@@ -1157,7 +1168,7 @@ export function CheckoutPageContent({
                           `shippingOptionFigure`. */}
                       {shippingOptions.map((option) => (
                         <option key={option.id} value={option.id}>
-                          {deliveryMethodNameIn(option.name, locale)} — {deliveryChargeIn(option, deliveryZone === "europeanUnion", locale)}
+                          {deliveryMethodNameIn(option.name, shopCopy)} — {deliveryChargeIn(option, deliveryZone === "europeanUnion", shopCopy, locale)}
                         </option>
                       ))}
                     </select>
@@ -1167,7 +1178,7 @@ export function CheckoutPageContent({
                         made in two steps rather than two separate rows. */}
                     {selectedIsParcelMachine ? (
                       <ParcelMachinePicker
-                        locale={locale}
+                        shopCopy={shopCopy}
                         machines={parcelMachines}
                         value={parcelMachineZip}
                         state={parcelMachineState}
@@ -1176,7 +1187,7 @@ export function CheckoutPageContent({
                       />
                     ) : null}
                   </>
-                ) : deliveryMethodNameIn(declaredShippingMethod.name, locale)}
+                ) : deliveryMethodNameIn(declaredShippingMethod.name, shopCopy)}
               </dd>
             </div>
             <div className={styles.summaryRow}>
@@ -1215,6 +1226,7 @@ export function CheckoutPageContent({
               <StripePaymentElement
                 ref={paymentElementRef}
                 locale={locale}
+                shopCopy={shopCopy}
                 publishableKey={stripePublishableKey}
                 clientSecret={
                   paymentSession?.revision === payableRevision
@@ -1238,7 +1250,7 @@ export function CheckoutPageContent({
 
           <HoneypotField formName="checkout" />
           <div className={styles.turnstile}>
-            <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="checkout" resetKey={challengeRevision} locale={locale} />
+            <TurnstileWidget siteKey={turnstileSiteKey} nonce={nonce} formName="checkout" resetKey={challengeRevision} label={shopCopy.verificationLabel} />
           </div>
         </section>
 
@@ -1256,7 +1268,7 @@ export function CheckoutPageContent({
           <ul className={styles.linkList}>
             {checkout.beforeYouOrder.links.map((link) => (
               <li key={link.label}>
-                <a {...resolveLocalizedLink(locale, link.target)}>{link.label}</a>
+                <a {...resolveLinkIn(shopCopy.routeLinks, link.target)}>{link.label}</a>
               </li>
             ))}
           </ul>

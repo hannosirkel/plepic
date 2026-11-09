@@ -26,6 +26,7 @@
  */
 import { siteCopyFor } from "../../../../content/editions.js";
 import { DEFAULT_LOCALE, type Locale } from "../../../../content/routes.js";
+import { contactFormCopy } from "../../lib/edition-copy.js";
 import { NO_CONFIGURATION_VALUES, resolvedParagraphs } from "../../lib/configuration-placeholders.js";
 import { ContactForm } from "../forms/ContactForm.js";
 import { CallToActionLink } from "../mockups/CallToActionLink.js";
@@ -149,7 +150,7 @@ export function SupportPageContent({
             ))}
           </div>
           <div className={styles.contactForm}>
-            <ContactForm turnstileSiteKey={turnstileSiteKey} nonce={nonce} locale={locale} />
+            <ContactForm turnstileSiteKey={turnstileSiteKey} nonce={nonce} locale={locale} copy={contactFormCopy(locale)} />
           </div>
         </section>
       </main>

@@ -69,6 +69,7 @@ import {
   type Locale,
   type RouteId,
 } from "../../../content/routes.js";
+import type { RouteLinks } from "../components/mockups/route-links.js";
 import { absoluteUrl, canonicalUrl, localizedPath } from "./urls.js";
 
 /** The pages `locale` publishes. Total over `Locale` by construction. */
@@ -150,6 +151,18 @@ export function localizedLinkFor(locale: Locale, routeId: RouteId): LocalizedLin
     href: localizedPath(target, ROUTE_PATHS[routeId]),
     hrefLang: target === locale ? undefined : LOCALE_DEFINITIONS[target].languageTag,
   };
+}
+
+/**
+ * {@link localizedLinkFor}'s answer for every route, from pages served in
+ * `locale`. What a client component is handed in place of the page registry,
+ * which it cannot consult without shipping every edition's content to the
+ * browser — see `src/components/mockups/route-links.ts`.
+ */
+export function routeLinksFor(locale: Locale): RouteLinks {
+  return Object.fromEntries(
+    (Object.keys(ROUTE_PATHS) as RouteId[]).map((routeId) => [routeId, localizedLinkFor(locale, routeId)]),
+  ) as RouteLinks;
 }
 
 /** {@link localizedLinkFor}'s path alone, for callers that need no annotation. */
