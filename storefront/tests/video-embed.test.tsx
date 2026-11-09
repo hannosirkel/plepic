@@ -1,11 +1,20 @@
 /**
  * `VideoEmbed`: both the honest pending state and the embedded state used by
  * the verified product videos.
+ *
+ * The embedded state is served as `VideoFacade`'s link and poster; the player
+ * replaces it only when pressed, which `tests/playwright/storefront.spec.ts`
+ * covers in a browser. This file holds what the server sends.
  */
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { VideoEmbed } from "../src/components/video/VideoEmbed.js";
+import { posterFor } from "../src/components/video/VideoFacade.js";
 import { buildContentSecurityPolicy } from "../src/lib/csp.js";
 
 /**
@@ -55,10 +64,14 @@ describe("VideoEmbed: embedded state", () => {
     />,
   );
 
-  it("embeds the approved no-cookie host, never the tracking one directly", () => {
-    expect(html).toContain("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
-    expect(html).toContain("<iframe");
+  it("links the approved no-cookie player, never the tracking host", () => {
+    expect(html).toContain('href="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
     expect(html).not.toContain(TRACKING_YOUTUBE_HOST);
+  });
+
+  it("loads nothing from YouTube until the reader asks for the video", () => {
+    expect(html).not.toContain("<iframe");
+    expect(html).toMatch(/<img[^>]*src="\/images\/video\/dQw4w9WgXcQ-960\.webp"/);
   });
 
   it("is permitted by frame-src without permitting the tracking YouTube host", () => {
@@ -77,8 +90,9 @@ describe("VideoEmbed: embedded state", () => {
     expect(html).not.toContain('style="');
   });
 
-  it("gives the lazy iframe an accessible title", () => {
-    expect(html).toMatch(/<iframe[^>]*title="Lunar Base tutorial"[^>]*loading="lazy"/);
+  it("names the link after the video, and leaves the poster to it", () => {
+    expect(html).toContain("Watch Lunar Base tutorial");
+    expect(html).toMatch(/<img[^>]*alt=""/);
   });
 
   /*
@@ -109,5 +123,42 @@ describe("VideoEmbed: sizes", () => {
   it("takes the compact size for the teaser row", () => {
     const html = renderToStaticMarkup(<VideoEmbed {...props} aspectRatio="16:9" size="compact" />);
     expect(html).toContain("compact");
+  });
+});
+
+/**
+ * Every video the site embeds has its poster on disk. `VideoFacade` names the
+ * file by video id, so a newly configured video with no poster would render
+ * a broken image where its player belongs.
+ */
+describe("VideoFacade posters", () => {
+  const storefront = dirname(dirname(fileURLToPath(import.meta.url)));
+  const repository = dirname(storefront);
+  const VIDEO_ID = /youTubeId[=:]\s*\{?\s*"([A-Za-z0-9_-]{11})"/g;
+
+  function sources(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sources(path);
+      return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+    });
+  }
+
+  const ids = new Set(
+    [...sources(join(repository, "content")), ...sources(join(storefront, "src"))].flatMap((file) =>
+      [...readFileSync(file, "utf8").matchAll(VIDEO_ID)].map((match) => match[1]!),
+    ),
+  );
+
+  it("finds the videos it checks", () => {
+    expect(ids.size).toBeGreaterThanOrEqual(6);
+  });
+
+  it.each([...ids])("has both widths of %s's poster", (id) => {
+    const { srcSet } = posterFor(id);
+    for (const candidate of srcSet.split(", ")) {
+      const path = candidate.split(" ")[0]!;
+      expect(existsSync(join(storefront, "public", path)), path).toBe(true);
+    }
   });
 });

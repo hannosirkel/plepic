@@ -370,7 +370,7 @@ for (const locale of ["de", "et", "tlh"] as const) {
   });
 }
 
-test("below-fold product media loads when reached and approved videos use privacy-enhanced frames", async ({ page }, testInfo) => {
+test("below-fold product media loads when reached and approved videos load their privacy-enhanced player only when pressed", async ({ page }, testInfo) => {
   if (testInfo.project.name === "desktop") {
     await page.setViewportSize({ width: 1000, height: 900 });
   }
@@ -407,13 +407,28 @@ test("below-fold product media loads when reached and approved videos use privac
     "JjlDpS2ByXY",
     "v0lS1aenCXU",
   ];
-  const frames = page.locator("iframe[src*='youtube-nocookie.com']");
-  await expect(frames).toHaveCount(expectedVideoIds.length);
+  const videos = page.locator("a[href^='https://www.youtube-nocookie.com/embed/']");
+  await expect(videos).toHaveCount(expectedVideoIds.length);
   for (const [index, id] of expectedVideoIds.entries()) {
-    await expect(frames.nth(index)).toHaveAttribute("src", `https://www.youtube-nocookie.com/embed/${id}`);
+    await expect(videos.nth(index)).toHaveAttribute("href", `https://www.youtube-nocookie.com/embed/${id}`);
+    await expect(videos.nth(index).locator("img")).toHaveAttribute("src", `/images/video/${id}-960.webp`);
   }
-  await expect.poll(() => youtubeRequests.length).toBe(expectedVideoIds.length);
+  // Every poster is in view and decoded, and YouTube has not been asked for
+  // anything: the player loads only when a reader presses a video.
+  for (const index of expectedVideoIds.keys()) {
+    await expect
+      .poll(() => videos.nth(index).locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth))
+      .toBeGreaterThan(0);
+  }
+  expect(youtubeRequests).toEqual([]);
   await expect(watch).toHaveScreenshot(`lunar-watch-${testInfo.project.name}.png`);
+
+  await videos.first().click();
+  const player = page.locator("iframe[src*='youtube-nocookie.com']");
+  await expect(player).toHaveCount(1);
+  await expect(player).toHaveAttribute("src", `https://www.youtube-nocookie.com/embed/${expectedVideoIds[0]}?autoplay=1`);
+  await expect(player).toBeFocused();
+  await expect.poll(() => youtubeRequests.length).toBe(1);
   expect(cspErrors).toEqual([]);
 });
 

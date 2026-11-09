@@ -15,10 +15,18 @@
  *
  * Pair this with {@link HoneypotField} in any form that submits to the
  * public Internet, per the plan's "alongside the honeypot" instruction.
+ *
+ * **Cloudflare's script loads when the form is about to be used, not with the
+ * page.** It brings a challenge document and scripts of its own, a quarter of
+ * a megabyte, and every form that carries the widget sits below the fold. It
+ * is fetched once the widget comes within a screen or so of the viewport, or
+ * at the reader's first interaction with the page, whichever is first: a
+ * reader who starts filling in a form has started interacting, so the
+ * challenge is under way before they reach the submit button.
  */
 
 import Script from "next/script";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 
 export interface TurnstileWidgetProps {
@@ -114,6 +122,7 @@ export function TurnstileWidget({
   const widgetId = useRef<string | null>(null);
   const lastReset = useRef(resetKey);
   const [loaded, setLoaded] = useState(false);
+  const wanted = useSoonNeeded(element);
   useEffect(() => {
     if (!loaded || element.current === null || window.turnstile === undefined) return;
     if (widgetId.current === null) {
@@ -127,15 +136,17 @@ export function TurnstileWidget({
 
   return (
     <>
-      <Script
-        id="cf-turnstile-script"
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-        strategy="afterInteractive"
-        nonce={nonce}
-        async
-        defer
-        onReady={() => setLoaded(true)}
-      />
+      {wanted ? (
+        <Script
+          id="cf-turnstile-script"
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          strategy="afterInteractive"
+          nonce={nonce}
+          async
+          defer
+          onReady={() => setLoaded(true)}
+        />
+      ) : null}
       <div
         ref={element}
         className="cf-turnstile"
@@ -147,4 +158,35 @@ export function TurnstileWidget({
       />
     </>
   );
+}
+
+/** How far outside the viewport the widget may be when its script is fetched. */
+const LOOKAHEAD = "1000px 0px";
+const INTERACTIONS = ["pointerdown", "keydown", "focusin", "scroll", "touchstart"] as const;
+
+/**
+ * Whether the widget will be needed soon: it is within {@link LOOKAHEAD} of
+ * the viewport, or the reader has interacted with the page. Once true, stays
+ * true.
+ */
+function useSoonNeeded(element: RefObject<HTMLElement | null>): boolean {
+  const [needed, setNeeded] = useState(false);
+  useEffect(() => {
+    if (needed) return undefined;
+    const need = () => setNeeded(true);
+    for (const type of INTERACTIONS) window.addEventListener(type, need, { once: true, passive: true });
+    let observer: IntersectionObserver | undefined;
+    if (typeof IntersectionObserver === "undefined") need();
+    else if (element.current !== null) {
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) need();
+      }, { rootMargin: LOOKAHEAD });
+      observer.observe(element.current);
+    }
+    return () => {
+      for (const type of INTERACTIONS) window.removeEventListener(type, need);
+      observer?.disconnect();
+    };
+  }, [element, needed]);
+  return needed;
 }

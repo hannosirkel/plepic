@@ -53,6 +53,60 @@
   border: 0;
 }
 
+/* The video before it is played: a link the size of the player it becomes. */
+.facade {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: var(--text);
+}
+
+.facade:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: -4px;
+}
+
+.poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.playMark {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 4.25rem;
+  height: 3rem;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.playMark rect {
+  fill: color-mix(in srgb, var(--lunar-ink) 78%, transparent);
+  transition: fill 120ms ease;
+}
+
+.playMark path {
+  fill: var(--plepic-white);
+}
+
+.facade:hover .playMark rect,
+.facade:focus-visible .playMark rect {
+  fill: color-mix(in srgb, var(--lunar-ink) 94%, transparent);
+}
+
+/* The link's name, read out and never shown: the poster says it visually. */
+.label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /*
  * The trailer and the tutorial: one per row, at the width the section gives
  * them. `.compact` is the teaser size — the grid in the Watch section fits

@@ -3050,10 +3050,14 @@ describe("page weight stays inside a budget on the routes that matter", () => {
    * this catches is a *second* origin appearing — a font CDN, a tag manager, a
    * pixel — which would silently make the privacy page's list of processors
    * wrong.
+   *
+   * Turnstile is allowed and yet no longer reached: `TurnstileWidget` fetches
+   * Cloudflare's script only when its form is about to be used, so the
+   * document a page is served as names no third-party origin at all.
    */
   const ALLOWED_THIRD_PARTY_HOSTS = new Set(["challenges.cloudflare.com"]);
 
-  it("reaches exactly one third-party origin in the document, and it is the named one", async () => {
+  it("reaches no third-party origin in the document, and none but the named one ever", async () => {
     const seen = new Set<string>();
 
     for (const route of routes) {
@@ -3083,9 +3087,10 @@ describe("page weight stays inside a budget on the routes that matter", () => {
       }
     }
 
-    // Not vacuous: the widget really is in the first paint, so the allowlist
-    // is being exercised rather than merely being permissive about nothing.
-    expect([...seen]).toEqual(["challenges.cloudflare.com"]);
+    // Turnstile's script waits for its form (see above), so the first paint
+    // reaches no other origin. Should it come back into the document, the
+    // allowlist above still holds it to the named one.
+    expect([...seen]).toEqual([]);
   });
 
   /**
