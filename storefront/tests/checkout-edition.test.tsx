@@ -186,7 +186,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
         }
       : null,
 }));
-vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => ({}) }));
+vi.mock("@stripe/stripe-js/pure", () => ({ loadStripe: () => ({}) }));
 /* A static render runs no effect, so a handle is given to its ref as the render passes. */
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();

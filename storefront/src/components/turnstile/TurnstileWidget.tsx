@@ -139,6 +139,7 @@ export function TurnstileWidget({
         data-sitekey={siteKey}
         data-size={size}
         data-testid={`turnstile-${formName}`}
+        role="group"
         aria-label={siteCopyFor(locale).interface.forms.verificationLabel}
       />
     </>

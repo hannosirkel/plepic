@@ -1,7 +1,7 @@
 "use client";
 
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe } from "@stripe/stripe-js/pure";
 import { forwardRef, useImperativeHandle, useMemo } from "react";
 
 import { siteCopyFor } from "../../../../content/editions.js";

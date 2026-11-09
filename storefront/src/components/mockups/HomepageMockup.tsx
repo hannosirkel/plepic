@@ -139,7 +139,7 @@ export function HomepageMockup({
             width={1600}
             height={864}
             loading="eager"
-            decoding="async"
+            fetchPriority="high"
             alt={strings.heroImageAlt}
           />
         </section>

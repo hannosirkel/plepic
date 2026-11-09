@@ -15,7 +15,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
   useStripe: () => null,
 }));
 
-vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => ({}) }));
+vi.mock("@stripe/stripe-js/pure", () => ({ loadStripe: () => ({}) }));
 
 import {
   StripePaymentElement,
