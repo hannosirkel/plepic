@@ -23,7 +23,7 @@
 # start-up, from the Secrets the `deploys` manifests project.
 
 # node:24.22.1-trixie-slim
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS build
+FROM node:24.22.3-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS build
 
 WORKDIR /src
 
@@ -93,7 +93,7 @@ RUN NODE_ENV=production \
 # compiler, no `@swc`, no `typescript` and no build cache reaches the image
 # that ships.
 # node:24.22.1-trixie-slim
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS runtime-dependencies
+FROM node:24.22.3-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS runtime-dependencies
 
 WORKDIR /src
 
@@ -177,7 +177,7 @@ RUN find . -depth \( -name esbuild -o -name '@esbuild' \) -exec rm -rf {} + \
        -exec grep -la 'Go buildinf:' {} + 2>/dev/null)"
 
 # node:24.22.1-trixie-slim
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS runtime
+FROM node:24.22.3-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS runtime
 
 # `org.opencontainers.image.source` is deliberately **not** here, and it is
 # not omitted either: `release.yml` and `deploy-test.yml` each pass it to both
